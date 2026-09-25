@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -37,6 +38,12 @@ class UserServiceTest {
 
     @Mock
     private PasswordEncoder passwordEncoder;
+
+    @Mock
+    private EmailVerificationService emailVerificationService;
+
+    @Mock
+    private RefreshTokenService refreshTokenService;
 
     @InjectMocks
     private UserService userService;
@@ -76,6 +83,7 @@ class UserServiceTest {
         User saved = captor.getValue();
 
         assertThat(result).isSameAs(saved);
+        verify(emailVerificationService).issue(saved);
         assertThat(saved.getEmail()).isEqualTo("jane@example.com");
         assertThat(saved.getDisplayName()).isEqualTo("Jane Doe");
         assertThat(saved.getPasswordHash()).isEqualTo("encoded");
@@ -95,6 +103,19 @@ class UserServiceTest {
 
         verify(userRepository, never()).save(any());
         verify(passwordEncoder, never()).encode(any());
+        verifyNoInteractions(emailVerificationService);
+    }
+
+    @Test
+    void createIssuesVerificationForThePersistedUser() {
+        User persisted = existingUser();
+        when(userRepository.existsByEmailIncludingDeleted("jane@example.com")).thenReturn(false);
+        when(userRepository.save(any(User.class))).thenReturn(persisted);
+
+        User result = userService.create("jane@example.com", "pw", "Jane");
+
+        assertThat(result).isSameAs(persisted);
+        verify(emailVerificationService).issue(persisted);
     }
 
     // --- findById / findByEmail ---
@@ -246,6 +267,15 @@ class UserServiceTest {
         userService.disable(ID);
 
         assertThat(user.isEnabled()).isFalse();
+        verify(refreshTokenService).revokeAllForUser(ID);
+    }
+
+    @Test
+    void disableThrowsWhenUserMissingAndRevokesNothing() {
+        stubMissing();
+
+        assertThatThrownBy(() -> userService.disable(ID)).isInstanceOf(UserNotFoundException.class);
+        verifyNoInteractions(refreshTokenService);
     }
 
     @Test
@@ -302,6 +332,7 @@ class UserServiceTest {
         userService.delete(ID);
 
         verify(userRepository).delete(user);
+        verify(refreshTokenService).revokeAllForUser(ID);
     }
 
     @Test
@@ -310,5 +341,6 @@ class UserServiceTest {
 
         assertThatThrownBy(() -> userService.delete(ID)).isInstanceOf(UserNotFoundException.class);
         verify(userRepository, never()).delete(any(User.class));
+        verifyNoInteractions(refreshTokenService);
     }
 }
