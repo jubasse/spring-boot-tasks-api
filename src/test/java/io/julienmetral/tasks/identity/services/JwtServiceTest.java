@@ -1,13 +1,13 @@
 package io.julienmetral.tasks.identity.services;
 
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.security.JwtProperties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
@@ -20,6 +20,7 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
 
@@ -37,12 +38,12 @@ class JwtServiceTest {
     @Mock
     private JwtEncoder jwtEncoder;
 
-    private UsernamePasswordAuthenticationToken authentication() {
-        return UsernamePasswordAuthenticationToken.authenticated(
-                "jane@example.com",
-                null,
-                AuthorityUtils.createAuthorityList("ROLE_USER", "ROLE_ADMIN", "SCOPE_read", "FACTOR_PASSWORD")
-        );
+    private static User user(UUID id, UserRole... roles) {
+        User user = new User();
+        user.setId(id);
+        user.setEmail("jane@example.com");
+        user.setRoles(roles.length == 0 ? EnumSet.noneOf(UserRole.class) : EnumSet.of(roles[0], roles));
+        return user;
     }
 
     @Test
@@ -53,7 +54,7 @@ class JwtServiceTest {
         UUID userId = UUID.randomUUID();
 
         Instant before = Instant.now();
-        JwtService.IssuedToken token = jwtService.generate(authentication(), userId);
+        JwtService.IssuedToken token = jwtService.generate(user(userId, UserRole.USER, UserRole.ADMIN));
         Instant after = Instant.now();
 
         ArgumentCaptor<JwtEncoderParameters> captor = ArgumentCaptor.forClass(JwtEncoderParameters.class);
@@ -64,7 +65,7 @@ class JwtServiceTest {
         assertThat(claims.getClaimAsString("iss")).isEqualTo("tasks-api-test");
         assertThat(claims.getSubject()).isEqualTo("jane@example.com");
         assertThat(claims.getClaimAsString("uid")).isEqualTo(userId.toString());
-        assertThat(claims.<List<String>>getClaim("roles")).containsExactly("ROLE_USER", "ROLE_ADMIN");
+        assertThat(claims.<List<String>>getClaim("roles")).containsExactly("ROLE_ADMIN", "ROLE_USER");
         assertThat(claims.getId()).isNotBlank();
         assertThat(claims.getIssuedAt()).isBetween(before, after);
         assertThat(claims.getExpiresAt())
@@ -80,23 +81,21 @@ class JwtServiceTest {
         var decoder = NimbusJwtDecoder.withSecretKey(key).macAlgorithm(MacAlgorithm.HS256).build();
         UUID userId = UUID.randomUUID();
 
-        JwtService.IssuedToken token = new JwtService(encoder, PROPERTIES).generate(authentication(), userId);
+        JwtService.IssuedToken token = new JwtService(encoder, PROPERTIES).generate(user(userId, UserRole.USER, UserRole.ADMIN));
         Jwt decoded = decoder.decode(token.value());
 
         assertThat(decoded.getSubject()).isEqualTo("jane@example.com");
         assertThat(decoded.getClaimAsString("uid")).isEqualTo(userId.toString());
-        assertThat(decoded.getClaimAsStringList("roles")).containsExactly("ROLE_USER", "ROLE_ADMIN");
+        assertThat(decoded.getClaimAsStringList("roles")).containsExactly("ROLE_ADMIN", "ROLE_USER");
         assertThat(decoded.getExpiresAt()).isEqualTo(token.expiresAt().truncatedTo(java.time.temporal.ChronoUnit.SECONDS));
     }
 
     @Test
-    void generateWithNoRoleAuthoritiesEmitsEmptyRolesClaim() {
+    void generateWithNoRolesEmitsEmptyRolesClaim() {
         when(jwtEncoder.encode(any())).thenReturn(
                 Jwt.withTokenValue("t").header("alg", "HS256").claim("x", "y").build());
-        var auth = UsernamePasswordAuthenticationToken.authenticated(
-                "bob", null, AuthorityUtils.createAuthorityList("SCOPE_read"));
 
-        new JwtService(jwtEncoder, PROPERTIES).generate(auth, UUID.randomUUID());
+        new JwtService(jwtEncoder, PROPERTIES).generate(user(UUID.randomUUID()));
 
         ArgumentCaptor<JwtEncoderParameters> captor = ArgumentCaptor.forClass(JwtEncoderParameters.class);
         verify(jwtEncoder).encode(captor.capture());

@@ -5,5 +5,7 @@ import java.time.Instant;
 public record AuthResponseDto(
         String accessToken,
         String tokenType,
-        Instant expiresAt
+        Instant expiresAt,
+        String refreshToken,
+        Instant refreshTokenExpiresAt
 ) {}

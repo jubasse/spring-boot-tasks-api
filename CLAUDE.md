@@ -10,11 +10,13 @@ Spring Boot 4.1 REST API (Java 25, Maven wrapper) backed by PostgreSQL 18. Sprin
 
 ```bash
 ./mvnw compile                                  # build (runs Lombok + MapStruct + config annotation processors)
-./mvnw spring-boot:run                          # run; spring-boot-docker-compose starts compose.yaml's postgres
+./mvnw spring-boot:run                          # run; spring-boot-docker-compose starts compose.yaml (postgres, mailpit)
 ./mvnw spring-boot:test-run                     # run with a Testcontainers postgres (TestTasksApplication)
 ./mvnw test                                     # all tests (needs Docker, Testcontainers)
 ./mvnw test -Dtest=TasksApplicationTests#contextLoads   # a single test
 ```
+
+Tests need no `.env`: `src/test/resources/config/application.yaml` provides a test-only JWT secret. Spring Boot loads that file on top of the main `application.yaml`.
 
 `./mvnw test` also writes a JaCoCo coverage report to `target/site/jacoco/index.html` (raw numbers in `jacoco.csv`).
 
@@ -46,8 +48,12 @@ Passwords are hashed with Argon2id (`SecurityConfiguration.passwordEncoder`, Bou
 
 Package-by-feature under `io.julienmetral.tasks`, and each feature uses the same sub-packages (`controllers`, `services`, `repositories`, `entities`, `dtos`, `exceptions`, `security`):
 
-- `identity`: users, login, JWT issuing, user-level authorization.
+- `identity`: users, login, JWT and refresh tokens, email verification, user-level authorization.
 - `task`: tasks and their event log.
+- `mail`: the cross-cutting mail service (see Mail below).
+- `notification`: task email notifications and their per-user settings.
+  - **Settings:** `GET`/`PUT /api/v1/users/{id}/notification-settings`, for the user or an admin. There is one switch per task event, and a user without a stored row gets `NotificationSettings.defaults` (everything enabled).
+  - **Emails:** `TaskService` publishes domain events (`task.events.TaskAssigned`, `TaskUnassigned`, `TaskCancelled`, `TaskDeleted`), and `notification.mail.TaskNotificationSender` turns them into emails. Only the concerned assignee receives one, never about their own action, only while their account is active, and only if the matching switch is on. The `task` package never depends on `notification`.
 - `shared`: the auditable base entity, the global `ApiExceptionHandler` (`@RestControllerAdvice` returning `ProblemDetail`), and the reusable security annotations.
 
 Controllers are under `/api/v1/...`. Services own transactions and return entities, and controllers wrap them in response DTOs.
@@ -57,8 +63,34 @@ Controllers are under `/api/v1/...`. Services own transactions and return entiti
 1. `POST /api/v1/auth/login` → `AuthService` authenticates through `DaoAuthenticationProvider`/`DatabaseUserDetailsService`, which maps `UserRole` to `ROLE_<name>` authorities. `JwtService` then issues a token with the claims `uid` (user UUID) and `roles` (list of `ROLE_*`).
 2. On later requests, the resource server decodes the JWT, and `JwtAuthenticationConverter` reads `roles` with an **empty prefix**, since the claim values already carry `ROLE_`.
 3. `CurrentUser` extracts the `uid` claim from the `JwtAuthenticationToken`. Use it to get the acting user.
+4. Login also returns an opaque **refresh token** (`RefreshTokenService`). `POST /api/v1/auth/refresh` rotates it: the used token is revoked, and a successor is issued in the same `family_id`. Replaying a revoked token revokes the whole family (reuse detection). `POST /api/v1/auth/logout` revokes the family. Disabling or deleting a user revokes all their refresh tokens. Access tokens are stateless and stay valid until they expire (15 min).
+5. Sign-up issues an **email verification token** (`EmailVerificationService`). The verification email is sent through the `mail` package; `POST /api/v1/auth/verify-email` consumes the token, and `POST /api/v1/auth/verify-email/resend` replaces it. Login does not require a verified email.
 
-Only `POST /api/v1/users` (sign-up) and `POST /api/v1/auth/login` are public.
+6. **Password reset** (`PasswordResetService`): `POST /api/v1/auth/password-reset/request` always answers 202 and emails a 1-hour, single-use link only to enabled accounts, so the endpoint does not reveal which emails exist. `POST /api/v1/auth/password-reset/confirm` sets the new password, revokes all refresh tokens, and marks the email as verified.
+
+Refresh, verification and reset tokens are 256-bit random values (`OpaqueTokens`). Only their SHA-256 hash is stored.
+
+Public endpoints: `POST /api/v1/users` (sign-up), and `POST /api/v1/auth/login`, `/refresh`, `/logout`, `/verify-email`, `/password-reset/request` and `/password-reset/confirm`.
+
+### Task access rules
+
+Only **active** users can work on tasks. Active means enabled, not deleted, and with a verified email (`UserStatus.ACTIVE`).
+- **Callers:** `ActiveUserAuthorizationManager` guards `/api/v1/tasks/**` in `SecurityConfiguration`. It reloads the user on every request, so a disabled, deleted or unverified user gets 403 even with a still-valid access token. User and auth endpoints are not restricted.
+- **Assignees:** `TaskService` refuses to assign a task to a user who is not active and throws `AssigneeNotActiveException` (422).
+- **Responses:** task responses and task history expose referenced users as `UserPreviewResponseDto(id, displayName, status)`, with `status` one of `ACTIVE`, `UNVERIFIED`, `DISABLED` or `DELETED`.
+- **Listing:** `GET /api/v1/tasks` is paginated and filters on `status`, `assigneeId` and `archived`, which defaults to false.
+
+### Soft-deleted users in associations
+
+Entities that point to a `User` (for example `RefreshToken.user`) must tolerate a soft-deleted target. Hibernate cannot load the filtered row, so loading the owning entity fails. Map the association with `@NotFound(action = NotFoundAction.IGNORE)` and treat `null` as "deleted".
+
+When the owning entity is updated later (as `Task` is), the association must also be **read-only** (`insertable = false, updatable = false`), with a separate writable id column (`assignedToId`, `createdById`). Otherwise the `null` loaded for a deleted user is flushed back and erases the reference. Setters such as `Task.setAssignedTo` keep both fields in sync. Queries filter on the id column, not on `assignedTo.id`, to avoid a join that `@SoftDelete` would filter. A JPQL path such as `t.user.id` in a bulk update joins `users` and is filtered too: use a native query on the foreign key column instead.
+
+### Mail
+
+`io.julienmetral.tasks.mail` is the cross-cutting mail service. Features call `MailService.send(MailMessage)`, usually from an event listener that writes the content (for example `identity.mail.VerificationEmailSender`). The message is dispatched after the surrounding transaction commits, on an `@Async` virtual thread (`MailDispatcher`). A delivery failure is logged and never fails the business operation. The sender address is `mail.from`.
+
+In development, SMTP goes to the Mailpit service of `compose.yaml` (web UI on http://localhost:8025). Tests start a Mailpit container (`TestcontainersConfiguration`) and read the received emails with `support.Mailpit`. Sending is asynchronous, so use its waiting methods (`latestTextTo`, `latestVerificationTokenFor`).
 
 ### Method-security annotations
 
@@ -80,6 +112,55 @@ Every task mutation in `TaskService` must call the matching `TaskEventService` m
 
 Domain exceptions live in each feature's `exceptions` package and are mapped to HTTP responses in `shared/exceptions/ApiExceptionHandler`. A new exception type needs a handler there, or it surfaces as a 500.
 
+## Comments and Javadoc: the why and the failure, never the what
+
+**Name first, comment second.** A precise name for a class, method or variable removes the need for the paragraph above it, and a long name is the cheap side of that trade.
+- `revokeAllForUser`, `existsByEmailIncludingDeleted` and `ActiveUserAuthorizationManager` need no gloss.
+- `process`, `handle` or `check` followed by three lines of explanation is the wrong trade.
+
+Comment only what a name cannot carry.
+
+**Javadoc is not owed to every public type or method.** Controllers, DTOs, entities, repositories and one-line methods whose names say what they do get none. Write Javadoc only when the signature cannot give the context:
+- where the method sits in a flow;
+- what must be true before calling it;
+- side effects that are not visible from the signature, such as revoking sessions, publishing an event, or sending an email after commit.
+
+A `@param id the id` or a `@return the user` is noise. Configuration property records are the exception: one `@param` per property is worth it, because it documents the YAML key.
+
+**A comment earns its place by saying something the code cannot.** Ask one question: would a reader with this code in front of them learn something they could not derive from it?
+
+Keep:
+- **A measured failure**: what went wrong and what it cost. For example, "Native on purpose: in JPQL, `t.user.id` joins users, which `@SoftDelete` filters, so nothing would be revoked once the user is deleted" on `RefreshTokenRepository.revokeAllForUser`. These lines stop a defect from being reintroduced.
+- **A constraint not visible locally**: framework or library behaviour the code depends on. Examples: why `NotificationSettings.defaults` leaves the id null (`@MapsId`, and Spring Data's `merge` instead of `persist`), or why `AuthService.refresh` needs `noRollbackFor`.
+- **A decision and its reason** when the code shows only the outcome. For example, why opaque tokens use SHA-256 rather than Argon2.
+- **A trap**, marked `⚠`, where the obvious change is the wrong one. For example: `⚠ read-only association: writing the user through it would erase a soft-deleted assignee`.
+
+Cut:
+- Anything that restates the code: `// save the user` above `userRepository.save(user)`.
+- Anything that restates an annotation: `// transactional` above `@Transactional`, or `// getters and setters` above `@Getter @Setter`.
+- Narration of the steps of a service method that a reader can simply read.
+- Explanations of a well-named method. Naming it well is the comment.
+- A second copy of something already written in this file, an ADR or a PR description. Link to it instead.
+
+**Tests document themselves through their names.** Examples are `deletingUserRevokesRefreshTokens` and `signUpWithEmailOfSoftDeletedUserReturnsConflict`. A comment in a test explains only a non-obvious setup, such as waiting for the asynchronous mail dispatch.
+
+**Rough ceiling, a smell rather than a limit:** if comments exceed about a quarter of a file, ask whether the code itself is unclear.
+
+⚠ **This is not a licence to delete reasons.** The failure this rule addresses is verbosity. The failure it could create is losing the one paragraph that stopped someone from reintroducing a defect. When a comment is long because it records something expensive, shorten the prose and keep the fact. When in doubt, keep it and make it tighter.
+
+**Apply it opportunistically.** Any file you read or modify is one you may trim, while its context is loaded. This is the only way a convention reaches code written before it.
+
 ## Testing
 
-Tests use `@SpringBootTest` + `@Import(TestcontainersConfiguration.class)`. That configuration provides a `@ServiceConnection` `PostgreSQLContainer`, so Liquibase migrations run against a real Postgres. There is currently only a context-load test.
+- **Unit tests** (`*Test`) cover services and security components in isolation, with JUnit 5, Mockito (`@ExtendWith(MockitoExtension.class)`) and AssertJ. They mirror the package of the class under test.
+- **Integration tests** (`*Tests`) use `@SpringBootTest` + `@AutoConfigureMockMvc` + `@Import(TestcontainersConfiguration.class)`. That configuration provides a `@ServiceConnection` `PostgreSQLContainer`, so Liquibase migrations run against a real Postgres.
+  - Most tests authenticate with the `jwt()` post-processor, a `uid` claim and a `ROLE_*` authority. The acting user must exist in the database, because `TaskEventService` loads it.
+  - `AuthControllerTests` sends real `Authorization: Bearer` tokens obtained from the login endpoint.
+- The containers are shared across test classes. Use unique emails and references (random UUIDs) in every test.
+
+## Git workflow and CI
+
+- **Branches:** `features/<name>` → PR to `develop` → `release/<version>`, tagged `v<version>` → merged to `main` → merged back to `develop`.
+- **Commits:** keep them small, and never mix production code and its tests in one commit. Use Conventional Commits prefixes (`feat`, `fix`, `test`, `build`, `ci`, `docs`, `chore`) in English.
+- **CI:** `.github/workflows/ci.yml` runs `./mvnw verify` (tests + JaCoCo report artifact) and a gitleaks secret scan. It runs on pushes to those branches, on `v*` tags, and on PRs to `develop`/`main`. Actions are pinned to commit SHAs.
+- **Secret scanning:** run `gitleaks git . --redact` locally before pushing (gitleaks is installed through mise).

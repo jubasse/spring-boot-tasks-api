@@ -2,8 +2,11 @@ package io.julienmetral.tasks.identity.services;
 
 import io.julienmetral.tasks.identity.dtos.AuthResponseDto;
 import io.julienmetral.tasks.identity.dtos.LoginRequestDto;
+import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.exceptions.InvalidCredentialsException;
+import io.julienmetral.tasks.identity.exceptions.InvalidRefreshTokenException;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.identity.services.RefreshTokenService.IssuedRefreshToken;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -19,11 +22,13 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final UserRepository userRepository;
     private final JwtService jwtService;
+    private final RefreshTokenService refreshTokenService;
 
     public AuthService(
             AuthenticationManager authenticationManager,
             UserRepository userRepository,
-            JwtService jwtService
+            JwtService jwtService,
+            RefreshTokenService refreshTokenService
     ) {
         this.authenticationManager =
                 authenticationManager;
@@ -33,6 +38,9 @@ public class AuthService {
 
         this.jwtService =
                 jwtService;
+
+        this.refreshTokenService =
+                refreshTokenService;
     }
 
     @Transactional
@@ -64,15 +72,54 @@ public class AuthService {
                 Instant.now()
         );
 
-        var token = jwtService.generate(
-                authentication,
-                user.getId()
+        return tokens(
+                user,
+                refreshTokenService.issue(user)
+        );
+    }
+
+    /**
+     * Exchanges a refresh token for a new access token and a rotated refresh token.
+     * <p>
+     * An invalid token must not roll back the family revocation done by {@link RefreshTokenService#rotate}.
+     */
+    @Transactional(noRollbackFor = InvalidRefreshTokenException.class)
+    public AuthResponseDto refresh(
+            String refreshToken
+    ) {
+        var rotated = refreshTokenService.rotate(
+                refreshToken
+        );
+
+        return tokens(
+                rotated.user(),
+                rotated.refreshToken()
+        );
+    }
+
+    @Transactional
+    public void logout(
+            String refreshToken
+    ) {
+        refreshTokenService.revoke(
+                refreshToken
+        );
+    }
+
+    private AuthResponseDto tokens(
+            User user,
+            IssuedRefreshToken refreshToken
+    ) {
+        var accessToken = jwtService.generate(
+                user
         );
 
         return new AuthResponseDto(
-                token.value(),
+                accessToken.value(),
                 "Bearer",
-                token.expiresAt()
+                accessToken.expiresAt(),
+                refreshToken.value(),
+                refreshToken.expiresAt()
         );
     }
 }

@@ -23,6 +23,8 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final EmailVerificationService emailVerificationService;
+    private final RefreshTokenService refreshTokenService;
 
     @Transactional
     public User create(
@@ -43,7 +45,11 @@ public class UserService {
         user.setEnabled(true);
         user.setRoles(new HashSet<>(Set.of(UserRole.USER)));
 
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+
+        emailVerificationService.issue(saved);
+
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -98,6 +104,9 @@ public class UserService {
     @Transactional
     public void disable(UUID id) {
         getUser(id).setEnabled(false);
+
+        // Access tokens expire on their own; refresh tokens must stop working now
+        refreshTokenService.revokeAllForUser(id);
     }
 
     @Transactional
@@ -119,6 +128,8 @@ public class UserService {
     @Transactional
     public void delete(UUID id) {
         userRepository.delete(getUser(id));
+
+        refreshTokenService.revokeAllForUser(id);
     }
 
     private User getUser(UUID id) {

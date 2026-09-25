@@ -3,11 +3,14 @@ package io.julienmetral.tasks.task.entities;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.shared.entities.AuditableEntity;
 import jakarta.persistence.*;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
+import org.hibernate.annotations.NotFound;
+import org.hibernate.annotations.NotFoundAction;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -82,17 +85,50 @@ public class Task extends AuditableEntity {
     @Column(nullable = false)
     private long version;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    // Users can be soft-deleted (@SoftDelete). The association is then loaded as null (@NotFound(IGNORE), which also
+    // makes it eager), so it is read-only: the id columns are the ones written, and a null association can never
+    // erase who the task was assigned to or created by. Set users through setAssignedTo / setCreatedBy, which keep
+    // both fields in sync.
+    @ManyToOne(fetch = FetchType.EAGER)
+    @NotFound(action = NotFoundAction.IGNORE)
     @JoinColumn(
             name = "created_by_id",
+            insertable = false,
+            updatable = false,
             foreignKey = @ForeignKey(name = "tasks_created_byFK")
     )
     private User createdBy;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @Setter(AccessLevel.NONE)
+    @Column(name = "created_by_id")
+    private UUID createdById;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @NotFound(action = NotFoundAction.IGNORE)
     @JoinColumn(
             name = "assigned_to_id",
+            insertable = false,
+            updatable = false,
             foreignKey = @ForeignKey(name = "tasks_assigned_toFK")
     )
     private User assignedTo;
+
+    @Setter(AccessLevel.NONE)
+    @Column(name = "assigned_to_id")
+    private UUID assignedToId;
+
+    public void setCreatedBy(User user) {
+        this.createdBy = user;
+        this.createdById = user == null ? null : user.getId();
+    }
+
+    public void setAssignedTo(User user) {
+        this.assignedTo = user;
+        this.assignedToId = user == null ? null : user.getId();
+    }
+
+    /** The assignee's id, also known when the assignee is soft-deleted and the association is null. */
+    public UUID currentAssigneeId() {
+        return assignedTo != null ? assignedTo.getId() : assignedToId;
+    }
 }

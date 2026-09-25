@@ -12,5 +12,12 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
 
+  # Local SMTP server that catches every email; web UI on http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:v1.31.2
+    ports:
+      - "${MAIL_PORT:-1025}:1025"
+      - "8025:8025"
+
 volumes:
   postgres_data:

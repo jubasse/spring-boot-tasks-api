@@ -1,8 +1,13 @@
 package io.julienmetral.tasks.shared.exceptions;
 
+import io.julienmetral.tasks.identity.exceptions.EmailAlreadyVerifiedException;
 import io.julienmetral.tasks.identity.exceptions.InvalidCredentialsException;
+import io.julienmetral.tasks.identity.exceptions.InvalidEmailVerificationTokenException;
+import io.julienmetral.tasks.identity.exceptions.InvalidPasswordResetTokenException;
+import io.julienmetral.tasks.identity.exceptions.InvalidRefreshTokenException;
 import io.julienmetral.tasks.identity.exceptions.UserEmailAlreadyExistsException;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
+import io.julienmetral.tasks.task.exceptions.AssigneeNotActiveException;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -26,6 +31,19 @@ public class ApiExceptionHandler {
         );
 
         problem.setTitle("Task not found");
+
+        return problem;
+    }
+
+    @ExceptionHandler(AssigneeNotActiveException.class)
+    public ProblemDetail handleAssigneeNotActive(AssigneeNotActiveException ex) {
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.UNPROCESSABLE_CONTENT,
+            ex.getMessage()
+        );
+
+        problem.setTitle("User cannot be assigned");
 
         return problem;
     }
@@ -86,6 +104,66 @@ public class ApiExceptionHandler {
         );
 
         problem.setTitle("Data conflict");
+
+        return problem;
+    }
+
+    @ExceptionHandler(InvalidRefreshTokenException.class)
+    public ProblemDetail handleInvalidRefreshToken(
+        InvalidRefreshTokenException ex
+    ) {
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.UNAUTHORIZED,
+            ex.getMessage()
+        );
+
+        problem.setTitle("Invalid refresh token");
+
+        return problem;
+    }
+
+    @ExceptionHandler(InvalidEmailVerificationTokenException.class)
+    public ProblemDetail handleInvalidEmailVerificationToken(
+        InvalidEmailVerificationTokenException ex
+    ) {
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.BAD_REQUEST,
+            ex.getMessage()
+        );
+
+        problem.setTitle("Invalid email verification token");
+
+        return problem;
+    }
+
+    @ExceptionHandler(InvalidPasswordResetTokenException.class)
+    public ProblemDetail handleInvalidPasswordResetToken(
+        InvalidPasswordResetTokenException ex
+    ) {
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.BAD_REQUEST,
+            ex.getMessage()
+        );
+
+        problem.setTitle("Invalid password reset token");
+
+        return problem;
+    }
+
+    @ExceptionHandler(EmailAlreadyVerifiedException.class)
+    public ProblemDetail handleEmailAlreadyVerified(
+        EmailAlreadyVerifiedException ex
+    ) {
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.CONFLICT,
+            ex.getMessage()
+        );
+
+        problem.setTitle("Email already verified");
 
         return problem;
     }

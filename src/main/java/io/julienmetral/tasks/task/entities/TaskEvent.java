@@ -2,10 +2,13 @@ package io.julienmetral.tasks.task.entities;
 
 import io.julienmetral.tasks.identity.entities.User;
 import jakarta.persistence.*;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
+import org.hibernate.annotations.NotFound;
+import org.hibernate.annotations.NotFoundAction;
 import org.hibernate.annotations.Generated;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -35,12 +38,18 @@ public class TaskEvent {
     )
     private Task task;
 
+    // Null once the actor is soft-deleted; actorId still says who it was (see Task.assignedTo)
     @ManyToOne(fetch = FetchType.EAGER)
+    @NotFound(action = NotFoundAction.IGNORE)
     @JoinColumn(
             name = "actor_id",
             foreignKey = @ForeignKey(name = "task_events_actorFK")
     )
     private User actor;
+
+    @Setter(AccessLevel.NONE)
+    @Column(name = "actor_id", insertable = false, updatable = false)
+    private UUID actorId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)

@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.task.services;
 
 import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
@@ -9,10 +10,19 @@ import io.julienmetral.tasks.task.dtos.UpdateTaskDto;
 import io.julienmetral.tasks.task.entities.Task;
 import io.julienmetral.tasks.task.entities.TaskPriority;
 import io.julienmetral.tasks.task.entities.TaskStatus;
+import io.julienmetral.tasks.task.events.TaskAssigned;
+import io.julienmetral.tasks.task.events.TaskCancelled;
+import io.julienmetral.tasks.task.events.TaskDeleted;
+import io.julienmetral.tasks.task.events.TaskUnassigned;
+import io.julienmetral.tasks.task.exceptions.AssigneeNotActiveException;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException;
 import io.julienmetral.tasks.task.repositories.TaskRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +38,7 @@ public class TaskService {
     private final TaskEventService taskEventService;
     private final UserRepository userRepository;
     private final CurrentUser currentUser;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public Task create(CreateTaskDto dto) {
@@ -53,20 +64,49 @@ public class TaskService {
                 .ifPresent(task::setCreatedBy);
 
         if (dto.assignedTo() != null) {
-            User assignedTo = userRepository
-                    .findById(dto.assignedTo())
-                    .orElseThrow(
-                            () -> new UserNotFoundException(dto.assignedTo())
-                    );
-
-            task.setAssignedTo(assignedTo);
+            task.setAssignedTo(getAssignableUser(dto.assignedTo()));
         }
 
         Task savedTask = taskRepository.save(task);
 
         taskEventService.created(savedTask);
 
+        if (savedTask.currentAssigneeId() != null) {
+            eventPublisher.publishEvent(new TaskAssigned(
+                    savedTask.getId(), savedTask.getReference(), savedTask.getTitle(),
+                    savedTask.currentAssigneeId(), actorId()
+            ));
+        }
+
         return savedTask;
+    }
+
+    /**
+     * @param status     only tasks in this status, or all statuses when null
+     * @param assigneeId only tasks assigned to this user, or all tasks when null
+     * @param archived   archived tasks when true, active ones otherwise
+     */
+    @Transactional(readOnly = true)
+    public Page<Task> findAll(
+            TaskStatus status,
+            UUID assigneeId,
+            boolean archived,
+            Pageable pageable
+    ) {
+        Specification<Task> specification = (root, query, builder) -> builder.and(
+                archived
+                        ? builder.isNotNull(root.get("archivedAt"))
+                        : builder.isNull(root.get("archivedAt")),
+                status == null
+                        ? builder.conjunction()
+                        : builder.equal(root.get("status"), status),
+                // The read-only id column avoids joining users, which @SoftDelete would filter
+                assigneeId == null
+                        ? builder.conjunction()
+                        : builder.equal(root.get("assignedToId"), assigneeId)
+        );
+
+        return taskRepository.findAll(specification, pageable);
     }
 
     @Transactional(readOnly = true)
@@ -145,6 +185,13 @@ public class TaskService {
                 status
         );
 
+        if (status == TaskStatus.CANCELLED) {
+            eventPublisher.publishEvent(new TaskCancelled(
+                    task.getId(), task.getReference(), task.getTitle(),
+                    task.currentAssigneeId(), null, actorId()
+            ));
+        }
+
         return task;
     }
 
@@ -152,23 +199,29 @@ public class TaskService {
     public Task assign(UUID id, UUID userId) {
         Task task = getTask(id);
 
-        UUID currentAssignedToId = task.getAssignedTo() == null ? null : task.getAssignedTo().getId();
+        UUID currentAssignedToId = task.currentAssigneeId();
 
         if (Objects.equals(currentAssignedToId, userId)) {
             return task;
         }
 
-        User assignedTo = userRepository.findById(userId).orElseThrow(
-                () -> new UserNotFoundException(userId)
-        );
-
-        task.setAssignedTo(assignedTo);
+        task.setAssignedTo(getAssignableUser(userId));
 
         taskEventService.assignmentChanged(
                 task,
                 currentAssignedToId,
                 userId
         );
+
+        eventPublisher.publishEvent(new TaskAssigned(
+                task.getId(), task.getReference(), task.getTitle(), userId, actorId()
+        ));
+
+        if (currentAssignedToId != null) {
+            eventPublisher.publishEvent(new TaskUnassigned(
+                    task.getId(), task.getReference(), task.getTitle(), currentAssignedToId, actorId()
+            ));
+        }
 
         return task;
     }
@@ -222,6 +275,11 @@ public class TaskService {
                 reason
         );
 
+        eventPublisher.publishEvent(new TaskCancelled(
+                task.getId(), task.getReference(), task.getTitle(),
+                task.currentAssigneeId(), reason, actorId()
+        ));
+
         return task;
     }
 
@@ -230,6 +288,31 @@ public class TaskService {
         Task task = getTask(id);
 
         taskRepository.delete(task);
+
+        eventPublisher.publishEvent(new TaskDeleted(
+                task.getId(), task.getReference(), task.getTitle(), task.currentAssigneeId(), actorId()
+        ));
+    }
+
+    private UUID actorId() {
+        return currentUser
+                .getId()
+                .orElse(null);
+    }
+
+    // Only enabled users with a verified email can work on tasks, so only they can be assigned
+    private User getAssignableUser(UUID userId) {
+        User user = userRepository
+                .findById(userId)
+                .orElseThrow(() -> new UserNotFoundException(userId));
+
+        UserStatus status = UserStatus.of(user);
+
+        if (status != UserStatus.ACTIVE) {
+            throw new AssigneeNotActiveException(userId, status);
+        }
+
+        return user;
     }
 
     private Task getTask(UUID id) {

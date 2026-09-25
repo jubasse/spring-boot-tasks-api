@@ -20,9 +20,7 @@ public record TaskEventResponseDto(
         this(
                 event.getId(),
                 event.getType(),
-                event.getActor() != null
-                        ? new UserPreviewResponseDto(event.getActor())
-                        : null,
+                UserPreviewResponseDto.of(event.getActor(), event.getActorId()),
                 event.getOccurredAt(),
                 event.getPayload()
         );
