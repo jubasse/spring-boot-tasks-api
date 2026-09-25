@@ -10,11 +10,16 @@ import io.julienmetral.tasks.task.dtos.UpdateTaskDto;
 import io.julienmetral.tasks.task.entities.Task;
 import io.julienmetral.tasks.task.entities.TaskPriority;
 import io.julienmetral.tasks.task.entities.TaskStatus;
+import io.julienmetral.tasks.task.events.TaskAssigned;
+import io.julienmetral.tasks.task.events.TaskCancelled;
+import io.julienmetral.tasks.task.events.TaskDeleted;
+import io.julienmetral.tasks.task.events.TaskUnassigned;
 import io.julienmetral.tasks.task.exceptions.AssigneeNotActiveException;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException;
 import io.julienmetral.tasks.task.repositories.TaskRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -33,6 +38,7 @@ public class TaskService {
     private final TaskEventService taskEventService;
     private final UserRepository userRepository;
     private final CurrentUser currentUser;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public Task create(CreateTaskDto dto) {
@@ -64,6 +70,13 @@ public class TaskService {
         Task savedTask = taskRepository.save(task);
 
         taskEventService.created(savedTask);
+
+        if (savedTask.currentAssigneeId() != null) {
+            eventPublisher.publishEvent(new TaskAssigned(
+                    savedTask.getId(), savedTask.getReference(), savedTask.getTitle(),
+                    savedTask.currentAssigneeId(), actorId()
+            ));
+        }
 
         return savedTask;
     }
@@ -172,6 +185,13 @@ public class TaskService {
                 status
         );
 
+        if (status == TaskStatus.CANCELLED) {
+            eventPublisher.publishEvent(new TaskCancelled(
+                    task.getId(), task.getReference(), task.getTitle(),
+                    task.currentAssigneeId(), null, actorId()
+            ));
+        }
+
         return task;
     }
 
@@ -192,6 +212,16 @@ public class TaskService {
                 currentAssignedToId,
                 userId
         );
+
+        eventPublisher.publishEvent(new TaskAssigned(
+                task.getId(), task.getReference(), task.getTitle(), userId, actorId()
+        ));
+
+        if (currentAssignedToId != null) {
+            eventPublisher.publishEvent(new TaskUnassigned(
+                    task.getId(), task.getReference(), task.getTitle(), currentAssignedToId, actorId()
+            ));
+        }
 
         return task;
     }
@@ -245,6 +275,11 @@ public class TaskService {
                 reason
         );
 
+        eventPublisher.publishEvent(new TaskCancelled(
+                task.getId(), task.getReference(), task.getTitle(),
+                task.currentAssigneeId(), reason, actorId()
+        ));
+
         return task;
     }
 
@@ -253,6 +288,16 @@ public class TaskService {
         Task task = getTask(id);
 
         taskRepository.delete(task);
+
+        eventPublisher.publishEvent(new TaskDeleted(
+                task.getId(), task.getReference(), task.getTitle(), task.currentAssigneeId(), actorId()
+        ));
+    }
+
+    private UUID actorId() {
+        return currentUser
+                .getId()
+                .orElse(null);
     }
 
     // Only enabled users with a verified email can work on tasks, so only they can be assigned

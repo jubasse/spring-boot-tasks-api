@@ -2,6 +2,8 @@ package io.julienmetral.tasks.notification.entities;
 
 import io.julienmetral.tasks.identity.entities.User;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.util.UUID;
 
@@ -47,5 +49,27 @@ class NotificationSettingsTest {
 
         assertThat(NotificationSettings.defaults(user))
                 .isNotSameAs(NotificationSettings.defaults(user));
+    }
+
+    @ParameterizedTest
+    @EnumSource(TaskNotificationType.class)
+    void isEnabledIsTrueForEveryTypeByDefault(TaskNotificationType type) {
+        assertThat(new NotificationSettings().isEnabled(type)).isTrue();
+    }
+
+    @ParameterizedTest
+    @EnumSource(TaskNotificationType.class)
+    void isEnabledReadsOnlyTheSwitchOfItsType(TaskNotificationType type) {
+        NotificationSettings onlyThisOneOff = new NotificationSettings();
+        switch (type) {
+            case ASSIGNED -> onlyThisOneOff.setTaskAssigned(false);
+            case UNASSIGNED -> onlyThisOneOff.setTaskUnassigned(false);
+            case CANCELLED -> onlyThisOneOff.setTaskCancelled(false);
+            case DELETED -> onlyThisOneOff.setTaskDeleted(false);
+        }
+
+        for (TaskNotificationType other : TaskNotificationType.values()) {
+            assertThat(onlyThisOneOff.isEnabled(other)).as(other.name()).isEqualTo(other != type);
+        }
     }
 }

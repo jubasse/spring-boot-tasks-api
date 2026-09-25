@@ -62,4 +62,13 @@ public class NotificationSettings {
 
         return settings;
     }
+
+    public boolean isEnabled(TaskNotificationType type) {
+        return switch (type) {
+            case ASSIGNED -> taskAssigned;
+            case UNASSIGNED -> taskUnassigned;
+            case CANCELLED -> taskCancelled;
+            case DELETED -> taskDeleted;
+        };
+    }
 }

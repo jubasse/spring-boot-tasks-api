@@ -10,6 +10,10 @@ import io.julienmetral.tasks.task.dtos.UpdateTaskDto;
 import io.julienmetral.tasks.task.entities.Task;
 import io.julienmetral.tasks.task.entities.TaskPriority;
 import io.julienmetral.tasks.task.entities.TaskStatus;
+import io.julienmetral.tasks.task.events.TaskAssigned;
+import io.julienmetral.tasks.task.events.TaskCancelled;
+import io.julienmetral.tasks.task.events.TaskDeleted;
+import io.julienmetral.tasks.task.events.TaskUnassigned;
 import io.julienmetral.tasks.task.exceptions.AssigneeNotActiveException;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException;
@@ -20,10 +24,12 @@ import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -44,6 +50,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -55,6 +62,7 @@ class TaskServiceTest {
 
     private static final UUID TASK_ID = UUID.fromString("00000000-0000-0000-0000-00000000000a");
     private static final Instant OLD = Instant.parse("2020-01-01T00:00:00Z");
+    private static final UUID ACTOR_ID = UUID.fromString("00000000-0000-0000-0000-0000000000ac");
 
     @Mock
     private TaskRepository taskRepository;
@@ -67,6 +75,9 @@ class TaskServiceTest {
 
     @Mock
     private CurrentUser currentUser;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private TaskService taskService;
@@ -159,6 +170,7 @@ class TaskServiceTest {
         assertThat(result.getPriority()).isEqualTo(TaskPriority.MEDIUM);
         verifyNoInteractions(userRepository);
         verify(taskEventService).created(result);
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
@@ -198,6 +210,7 @@ class TaskServiceTest {
 
         verify(taskRepository, never()).save(any());
         verifyNoInteractions(taskEventService);
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
@@ -214,6 +227,7 @@ class TaskServiceTest {
 
         verify(taskRepository, never()).save(any());
         verifyNoInteractions(taskEventService);
+        verifyNoInteractions(eventPublisher);
     }
 
     @ParameterizedTest
@@ -232,6 +246,7 @@ class TaskServiceTest {
 
         verify(taskRepository, never()).save(any());
         verifyNoInteractions(taskEventService);
+        verifyNoInteractions(eventPublisher);
     }
 
     // --- find ---
@@ -320,6 +335,7 @@ class TaskServiceTest {
         assertThat(result).isSameAs(task);
         assertThat(task.getStatus()).isEqualTo(TaskStatus.IN_PROGRESS);
         verifyNoInteractions(taskEventService);
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
@@ -377,6 +393,7 @@ class TaskServiceTest {
         assertThatThrownBy(() -> taskService.changeStatus(TASK_ID, TaskStatus.DONE))
                 .isInstanceOf(TaskNotFoundException.class);
         verifyNoInteractions(taskEventService);
+        verifyNoInteractions(eventPublisher);
     }
 
     // --- assign ---
@@ -420,6 +437,7 @@ class TaskServiceTest {
 
         assertThat(result.getAssignedTo()).isSameAs(current);
         verifyNoInteractions(userRepository, taskEventService);
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
@@ -433,6 +451,7 @@ class TaskServiceTest {
 
         assertThat(task.getAssignedTo()).isNull();
         verifyNoInteractions(taskEventService);
+        verifyNoInteractions(eventPublisher);
     }
 
     @ParameterizedTest
@@ -451,6 +470,7 @@ class TaskServiceTest {
 
         assertThat(task.getAssignedTo()).isSameAs(previous);
         verifyNoInteractions(taskEventService);
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
@@ -480,6 +500,7 @@ class TaskServiceTest {
         assertThat(result).isSameAs(task);
         assertThat(task.getAssignedTo()).isNull();
         verifyNoInteractions(userRepository, taskEventService);
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
@@ -630,6 +651,7 @@ class TaskServiceTest {
 
         assertThatThrownBy(() -> taskService.cancel(TASK_ID, "r")).isInstanceOf(TaskNotFoundException.class);
         verifyNoInteractions(taskEventService);
+        verifyNoInteractions(eventPublisher);
     }
 
     // --- delete ---
@@ -649,5 +671,214 @@ class TaskServiceTest {
 
         assertThatThrownBy(() -> taskService.delete(TASK_ID)).isInstanceOf(TaskNotFoundException.class);
         verify(taskRepository, never()).delete(any(Task.class));
+        verifyNoInteractions(eventPublisher);
+    }
+
+    // --- published events ---
+
+    private <E> E publishedEvent(Class<E> type) {
+        ArgumentCaptor<E> captor = ArgumentCaptor.forClass(type);
+        verify(eventPublisher).publishEvent(captor.capture());
+        return captor.getValue();
+    }
+
+    @Test
+    void createWithAssigneePublishesTaskAssigned() {
+        UUID assigneeId = UUID.randomUUID();
+        var dto = new CreateTaskDto("TASK-5", "Title", null, null, null, assigneeId);
+        when(taskRepository.existsByReferenceIncludingDeleted("TASK-5")).thenReturn(false);
+        when(currentUser.getId()).thenReturn(Optional.of(ACTOR_ID));
+        when(userRepository.findById(ACTOR_ID)).thenReturn(Optional.of(user(ACTOR_ID)));
+        when(userRepository.findById(assigneeId)).thenReturn(Optional.of(user(assigneeId)));
+        when(taskRepository.save(any(Task.class))).thenAnswer(inv -> {
+            Task task = inv.getArgument(0);
+            task.setId(TASK_ID);
+            return task;
+        });
+
+        taskService.create(dto);
+
+        assertThat(publishedEvent(TaskAssigned.class))
+                .isEqualTo(new TaskAssigned(TASK_ID, "TASK-5", "Title", assigneeId, ACTOR_ID));
+    }
+
+    @Test
+    void createWithAssigneeAndNoAuthenticatedUserPublishesTaskAssignedWithoutActor() {
+        UUID assigneeId = UUID.randomUUID();
+        var dto = new CreateTaskDto("TASK-6", "Title", null, null, null, assigneeId);
+        when(taskRepository.existsByReferenceIncludingDeleted("TASK-6")).thenReturn(false);
+        when(currentUser.getId()).thenReturn(Optional.empty());
+        when(userRepository.findById(assigneeId)).thenReturn(Optional.of(user(assigneeId)));
+        when(taskRepository.save(any(Task.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        taskService.create(dto);
+
+        assertThat(publishedEvent(TaskAssigned.class))
+                .isEqualTo(new TaskAssigned(null, "TASK-6", "Title", assigneeId, null));
+    }
+
+    @Test
+    void assignUnassignedTaskPublishesOnlyTaskAssigned() {
+        stubTask();
+        UUID userId = UUID.randomUUID();
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user(userId)));
+        when(currentUser.getId()).thenReturn(Optional.of(ACTOR_ID));
+
+        taskService.assign(TASK_ID, userId);
+
+        assertThat(publishedEvent(TaskAssigned.class))
+                .isEqualTo(new TaskAssigned(TASK_ID, "TASK-1", "Title", userId, ACTOR_ID));
+    }
+
+    @Test
+    void reassignPublishesTaskAssignedThenTaskUnassignedForThePreviousAssignee() {
+        Task task = stubTask();
+        UUID previousId = UUID.randomUUID();
+        task.setAssignedTo(user(previousId));
+        UUID userId = UUID.randomUUID();
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user(userId)));
+        when(currentUser.getId()).thenReturn(Optional.of(ACTOR_ID));
+
+        taskService.assign(TASK_ID, userId);
+
+        InOrder order = inOrder(eventPublisher);
+        order.verify(eventPublisher).publishEvent(new TaskAssigned(TASK_ID, "TASK-1", "Title", userId, ACTOR_ID));
+        order.verify(eventPublisher).publishEvent(new TaskUnassigned(TASK_ID, "TASK-1", "Title", previousId, ACTOR_ID));
+        order.verifyNoMoreInteractions();
+    }
+
+    @Test
+    void reassignFromSoftDeletedAssigneePublishesTaskUnassignedWithItsId() {
+        Task task = stubTask();
+        UUID deletedId = UUID.randomUUID();
+        ReflectionTestUtils.setField(task, "assignedToId", deletedId);
+        UUID userId = UUID.randomUUID();
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user(userId)));
+        when(currentUser.getId()).thenReturn(Optional.empty());
+
+        taskService.assign(TASK_ID, userId);
+
+        verify(eventPublisher).publishEvent(new TaskAssigned(TASK_ID, "TASK-1", "Title", userId, null));
+        verify(eventPublisher).publishEvent(new TaskUnassigned(TASK_ID, "TASK-1", "Title", deletedId, null));
+    }
+
+    @Test
+    void changeStatusToCancelledPublishesTaskCancelledWithoutReason() {
+        Task task = stubTask();
+        UUID assigneeId = UUID.randomUUID();
+        task.setAssignedTo(user(assigneeId));
+        when(currentUser.getId()).thenReturn(Optional.of(ACTOR_ID));
+
+        taskService.changeStatus(TASK_ID, TaskStatus.CANCELLED);
+
+        assertThat(publishedEvent(TaskCancelled.class))
+                .isEqualTo(new TaskCancelled(TASK_ID, "TASK-1", "Title", assigneeId, null, ACTOR_ID));
+    }
+
+    @Test
+    void changeStatusToCancelledOnUnassignedTaskPublishesTaskCancelledWithoutAssignee() {
+        stubTask();
+        when(currentUser.getId()).thenReturn(Optional.empty());
+
+        taskService.changeStatus(TASK_ID, TaskStatus.CANCELLED);
+
+        assertThat(publishedEvent(TaskCancelled.class))
+                .isEqualTo(new TaskCancelled(TASK_ID, "TASK-1", "Title", null, null, null));
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = TaskStatus.class, names = "CANCELLED", mode = EnumSource.Mode.EXCLUDE)
+    void changeStatusToAnotherStatusPublishesNothing(TaskStatus target) {
+        Task task = stubTask();
+        task.setStatus(TaskStatus.CANCELLED);
+        task.setAssignedTo(user(UUID.randomUUID()));
+
+        taskService.changeStatus(TASK_ID, target);
+
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    void changeStatusOfAlreadyCancelledTaskToCancelledPublishesNothing() {
+        Task task = stubTask();
+        task.setStatus(TaskStatus.CANCELLED);
+        task.setAssignedTo(user(UUID.randomUUID()));
+
+        taskService.changeStatus(TASK_ID, TaskStatus.CANCELLED);
+
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    void cancelPublishesTaskCancelledWithReason() {
+        Task task = stubTask();
+        UUID assigneeId = UUID.randomUUID();
+        task.setAssignedTo(user(assigneeId));
+        when(currentUser.getId()).thenReturn(Optional.of(ACTOR_ID));
+
+        taskService.cancel(TASK_ID, "no longer needed");
+
+        assertThat(publishedEvent(TaskCancelled.class))
+                .isEqualTo(new TaskCancelled(TASK_ID, "TASK-1", "Title", assigneeId, "no longer needed", ACTOR_ID));
+    }
+
+    @Test
+    void cancelUnassignedTaskPublishesTaskCancelledWithoutAssignee() {
+        stubTask();
+        when(currentUser.getId()).thenReturn(Optional.empty());
+
+        taskService.cancel(TASK_ID, null);
+
+        assertThat(publishedEvent(TaskCancelled.class))
+                .isEqualTo(new TaskCancelled(TASK_ID, "TASK-1", "Title", null, null, null));
+    }
+
+    @Test
+    void deletePublishesTaskDeletedWithTheAssignee() {
+        Task task = stubTask();
+        UUID assigneeId = UUID.randomUUID();
+        task.setAssignedTo(user(assigneeId));
+        when(currentUser.getId()).thenReturn(Optional.of(ACTOR_ID));
+
+        taskService.delete(TASK_ID);
+
+        assertThat(publishedEvent(TaskDeleted.class))
+                .isEqualTo(new TaskDeleted(TASK_ID, "TASK-1", "Title", assigneeId, ACTOR_ID));
+    }
+
+    @Test
+    void deleteTaskOfSoftDeletedAssigneePublishesTaskDeletedWithItsId() {
+        Task task = stubTask();
+        UUID deletedId = UUID.randomUUID();
+        ReflectionTestUtils.setField(task, "assignedToId", deletedId);
+        when(currentUser.getId()).thenReturn(Optional.empty());
+
+        taskService.delete(TASK_ID);
+
+        assertThat(publishedEvent(TaskDeleted.class))
+                .isEqualTo(new TaskDeleted(TASK_ID, "TASK-1", "Title", deletedId, null));
+    }
+
+    @Test
+    void deleteUnassignedTaskPublishesTaskDeletedWithoutAssignee() {
+        stubTask();
+        when(currentUser.getId()).thenReturn(Optional.of(ACTOR_ID));
+
+        taskService.delete(TASK_ID);
+
+        assertThat(publishedEvent(TaskDeleted.class))
+                .isEqualTo(new TaskDeleted(TASK_ID, "TASK-1", "Title", null, ACTOR_ID));
+    }
+
+    @Test
+    void updateArchiveAndUnarchivePublishNothing() {
+        Task task = stubTask();
+        task.setAssignedTo(user(UUID.randomUUID()));
+
+        taskService.update(TASK_ID, new UpdateTaskDto("New", null, null, null));
+        taskService.archive(TASK_ID);
+        taskService.unarchive(TASK_ID);
+
+        verifyNoInteractions(eventPublisher);
     }
 }

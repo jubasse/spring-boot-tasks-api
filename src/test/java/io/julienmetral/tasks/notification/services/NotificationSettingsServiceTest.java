@@ -5,9 +5,12 @@ import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.notification.dtos.NotificationSettingsDto;
 import io.julienmetral.tasks.notification.entities.NotificationSettings;
+import io.julienmetral.tasks.notification.entities.TaskNotificationType;
 import io.julienmetral.tasks.notification.repositories.NotificationSettingsRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -164,5 +167,28 @@ class NotificationSettingsServiceTest {
                 .isInstanceOf(UserNotFoundException.class)
                 .hasMessageContaining(USER_ID.toString());
         verifyNoInteractions(settingsRepository);
+    }
+
+    // ---------------------------------------------------------------- isEnabled
+
+    @ParameterizedTest
+    @EnumSource(TaskNotificationType.class)
+    void isEnabledIsTrueWhenNoRowExists(TaskNotificationType type) {
+        when(settingsRepository.findById(USER_ID)).thenReturn(Optional.empty());
+
+        assertThat(service.isEnabled(USER_ID, type)).isTrue();
+        verifyNoInteractions(userRepository);
+    }
+
+    @Test
+    void isEnabledReturnsTheStoredSwitchOfEachType() {
+        // stored(): assigned off, unassigned on, cancelled off, deleted on
+        when(settingsRepository.findById(USER_ID)).thenReturn(Optional.of(stored(user())));
+
+        assertThat(service.isEnabled(USER_ID, TaskNotificationType.ASSIGNED)).isFalse();
+        assertThat(service.isEnabled(USER_ID, TaskNotificationType.UNASSIGNED)).isTrue();
+        assertThat(service.isEnabled(USER_ID, TaskNotificationType.CANCELLED)).isFalse();
+        assertThat(service.isEnabled(USER_ID, TaskNotificationType.DELETED)).isTrue();
+        verifyNoInteractions(userRepository);
     }
 }

@@ -5,6 +5,7 @@ import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.notification.dtos.NotificationSettingsDto;
 import io.julienmetral.tasks.notification.entities.NotificationSettings;
+import io.julienmetral.tasks.notification.entities.TaskNotificationType;
 import io.julienmetral.tasks.notification.repositories.NotificationSettingsRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,15 @@ public class NotificationSettingsService {
         return settingsRepository
                 .findById(userId)
                 .orElseGet(() -> NotificationSettings.defaults(user));
+    }
+
+    /** Whether the user wants this email; users who never changed their settings get everything. */
+    @Transactional(readOnly = true)
+    public boolean isEnabled(UUID userId, TaskNotificationType type) {
+        return settingsRepository
+                .findById(userId)
+                .map(settings -> settings.isEnabled(type))
+                .orElse(true);
     }
 
     @Transactional
