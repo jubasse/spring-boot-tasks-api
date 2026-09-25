@@ -6,6 +6,8 @@ import io.julienmetral.tasks.identity.exceptions.InvalidEmailVerificationTokenEx
 import io.julienmetral.tasks.identity.exceptions.InvalidRefreshTokenException;
 import io.julienmetral.tasks.identity.exceptions.UserEmailAlreadyExistsException;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
+import io.julienmetral.tasks.identity.entities.UserStatus;
+import io.julienmetral.tasks.task.exceptions.AssigneeNotActiveException;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException;
 import org.junit.jupiter.api.Test;
@@ -126,5 +128,16 @@ class ApiExceptionHandlerTest {
         assertThat(problem.getStatus()).isEqualTo(409);
         assertThat(problem.getTitle()).isEqualTo("Email already verified");
         assertThat(problem.getDetail()).isEqualTo("The email address is already verified");
+    }
+
+    @Test
+    void assigneeNotActiveMapsTo422() {
+        ProblemDetail problem = handler.handleAssigneeNotActive(
+                new AssigneeNotActiveException(ID, UserStatus.DISABLED));
+
+        assertThat(problem.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT.value()).isEqualTo(422);
+        assertThat(problem.getTitle()).isEqualTo("User cannot be assigned");
+        assertThat(problem.getDetail())
+                .isEqualTo("User " + ID + " cannot be assigned a task: account is DISABLED");
     }
 }
