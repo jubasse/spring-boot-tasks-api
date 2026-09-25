@@ -123,10 +123,14 @@ public class SecurityConfiguration {
                                 )
                                 .permitAll()
 
-                                // Login
+                                // Login, token refresh and logout carry their own credentials;
+                                // email verification carries the token received by email
                                 .requestMatchers(
                                         HttpMethod.POST,
-                                        "/api/v1/auth/login"
+                                        "/api/v1/auth/login",
+                                        "/api/v1/auth/refresh",
+                                        "/api/v1/auth/logout",
+                                        "/api/v1/auth/verify-email"
                                 )
                                 .permitAll()
                                 .anyRequest()
