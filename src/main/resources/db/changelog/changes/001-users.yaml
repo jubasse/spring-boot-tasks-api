@@ -1,0 +1,99 @@
+databaseChangeLog:
+- changeSet:
+    id: 1790251247142-1
+    author: julien-metral (generated)
+    changes:
+    - createTable:
+        columns:
+        - column:
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: user_rolesPK
+            name: user_id
+            type: UUID
+        - column:
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: user_rolesPK
+            name: role
+            type: VARCHAR(50)
+        tableName: user_roles
+- changeSet:
+    id: 1790251247142-2
+    author: julien-metral (generated)
+    changes:
+    - createTable:
+        columns:
+        - column:
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: usersPK
+            defaultValueComputed: uuidv7()
+            name: id
+            type: UUID
+        - column:
+            constraints:
+              nullable: false
+            name: created_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            name: updated_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            name: display_name
+            type: VARCHAR(255)
+        - column:
+            constraints:
+              nullable: false
+            name: email
+            type: VARCHAR(320)
+        - column:
+            name: email_verified_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            name: enabled
+            type: BOOLEAN
+        - column:
+            name: last_login_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            name: password_hash
+            type: VARCHAR(255)
+        - column:
+            name: deleted_at
+            remarks: Soft-delete indicator
+            type: TIMESTAMP(6) WITH TIME ZONE
+        tableName: users
+- changeSet:
+    id: 1790251247142-3
+    author: julien-metral (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: email
+        constraintName: users_emailUQ
+        tableName: users
+- changeSet:
+    id: 1790251247142-4
+    author: julien-metral (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: user_id
+        baseTableName: user_roles
+        constraintName: user_roles_userFK
+        deferrable: false
+        initiallyDeferred: false
+        referencedColumnNames: id
+        referencedTableName: users
+        validate: true
+
