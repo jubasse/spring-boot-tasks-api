@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.task.services;
 
 import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
@@ -9,9 +10,15 @@ import io.julienmetral.tasks.task.dtos.UpdateTaskDto;
 import io.julienmetral.tasks.task.entities.Task;
 import io.julienmetral.tasks.task.entities.TaskPriority;
 import io.julienmetral.tasks.task.entities.TaskStatus;
+import io.julienmetral.tasks.task.exceptions.AssigneeNotActiveException;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException;
 import io.julienmetral.tasks.task.repositories.TaskRepository;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Path;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -20,14 +27,23 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -54,6 +70,19 @@ class TaskServiceTest {
 
     @InjectMocks
     private TaskService taskService;
+
+    /** A user whose status is the given one ({@code DELETED} is not loadable, so it is not a valid input). */
+    private static User userWithStatus(UUID id, UserStatus status) {
+        User user = user(id);
+        switch (status) {
+            case UNVERIFIED -> user.setEmailVerifiedAt(null);
+            case DISABLED -> user.setEnabled(false);
+            default -> {
+            }
+        }
+        assertThat(UserStatus.of(user)).isEqualTo(status);
+        return user;
+    }
 
     private static User user(UUID id) {
         User user = new User();
@@ -182,6 +211,24 @@ class TaskServiceTest {
         assertThatThrownBy(() -> taskService.create(dto))
                 .isInstanceOf(UserNotFoundException.class)
                 .hasMessageContaining(assigneeId.toString());
+
+        verify(taskRepository, never()).save(any());
+        verifyNoInteractions(taskEventService);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = UserStatus.class, names = {"UNVERIFIED", "DISABLED"})
+    void createWithInactiveAssigneeThrows(UserStatus status) {
+        UUID assigneeId = UUID.randomUUID();
+        var dto = new CreateTaskDto("TASK-1", "Title", null, null, null, assigneeId);
+        when(taskRepository.existsByReferenceIncludingDeleted("TASK-1")).thenReturn(false);
+        when(currentUser.getId()).thenReturn(Optional.empty());
+        when(userRepository.findById(assigneeId)).thenReturn(Optional.of(userWithStatus(assigneeId, status)));
+
+        assertThatThrownBy(() -> taskService.create(dto))
+                .isInstanceOf(AssigneeNotActiveException.class)
+                .hasMessageContaining(assigneeId.toString())
+                .hasMessageContaining(status.name());
 
         verify(taskRepository, never()).save(any());
         verifyNoInteractions(taskEventService);
@@ -388,12 +435,118 @@ class TaskServiceTest {
         verifyNoInteractions(taskEventService);
     }
 
+    @ParameterizedTest
+    @EnumSource(value = UserStatus.class, names = {"UNVERIFIED", "DISABLED"})
+    void assignToInactiveUserThrowsAndKeepsCurrentAssignee(UserStatus status) {
+        Task task = stubTask();
+        User previous = user(UUID.randomUUID());
+        task.setAssignedTo(previous);
+        UUID userId = UUID.randomUUID();
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithStatus(userId, status)));
+
+        assertThatThrownBy(() -> taskService.assign(TASK_ID, userId))
+                .isInstanceOf(AssigneeNotActiveException.class)
+                .hasMessageContaining(userId.toString())
+                .hasMessageContaining(status.name());
+
+        assertThat(task.getAssignedTo()).isSameAs(previous);
+        verifyNoInteractions(taskEventService);
+    }
+
+    @Test
+    void reassignFromSoftDeletedAssigneeRecordsItsIdAsPrevious() {
+        Task task = stubTask();
+        // The previous assignee is soft-deleted: the association is null, only the id column is left
+        UUID deletedId = UUID.randomUUID();
+        ReflectionTestUtils.setField(task, "assignedToId", deletedId);
+        UUID userId = UUID.randomUUID();
+        User assignee = user(userId);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(assignee));
+
+        taskService.assign(TASK_ID, userId);
+
+        assertThat(task.getAssignedTo()).isSameAs(assignee);
+        verify(taskEventService).assignmentChanged(task, deletedId, userId);
+    }
+
+    @Test
+    void assignToSoftDeletedCurrentAssigneeIsNoOp() {
+        Task task = stubTask();
+        UUID deletedId = UUID.randomUUID();
+        ReflectionTestUtils.setField(task, "assignedToId", deletedId);
+
+        Task result = taskService.assign(TASK_ID, deletedId);
+
+        assertThat(result).isSameAs(task);
+        assertThat(task.getAssignedTo()).isNull();
+        verifyNoInteractions(userRepository, taskEventService);
+    }
+
     @Test
     void assignThrowsWhenTaskMissing() {
         stubMissingTask();
 
         assertThatThrownBy(() -> taskService.assign(TASK_ID, UUID.randomUUID()))
                 .isInstanceOf(TaskNotFoundException.class);
+    }
+
+    // --- findAll ---
+
+    @SuppressWarnings("unchecked")
+    private final Root<Task> root = mock(Root.class);
+    private final CriteriaQuery<?> query = mock(CriteriaQuery.class);
+    private final CriteriaBuilder builder = mock(CriteriaBuilder.class);
+    private final Path<Object> archivedAtPath = mock(Path.class);
+    private final Path<Object> statusPath = mock(Path.class);
+    private final Path<Object> assignedToIdPath = mock(Path.class);
+    private final Predicate archivedPredicate = mock(Predicate.class);
+    private final Predicate statusPredicate = mock(Predicate.class);
+    private final Predicate assigneePredicate = mock(Predicate.class);
+    private final Predicate conjunction = mock(Predicate.class);
+    private final Predicate combined = mock(Predicate.class);
+
+    private Specification<Task> findAllAndCaptureSpecification(
+            TaskStatus status, UUID assigneeId, boolean archived) {
+        Pageable pageable = PageRequest.of(2, 10);
+        Page<Task> page = new PageImpl<>(List.of(new Task()));
+        when(taskRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(page);
+
+        assertThat(taskService.findAll(status, assigneeId, archived, pageable)).isSameAs(page);
+
+        ArgumentCaptor<Specification<Task>> captor = ArgumentCaptor.captor();
+        verify(taskRepository).findAll(captor.capture(), eq(pageable));
+        return captor.getValue();
+    }
+
+    @Test
+    void findAllWithoutFiltersKeepsOnlyActiveTasks() {
+        Specification<Task> specification = findAllAndCaptureSpecification(null, null, false);
+        doReturn(archivedAtPath).when(root).get("archivedAt");
+        when(builder.isNull(archivedAtPath)).thenReturn(archivedPredicate);
+        when(builder.conjunction()).thenReturn(conjunction);
+        when(builder.and(archivedPredicate, conjunction, conjunction)).thenReturn(combined);
+
+        assertThat(specification.toPredicate(root, query, builder)).isSameAs(combined);
+        verify(root, never()).get("status");
+        verify(root, never()).get("assignedToId");
+    }
+
+    @Test
+    void findAllWithAllFiltersMatchesArchivedStatusAndAssigneeColumn() {
+        UUID assigneeId = UUID.randomUUID();
+        Specification<Task> specification = findAllAndCaptureSpecification(TaskStatus.DONE, assigneeId, true);
+        doReturn(archivedAtPath).when(root).get("archivedAt");
+        doReturn(statusPath).when(root).get("status");
+        doReturn(assignedToIdPath).when(root).get("assignedToId");
+        when(builder.isNotNull(archivedAtPath)).thenReturn(archivedPredicate);
+        when(builder.equal(statusPath, TaskStatus.DONE)).thenReturn(statusPredicate);
+        when(builder.equal(assignedToIdPath, assigneeId)).thenReturn(assigneePredicate);
+        when(builder.and(archivedPredicate, statusPredicate, assigneePredicate)).thenReturn(combined);
+
+        assertThat(specification.toPredicate(root, query, builder)).isSameAs(combined);
+        // Filtering on the id column must not join users, which @SoftDelete would filter
+        verify(root, never()).get("assignedTo");
+        verify(root, never()).join(any(String.class));
     }
 
     // --- archive / unarchive ---
