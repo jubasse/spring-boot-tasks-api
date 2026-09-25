@@ -51,7 +51,9 @@ Package-by-feature under `io.julienmetral.tasks`, and each feature uses the same
 - `identity`: users, login, JWT and refresh tokens, email verification, user-level authorization.
 - `task`: tasks and their event log.
 - `mail`: the cross-cutting mail service (see Mail below).
-- `notification`: per-user email notification settings (`GET`/`PUT /api/v1/users/{id}/notification-settings`, self or admin). There is one switch per task event, and a user without a stored row gets `NotificationSettings.defaults` (everything enabled).
+- `notification`: task email notifications and their per-user settings.
+  - **Settings:** `GET`/`PUT /api/v1/users/{id}/notification-settings`, for the user or an admin. There is one switch per task event, and a user without a stored row gets `NotificationSettings.defaults` (everything enabled).
+  - **Emails:** `TaskService` publishes domain events (`task.events.TaskAssigned`, `TaskUnassigned`, `TaskCancelled`, `TaskDeleted`), and `notification.mail.TaskNotificationSender` turns them into emails. Only the concerned assignee receives one, never about their own action, only while their account is active, and only if the matching switch is on. The `task` package never depends on `notification`.
 - `shared`: the auditable base entity, the global `ApiExceptionHandler` (`@RestControllerAdvice` returning `ProblemDetail`), and the reusable security annotations.
 
 Controllers are under `/api/v1/...`. Services own transactions and return entities, and controllers wrap them in response DTOs.
