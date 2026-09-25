@@ -105,7 +105,8 @@ public class SecurityConfiguration {
     @Bean
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
-            JwtAuthenticationConverter jwtAuthenticationConverter
+            JwtAuthenticationConverter jwtAuthenticationConverter,
+            ActiveUserAuthorizationManager activeUserAuthorizationManager
     ) {
 
         http
@@ -135,6 +136,10 @@ public class SecurityConfiguration {
                                         "/api/v1/auth/password-reset/confirm"
                                 )
                                 .permitAll()
+                                // Tasks are reserved to enabled users with a verified email
+                                .requestMatchers("/api/v1/tasks/**")
+                                .access(activeUserAuthorizationManager)
+
                                 .anyRequest()
                                 .authenticated()
                 )

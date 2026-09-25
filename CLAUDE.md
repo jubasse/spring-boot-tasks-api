@@ -70,9 +70,19 @@ Refresh, verification and reset tokens are 256-bit random values (`OpaqueTokens`
 
 Public endpoints: `POST /api/v1/users` (sign-up), and `POST /api/v1/auth/login`, `/refresh`, `/logout`, `/verify-email`, `/password-reset/request` and `/password-reset/confirm`.
 
+### Task access rules
+
+Only **active** users can work on tasks. Active means enabled, not deleted, and with a verified email (`UserStatus.ACTIVE`).
+- **Callers:** `ActiveUserAuthorizationManager` guards `/api/v1/tasks/**` in `SecurityConfiguration`. It reloads the user on every request, so a disabled, deleted or unverified user gets 403 even with a still-valid access token. User and auth endpoints are not restricted.
+- **Assignees:** `TaskService` refuses to assign a task to a user who is not active and throws `AssigneeNotActiveException` (422).
+- **Responses:** task responses and task history expose referenced users as `UserPreviewResponseDto(id, displayName, status)`, with `status` one of `ACTIVE`, `UNVERIFIED`, `DISABLED` or `DELETED`.
+- **Listing:** `GET /api/v1/tasks` is paginated and filters on `status`, `assigneeId` and `archived`, which defaults to false.
+
 ### Soft-deleted users in associations
 
-Entities that point to a `User` (for example `RefreshToken.user`) must tolerate a soft-deleted target. Hibernate cannot load the filtered row, so loading the owning entity fails. Map the association with `@NotFound(action = NotFoundAction.IGNORE)` and treat `null` as "deleted". A JPQL path such as `t.user.id` in a bulk update joins `users` and is filtered too: use a native query on the foreign key column instead.
+Entities that point to a `User` (for example `RefreshToken.user`) must tolerate a soft-deleted target. Hibernate cannot load the filtered row, so loading the owning entity fails. Map the association with `@NotFound(action = NotFoundAction.IGNORE)` and treat `null` as "deleted".
+
+When the owning entity is updated later (as `Task` is), the association must also be **read-only** (`insertable = false, updatable = false`), with a separate writable id column (`assignedToId`, `createdById`). Otherwise the `null` loaded for a deleted user is flushed back and erases the reference. Setters such as `Task.setAssignedTo` keep both fields in sync. Queries filter on the id column, not on `assignedTo.id`, to avoid a join that `@SoftDelete` would filter. A JPQL path such as `t.user.id` in a bulk update joins `users` and is filtered too: use a native query on the foreign key column instead.
 
 ### Mail
 

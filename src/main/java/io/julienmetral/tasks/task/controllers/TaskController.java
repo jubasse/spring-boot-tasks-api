@@ -4,10 +4,15 @@ import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.shared.security.AdminOnly;
 import io.julienmetral.tasks.task.dtos.*;
 import io.julienmetral.tasks.task.entities.Task;
+import io.julienmetral.tasks.task.entities.TaskStatus;
 import io.julienmetral.tasks.task.security.AllowedRolesOrAssignedToOnly;
 import io.julienmetral.tasks.task.services.TaskService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -33,6 +38,18 @@ public class TaskController {
         return ResponseEntity
             .created(URI.create("/api/v1/tasks/" + task.getId()))
             .body(new TaskResponseDto(task));
+    }
+
+    @GetMapping
+    public Page<TaskResponseDto> findAll(
+            @RequestParam(required = false) TaskStatus status,
+            @RequestParam(required = false) UUID assigneeId,
+            @RequestParam(defaultValue = "false") boolean archived,
+            @PageableDefault(sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
+    ) {
+        return taskService
+                .findAll(status, assigneeId, archived, pageable)
+                .map(TaskResponseDto::new);
     }
 
     @GetMapping("/{id}")

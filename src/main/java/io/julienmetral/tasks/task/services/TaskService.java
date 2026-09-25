@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.task.services;
 
 import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
@@ -9,10 +10,14 @@ import io.julienmetral.tasks.task.dtos.UpdateTaskDto;
 import io.julienmetral.tasks.task.entities.Task;
 import io.julienmetral.tasks.task.entities.TaskPriority;
 import io.julienmetral.tasks.task.entities.TaskStatus;
+import io.julienmetral.tasks.task.exceptions.AssigneeNotActiveException;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException;
 import io.julienmetral.tasks.task.repositories.TaskRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -53,13 +58,7 @@ public class TaskService {
                 .ifPresent(task::setCreatedBy);
 
         if (dto.assignedTo() != null) {
-            User assignedTo = userRepository
-                    .findById(dto.assignedTo())
-                    .orElseThrow(
-                            () -> new UserNotFoundException(dto.assignedTo())
-                    );
-
-            task.setAssignedTo(assignedTo);
+            task.setAssignedTo(getAssignableUser(dto.assignedTo()));
         }
 
         Task savedTask = taskRepository.save(task);
@@ -67,6 +66,34 @@ public class TaskService {
         taskEventService.created(savedTask);
 
         return savedTask;
+    }
+
+    /**
+     * @param status     only tasks in this status, or all statuses when null
+     * @param assigneeId only tasks assigned to this user, or all tasks when null
+     * @param archived   archived tasks when true, active ones otherwise
+     */
+    @Transactional(readOnly = true)
+    public Page<Task> findAll(
+            TaskStatus status,
+            UUID assigneeId,
+            boolean archived,
+            Pageable pageable
+    ) {
+        Specification<Task> specification = (root, query, builder) -> builder.and(
+                archived
+                        ? builder.isNotNull(root.get("archivedAt"))
+                        : builder.isNull(root.get("archivedAt")),
+                status == null
+                        ? builder.conjunction()
+                        : builder.equal(root.get("status"), status),
+                // The read-only id column avoids joining users, which @SoftDelete would filter
+                assigneeId == null
+                        ? builder.conjunction()
+                        : builder.equal(root.get("assignedToId"), assigneeId)
+        );
+
+        return taskRepository.findAll(specification, pageable);
     }
 
     @Transactional(readOnly = true)
@@ -152,17 +179,13 @@ public class TaskService {
     public Task assign(UUID id, UUID userId) {
         Task task = getTask(id);
 
-        UUID currentAssignedToId = task.getAssignedTo() == null ? null : task.getAssignedTo().getId();
+        UUID currentAssignedToId = task.currentAssigneeId();
 
         if (Objects.equals(currentAssignedToId, userId)) {
             return task;
         }
 
-        User assignedTo = userRepository.findById(userId).orElseThrow(
-                () -> new UserNotFoundException(userId)
-        );
-
-        task.setAssignedTo(assignedTo);
+        task.setAssignedTo(getAssignableUser(userId));
 
         taskEventService.assignmentChanged(
                 task,
@@ -230,6 +253,21 @@ public class TaskService {
         Task task = getTask(id);
 
         taskRepository.delete(task);
+    }
+
+    // Only enabled users with a verified email can work on tasks, so only they can be assigned
+    private User getAssignableUser(UUID userId) {
+        User user = userRepository
+                .findById(userId)
+                .orElseThrow(() -> new UserNotFoundException(userId));
+
+        UserStatus status = UserStatus.of(user);
+
+        if (status != UserStatus.ACTIVE) {
+            throw new AssigneeNotActiveException(userId, status);
+        }
+
+        return user;
     }
 
     private Task getTask(UUID id) {
