@@ -6,6 +6,7 @@ import io.julienmetral.tasks.identity.exceptions.InvalidEmailVerificationTokenEx
 import io.julienmetral.tasks.identity.exceptions.InvalidRefreshTokenException;
 import io.julienmetral.tasks.identity.exceptions.UserEmailAlreadyExistsException;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
+import io.julienmetral.tasks.task.exceptions.AssigneeNotActiveException;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -29,6 +30,19 @@ public class ApiExceptionHandler {
         );
 
         problem.setTitle("Task not found");
+
+        return problem;
+    }
+
+    @ExceptionHandler(AssigneeNotActiveException.class)
+    public ProblemDetail handleAssigneeNotActive(AssigneeNotActiveException ex) {
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.UNPROCESSABLE_CONTENT,
+            ex.getMessage()
+        );
+
+        problem.setTitle("User cannot be assigned");
 
         return problem;
     }
