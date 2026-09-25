@@ -18,6 +18,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import java.time.Instant;
 import java.util.EnumSet;
 import java.util.UUID;
 
@@ -116,6 +117,8 @@ class TaskControllerTests {
 
         user.setEmail(UUID.randomUUID() + "@example.com");
         user.setPasswordHash(passwordEncoder.encode("password"));
+        // Only enabled users with a verified email can work on tasks
+        user.setEmailVerifiedAt(Instant.now());
         user.setDisplayName("Test " + role);
         user.setRoles(EnumSet.of(UserRole.USER, role));
 

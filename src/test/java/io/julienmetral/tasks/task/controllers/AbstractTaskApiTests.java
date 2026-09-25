@@ -19,6 +19,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.time.Instant;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
@@ -59,6 +60,8 @@ abstract class AbstractTaskApiTests {
 
         user.setEmail(UUID.randomUUID() + "@example.com");
         user.setPasswordHash(passwordEncoder.encode("password"));
+        // Only enabled users with a verified email can work on tasks
+        user.setEmailVerifiedAt(Instant.now());
         user.setDisplayName("Test " + role + " " + UUID.randomUUID().toString().substring(0, 4));
         user.setRoles(EnumSet.of(UserRole.USER, role));
 

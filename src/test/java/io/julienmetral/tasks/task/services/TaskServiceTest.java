@@ -59,6 +59,8 @@ class TaskServiceTest {
         User user = new User();
         user.setId(id);
         user.setDisplayName("User " + id);
+        // Only enabled users with a verified email can be assigned
+        user.setEmailVerifiedAt(Instant.parse("2026-01-01T00:00:00Z"));
         return user;
     }
 
