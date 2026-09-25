@@ -2559,6 +2559,112 @@
       ]
     },
     {
+      "name": "Task notifications",
+      "description": "Emails sent to the concerned assignee when someone else assigns, reassigns, cancels or deletes their task. Checked in Mailpit. Users can switch each kind off in their notification settings.",
+      "item": [
+        {
+          "name": "Mailpit — user was told about the assignment",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Sent when the admin created a task assigned to the user (Tasks folder).",
+            "url": {
+              "raw": "{{mailpitUrl}}/api/v1/search?query=to:\"{{userEmail}}\" subject:\"was assigned to you\"",
+              "host": [
+                "{{mailpitUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "to:\"{{userEmail}}\" subject:\"was assigned to you\""
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Emails are sent asynchronously after commit: give the SMTP catcher a moment",
+                  "setTimeout(() => {}, 1500);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.test('the user received this email', () => pm.expect(pm.response.json().messages.length).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mailpit — user was told about the reassignment",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Sent when the admin reassigned the task to themselves (Tasks folder).",
+            "url": {
+              "raw": "{{mailpitUrl}}/api/v1/search?query=to:\"{{userEmail}}\" subject:\"is no longer assigned to you\"",
+              "host": [
+                "{{mailpitUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "to:\"{{userEmail}}\" subject:\"is no longer assigned to you\""
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Emails are sent asynchronously after commit: give the SMTP catcher a moment",
+                  "setTimeout(() => {}, 1500);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.test('the user received this email', () => pm.expect(pm.response.json().messages.length).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Password reset",
       "description": "Forgot-password flow. The reset email is read from Mailpit. Confirming signs the user out everywhere (refresh tokens revoked) and marks the email as verified.",
       "item": [
