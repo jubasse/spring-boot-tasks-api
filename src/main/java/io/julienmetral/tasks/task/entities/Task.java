@@ -3,11 +3,14 @@ package io.julienmetral.tasks.task.entities;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.shared.entities.AuditableEntity;
 import jakarta.persistence.*;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
+import org.hibernate.annotations.NotFound;
+import org.hibernate.annotations.NotFoundAction;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -82,17 +85,37 @@ public class Task extends AuditableEntity {
     @Column(nullable = false)
     private long version;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    // Users can be soft-deleted (@SoftDelete): the association is then null, while the read-only id column keeps
+    // who it was, so responses can still show a DELETED user. @NotFound(IGNORE) makes these associations eager.
+    @ManyToOne(fetch = FetchType.EAGER)
+    @NotFound(action = NotFoundAction.IGNORE)
     @JoinColumn(
             name = "created_by_id",
             foreignKey = @ForeignKey(name = "tasks_created_byFK")
     )
     private User createdBy;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @Setter(AccessLevel.NONE)
+    @Column(name = "created_by_id", insertable = false, updatable = false)
+    private UUID createdById;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @NotFound(action = NotFoundAction.IGNORE)
     @JoinColumn(
             name = "assigned_to_id",
             foreignKey = @ForeignKey(name = "tasks_assigned_toFK")
     )
     private User assignedTo;
+
+    @Setter(AccessLevel.NONE)
+    @Column(name = "assigned_to_id", insertable = false, updatable = false)
+    private UUID assignedToId;
+
+    /**
+     * The assignee's id. Prefers the association, which is current right after {@code setAssignedTo}, and falls back
+     * to the read-only column when the assignee is soft-deleted.
+     */
+    public UUID currentAssigneeId() {
+        return assignedTo != null ? assignedTo.getId() : assignedToId;
+    }
 }
