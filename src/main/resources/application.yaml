@@ -1,0 +1,18 @@
+security:
+  jwt:
+    issuer: tasks-api
+    ttl: 15m
+    secret: ${JWT_SECRET}
+spring:
+  config:
+    import: optional:file:.env[.properties]
+  application:
+    name: tasks
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+
+  liquibase:
+    enabled: true
+    change-log: classpath:/db/changelog/db.changelog-master.yaml
