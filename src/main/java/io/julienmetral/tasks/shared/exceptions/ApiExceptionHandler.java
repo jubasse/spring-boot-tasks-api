@@ -3,6 +3,7 @@ package io.julienmetral.tasks.shared.exceptions;
 import io.julienmetral.tasks.identity.exceptions.EmailAlreadyVerifiedException;
 import io.julienmetral.tasks.identity.exceptions.InvalidCredentialsException;
 import io.julienmetral.tasks.identity.exceptions.InvalidEmailVerificationTokenException;
+import io.julienmetral.tasks.identity.exceptions.InvalidPasswordResetTokenException;
 import io.julienmetral.tasks.identity.exceptions.InvalidRefreshTokenException;
 import io.julienmetral.tasks.identity.exceptions.UserEmailAlreadyExistsException;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
@@ -119,6 +120,21 @@ public class ApiExceptionHandler {
         );
 
         problem.setTitle("Invalid email verification token");
+
+        return problem;
+    }
+
+    @ExceptionHandler(InvalidPasswordResetTokenException.class)
+    public ProblemDetail handleInvalidPasswordResetToken(
+        InvalidPasswordResetTokenException ex
+    ) {
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.BAD_REQUEST,
+            ex.getMessage()
+        );
+
+        problem.setTitle("Invalid password reset token");
 
         return problem;
     }
