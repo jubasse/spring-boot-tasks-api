@@ -3,6 +3,7 @@ package io.julienmetral.tasks.shared.exceptions;
 import io.julienmetral.tasks.identity.exceptions.EmailAlreadyVerifiedException;
 import io.julienmetral.tasks.identity.exceptions.InvalidCredentialsException;
 import io.julienmetral.tasks.identity.exceptions.InvalidEmailVerificationTokenException;
+import io.julienmetral.tasks.identity.exceptions.InvalidPasswordResetTokenException;
 import io.julienmetral.tasks.identity.exceptions.InvalidRefreshTokenException;
 import io.julienmetral.tasks.identity.exceptions.UserEmailAlreadyExistsException;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
@@ -139,5 +140,15 @@ class ApiExceptionHandlerTest {
         assertThat(problem.getTitle()).isEqualTo("User cannot be assigned");
         assertThat(problem.getDetail())
                 .isEqualTo("User " + ID + " cannot be assigned a task: account is DISABLED");
+    }
+
+    @Test
+    void invalidPasswordResetTokenMapsTo400() {
+        ProblemDetail problem = handler.handleInvalidPasswordResetToken(
+                new InvalidPasswordResetTokenException());
+
+        assertThat(problem.getStatus()).isEqualTo(400);
+        assertThat(problem.getTitle()).isEqualTo("Invalid password reset token");
+        assertThat(problem.getDetail()).isEqualTo("The password reset token is invalid, expired or already used");
     }
 }

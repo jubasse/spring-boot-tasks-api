@@ -1,0 +1,52 @@
+databaseChangeLog:
+- changeSet:
+    id: 006-create-notification-settings
+    author: julien-metral
+    comment: >
+      Per-user email notification preferences. A missing row means every notification is enabled.
+    changes:
+    - createTable:
+        tableName: notification_settings
+        columns:
+        - column:
+            name: user_id
+            type: UUID
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: notification_settingsPK
+        - column:
+            name: task_assigned
+            type: BOOLEAN
+            defaultValueBoolean: true
+            constraints:
+              nullable: false
+        - column:
+            name: task_unassigned
+            type: BOOLEAN
+            defaultValueBoolean: true
+            constraints:
+              nullable: false
+        - column:
+            name: task_cancelled
+            type: BOOLEAN
+            defaultValueBoolean: true
+            constraints:
+              nullable: false
+        - column:
+            name: task_deleted
+            type: BOOLEAN
+            defaultValueBoolean: true
+            constraints:
+              nullable: false
+        - column:
+            name: updated_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+            constraints:
+              nullable: false
+    - addForeignKeyConstraint:
+        baseTableName: notification_settings
+        baseColumnNames: user_id
+        constraintName: notification_settings_userFK
+        referencedTableName: users
+        referencedColumnNames: id

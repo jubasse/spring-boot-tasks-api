@@ -51,6 +51,7 @@ Package-by-feature under `io.julienmetral.tasks`, and each feature uses the same
 - `identity`: users, login, JWT and refresh tokens, email verification, user-level authorization.
 - `task`: tasks and their event log.
 - `mail`: the cross-cutting mail service (see Mail below).
+- `notification`: per-user email notification settings (`GET`/`PUT /api/v1/users/{id}/notification-settings`, self or admin). There is one switch per task event, and a user without a stored row gets `NotificationSettings.defaults` (everything enabled).
 - `shared`: the auditable base entity, the global `ApiExceptionHandler` (`@RestControllerAdvice` returning `ProblemDetail`), and the reusable security annotations.
 
 Controllers are under `/api/v1/...`. Services own transactions and return entities, and controllers wrap them in response DTOs.
@@ -63,9 +64,11 @@ Controllers are under `/api/v1/...`. Services own transactions and return entiti
 4. Login also returns an opaque **refresh token** (`RefreshTokenService`). `POST /api/v1/auth/refresh` rotates it: the used token is revoked, and a successor is issued in the same `family_id`. Replaying a revoked token revokes the whole family (reuse detection). `POST /api/v1/auth/logout` revokes the family. Disabling or deleting a user revokes all their refresh tokens. Access tokens are stateless and stay valid until they expire (15 min).
 5. Sign-up issues an **email verification token** (`EmailVerificationService`). The verification email is sent through the `mail` package; `POST /api/v1/auth/verify-email` consumes the token, and `POST /api/v1/auth/verify-email/resend` replaces it. Login does not require a verified email.
 
-Refresh and verification tokens are 256-bit random values (`OpaqueTokens`). Only their SHA-256 hash is stored.
+6. **Password reset** (`PasswordResetService`): `POST /api/v1/auth/password-reset/request` always answers 202 and emails a 1-hour, single-use link only to enabled accounts, so the endpoint does not reveal which emails exist. `POST /api/v1/auth/password-reset/confirm` sets the new password, revokes all refresh tokens, and marks the email as verified.
 
-Public endpoints: `POST /api/v1/users` (sign-up), and `POST /api/v1/auth/login`, `/refresh`, `/logout` and `/verify-email`.
+Refresh, verification and reset tokens are 256-bit random values (`OpaqueTokens`). Only their SHA-256 hash is stored.
+
+Public endpoints: `POST /api/v1/users` (sign-up), and `POST /api/v1/auth/login`, `/refresh`, `/logout`, `/verify-email`, `/password-reset/request` and `/password-reset/confirm`.
 
 ### Soft-deleted users in associations
 

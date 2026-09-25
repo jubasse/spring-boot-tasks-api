@@ -2,11 +2,14 @@ package io.julienmetral.tasks.identity.controllers;
 
 import io.julienmetral.tasks.identity.dtos.AuthResponseDto;
 import io.julienmetral.tasks.identity.dtos.LoginRequestDto;
+import io.julienmetral.tasks.identity.dtos.PasswordResetConfirmDto;
+import io.julienmetral.tasks.identity.dtos.PasswordResetRequestDto;
 import io.julienmetral.tasks.identity.dtos.RefreshTokenRequestDto;
 import io.julienmetral.tasks.identity.dtos.VerifyEmailRequestDto;
 import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.identity.services.AuthService;
 import io.julienmetral.tasks.identity.services.EmailVerificationService;
+import io.julienmetral.tasks.identity.services.PasswordResetService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +23,7 @@ public class AuthController {
 
     private final AuthService authService;
     private final EmailVerificationService emailVerificationService;
+    private final PasswordResetService passwordResetService;
     private final CurrentUser currentUser;
 
     @PostMapping("/login")
@@ -69,6 +73,29 @@ public class AuthController {
                 .orElseThrow(() -> new AccessDeniedException("Token has no user id"));
 
         emailVerificationService.resend(userId);
+
+        return ResponseEntity
+                .noContent()
+                .build();
+    }
+
+    // Always 202, whether or not the email belongs to an account
+    @PostMapping("/password-reset/request")
+    public ResponseEntity<Void> requestPasswordReset(
+            @Valid @RequestBody PasswordResetRequestDto dto
+    ) {
+        passwordResetService.request(dto.email());
+
+        return ResponseEntity
+                .accepted()
+                .build();
+    }
+
+    @PostMapping("/password-reset/confirm")
+    public ResponseEntity<Void> confirmPasswordReset(
+            @Valid @RequestBody PasswordResetConfirmDto dto
+    ) {
+        passwordResetService.confirm(dto.token(), dto.newPassword());
 
         return ResponseEntity
                 .noContent()
