@@ -1,0 +1,64 @@
+databaseChangeLog:
+- changeSet:
+    id: 1790251570351-1
+    author: julien-metral (generated)
+    changes:
+    - createTable:
+        columns:
+        - column:
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: task_eventsPK
+            defaultValueComputed: uuidv7()
+            name: id
+            type: UUID
+        - column:
+            constraints:
+              nullable: false
+            name: occurred_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            name: payload
+            type: JSONB
+        - column:
+            constraints:
+              nullable: false
+            name: type
+            type: VARCHAR(50)
+        - column:
+            name: actor_id
+            type: UUID
+        - column:
+            constraints:
+              nullable: false
+            name: task_id
+            type: UUID
+        tableName: task_events
+- changeSet:
+    id: 1790251570351-2
+    author: julien-metral (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: actor_id
+        baseTableName: task_events
+        constraintName: task_events_actorFK
+        deferrable: false
+        initiallyDeferred: false
+        referencedColumnNames: id
+        referencedTableName: users
+        validate: true
+- changeSet:
+    id: 1790251570351-3
+    author: julien-metral (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: task_id
+        baseTableName: task_events
+        constraintName: task_events_taskFK
+        deferrable: false
+        initiallyDeferred: false
+        referencedColumnNames: id
+        referencedTableName: tasks
+        validate: true
+
