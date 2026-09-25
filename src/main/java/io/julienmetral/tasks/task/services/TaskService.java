@@ -15,6 +15,9 @@ import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException;
 import io.julienmetral.tasks.task.repositories.TaskRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -63,6 +66,34 @@ public class TaskService {
         taskEventService.created(savedTask);
 
         return savedTask;
+    }
+
+    /**
+     * @param status     only tasks in this status, or all statuses when null
+     * @param assigneeId only tasks assigned to this user, or all tasks when null
+     * @param archived   archived tasks when true, active ones otherwise
+     */
+    @Transactional(readOnly = true)
+    public Page<Task> findAll(
+            TaskStatus status,
+            UUID assigneeId,
+            boolean archived,
+            Pageable pageable
+    ) {
+        Specification<Task> specification = (root, query, builder) -> builder.and(
+                archived
+                        ? builder.isNotNull(root.get("archivedAt"))
+                        : builder.isNull(root.get("archivedAt")),
+                status == null
+                        ? builder.conjunction()
+                        : builder.equal(root.get("status"), status),
+                // The read-only id column avoids joining users, which @SoftDelete would filter
+                assigneeId == null
+                        ? builder.conjunction()
+                        : builder.equal(root.get("assignedToId"), assigneeId)
+        );
+
+        return taskRepository.findAll(specification, pageable);
     }
 
     @Transactional(readOnly = true)
