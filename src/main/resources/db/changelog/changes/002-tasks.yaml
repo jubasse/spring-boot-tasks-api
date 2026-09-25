@@ -1,0 +1,120 @@
+databaseChangeLog:
+- changeSet:
+    id: 1790251254578-1
+    author: julien-metral (generated)
+    changes:
+    - createTable:
+        columns:
+        - column:
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: tasksPK
+            defaultValueComputed: uuidv7()
+            name: id
+            type: UUID
+        - column:
+            constraints:
+              nullable: false
+            name: created_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            name: updated_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            name: archived_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            name: blocked_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            name: blocked_reason
+            type: VARCHAR(500)
+        - column:
+            name: cancelled_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            name: cancelled_reason
+            type: VARCHAR(500)
+        - column:
+            name: completed_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            name: description
+            type: TEXT
+        - column:
+            name: due_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            name: priority
+            type: VARCHAR(20)
+        - column:
+            constraints:
+              nullable: false
+            name: reference
+            type: VARCHAR(30)
+        - column:
+            constraints:
+              nullable: false
+            name: status
+            type: VARCHAR(50)
+        - column:
+            constraints:
+              nullable: false
+            name: title
+            type: VARCHAR(255)
+        - column:
+            constraints:
+              nullable: false
+            name: version
+            type: BIGINT
+        - column:
+            name: deleted_at
+            remarks: Soft-delete indicator
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            name: assigned_to_id
+            type: UUID
+        - column:
+            name: created_by_id
+            type: UUID
+        tableName: tasks
+- changeSet:
+    id: 1790251254578-2
+    author: julien-metral (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: reference
+        constraintName: tasks_referenceUQ
+        tableName: tasks
+- changeSet:
+    id: 1790251254578-3
+    author: julien-metral (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: assigned_to_id
+        baseTableName: tasks
+        constraintName: tasks_assigned_toFK
+        deferrable: false
+        initiallyDeferred: false
+        referencedColumnNames: id
+        referencedTableName: users
+        validate: true
+- changeSet:
+    id: 1790251254578-4
+    author: julien-metral (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: created_by_id
+        baseTableName: tasks
+        constraintName: tasks_created_byFK
+        deferrable: false
+        initiallyDeferred: false
+        referencedColumnNames: id
+        referencedTableName: users
+        validate: true
+
