@@ -49,12 +49,16 @@ public class NotificationSettings {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    /** Every notification enabled; not persisted until the user changes something. */
+    /**
+     * Every notification enabled; not persisted until the user changes something.
+     * <p>
+     * {@code userId} stays null on purpose: {@code @MapsId} derives it from {@code user} on insert. A preset id
+     * would make Spring Data treat the entity as existing and call {@code merge} instead of {@code persist}.
+     */
     public static NotificationSettings defaults(User user) {
         NotificationSettings settings = new NotificationSettings();
 
         settings.setUser(user);
-        settings.setUserId(user.getId());
 
         return settings;
     }
