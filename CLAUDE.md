@@ -10,7 +10,7 @@ Spring Boot 4.1 REST API (Java 25, Maven wrapper) backed by PostgreSQL 18. Sprin
 
 ```bash
 ./mvnw compile                                  # build (runs Lombok + MapStruct + config annotation processors)
-./mvnw spring-boot:run                          # run; spring-boot-docker-compose starts compose.yaml's postgres
+./mvnw spring-boot:run                          # run; spring-boot-docker-compose starts compose.yaml (postgres, mailpit)
 ./mvnw spring-boot:test-run                     # run with a Testcontainers postgres (TestTasksApplication)
 ./mvnw test                                     # all tests (needs Docker, Testcontainers)
 ./mvnw test -Dtest=TasksApplicationTests#contextLoads   # a single test
@@ -48,8 +48,9 @@ Passwords are hashed with Argon2id (`SecurityConfiguration.passwordEncoder`, Bou
 
 Package-by-feature under `io.julienmetral.tasks`, and each feature uses the same sub-packages (`controllers`, `services`, `repositories`, `entities`, `dtos`, `exceptions`, `security`):
 
-- `identity`: users, login, JWT issuing, user-level authorization.
+- `identity`: users, login, JWT and refresh tokens, email verification, user-level authorization.
 - `task`: tasks and their event log.
+- `mail`: the cross-cutting mail service (see Mail below).
 - `shared`: the auditable base entity, the global `ApiExceptionHandler` (`@RestControllerAdvice` returning `ProblemDetail`), and the reusable security annotations.
 
 Controllers are under `/api/v1/...`. Services own transactions and return entities, and controllers wrap them in response DTOs.
@@ -59,8 +60,22 @@ Controllers are under `/api/v1/...`. Services own transactions and return entiti
 1. `POST /api/v1/auth/login` → `AuthService` authenticates through `DaoAuthenticationProvider`/`DatabaseUserDetailsService`, which maps `UserRole` to `ROLE_<name>` authorities. `JwtService` then issues a token with the claims `uid` (user UUID) and `roles` (list of `ROLE_*`).
 2. On later requests, the resource server decodes the JWT, and `JwtAuthenticationConverter` reads `roles` with an **empty prefix**, since the claim values already carry `ROLE_`.
 3. `CurrentUser` extracts the `uid` claim from the `JwtAuthenticationToken`. Use it to get the acting user.
+4. Login also returns an opaque **refresh token** (`RefreshTokenService`). `POST /api/v1/auth/refresh` rotates it: the used token is revoked, and a successor is issued in the same `family_id`. Replaying a revoked token revokes the whole family (reuse detection). `POST /api/v1/auth/logout` revokes the family. Disabling or deleting a user revokes all their refresh tokens. Access tokens are stateless and stay valid until they expire (15 min).
+5. Sign-up issues an **email verification token** (`EmailVerificationService`). The verification email is sent through the `mail` package; `POST /api/v1/auth/verify-email` consumes the token, and `POST /api/v1/auth/verify-email/resend` replaces it. Login does not require a verified email.
 
-Only `POST /api/v1/users` (sign-up) and `POST /api/v1/auth/login` are public.
+Refresh and verification tokens are 256-bit random values (`OpaqueTokens`). Only their SHA-256 hash is stored.
+
+Public endpoints: `POST /api/v1/users` (sign-up), and `POST /api/v1/auth/login`, `/refresh`, `/logout` and `/verify-email`.
+
+### Soft-deleted users in associations
+
+Entities that point to a `User` (for example `RefreshToken.user`) must tolerate a soft-deleted target. Hibernate cannot load the filtered row, so loading the owning entity fails. Map the association with `@NotFound(action = NotFoundAction.IGNORE)` and treat `null` as "deleted". A JPQL path such as `t.user.id` in a bulk update joins `users` and is filtered too: use a native query on the foreign key column instead.
+
+### Mail
+
+`io.julienmetral.tasks.mail` is the cross-cutting mail service. Features call `MailService.send(MailMessage)`, usually from an event listener that writes the content (for example `identity.mail.VerificationEmailSender`). The message is dispatched after the surrounding transaction commits, on an `@Async` virtual thread (`MailDispatcher`). A delivery failure is logged and never fails the business operation. The sender address is `mail.from`.
+
+In development, SMTP goes to the Mailpit service of `compose.yaml` (web UI on http://localhost:8025). Tests start a Mailpit container (`TestcontainersConfiguration`) and read the received emails with `support.Mailpit`. Sending is asynchronous, so use its waiting methods (`latestTextTo`, `latestVerificationTokenFor`).
 
 ### Method-security annotations
 
