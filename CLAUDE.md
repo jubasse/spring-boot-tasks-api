@@ -110,6 +110,44 @@ Every task mutation in `TaskService` must call the matching `TaskEventService` m
 
 Domain exceptions live in each feature's `exceptions` package and are mapped to HTTP responses in `shared/exceptions/ApiExceptionHandler`. A new exception type needs a handler there, or it surfaces as a 500.
 
+## Comments and Javadoc: the why and the failure, never the what
+
+**Name first, comment second.** A precise name for a class, method or variable removes the need for the paragraph above it, and a long name is the cheap side of that trade.
+- `revokeAllForUser`, `existsByEmailIncludingDeleted` and `ActiveUserAuthorizationManager` need no gloss.
+- `process`, `handle` or `check` followed by three lines of explanation is the wrong trade.
+
+Comment only what a name cannot carry.
+
+**Javadoc is not owed to every public type or method.** Controllers, DTOs, entities, repositories and one-line methods whose names say what they do get none. Write Javadoc only when the signature cannot give the context:
+- where the method sits in a flow;
+- what must be true before calling it;
+- side effects that are not visible from the signature, such as revoking sessions, publishing an event, or sending an email after commit.
+
+A `@param id the id` or a `@return the user` is noise. Configuration property records are the exception: one `@param` per property is worth it, because it documents the YAML key.
+
+**A comment earns its place by saying something the code cannot.** Ask one question: would a reader with this code in front of them learn something they could not derive from it?
+
+Keep:
+- **A measured failure**: what went wrong and what it cost. For example, "Native on purpose: in JPQL, `t.user.id` joins users, which `@SoftDelete` filters, so nothing would be revoked once the user is deleted" on `RefreshTokenRepository.revokeAllForUser`. These lines stop a defect from being reintroduced.
+- **A constraint not visible locally**: framework or library behaviour the code depends on. Examples: why `NotificationSettings.defaults` leaves the id null (`@MapsId`, and Spring Data's `merge` instead of `persist`), or why `AuthService.refresh` needs `noRollbackFor`.
+- **A decision and its reason** when the code shows only the outcome. For example, why opaque tokens use SHA-256 rather than Argon2.
+- **A trap**, marked `⚠`, where the obvious change is the wrong one. For example: `⚠ read-only association: writing the user through it would erase a soft-deleted assignee`.
+
+Cut:
+- Anything that restates the code: `// save the user` above `userRepository.save(user)`.
+- Anything that restates an annotation: `// transactional` above `@Transactional`, or `// getters and setters` above `@Getter @Setter`.
+- Narration of the steps of a service method that a reader can simply read.
+- Explanations of a well-named method. Naming it well is the comment.
+- A second copy of something already written in this file, an ADR or a PR description. Link to it instead.
+
+**Tests document themselves through their names.** Examples are `deletingUserRevokesRefreshTokens` and `signUpWithEmailOfSoftDeletedUserReturnsConflict`. A comment in a test explains only a non-obvious setup, such as waiting for the asynchronous mail dispatch.
+
+**Rough ceiling, a smell rather than a limit:** if comments exceed about a quarter of a file, ask whether the code itself is unclear.
+
+⚠ **This is not a licence to delete reasons.** The failure this rule addresses is verbosity. The failure it could create is losing the one paragraph that stopped someone from reintroducing a defect. When a comment is long because it records something expensive, shorten the prose and keep the fact. When in doubt, keep it and make it tighter.
+
+**Apply it opportunistically.** Any file you read or modify is one you may trim, while its context is loaded. This is the only way a convention reaches code written before it.
+
 ## Testing
 
 - **Unit tests** (`*Test`) cover services and security components in isolation, with JUnit 5, Mockito (`@ExtendWith(MockitoExtension.class)`) and AssertJ. They mirror the package of the class under test.
