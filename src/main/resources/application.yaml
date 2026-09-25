@@ -3,11 +3,23 @@ security:
     issuer: tasks-api
     ttl: 15m
     secret: ${JWT_SECRET}
+mail:
+  from: ${MAIL_FROM:no-reply@tasks.local}
 spring:
   config:
     import: optional:file:.env[.properties]
   application:
     name: tasks
+
+  # Virtual threads for request handling and @Async work (e.g. sending emails)
+  threads:
+    virtual:
+      enabled: true
+
+  # Defaults target the Mailpit service of compose.yaml (web UI: http://localhost:8025)
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
 
   jpa:
     hibernate:
