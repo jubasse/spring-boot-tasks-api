@@ -29,12 +29,32 @@ class TaskTest {
     }
 
     @Test
-    void currentAssigneeIdUsesTheAssociationRightAfterAssignment() {
+    void setAssignedToKeepsTheWritableIdColumnInSync() {
         Task task = new Task();
+
         task.setAssignedTo(user(ASSOCIATION_ID));
 
-        assertThat(task.getAssignedToId()).isNull();
+        assertThat(task.getAssignedToId()).isEqualTo(ASSOCIATION_ID);
         assertThat(task.currentAssigneeId()).isEqualTo(ASSOCIATION_ID);
+
+        task.setAssignedTo(null);
+
+        assertThat(task.getAssignedTo()).isNull();
+        assertThat(task.getAssignedToId()).isNull();
+    }
+
+    @Test
+    void setCreatedByKeepsTheWritableIdColumnInSync() {
+        Task task = new Task();
+
+        task.setCreatedBy(user(ASSOCIATION_ID));
+
+        assertThat(task.getCreatedById()).isEqualTo(ASSOCIATION_ID);
+
+        task.setCreatedBy(null);
+
+        assertThat(task.getCreatedBy()).isNull();
+        assertThat(task.getCreatedById()).isNull();
     }
 
     @Test
