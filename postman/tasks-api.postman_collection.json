@@ -87,6 +87,14 @@
     {
       "key": "mailpitMessageId",
       "value": ""
+    },
+    {
+      "key": "resetToken",
+      "value": ""
+    },
+    {
+      "key": "newUserPassword",
+      "value": "new-password-456"
     }
   ],
   "item": [
@@ -606,7 +614,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{mailpitUrl}}/api/v1/search?query=to:\"{{userEmail}}\"",
+              "raw": "{{mailpitUrl}}/api/v1/search?query=to:\"{{userEmail}}\" subject:\"Verify your email address\"",
               "host": [
                 "{{mailpitUrl}}"
               ],
@@ -618,7 +626,7 @@
               "query": [
                 {
                   "key": "query",
-                  "value": "to:\"{{userEmail}}\""
+                  "value": "to:\"{{userEmail}}\" subject:\"Verify your email address\""
                 }
               ]
             },
@@ -628,6 +636,16 @@
             }
           },
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Emails are sent asynchronously after commit: give the SMTP catcher a moment",
+                  "setTimeout(() => {}, 1500);"
+                ]
+              }
+            },
             {
               "listen": "test",
               "script": {
@@ -1792,6 +1810,349 @@
                 "exec": [
                   "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
                   "pm.test('is a page', () => pm.expect(pm.response.json()).to.have.property('content'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Password reset",
+      "description": "Forgot-password flow. The reset email is read from Mailpit. Confirming signs the user out everywhere (refresh tokens revoked) and marks the email as verified.",
+      "item": [
+        {
+          "name": "Request password reset",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/password-reset/request",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "password-reset",
+                "request"
+              ]
+            },
+            "description": "Public. Always returns 202, whether or not the email belongs to an account.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [202]', () => pm.expect(pm.response.code).to.be.oneOf([202]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Request password reset for an unknown email (202)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/password-reset/request",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "password-reset",
+                "request"
+              ]
+            },
+            "description": "Same response as for a real account, so the endpoint does not reveal which emails exist. No email is sent.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nobody-{{$timestamp}}@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [202]', () => pm.expect(pm.response.code).to.be.oneOf([202]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mailpit — find latest reset email",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{mailpitUrl}}/api/v1/search?query=to:\"{{userEmail}}\" subject:\"Reset your password\"",
+              "host": [
+                "{{mailpitUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "to:\"{{userEmail}}\" subject:\"Reset your password\""
+                }
+              ]
+            },
+            "description": "Newest first.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Emails are sent asynchronously after commit: give the SMTP catcher a moment",
+                  "setTimeout(() => {}, 1500);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "const body = pm.response.json();",
+                  "pm.test('an email was received', () => pm.expect(body.messages.length).to.be.above(0));",
+                  "pm.collectionVariables.set('mailpitMessageId', body.messages[0].ID);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mailpit — extract reset token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{mailpitUrl}}/api/v1/message/{{mailpitMessageId}}",
+              "host": [
+                "{{mailpitUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "message",
+                "{{mailpitMessageId}}"
+              ]
+            },
+            "description": "Stores the token in `resetToken`.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "const match = pm.response.json().Text.match(/[?&]token=([A-Za-z0-9_-]{43})/);",
+                  "pm.test('email contains a token', () => pm.expect(match).to.not.be.null);",
+                  "pm.collectionVariables.set('resetToken', match[1]);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Confirm password reset",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/password-reset/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "password-reset",
+                "confirm"
+              ]
+            },
+            "description": "Public. Sets the new password (8 to 128 characters). The token is single-use and expires after 1 hour.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{resetToken}}\",\n  \"newPassword\": \"{{newUserPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [204]', () => pm.expect(pm.response.code).to.be.oneOf([204]));",
+                  "pm.collectionVariables.set('userPassword', pm.collectionVariables.get('newUserPassword'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Confirm with a used token (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/password-reset/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "password-reset",
+                "confirm"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{resetToken}}\",\n  \"newPassword\": \"{{newUserPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [400]', () => pm.expect(pm.response.code).to.be.oneOf([400]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login with the new password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('userToken', body.accessToken);",
+                  "pm.collectionVariables.set('userRefreshToken', body.refreshToken);"
                 ]
               }
             }
