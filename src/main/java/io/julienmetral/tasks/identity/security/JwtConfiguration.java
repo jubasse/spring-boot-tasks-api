@@ -1,5 +1,6 @@
 package io.julienmetral.tasks.identity.security;
 
+import io.julienmetral.tasks.identity.mail.EmailVerificationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,7 +14,8 @@ import java.util.Base64;
 @Configuration
 @EnableConfigurationProperties({
         JwtProperties.class,
-        RefreshTokenProperties.class
+        RefreshTokenProperties.class,
+        EmailVerificationProperties.class
 })
 public class JwtConfiguration {
 
