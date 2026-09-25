@@ -4,6 +4,7 @@ import io.julienmetral.tasks.identity.dtos.AuthResponseDto;
 import io.julienmetral.tasks.identity.dtos.LoginRequestDto;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.exceptions.InvalidCredentialsException;
+import io.julienmetral.tasks.identity.exceptions.InvalidRefreshTokenException;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,6 +42,9 @@ class AuthServiceTest {
     @Mock
     private JwtService jwtService;
 
+    @Mock
+    private RefreshTokenService refreshTokenService;
+
     @InjectMocks
     private AuthService authService;
 
@@ -56,8 +60,11 @@ class AuthServiceTest {
         when(authenticationManager.authenticate(any())).thenReturn(authenticated);
         when(userRepository.findByEmailIgnoreCase("jane@example.com")).thenReturn(Optional.of(user));
         Instant expiresAt = Instant.parse("2030-01-01T00:00:00Z");
-        when(jwtService.generate(authenticated, userId))
+        when(jwtService.generate(user))
                 .thenReturn(new JwtService.IssuedToken("token-value", expiresAt));
+        Instant refreshExpiresAt = Instant.parse("2030-02-01T00:00:00Z");
+        when(refreshTokenService.issue(user))
+                .thenReturn(new RefreshTokenService.IssuedRefreshToken("refresh-value", refreshExpiresAt));
 
         Instant before = Instant.now();
         AuthResponseDto response = authService.login(new LoginRequestDto("jane@example.com", "pw"));
@@ -65,6 +72,8 @@ class AuthServiceTest {
         assertThat(response.accessToken()).isEqualTo("token-value");
         assertThat(response.tokenType()).isEqualTo("Bearer");
         assertThat(response.expiresAt()).isEqualTo(expiresAt);
+        assertThat(response.refreshToken()).isEqualTo("refresh-value");
+        assertThat(response.refreshTokenExpiresAt()).isEqualTo(refreshExpiresAt);
         assertThat(user.getLastLoginAt()).isBetween(before, Instant.now());
 
         ArgumentCaptor<Authentication> captor = ArgumentCaptor.forClass(Authentication.class);
@@ -82,7 +91,7 @@ class AuthServiceTest {
                 .isInstanceOf(InvalidCredentialsException.class)
                 .hasMessage("Invalid email or password");
 
-        verifyNoInteractions(userRepository, jwtService);
+        verifyNoInteractions(userRepository, jwtService, refreshTokenService);
     }
 
     @Test
@@ -91,5 +100,45 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> authService.login(new LoginRequestDto("jane@example.com", "pw")))
                 .isInstanceOf(InvalidCredentialsException.class);
+    }
+
+    @Test
+    void refreshReturnsNewAccessTokenAndRotatedRefreshToken() {
+        User user = new User();
+        user.setId(UUID.randomUUID());
+        user.setEmail("jane@example.com");
+        Instant refreshExpiresAt = Instant.parse("2030-02-01T00:00:00Z");
+        when(refreshTokenService.rotate("old-refresh")).thenReturn(new RefreshTokenService.RotatedRefreshToken(
+                user, new RefreshTokenService.IssuedRefreshToken("new-refresh", refreshExpiresAt)));
+        Instant expiresAt = Instant.parse("2030-01-01T00:00:00Z");
+        when(jwtService.generate(user)).thenReturn(new JwtService.IssuedToken("access-value", expiresAt));
+
+        AuthResponseDto response = authService.refresh("old-refresh");
+
+        assertThat(response.accessToken()).isEqualTo("access-value");
+        assertThat(response.tokenType()).isEqualTo("Bearer");
+        assertThat(response.expiresAt()).isEqualTo(expiresAt);
+        assertThat(response.refreshToken()).isEqualTo("new-refresh");
+        assertThat(response.refreshTokenExpiresAt()).isEqualTo(refreshExpiresAt);
+        // A refresh is not a login
+        assertThat(user.getLastLoginAt()).isNull();
+        verifyNoInteractions(authenticationManager, userRepository);
+    }
+
+    @Test
+    void refreshWithInvalidTokenPropagatesAndIssuesNoAccessToken() {
+        when(refreshTokenService.rotate("bad")).thenThrow(new InvalidRefreshTokenException());
+
+        assertThatThrownBy(() -> authService.refresh("bad")).isInstanceOf(InvalidRefreshTokenException.class);
+
+        verifyNoInteractions(jwtService);
+    }
+
+    @Test
+    void logoutRevokesRefreshToken() {
+        authService.logout("refresh-value");
+
+        verify(refreshTokenService).revoke("refresh-value");
+        verifyNoInteractions(authenticationManager, userRepository, jwtService);
     }
 }

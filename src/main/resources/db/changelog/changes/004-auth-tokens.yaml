@@ -1,0 +1,126 @@
+databaseChangeLog:
+- changeSet:
+    id: 004-create-refresh-tokens
+    author: julien-metral
+    comment: >
+      Opaque refresh tokens. Only the SHA-256 hash of a token is stored. Tokens rotate on every use
+      and share a family_id, so the whole family can be revoked when a used token is replayed.
+    changes:
+    - createTable:
+        tableName: refresh_tokens
+        columns:
+        - column:
+            name: id
+            type: UUID
+            defaultValueComputed: uuidv7()
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: refresh_tokensPK
+        - column:
+            name: user_id
+            type: UUID
+            constraints:
+              nullable: false
+        - column:
+            name: token_hash
+            type: VARCHAR(64)
+            constraints:
+              nullable: false
+        - column:
+            name: family_id
+            type: UUID
+            constraints:
+              nullable: false
+        - column:
+            name: created_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+            constraints:
+              nullable: false
+        - column:
+            name: expires_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+            constraints:
+              nullable: false
+        - column:
+            name: revoked_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+    - addUniqueConstraint:
+        tableName: refresh_tokens
+        columnNames: token_hash
+        constraintName: refresh_tokens_token_hashUQ
+    - addForeignKeyConstraint:
+        baseTableName: refresh_tokens
+        baseColumnNames: user_id
+        constraintName: refresh_tokens_userFK
+        referencedTableName: users
+        referencedColumnNames: id
+    - createIndex:
+        tableName: refresh_tokens
+        indexName: refresh_tokens_user_idIDX
+        columns:
+        - column:
+            name: user_id
+    - createIndex:
+        tableName: refresh_tokens
+        indexName: refresh_tokens_family_idIDX
+        columns:
+        - column:
+            name: family_id
+
+- changeSet:
+    id: 004-create-email-verification-tokens
+    author: julien-metral
+    comment: >
+      Single-use email verification tokens. Only the SHA-256 hash of a token is stored.
+    changes:
+    - createTable:
+        tableName: email_verification_tokens
+        columns:
+        - column:
+            name: id
+            type: UUID
+            defaultValueComputed: uuidv7()
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: email_verification_tokensPK
+        - column:
+            name: user_id
+            type: UUID
+            constraints:
+              nullable: false
+        - column:
+            name: token_hash
+            type: VARCHAR(64)
+            constraints:
+              nullable: false
+        - column:
+            name: created_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+            constraints:
+              nullable: false
+        - column:
+            name: expires_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+            constraints:
+              nullable: false
+        - column:
+            name: used_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+    - addUniqueConstraint:
+        tableName: email_verification_tokens
+        columnNames: token_hash
+        constraintName: email_verification_tokens_token_hashUQ
+    - addForeignKeyConstraint:
+        baseTableName: email_verification_tokens
+        baseColumnNames: user_id
+        constraintName: email_verification_tokens_userFK
+        referencedTableName: users
+        referencedColumnNames: id
+    - createIndex:
+        tableName: email_verification_tokens
+        indexName: email_verification_tokens_user_idIDX
+        columns:
+        - column:
+            name: user_id

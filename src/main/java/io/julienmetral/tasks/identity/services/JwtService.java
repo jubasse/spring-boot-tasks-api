@@ -1,15 +1,13 @@
 package io.julienmetral.tasks.identity.services;
 
+import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.security.JwtProperties;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
-import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -26,35 +24,32 @@ public class JwtService {
         this.jwtProperties = jwtProperties;
     }
 
+    /** Issues an access token from the user's current state in the database (used on login and on refresh). */
     public IssuedToken generate(
-            Authentication authentication,
-            UUID userId
+            User user
     ) {
         Instant now = Instant.now();
         Instant expiresAt = now.plus(
                 jwtProperties.ttl()
         );
 
-        var roles = authentication
-                .getAuthorities()
+        var roles = user
+                .getRoles()
                 .stream()
-                .map(GrantedAuthority::getAuthority)
-                .filter(Objects::nonNull)
-                .filter(authority ->
-                        authority.startsWith("ROLE_")
-                )
+                .map(role -> "ROLE_" + role.name())
+                .sorted()
                 .toList();
 
         JwtClaimsSet claims = JwtClaimsSet
                 .builder()
                 .issuer(jwtProperties.issuer())
-                .subject(authentication.getName())
+                .subject(user.getEmail())
                 .issuedAt(now)
                 .expiresAt(expiresAt)
                 .id(UUID.randomUUID().toString())
                 .claim(
                         "uid",
-                        userId.toString()
+                        user.getId().toString()
                 )
                 .claim(
                         "roles",
