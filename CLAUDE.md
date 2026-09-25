@@ -16,6 +16,8 @@ Spring Boot 4.1 REST API (Java 25, Maven wrapper) backed by PostgreSQL 18. Sprin
 ./mvnw test -Dtest=TasksApplicationTests#contextLoads   # a single test
 ```
 
+Tests need no `.env`: `src/test/resources/config/application.yaml` provides a test-only JWT secret. Spring Boot loads that file on top of the main `application.yaml`.
+
 `./mvnw test` also writes a JaCoCo coverage report to `target/site/jacoco/index.html` (raw numbers in `jacoco.csv`).
 
 Local config lives in `.env` (git-ignored; copy `.env.example`). `compose.yaml` reads `POSTGRES_*` from it, and `application.yaml` imports it (`spring.config.import: optional:file:.env[.properties]`), which resolves `security.jwt.secret: ${JWT_SECRET}`. `JWT_SECRET` must be Base64 that decodes to at least 32 bytes (`openssl rand -base64 32`); `JwtConfiguration` fails startup otherwise. The import path is relative, so run the app from the project root.
@@ -82,4 +84,15 @@ Domain exceptions live in each feature's `exceptions` package and are mapped to 
 
 ## Testing
 
-Tests use `@SpringBootTest` + `@Import(TestcontainersConfiguration.class)`. That configuration provides a `@ServiceConnection` `PostgreSQLContainer`, so Liquibase migrations run against a real Postgres. There is currently only a context-load test.
+- **Unit tests** (`*Test`) cover services and security components in isolation, with JUnit 5, Mockito (`@ExtendWith(MockitoExtension.class)`) and AssertJ. They mirror the package of the class under test.
+- **Integration tests** (`*Tests`) use `@SpringBootTest` + `@AutoConfigureMockMvc` + `@Import(TestcontainersConfiguration.class)`. That configuration provides a `@ServiceConnection` `PostgreSQLContainer`, so Liquibase migrations run against a real Postgres.
+  - Most tests authenticate with the `jwt()` post-processor, a `uid` claim and a `ROLE_*` authority. The acting user must exist in the database, because `TaskEventService` loads it.
+  - `AuthControllerTests` sends real `Authorization: Bearer` tokens obtained from the login endpoint.
+- The containers are shared across test classes. Use unique emails and references (random UUIDs) in every test.
+
+## Git workflow and CI
+
+- **Branches:** `features/<name>` → PR to `develop` → `release/<version>`, tagged `v<version>` → merged to `main` → merged back to `develop`.
+- **Commits:** keep them small, and never mix production code and its tests in one commit. Use Conventional Commits prefixes (`feat`, `fix`, `test`, `build`, `ci`, `docs`, `chore`) in English.
+- **CI:** `.github/workflows/ci.yml` runs `./mvnw verify` (tests + JaCoCo report artifact) and a gitleaks secret scan. It runs on pushes to those branches, on `v*` tags, and on PRs to `develop`/`main`. Actions are pinned to commit SHAs.
+- **Secret scanning:** run `gitleaks git . --redact` locally before pushing (gitleaks is installed through mise).
