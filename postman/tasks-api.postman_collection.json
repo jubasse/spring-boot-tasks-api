@@ -3,7 +3,7 @@
     "_postman_id": "f17dee61-bebc-4ffb-bf70-185dcbc8970a",
     "name": "Tasks API",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Spring Boot `tasks` API (http://localhost:8080).\n\n## First run\n1. **0. Setup**: creates the `userEmail` and `adminEmail` accounts (both get the USER role).\n2. Grant ADMIN to the second account (no admin is created automatically):\n   ```sql\n   INSERT INTO user_roles (user_id, role) VALUES ('<adminId>', 'ADMIN');\n   ```\n   `adminId` is stored in the collection variables after sign-up.\n3. **Auth**: run \"Login — user\" and \"Login — admin\". Access tokens expire after 15 minutes: run \"Refresh — user\" to get a new one without logging in again.\n4. **Email verification**: needs the Mailpit service of `compose.yaml` (web UI on http://localhost:8025).\n5. Then run *Tasks*, *Task events* and *Cleanup* in order (or use the Collection Runner).\n\n## Authentication\nBearer JWT. Each request uses `{{userToken}}` or `{{adminToken}}` depending on the role it needs. Requests suffixed with (401), (403) or (404) check error cases.\n"
+    "description": "Spring Boot `tasks` API (http://localhost:8080).\n\n## First run\n1. **0. Setup**: creates the `userEmail`, `adminEmail` and `unverifiedEmail` accounts (all get the USER role).\n2. Grant ADMIN to the second account (no admin is created automatically):\n   ```sql\n   INSERT INTO user_roles (user_id, role) VALUES ('<adminId>', 'ADMIN');\n   ```\n   `adminId` is stored in the collection variables after sign-up.\n3. **Auth**: run \"Login — user\" and \"Login — admin\". Access tokens expire after 15 minutes: run \"Refresh — user\" to get a new one without logging in again.\n4. **Email verification**: needs the Mailpit service of `compose.yaml` (web UI on http://localhost:8025).\n5. Then run *Tasks*, *Task events* and *Cleanup* in order (or use the Collection Runner).\n\nTask endpoints are reserved to enabled users with a verified email: the *Email verification* folder verifies the user and the admin.\n\n## Authentication\nBearer JWT. Each request uses `{{userToken}}` or `{{adminToken}}` depending on the role it needs. Requests suffixed with (401), (403) or (404) check error cases.\n"
   },
   "auth": {
     "type": "bearer",
@@ -95,6 +95,18 @@
     {
       "key": "newUserPassword",
       "value": "new-password-456"
+    },
+    {
+      "key": "unverifiedEmail",
+      "value": "unverified@example.com"
+    },
+    {
+      "key": "unverifiedUserId",
+      "value": ""
+    },
+    {
+      "key": "unverifiedToken",
+      "value": ""
     }
   ],
   "item": [
@@ -193,6 +205,54 @@
                 "exec": [
                   "pm.test('status is one of [201]', () => pm.expect(pm.response.code).to.be.oneOf([201]));",
                   "if (pm.response.code === 201) pm.collectionVariables.set('adminId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sign up — unverified user",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users"
+              ]
+            },
+            "description": "Public. This account never verifies its email: it cannot use tasks or be assigned one.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{unverifiedEmail}}\",\n  \"password\": \"{{userPassword}}\",\n  \"displayName\": \"Unverified User\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [201]', () => pm.expect(pm.response.code).to.be.oneOf([201]));",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('unverifiedUserId', pm.response.json().id);"
                 ]
               }
             }
@@ -559,12 +619,61 @@
               }
             }
           ]
+        },
+        {
+          "name": "Login — unverified user",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Login works without a verified email; task endpoints do not.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{unverifiedEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.collectionVariables.set('unverifiedToken', pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
     {
       "name": "Email verification",
-      "description": "Sign-up sends a verification email to Mailpit. These requests read it through the Mailpit API, so no copy-paste is needed. Login does not require a verified email.",
+      "description": "Sign-up sends a verification email to Mailpit. These requests read it through the Mailpit API, so no copy-paste is needed. Login does not require a verified email, but task endpoints do: both the user and the admin verify here.",
       "item": [
         {
           "name": "Resend verification email",
@@ -872,6 +981,143 @@
                 "exec": [
                   "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
                   "pm.test('emailVerifiedAt is set', () => pm.expect(pm.response.json().emailVerifiedAt).to.not.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mailpit — find admin verification email",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{mailpitUrl}}/api/v1/search?query=to:\"{{adminEmail}}\" subject:\"Verify your email address\"",
+              "host": [
+                "{{mailpitUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "to:\"{{adminEmail}}\" subject:\"Verify your email address\""
+                }
+              ]
+            },
+            "description": "The admin must verify their email too: task endpoints are reserved to verified users.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Emails are sent asynchronously after commit: give the SMTP catcher a moment",
+                  "setTimeout(() => {}, 1500);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "const body = pm.response.json();",
+                  "pm.test('an email was received', () => pm.expect(body.messages.length).to.be.above(0));",
+                  "pm.collectionVariables.set('mailpitMessageId', body.messages[0].ID);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mailpit — extract admin verification token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{mailpitUrl}}/api/v1/message/{{mailpitMessageId}}",
+              "host": [
+                "{{mailpitUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "message",
+                "{{mailpitMessageId}}"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "const match = pm.response.json().Text.match(/[?&]token=([A-Za-z0-9_-]{43})/);",
+                  "pm.test('email contains a token', () => pm.expect(match).to.not.be.null);",
+                  "pm.collectionVariables.set('verificationToken', match[1]);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify admin email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/verify-email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "verify-email"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{verificationToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [204]', () => pm.expect(pm.response.code).to.be.oneOf([204]));"
                 ]
               }
             }
@@ -1472,7 +1718,7 @@
                 "tasks"
               ]
             },
-            "description": "Any authenticated user can create a task without `assignedTo`.",
+            "description": "Any enabled user with a verified email can create a task without `assignedTo`.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"reference\": \"USR-{{$timestamp}}\",\n  \"title\": \"Task created by a user\",\n  \"priority\": \"LOW\"\n}",
@@ -1576,7 +1822,7 @@
                 "{{taskId}}"
               ]
             },
-            "description": "Any authenticated user.",
+            "description": "Enabled users with a verified email only. `assignedTo`, `createdBy` carry a `status`: ACTIVE, UNVERIFIED, DISABLED or DELETED.",
             "auth": {
               "type": "bearer",
               "bearer": [
@@ -1594,7 +1840,208 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.test('assignee is shown as ACTIVE', () => pm.expect(pm.response.json().assignedTo.status).to.eql('ACTIVE'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List tasks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks?page=0&size=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "tasks"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Enabled users with a verified email only. Paginated (`page`, `size`, `sort`), newest first by default; archived tasks are excluded unless `archived=true`.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.test('is a page', () => pm.expect(pm.response.json()).to.have.property('content'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List tasks assigned to the user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks?assigneeId={{userId}}&status=TO_DO",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "tasks"
+              ],
+              "query": [
+                {
+                  "key": "assigneeId",
+                  "value": "{{userId}}"
+                },
+                {
+                  "key": "status",
+                  "value": "TO_DO"
+                }
+              ]
+            },
+            "description": "Filters: `status`, `assigneeId`, `archived`.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "const content = pm.response.json().content;",
+                  "pm.test('only the user\\'s tasks', () => content.forEach(t => pm.expect(t.assignedTo.id).to.eql(pm.collectionVariables.get('userId'))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List tasks as an unverified user (403)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "tasks"
+              ]
+            },
+            "description": "An unverified, disabled or deleted account gets 403 on every task endpoint, even with a valid token.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{unverifiedToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [403]', () => pm.expect(pm.response.code).to.be.oneOf([403]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assign a task to an unverified user (422)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks/{{taskId}}/assign",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "tasks",
+                "{{taskId}}",
+                "assign"
+              ]
+            },
+            "description": "Only enabled users with a verified email can be assigned.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{unverifiedUserId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [422]', () => pm.expect(pm.response.code).to.be.oneOf([422]));",
+                  "pm.test('explains why', () => pm.expect(pm.response.json().title).to.eql('User cannot be assigned'));"
                 ]
               }
             }
@@ -1901,6 +2348,53 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List archived tasks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks?archived=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "tasks"
+              ],
+              "query": [
+                {
+                  "key": "archived",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.test('contains the archived task', () => pm.expect(pm.response.json().content.map(t => t.id)).to.include(pm.collectionVariables.get('taskId')));"
                 ]
               }
             }
