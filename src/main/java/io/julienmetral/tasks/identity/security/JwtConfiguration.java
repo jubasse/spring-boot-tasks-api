@@ -11,7 +11,10 @@ import javax.crypto.spec.SecretKeySpec;
 import java.util.Base64;
 
 @Configuration
-@EnableConfigurationProperties(JwtProperties.class)
+@EnableConfigurationProperties({
+        JwtProperties.class,
+        RefreshTokenProperties.class
+})
 public class JwtConfiguration {
 
     @Bean

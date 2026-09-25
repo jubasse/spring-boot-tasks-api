@@ -3,6 +3,8 @@ security:
     issuer: tasks-api
     ttl: 15m
     secret: ${JWT_SECRET}
+  refresh-token:
+    ttl: 30d
 mail:
   from: ${MAIL_FROM:no-reply@tasks.local}
 spring:
