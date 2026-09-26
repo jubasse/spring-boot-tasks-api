@@ -54,6 +54,8 @@ class NotificationSettingsServiceTest {
         settings.setTaskUnassigned(true);
         settings.setTaskCancelled(false);
         settings.setTaskDeleted(true);
+        settings.setTaskCommented(false);
+        settings.setTaskMentioned(true);
         settings.setUpdatedAt(Instant.parse("2026-01-01T00:00:00Z"));
         return settings;
     }
@@ -82,6 +84,8 @@ class NotificationSettingsServiceTest {
         assertThat(result.isTaskUnassigned()).isTrue();
         assertThat(result.isTaskCancelled()).isTrue();
         assertThat(result.isTaskDeleted()).isTrue();
+        assertThat(result.isTaskCommented()).isTrue();
+        assertThat(result.isTaskMentioned()).isTrue();
         assertThat(result.getUpdatedAt()).isNull();
         verify(settingsRepository, never()).save(any());
     }
@@ -105,7 +109,7 @@ class NotificationSettingsServiceTest {
         Instant before = Instant.now();
 
         NotificationSettings result = service.update(
-                USER_ID, new NotificationSettingsDto(false, true, false, true)
+                USER_ID, new NotificationSettingsDto(false, true, false, true, false, true)
         );
 
         ArgumentCaptor<NotificationSettings> captor = ArgumentCaptor.forClass(NotificationSettings.class);
@@ -119,6 +123,8 @@ class NotificationSettingsServiceTest {
         assertThat(saved.isTaskUnassigned()).isTrue();
         assertThat(saved.isTaskCancelled()).isFalse();
         assertThat(saved.isTaskDeleted()).isTrue();
+        assertThat(saved.isTaskCommented()).isFalse();
+        assertThat(saved.isTaskMentioned()).isTrue();
         assertThat(saved.getUpdatedAt()).isBetween(before, Instant.now());
     }
 
@@ -132,7 +138,7 @@ class NotificationSettingsServiceTest {
         when(settingsRepository.save(existing)).thenReturn(existing);
 
         NotificationSettings result = service.update(
-                USER_ID, new NotificationSettingsDto(true, false, true, false)
+                USER_ID, new NotificationSettingsDto(true, false, true, false, true, false)
         );
 
         assertThat(result).isSameAs(existing);
@@ -140,6 +146,8 @@ class NotificationSettingsServiceTest {
         assertThat(existing.isTaskUnassigned()).isFalse();
         assertThat(existing.isTaskCancelled()).isTrue();
         assertThat(existing.isTaskDeleted()).isFalse();
+        assertThat(existing.isTaskCommented()).isTrue();
+        assertThat(existing.isTaskMentioned()).isFalse();
         assertThat(existing.getUpdatedAt()).isAfter(previousUpdate);
     }
 
@@ -151,7 +159,7 @@ class NotificationSettingsServiceTest {
         when(settingsRepository.findById(USER_ID)).thenReturn(Optional.empty());
         when(settingsRepository.save(any(NotificationSettings.class))).thenReturn(persisted);
 
-        assertThat(service.update(USER_ID, new NotificationSettingsDto(true, true, true, true)))
+        assertThat(service.update(USER_ID, new NotificationSettingsDto(true, true, true, true, true, true)))
                 .isSameAs(persisted);
     }
 
@@ -159,7 +167,7 @@ class NotificationSettingsServiceTest {
     void updateThrowsWhenUserDoesNotExist() {
         when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.update(USER_ID, new NotificationSettingsDto(true, true, true, true)))
+        assertThatThrownBy(() -> service.update(USER_ID, new NotificationSettingsDto(true, true, true, true, true, true)))
                 .isInstanceOf(UserNotFoundException.class)
                 .hasMessageContaining(USER_ID.toString());
         verifyNoInteractions(settingsRepository);
@@ -176,13 +184,15 @@ class NotificationSettingsServiceTest {
 
     @Test
     void isEnabledReturnsTheStoredSwitchOfEachType() {
-        // stored(): assigned off, unassigned on, cancelled off, deleted on
+        // stored(): assigned off, unassigned on, cancelled off, deleted on, commented off, mentioned on
         when(settingsRepository.findById(USER_ID)).thenReturn(Optional.of(stored(user())));
 
         assertThat(service.isEnabled(USER_ID, TaskNotificationType.ASSIGNED)).isFalse();
         assertThat(service.isEnabled(USER_ID, TaskNotificationType.UNASSIGNED)).isTrue();
         assertThat(service.isEnabled(USER_ID, TaskNotificationType.CANCELLED)).isFalse();
         assertThat(service.isEnabled(USER_ID, TaskNotificationType.DELETED)).isTrue();
+        assertThat(service.isEnabled(USER_ID, TaskNotificationType.COMMENTED)).isFalse();
+        assertThat(service.isEnabled(USER_ID, TaskNotificationType.MENTIONED)).isTrue();
         verifyNoInteractions(userRepository);
     }
 }

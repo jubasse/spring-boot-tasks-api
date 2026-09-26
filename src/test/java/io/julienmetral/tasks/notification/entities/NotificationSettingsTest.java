@@ -21,6 +21,8 @@ class NotificationSettingsTest {
         assertThat(settings.isTaskUnassigned()).isTrue();
         assertThat(settings.isTaskCancelled()).isTrue();
         assertThat(settings.isTaskDeleted()).isTrue();
+        assertThat(settings.isTaskCommented()).isTrue();
+        assertThat(settings.isTaskMentioned()).isTrue();
         assertThat(settings.getUpdatedAt()).isNull();
     }
 
@@ -38,6 +40,8 @@ class NotificationSettingsTest {
         assertThat(settings.isTaskUnassigned()).isTrue();
         assertThat(settings.isTaskCancelled()).isTrue();
         assertThat(settings.isTaskDeleted()).isTrue();
+        assertThat(settings.isTaskCommented()).isTrue();
+        assertThat(settings.isTaskMentioned()).isTrue();
         // Not persisted yet: no timestamp until the user changes something.
         assertThat(settings.getUpdatedAt()).isNull();
     }
@@ -66,6 +70,8 @@ class NotificationSettingsTest {
             case UNASSIGNED -> onlyThisOneOff.setTaskUnassigned(false);
             case CANCELLED -> onlyThisOneOff.setTaskCancelled(false);
             case DELETED -> onlyThisOneOff.setTaskDeleted(false);
+            case COMMENTED -> onlyThisOneOff.setTaskCommented(false);
+            case MENTIONED -> onlyThisOneOff.setTaskMentioned(false);
         }
 
         for (TaskNotificationType other : TaskNotificationType.values()) {
