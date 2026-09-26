@@ -30,6 +30,11 @@ storage:
   aws-s3:
     # Credentials come from the AWS default chain (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, IAM role, ...)
     region: ${AWS_REGION:eu-west-3}
+antivirus:
+  enabled: ${ANTIVIRUS_ENABLED:true}
+  host: ${CLAMAV_HOST:localhost}
+  port: ${CLAMAV_PORT:3310}
+  timeout: 60s
 media:
   avatar-max-size: 5MB
   attachment-max-size: 25MB
