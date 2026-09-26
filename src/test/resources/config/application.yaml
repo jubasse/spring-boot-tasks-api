@@ -8,3 +8,7 @@ task:
   reminders:
     # Tests call TaskReminderService directly: a scheduled run could email tasks of other tests mid-assertion
     enabled: false
+identity:
+  retention:
+    # Tests call UserRetentionService directly with a fixed clock
+    enabled: false
