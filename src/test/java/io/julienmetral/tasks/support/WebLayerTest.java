@@ -43,8 +43,8 @@ import java.lang.annotation.Target;
  * stubs it with {@link WebCallers#everyAccountIsActive}.
  * <p>
  * Warning: this annotation loads all controllers on purpose, so that every web test shares one cached context. Naming
- * the controllers of a class, or adding a mock or an import to a single class, creates another context, and the
- * context cache holds 8: an extra context evicts an integration context, whose containers then restart.
+ * the controllers of a class, or adding a mock or an import to a single class, creates another context, which counts
+ * against the context cache cap of {@code spring.properties}.
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
