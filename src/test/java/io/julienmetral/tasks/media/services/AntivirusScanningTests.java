@@ -43,7 +43,7 @@ class AntivirusScanningTests {
     private static final byte[] EICAR = "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
             .getBytes(StandardCharsets.US_ASCII);
 
-    private static final String EICAR_THREAT = "Eicar-Test-Signature";
+    private static final String EICAR_THREAT = TestcontainersConfiguration.EICAR_THREAT;
 
     @Autowired
     private MediaService mediaService;
