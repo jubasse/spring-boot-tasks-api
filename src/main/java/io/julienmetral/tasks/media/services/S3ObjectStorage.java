@@ -7,11 +7,14 @@ import org.springframework.http.ContentDisposition;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.S3Object;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
 
 /** Serves both S3 drivers (rustfs, aws-s3): they differ only in how the client is configured. */
 @RequiredArgsConstructor
@@ -42,6 +45,21 @@ public class S3ObjectStorage implements ObjectStorage {
     public void delete(String key) {
         try {
             s3Client.deleteObject(request -> request.bucket(bucket).key(key));
+        } catch (SdkException exception) {
+            throw new StorageUnavailableException(exception);
+        }
+    }
+
+    @Override
+    public List<String> listKeysModifiedBefore(Instant cutoff) {
+        try {
+            return s3Client
+                    .listObjectsV2Paginator(request -> request.bucket(bucket))
+                    .contents()
+                    .stream()
+                    .filter(object -> object.lastModified().isBefore(cutoff))
+                    .map(S3Object::key)
+                    .toList();
         } catch (SdkException exception) {
             throw new StorageUnavailableException(exception);
         }
