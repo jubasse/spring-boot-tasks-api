@@ -52,13 +52,13 @@ Passwords are hashed with Argon2id (`SecurityConfiguration.passwordEncoder`, Bou
 Package-by-feature under `io.julienmetral.tasks`, and each feature uses the same sub-packages (`controllers`, `services`, `repositories`, `entities`, `dtos`, `exceptions`, `security`):
 
 - `identity`: users, login, JWT and refresh tokens, email verification, user-level authorization.
-- `task`: tasks, their event log and their attachments (`/api/v1/tasks/{id}/attachments`: added by an admin or the assignee, listed by any active user, removed by an admin or the uploader; additions and removals are history events).
+- `task`: tasks, their event log and their attachments (`/api/v1/tasks/{id}/attachments`: added by an admin or the assignee, listed by any active user, removed by an admin or the uploader; additions and removals are history events) and their comments (see Task comments below).
 - `mail`: the cross-cutting mail service (see Mail below).
 - `media`: stored files and their metadata (see Media storage below). Its sub-packages are `model` (entities, enums and value records), `services`, `repositories`, `controllers` and `exceptions`.
 - `config`: application-wide technical configuration, such as the storage drivers.
 - `notification`: task email notifications and their per-user settings.
-  - **Settings:** `GET`/`PUT /api/v1/users/{id}/notification-settings`, for the user or an admin. There is one switch per task event, and a user without a stored row gets `NotificationSettings.defaults` (everything enabled).
-  - **Emails:** `TaskService` publishes domain events (`task.events.TaskAssigned`, `TaskUnassigned`, `TaskCancelled`, `TaskDeleted`), and `notification.mail.TaskNotificationSender` turns them into emails. Only the concerned assignee receives one, never about their own action, only while their account is active, and only if the matching switch is on. The `task` package never depends on `notification`.
+  - **Settings:** `GET`/`PUT /api/v1/users/{id}/notification-settings`, for the user or an admin. There is one switch per task event (plus `taskCommented` and `taskMentioned`), and a user without a stored row gets `NotificationSettings.defaults` (everything enabled).
+  - **Emails:** `TaskService` and `TaskCommentService` publish domain events (`task.events.TaskAssigned`, `TaskUnassigned`, `TaskCancelled`, `TaskDeleted`, `TaskCommentAdded`, `UsersMentionedInComment`), and `notification.mail.TaskNotificationSender` turns them into emails. Only the concerned assignee (or mentioned user) receives one, never about their own action, only while their account is active, and only if the matching switch is on. The `task` package never depends on `notification`.
 - `shared`: the auditable base entity, the global `ApiExceptionHandler` (`@RestControllerAdvice` returning `ProblemDetail`), and the reusable security annotations.
 
 Controllers are under `/api/v1/...`. Services own transactions and return entities, and controllers wrap them in response DTOs.
@@ -84,6 +84,14 @@ Only **active** users can work on tasks. Active means enabled, not deleted, and 
 - **Assignees:** `TaskService` refuses to assign a task to a user who is not active and throws `AssigneeNotActiveException` (422).
 - **Responses:** task responses and task history expose referenced users as `UserPreviewResponseDto(id, displayName, status)`, with `status` one of `ACTIVE`, `UNVERIFIED`, `DISABLED` or `DELETED`.
 - **Listing:** `GET /api/v1/tasks` is paginated and filters on `status`, `assigneeId` and `archived`, which defaults to false.
+
+### Task comments
+
+`/api/v1/tasks/{id}/comments`: any active user posts (JSON `{"body"}`, or multipart with a `body` field and up to 5 `files`) and lists them (paginated, oldest first). Only the author edits, admins included; the author or an admin deletes.
+- **Files** posted with a comment are task attachments with `comment_id` set, so they also appear in the task's attachment list. Deleting the comment deletes them.
+- **Mentions** are `<@user-id>` tokens in the body (`CommentMentions`), stored in `task_comment_mentions` and returned as `mentions`. A new mention must name an active user (`InvalidMentionException`, 422); an edit validates and notifies only the users it mentions for the first time.
+- **Emails:** mentioned users get a mention email; the assignee gets a comment email unless they are mentioned too.
+- Posting, editing and deleting are history events (`COMMENT_ADDED`, `COMMENT_EDITED`, `COMMENT_DELETED`); each file also records `ATTACHMENT_ADDED`/`ATTACHMENT_REMOVED`.
 
 ### Soft-deleted users in associations
 
@@ -136,8 +144,9 @@ Authorization is declared with custom meta-annotations wrapping `@PreAuthorize`,
 - `@AdminOnly`, `@AllowedRoles(...)`: role checks.
 - `@SelfOnly`, `@AllowedRolesOrSelfOnly(...)`: delegate to the `userAuthorization` bean (`UserAuthorization`).
 - `@AllowedRolesOrAssignedToOnly(...)` (in `task.security`): delegates to the `taskAuthorization` bean (`TaskAuthorization`).
+- `@AllowedRolesOrUploaderOnly(...)`, `@CommentAuthorOnly`, `@AllowedRolesOrCommentAuthorOnly(...)` (in `task.security`): delegate to `taskAttachmentAuthorization` and `taskCommentAuthorization`, and read `#attachmentId` or `#commentId` instead.
 
-The SpEL in these annotations references the method parameter **`#id`**, so the annotated controller methods must name their path variable `id`. New ownership rules follow the same pattern: add a `@Component("name")` bean with a boolean method, plus a meta-annotation.
+The SpEL in the other annotations references the method parameter **`#id`**, so the annotated controller methods must name their path variable `id`. New ownership rules follow the same pattern: add a `@Component("name")` bean with a boolean method, plus a meta-annotation.
 
 ### Task event log
 
