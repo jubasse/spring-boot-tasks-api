@@ -12,3 +12,6 @@ identity:
   retention:
     # Tests call UserRetentionService directly with a fixed clock
     enabled: false
+rate-limit:
+  # Most tests log in and sign up many times from the same address; RateLimitTests turns the limits on
+  enabled: false

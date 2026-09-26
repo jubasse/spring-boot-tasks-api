@@ -23,6 +23,16 @@ identity:
     deletion-notice: 30d
 mail:
   from: ${MAIL_FROM:no-reply@tasks.local}
+# Requests counted per client address or account on the endpoints anyone can call; over a limit, 429 with Retry-After
+rate-limit:
+  enabled: ${RATE_LIMIT_ENABLED:true}
+  purge-cron: 0 20 * * * *
+  login-per-ip: {requests: 30, window: PT1M}
+  login-per-email: {requests: 10, window: PT15M}
+  sign-up-per-ip: {requests: 20, window: PT1H}
+  password-reset-per-ip: {requests: 20, window: PT1H}
+  password-reset-per-email: {requests: 3, window: PT1H}
+  verification-resend-per-user: {requests: 3, window: PT1H}
 # Messages for RabbitMQ are written to an outbox table in the business transaction, then published after commit
 messaging:
   outbox:
@@ -67,6 +77,10 @@ task:
     cron: ${TASK_REMINDERS_CRON:0 */15 * * * *}
     due-soon-lead-time: 24h
     overdue-lookback: 7d
+# Behind a reverse proxy, set FORWARD_HEADERS_STRATEGY=native (or framework) so that the client address used by the
+# rate limits comes from X-Forwarded-For; without a proxy, keep none, or clients could pick their own address
+server:
+  forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
 spring:
   config:
     import: optional:file:.env[.properties]
