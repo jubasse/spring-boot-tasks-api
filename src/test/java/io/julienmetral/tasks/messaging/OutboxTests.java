@@ -162,6 +162,24 @@ class OutboxTests {
     }
 
     @Test
+    void messageForAQueueThatDoesNotExistStaysUnpublishedWithTheReturnReason() {
+        String email = uniqueEmail();
+        String missingQueue = "outbox-tests.missing-" + UUID.randomUUID();
+
+        inTransaction().executeWithoutResult(status ->
+                outbox.enqueue(missingQueue, new MailMessage(email, "Unroutable", "No queue to receive it")));
+
+        UUID id = rowIdSentTo(email);
+        insertedRows.add(id);
+        await().atMost(PUBLISH_TIMEOUT).pollInterval(Duration.ofMillis(50))
+                .until(() -> repository.findById(id).orElseThrow().getAttempts() == 1);
+
+        OutboxMessage row = repository.findById(id).orElseThrow();
+        assertThat(row.getPublishedAt()).isNull();
+        assertThat(row.getLastError()).isEqualTo("No queue " + missingQueue + " to route to: NO_ROUTE");
+    }
+
+    @Test
     void enqueueOutsideATransactionIsRefusedAndWritesNothing() {
         String email = uniqueEmail();
         MailMessage message = new MailMessage(email, "Refused", "No transaction to join");

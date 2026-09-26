@@ -12,12 +12,11 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.amqp.AmqpConnectException;
-import org.springframework.amqp.AmqpTimeoutException;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageDeliveryMode;
 import org.springframework.amqp.core.MessageProperties;
-import org.springframework.amqp.rabbit.core.RabbitOperations;
-import org.springframework.amqp.rabbit.core.RabbitOperations.OperationsCallback;
+import org.springframework.amqp.core.ReturnedMessage;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
@@ -32,6 +31,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -40,7 +40,6 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -69,9 +68,6 @@ class OutboxRelayTest {
     @Mock
     private RabbitTemplate rabbitTemplate;
 
-    @Mock
-    private RabbitOperations channelOperations;
-
     private OutboxRelay relay;
 
     @BeforeEach
@@ -84,7 +80,7 @@ class OutboxRelayTest {
         OutboxMessage row = row("mail.send", "io.julienmetral.tasks.mail.MailMessage",
                 Map.of("to", "jane@example.com", "subject", "Subject", "text", "Body"));
         when(repository.lockUnpublished(List.of(row.getId()))).thenReturn(List.of(row));
-        brokerRunsTheCallbackOnAChannel();
+        brokerConfirms();
 
         relay.publishNow(List.of(row.getId()));
 
@@ -104,23 +100,25 @@ class OutboxRelayTest {
     }
 
     @Test
-    void publishNowWaitsForTheBrokerConfirmAfterSending() {
+    void messageNotConfirmedWithinTheTimeoutIsNotMarkedPublished() {
+        OutboxProperties shortTimeout = new OutboxProperties(Duration.ofSeconds(5), BATCH_SIZE, Duration.ofMinutes(10),
+                Duration.ofMillis(50), Duration.ofDays(7), "0 0 * * * *");
+        relay = new OutboxRelay(repository, rabbitTemplate, jsonMapper, shortTimeout, Clock.fixed(NOW, ZoneOffset.UTC));
         OutboxMessage row = mailRow();
         when(repository.lockUnpublished(List.of(row.getId()))).thenReturn(List.of(row));
-        brokerRunsTheCallbackOnAChannel();
 
         relay.publishNow(List.of(row.getId()));
 
-        var order = inOrder(channelOperations);
-        order.verify(channelOperations).send(eq(""), eq("mail.send"), any(Message.class));
-        order.verify(channelOperations).waitForConfirmsOrDie(7_000);
+        assertThat(row.getPublishedAt()).isNull();
+        assertThat(row.getAttempts()).isEqualTo(1);
+        assertThat(row.getLastError()).isEqualTo("No confirm from the broker");
     }
 
     @Test
     void confirmedRowIsMarkedPublishedNow() {
         OutboxMessage row = mailRow();
         when(repository.lockUnpublished(List.of(row.getId()))).thenReturn(List.of(row));
-        brokerRunsTheCallbackOnAChannel();
+        brokerConfirms();
 
         relay.publishNow(List.of(row.getId()));
 
@@ -154,18 +152,32 @@ class OutboxRelayTest {
     }
 
     @Test
-    void unconfirmedMessageIsNotMarkedPublished() {
+    void messageRefusedByTheBrokerIsNotMarkedPublished() {
         OutboxMessage row = mailRow();
         when(repository.lockUnpublished(List.of(row.getId()))).thenReturn(List.of(row));
-        brokerRunsTheCallbackOnAChannel();
-        doThrow(new AmqpTimeoutException("Timed out waiting for confirms"))
-                .when(channelOperations).waitForConfirmsOrDie(7_000);
+        brokerAnswers(correlation -> correlation.getFuture().complete(new CorrelationData.Confirm(false, "queue full")));
 
         relay.publishNow(List.of(row.getId()));
 
         assertThat(row.getPublishedAt()).isNull();
         assertThat(row.getAttempts()).isEqualTo(1);
-        assertThat(row.getLastError()).isEqualTo("Timed out waiting for confirms");
+        assertThat(row.getLastError()).isEqualTo("Refused by the broker: queue full");
+    }
+
+    @Test
+    void messageReturnedAsUnroutableIsNotMarkedPublishedEvenThoughTheBrokerConfirmedIt() {
+        OutboxMessage row = mailRow();
+        when(repository.lockUnpublished(List.of(row.getId()))).thenReturn(List.of(row));
+        brokerAnswers(correlation -> {
+            correlation.setReturned(new ReturnedMessage(new Message(new byte[0]), 312, "NO_ROUTE", "", "mail.send"));
+            correlation.getFuture().complete(new CorrelationData.Confirm(true, null));
+        });
+
+        relay.publishNow(List.of(row.getId()));
+
+        assertThat(row.getPublishedAt()).isNull();
+        assertThat(row.getAttempts()).isEqualTo(1);
+        assertThat(row.getLastError()).isEqualTo("No queue mail.send to route to: NO_ROUTE");
     }
 
     @Test
@@ -209,7 +221,8 @@ class OutboxRelayTest {
         OutboxMessage row = mailRow();
         when(repository.lockUnpublished(List.of(row.getId()))).thenReturn(List.of(row));
         String error = "x".repeat(999) + "yz" + "overflow";
-        doThrow(new AmqpConnectException(error, new ConnectException())).when(rabbitTemplate).invoke(any());
+        doThrow(new AmqpConnectException(error, new ConnectException()))
+                .when(rabbitTemplate).send(anyString(), anyString(), any(Message.class), any(CorrelationData.class));
 
         relay.publishNow(List.of(row.getId()));
 
@@ -221,7 +234,8 @@ class OutboxRelayTest {
         OutboxMessage row = mailRow();
         when(repository.lockUnpublished(List.of(row.getId()))).thenReturn(List.of(row));
         String error = "e".repeat(1_000);
-        doThrow(new AmqpConnectException(error, new ConnectException())).when(rabbitTemplate).invoke(any());
+        doThrow(new AmqpConnectException(error, new ConnectException()))
+                .when(rabbitTemplate).send(anyString(), anyString(), any(Message.class), any(CorrelationData.class));
 
         relay.publishNow(List.of(row.getId()));
 
@@ -235,13 +249,13 @@ class OutboxRelayTest {
                 Map.of("userId", UUID.randomUUID().toString(), "uploadId", UUID.randomUUID().toString()));
         OutboxMessage last = mailRow();
         when(repository.lockDue(NOW, BATCH_SIZE)).thenReturn(List.of(first, failing, last));
-        brokerRunsTheCallbackOnAChannel();
         doAnswer(invocation -> {
             if ("avatar.process".equals(invocation.getArgument(1))) {
                 throw new AmqpConnectException(new ConnectException("Connection reset"));
             }
+            invocation.<CorrelationData>getArgument(3).getFuture().complete(new CorrelationData.Confirm(true, null));
             return null;
-        }).when(channelOperations).send(anyString(), anyString(), any(Message.class));
+        }).when(rabbitTemplate).send(anyString(), anyString(), any(Message.class), any(CorrelationData.class));
 
         int published = relay.publishDue();
 
@@ -250,15 +264,16 @@ class OutboxRelayTest {
         assertThat(last.getPublishedAt()).isEqualTo(NOW);
         assertThat(failing.getPublishedAt()).isNull();
         assertThat(failing.getAttempts()).isEqualTo(1);
-        verify(channelOperations).send(eq(""), eq("mail.send"),
-                argThat(message -> message.getMessageProperties().getMessageId().equals(last.getId().toString())));
+        verify(rabbitTemplate).send(eq(""), eq("mail.send"),
+                argThat(message -> message.getMessageProperties().getMessageId().equals(last.getId().toString())),
+                any(CorrelationData.class));
     }
 
     @Test
     void publishDueLocksTheRowsDueNowUpToTheBatchSizeAndReturnsHowManyWerePublished() {
         List<OutboxMessage> due = List.of(mailRow(), mailRow(), mailRow());
         when(repository.lockDue(NOW, BATCH_SIZE)).thenReturn(due);
-        brokerRunsTheCallbackOnAChannel();
+        brokerConfirms();
 
         int published = relay.publishDue();
 
@@ -290,19 +305,27 @@ class OutboxRelayTest {
         assertThat(relay.deletePublished()).isEqualTo(4);
     }
 
-    private void brokerRunsTheCallbackOnAChannel() {
-        when(rabbitTemplate.invoke(any())).thenAnswer(invocation ->
-                invocation.<OperationsCallback<?>>getArgument(0).doInRabbit(channelOperations));
+    private void brokerConfirms() {
+        brokerAnswers(correlation -> correlation.getFuture().complete(new CorrelationData.Confirm(true, null)));
+    }
+
+    private void brokerAnswers(Consumer<CorrelationData> answer) {
+        doAnswer(invocation -> {
+            answer.accept(invocation.getArgument(3));
+            return null;
+        }).when(rabbitTemplate).send(anyString(), anyString(), any(Message.class), any(CorrelationData.class));
     }
 
     private void brokerIsUnreachable() {
         doThrow(new AmqpConnectException(new ConnectException("Connection refused")))
-                .when(rabbitTemplate).invoke(any());
+                .when(rabbitTemplate).send(anyString(), anyString(), any(Message.class), any(CorrelationData.class));
     }
 
     private Message sentMessage(String queue) {
         ArgumentCaptor<Message> sent = ArgumentCaptor.forClass(Message.class);
-        verify(channelOperations).send(eq(""), eq(queue), sent.capture());
+        ArgumentCaptor<CorrelationData> correlation = ArgumentCaptor.forClass(CorrelationData.class);
+        verify(rabbitTemplate).send(eq(""), eq(queue), sent.capture(), correlation.capture());
+        assertThat(correlation.getValue().getId()).isEqualTo(sent.getValue().getMessageProperties().getMessageId());
         return sent.getValue();
     }
 

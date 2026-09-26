@@ -10,6 +10,8 @@ import io.julienmetral.tasks.support.Mailpit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.AmqpConnectException;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
+import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -36,6 +38,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 
 /**
@@ -124,7 +127,7 @@ class OutboxBrokerFailureTests {
                 throw new AmqpConnectException(new ConnectException("Connection refused"));
             }
             return invocation.callRealMethod();
-        }).when(rabbitTemplate).invoke(any());
+        }).when(rabbitTemplate).send(anyString(), anyString(), any(Message.class), any(CorrelationData.class));
     }
 
     @Test

@@ -168,7 +168,11 @@ class OutboxConfigurationTest {
                     assertThat(properties.retention()).isEqualTo(Duration.ofDays(7));
                     assertThat(properties.purgeCron()).isEqualTo("0 0 * * * *");
                     assertThat(context.getEnvironment().getProperty("spring.rabbitmq.publisher-confirm-type"))
-                            .isEqualTo("simple");
+                            .isEqualTo("correlated");
+                    assertThat(context.getEnvironment().getProperty("spring.rabbitmq.publisher-returns"))
+                            .isEqualTo("true");
+                    assertThat(context.getEnvironment().getProperty("spring.rabbitmq.template.mandatory"))
+                            .isEqualTo("true");
                 });
     }
 
