@@ -17,6 +17,7 @@ import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
 import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
 import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.task.exceptions.AssigneeNotActiveException;
+import io.julienmetral.tasks.task.exceptions.TaskAttachmentNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException;
 import org.junit.jupiter.api.Test;
@@ -54,6 +55,15 @@ class ApiExceptionHandlerTest {
 
         assertThat(problem.getStatus()).isEqualTo(404);
         assertThat(problem.getDetail()).isEqualTo("Task not found with reference: TASK-1");
+    }
+
+    @Test
+    void taskAttachmentNotFoundMapsTo404() {
+        ProblemDetail problem = handler.handleTaskAttachmentNotFound(new TaskAttachmentNotFoundException(ID));
+
+        assertThat(problem.getStatus()).isEqualTo(404);
+        assertThat(problem.getTitle()).isEqualTo("Attachment not found");
+        assertThat(problem.getDetail()).isEqualTo("Attachment not found with id: " + ID);
     }
 
     @Test
