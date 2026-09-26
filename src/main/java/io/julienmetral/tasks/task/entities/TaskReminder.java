@@ -1,6 +1,6 @@
 package io.julienmetral.tasks.task.entities;
 
-import io.julienmetral.tasks.identity.entities.UserSummary;
+import io.julienmetral.tasks.identity.entities.UserProfile;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -51,7 +51,7 @@ public class TaskReminder {
             nullable = false,
             foreignKey = @ForeignKey(name = "task_reminders_recipientFK")
     )
-    private UserSummary recipient;
+    private UserProfile recipient;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "kind", nullable = false, length = 20)

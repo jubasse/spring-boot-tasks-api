@@ -127,7 +127,10 @@ public class UserService {
 
     @Transactional
     public void delete(UUID id) {
-        userRepository.delete(getUser(id));
+        User user = getUser(id);
+
+        user.markDeleted();
+        userRepository.delete(user);
 
         refreshTokenService.revokeAllForUser(id);
     }

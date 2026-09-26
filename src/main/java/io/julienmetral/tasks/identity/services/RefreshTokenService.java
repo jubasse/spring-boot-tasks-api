@@ -5,7 +5,7 @@ import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.exceptions.InvalidRefreshTokenException;
 import io.julienmetral.tasks.identity.repositories.RefreshTokenRepository;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
+import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.identity.security.OpaqueTokens;
 import io.julienmetral.tasks.identity.security.RefreshTokenProperties;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +21,7 @@ public class RefreshTokenService {
 
     private final RefreshTokenRepository refreshTokenRepository;
     private final UserRepository userRepository;
-    private final UserSummaryRepository userSummaryRepository;
+    private final UserProfileRepository userProfileRepository;
     private final RefreshTokenProperties properties;
 
     /** Starts a new token family, one per login. */
@@ -93,7 +93,7 @@ public class RefreshTokenService {
 
         RefreshToken token = new RefreshToken();
 
-        token.setUser(userSummaryRepository.getReferenceById(user.getId()));
+        token.setUser(userProfileRepository.getReferenceById(user.getId()));
         token.setTokenHash(OpaqueTokens.hash(value));
         token.setFamilyId(familyId);
         token.setCreatedAt(now);

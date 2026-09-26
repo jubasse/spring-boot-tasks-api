@@ -2,7 +2,7 @@ package io.julienmetral.tasks.task.services;
 
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
+import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.task.entities.Task;
 import io.julienmetral.tasks.task.entities.TaskAttachment;
@@ -33,7 +33,7 @@ public class TaskEventService {
     private final TaskRepository taskRepository;
     private final TaskEventRepository taskEventRepository;
     private final UserRepository userRepository;
-    private final UserSummaryRepository userSummaryRepository;
+    private final UserProfileRepository userProfileRepository;
     private final CurrentUser currentUser;
     private final JsonMapper jsonMapper;
 
@@ -179,7 +179,7 @@ public class TaskEventService {
         TaskEvent event = new TaskEvent();
 
         event.setTask(task);
-        event.setActor(userSummaryRepository.getReferenceById(getCurrentActor().getId()));
+        event.setActor(userProfileRepository.getReferenceById(getCurrentActor().getId()));
         event.setType(type);
         event.setOccurredAt(Instant.now());
         event.setPayload(serialize(payload));
