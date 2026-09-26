@@ -23,6 +23,15 @@ identity:
     deletion-notice: 30d
 mail:
   from: ${MAIL_FROM:no-reply@tasks.local}
+# Messages for RabbitMQ are written to an outbox table in the business transaction, then published after commit
+messaging:
+  outbox:
+    poll-interval: PT5S
+    batch-size: 100
+    max-retry-delay: PT10M
+    confirm-timeout: PT5S
+    retention: P7D
+    purge-cron: 0 0 * * * *
 # Media file storage. storage.driver picks the implementation: rustfs (defaults match compose.yaml) or aws-s3.
 storage:
   driver: ${STORAGE_DRIVER:rustfs}
@@ -67,9 +76,8 @@ spring:
   # Connection: spring-boot-docker-compose provides it in development (rabbitmq service); set SPRING_RABBITMQ_HOST,
   # SPRING_RABBITMQ_USERNAME and SPRING_RABBITMQ_PASSWORD elsewhere
   rabbitmq:
-    template:
-      retry:
-        enabled: true
+    # The outbox relay waits for the broker to confirm each message before marking it published
+    publisher-confirm-type: simple
     listener:
       simple:
         concurrency: 2
