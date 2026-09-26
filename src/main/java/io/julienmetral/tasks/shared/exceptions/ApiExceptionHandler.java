@@ -15,6 +15,7 @@ import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
 import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
 import io.julienmetral.tasks.task.exceptions.AssigneeNotActiveException;
+import io.julienmetral.tasks.task.exceptions.TaskAttachmentNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -52,6 +53,19 @@ public class ApiExceptionHandler {
         );
 
         problem.setTitle("User cannot be assigned");
+
+        return problem;
+    }
+
+    @ExceptionHandler(TaskAttachmentNotFoundException.class)
+    public ProblemDetail handleTaskAttachmentNotFound(TaskAttachmentNotFoundException ex) {
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.NOT_FOUND,
+            ex.getMessage()
+        );
+
+        problem.setTitle("Attachment not found");
 
         return problem;
     }
