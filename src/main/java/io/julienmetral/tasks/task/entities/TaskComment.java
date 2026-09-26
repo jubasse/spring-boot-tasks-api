@@ -5,7 +5,6 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
 
@@ -44,7 +43,7 @@ public class TaskComment {
     )
     private Task task;
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(
             name = "author_id",
             nullable = false,
@@ -56,7 +55,6 @@ public class TaskComment {
     @Column(name = "body", nullable = false, columnDefinition = "TEXT")
     private String body;
 
-    @BatchSize(size = 50)
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
             name = "task_comment_mentions",
@@ -71,7 +69,6 @@ public class TaskComment {
     )
     private Set<UserProfile> mentions = new HashSet<>();
 
-    @BatchSize(size = 50)
     @OneToMany(mappedBy = "comment")
     @OrderBy("createdAt ASC")
     private List<TaskAttachment> attachments = new ArrayList<>();

@@ -45,7 +45,7 @@ public class TaskAttachment {
     private Task task;
 
     // ManyToOne rather than OneToOne: the uniqueness is the named constraint above (see User.avatar)
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(
             name = "media_id",
             nullable = false,
