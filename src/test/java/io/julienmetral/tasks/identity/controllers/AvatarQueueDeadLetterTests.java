@@ -7,7 +7,6 @@ import io.julienmetral.tasks.identity.messaging.AvatarUploaded;
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
 import io.julienmetral.tasks.media.services.ObjectStorage;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.core.Message;
@@ -21,6 +20,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.startsWith;
@@ -116,16 +117,15 @@ class AvatarQueueDeadLetterTests extends AbstractAvatarApiTests {
     }
 
     @Test
-    @Disabled("bug: AvatarService.process rewrites the whole users row (User has no @Version or @DynamicUpdate), "
-            + "so a change committed while the worker runs, such as disabling the account, is reverted")
     void accountDisabledWhileItsPhotoIsProcessedIsNotReenabled() throws Exception {
         User user = createUser(UserRole.USER);
+        AtomicReference<CompletableFuture<Void>> disable = new AtomicReference<>();
         doAnswer(invocation -> {
-            // Stands for a concurrent POST /users/{id}/disable, committed while the worker's transaction is open
-            CompletableFuture.runAsync(() -> jdbcTemplate.update(
+            // Stands for a concurrent POST /users/{id}/disable: it waits for the worker's row lock, then commits
+            disable.set(CompletableFuture.runAsync(() -> jdbcTemplate.update(
                     "update users set enabled = false where id = ?",
                     user.getId()
-            )).join();
+            )));
 
             return invocation.callRealMethod();
         }).when(objectStorage).open(startsWith("avatar-upload/"));
@@ -133,6 +133,7 @@ class AvatarQueueDeadLetterTests extends AbstractAvatarApiTests {
         uploadAvatar(user, asUser(user), "me.png", opaquePng())
                 .andExpect(status().isAccepted());
         awaitProcessed(user);
+        disable.get().get(10, TimeUnit.SECONDS);
 
         assertThat(avatarStorageKey(user)).isNotNull();
         assertThat(jdbcTemplate.queryForObject(

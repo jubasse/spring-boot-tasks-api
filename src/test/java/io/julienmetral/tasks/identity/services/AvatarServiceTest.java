@@ -88,7 +88,7 @@ class AvatarServiceTest {
         user.setId(USER_ID);
         user.setAvatar(avatar);
         user.setPendingAvatar(pendingAvatar);
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
         return user;
     }
 
@@ -232,7 +232,7 @@ class AvatarServiceTest {
 
         @Test
         void unknownUserIsRejectedBeforeReadingTheFile() {
-            when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
+            when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> service.update(USER_ID, upload()))
                     .isInstanceOf(UserNotFoundException.class)
@@ -264,7 +264,7 @@ class AvatarServiceTest {
 
         @Test
         void unknownUserIsIgnored() {
-            when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
+            when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.empty());
 
             assertThatCode(() -> service.process(USER_ID, UPLOAD_ID)).doesNotThrowAnyException();
 
@@ -472,7 +472,7 @@ class AvatarServiceTest {
 
         @Test
         void unknownUserIsRejected() {
-            when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
+            when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> service.remove(USER_ID)).isInstanceOf(UserNotFoundException.class);
 
