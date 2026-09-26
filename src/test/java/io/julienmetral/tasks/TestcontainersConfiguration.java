@@ -3,10 +3,10 @@ package io.julienmetral.tasks;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.DynamicPropertyRegistrar;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.rabbitmq.RabbitMQContainer;
 import org.testcontainers.images.builder.Transferable;
 import org.testcontainers.utility.DockerImageName;
@@ -15,7 +15,11 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.HexFormat;
 
+// Postgres, Mailpit, RustFS and ClamAV are reused when testcontainers.reuse.enable is set (see the README): one of each
+// serves every test context and every run, instead of one set per cached context. They must stay identical across
+// contexts for that, so a context cannot customise them.
 @TestConfiguration(proxyBeanMethods = false)
+@Import(PostgresTestcontainersConfiguration.class)
 public class TestcontainersConfiguration {
 
 	static final int MAILPIT_SMTP_PORT = 1025;
@@ -41,17 +45,6 @@ public class TestcontainersConfiguration {
 	private static final String EICAR_SIGNATURE = "Eicar-Test-Signature:0:*:" + HexFormat.of().formatHex(
 			"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*".getBytes(StandardCharsets.US_ASCII)
 	) + "\n";
-
-	// Postgres, Mailpit, RustFS and ClamAV are reused when testcontainers.reuse.enable is set (see the README): one of
-	// each serves every test context and every run, instead of one set per cached context. They must stay identical
-	// across contexts for that, so a context cannot customise them.
-	@Bean
-	@ServiceConnection
-	PostgreSQLContainer postgresContainer() {
-		return new PostgreSQLContainer(DockerImageName.parse("postgres:18"))
-				.withLabel(REUSABLE_LABEL, "true")
-				.withReuse(true);
-	}
 
 	// Not reused: the dead-letter tests make the listeners' collaborators fail, and on a shared broker those listeners
 	// would consume, and dead-letter, the messages of every other context
