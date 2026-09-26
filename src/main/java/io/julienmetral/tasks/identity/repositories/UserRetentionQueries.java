@@ -20,6 +20,11 @@ public class UserRetentionQueries {
 
     private static final String ACTIVITY = "COALESCE(u.last_active_at, u.last_login_at, u.created_at)";
 
+    // Admins are never warned nor deleted for inactivity: deleting the last one would lock everybody out of
+    // administration. Checked again at deletion, for a user promoted after the warning.
+    private static final String NOT_ADMIN =
+            "NOT EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'ADMIN')";
+
     private final NamedParameterJdbcTemplate jdbc;
 
     public record InactiveUser(
@@ -84,8 +89,7 @@ public class UserRetentionQueries {
     }
 
     /**
-     * Marks as warned the active accounts without activity since {@code cutoff}. Admins are left out: deleting the
-     * last one would lock everybody out of administration.
+     * Marks as warned the accounts, admins excepted, without activity since {@code cutoff}.
      *
      * @return the accounts warned by this call
      */
@@ -97,11 +101,9 @@ public class UserRetentionQueries {
                         WHERE u.deleted_at IS NULL
                           AND u.inactivity_warned_at IS NULL
                           AND %s < :cutoff
-                          AND NOT EXISTS (
-                              SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'ADMIN'
-                          )
+                          AND %s
                         RETURNING u.id, u.email, u.display_name
-                        """.formatted(ACTIVITY),
+                        """.formatted(ACTIVITY, NOT_ADMIN),
                 new MapSqlParameterSource()
                         .addValue("cutoff", Timestamp.from(cutoff))
                         .addValue("now", Timestamp.from(now)),
@@ -118,8 +120,8 @@ public class UserRetentionQueries {
         return jdbc.queryForList(
                 """
                         SELECT u.id FROM users u
-                        WHERE u.deleted_at IS NULL AND u.inactivity_warned_at < :cutoff
-                        """,
+                        WHERE u.deleted_at IS NULL AND u.inactivity_warned_at < :cutoff AND %s
+                        """.formatted(NOT_ADMIN),
                 new MapSqlParameterSource("cutoff", Timestamp.from(cutoff)),
                 UUID.class
         );
