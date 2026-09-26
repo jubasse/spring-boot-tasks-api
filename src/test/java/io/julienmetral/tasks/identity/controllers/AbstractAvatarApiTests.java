@@ -209,10 +209,15 @@ abstract class AbstractAvatarApiTests {
         return jsonMapper.readTree(body);
     }
 
+    /** The identicon URL as MockMvc requests see it: their default host is {@code http://localhost}. */
+    protected static String identiconUrl(User user) {
+        return "http://localhost/api/v1/identicons/" + user.getId();
+    }
+
     /** Storage key of the user's current avatar, or null without one. */
     protected String avatarStorageKey(User user) {
         List<String> keys = jdbcTemplate.queryForList(
-                "select m.storage_key from users u join media m on m.id = u.avatar_media_id where u.id = ?",
+                "select m.storage_key from user_profiles p join media m on m.id = p.avatar_media_id where p.id = ?",
                 String.class,
                 user.getId()
         );
@@ -223,7 +228,11 @@ abstract class AbstractAvatarApiTests {
     /** Storage key of the upload waiting for the worker, or null without one. */
     protected String pendingAvatarStorageKey(User user) {
         List<String> keys = jdbcTemplate.queryForList(
-                "select m.storage_key from users u join media m on m.id = u.pending_avatar_media_id where u.id = ?",
+                """
+                        select m.storage_key
+                        from user_profiles p join media m on m.id = p.pending_avatar_media_id
+                        where p.id = ?
+                        """,
                 String.class,
                 user.getId()
         );

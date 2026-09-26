@@ -147,10 +147,10 @@ class UserRetentionTests {
         );
     }
 
-    // Anonymization
+    // Erasure of deleted users
 
     @Test
-    void userDeletedMoreThanThirtyDaysAgoIsAnonymized() {
+    void userDeletedMoreThanThirtyDaysAgoLosesTheirAccountRowAndKeepsAnAnonymousProfile() {
         User user = createUser(UserRole.USER);
         setDate(user, "last_login_at", NOW.minus(Duration.ofDays(40)));
         setDate(user, "last_active_at", NOW.minus(Duration.ofDays(40)));
@@ -159,22 +159,18 @@ class UserRetentionTests {
 
         retentionService.apply();
 
-        Map<String, Object> row = userRow(user);
-        assertThat(row.get("email")).isEqualTo("deleted-" + user.getId() + "@anonymized.invalid");
-        assertThat(row.get("display_name")).isEqualTo("Deleted user");
-        assertThat(row.get("password_hash")).isEqualTo("!");
-        assertThat(row.get("enabled")).isEqualTo(false);
-        assertThat(row.get("email_verified_at")).isNull();
-        assertThat(row.get("last_login_at")).isNull();
-        assertThat(row.get("last_active_at")).isNull();
-        assertThat(row.get("inactivity_warned_at")).isNull();
-        assertThat(instant(row.get("anonymized_at"))).isEqualTo(NOW);
-        assertThat(instant(row.get("updated_at"))).isEqualTo(NOW);
-        assertThat(instant(row.get("deleted_at"))).isEqualTo(NOW.minus(Duration.ofDays(31)));
+        assertThat(accountRows(user)).isZero();
+        Map<String, Object> profile = profileRow(user);
+        assertThat(profile.get("display_name")).isEqualTo("Deleted user");
+        assertThat(profile.get("status")).isEqualTo("DELETED");
+        assertThat(profile.get("avatar_media_id")).isNull();
+        assertThat(profile.get("pending_avatar_media_id")).isNull();
+        assertThat(instant(profile.get("anonymized_at"))).isEqualTo(NOW);
+        assertThat(instant(profile.get("updated_at"))).isEqualTo(NOW);
     }
 
     @Test
-    void anonymizationDeletesNotificationSettingsAndAllTokens() throws Exception {
+    void erasureDeletesRolesNotificationSettingsAndAllTokens() throws Exception {
         String email = uniqueEmail();
         User user = userService.create(email, PASSWORD, "Token holder");
         userService.verifyEmail(user.getId());
@@ -186,6 +182,7 @@ class UserRetentionTests {
         assertThat(rowsOf(user, "email_verification_tokens")).isPositive();
         assertThat(rowsOf(user, "password_reset_tokens")).isPositive();
         assertThat(rowsOf(user, "notification_settings")).isOne();
+        assertThat(rowsOf(user, "user_roles")).isPositive();
 
         userService.delete(user.getId());
         setDate(user, "deleted_at", NOW.minus(Duration.ofDays(31)));
@@ -196,10 +193,34 @@ class UserRetentionTests {
         assertThat(rowsOf(user, "email_verification_tokens")).isZero();
         assertThat(rowsOf(user, "password_reset_tokens")).isZero();
         assertThat(rowsOf(user, "notification_settings")).isZero();
+        assertThat(rowsOf(user, "user_roles")).isZero();
+        assertThat(accountRows(user)).isZero();
     }
 
     @Test
-    void tasksCommentsAndHistoryOfAnAnonymizedUserStillLoadAndShowADeletedUser() throws Exception {
+    void erasureDetachesThePhotoAndThePendingUploadFromTheProfile() {
+        User user = createUser(UserRole.USER);
+        UUID avatar = insertMedia(user);
+        UUID pendingAvatar = insertMedia(user);
+        jdbcTemplate.update(
+                "UPDATE user_profiles SET avatar_media_id = ?, pending_avatar_media_id = ? WHERE id = ?",
+                avatar, pendingAvatar, user.getId()
+        );
+        userService.delete(user.getId());
+        setDate(user, "deleted_at", NOW.minus(Duration.ofDays(31)));
+
+        retentionService.apply();
+
+        Map<String, Object> profile = profileRow(user);
+        assertThat(profile.get("avatar_media_id")).isNull();
+        assertThat(profile.get("pending_avatar_media_id")).isNull();
+        // The media rows are left to the media cleanup, which purges them once nothing references them
+        assertThat(mediaRows(avatar)).isOne();
+        assertThat(mediaRows(pendingAvatar)).isOne();
+    }
+
+    @Test
+    void tasksCommentsAndHistoryOfAnErasedUserStillLoadAndShowADeletedUser() throws Exception {
         User admin = createUser(UserRole.ADMIN);
         User assignee = createUser(UserRole.USER);
         UUID taskId = createTask(admin, assignee);
@@ -219,7 +240,8 @@ class UserRetentionTests {
 
         retentionService.apply();
 
-        assertThat(instant(userRow(assignee).get("anonymized_at"))).isEqualTo(NOW);
+        assertThat(accountRows(assignee)).isZero();
+        assertThat(instant(profileRow(assignee).get("anonymized_at"))).isEqualTo(NOW);
 
         JsonNode task = getJson(admin, "/api/v1/tasks/" + taskId);
         assertIsDeletedUser(task.path("assignedTo"), assignee);
@@ -239,18 +261,18 @@ class UserRetentionTests {
     }
 
     @Test
-    void anonymizedUserIsNotTouchedAgainByALaterRun() {
+    void erasedUserIsNotTouchedAgainByALaterRun() {
         User user = createUser(UserRole.USER);
         userService.delete(user.getId());
         setDate(user, "deleted_at", NOW.minus(Duration.ofDays(31)));
 
         retentionService.apply();
-        Map<String, Object> afterFirstRun = userRow(user);
+        Map<String, Object> afterFirstRun = profileRow(user);
 
         clock.set(NOW.plus(Duration.ofDays(1)));
         retentionService.apply();
 
-        assertThat(userRow(user)).isEqualTo(afterFirstRun);
+        assertThat(profileRow(user)).isEqualTo(afterFirstRun);
         assertThat(instant(afterFirstRun.get("anonymized_at"))).isEqualTo(NOW);
     }
 
@@ -262,15 +284,17 @@ class UserRetentionTests {
 
         retentionService.apply();
 
-        Map<String, Object> row = userRow(user);
-        assertThat(row.get("email")).isEqualTo(user.getEmail());
-        assertThat(row.get("display_name")).isEqualTo(user.getDisplayName());
-        assertThat(row.get("password_hash")).isEqualTo(user.getPasswordHash());
-        assertThat(row.get("anonymized_at")).isNull();
+        Map<String, Object> account = userRow(user);
+        assertThat(account.get("email")).isEqualTo(user.getEmail());
+        assertThat(account.get("password_hash")).isEqualTo(user.getPasswordHash());
+        Map<String, Object> profile = profileRow(user);
+        assertThat(profile.get("display_name")).isEqualTo(user.getDisplayName());
+        assertThat(profile.get("status")).isEqualTo("DELETED");
+        assertThat(profile.get("anonymized_at")).isNull();
     }
 
     @Test
-    void originalEmailCanSignUpAgainOnceTheDeletedUserIsAnonymized() throws Exception {
+    void originalEmailCanSignUpAgainOnceTheDeletedUserIsErased() throws Exception {
         String email = uniqueEmail();
         User user = userService.create(email, PASSWORD, "Returning user");
         userService.delete(user.getId());
@@ -283,6 +307,9 @@ class UserRetentionTests {
         signUp(email).andExpect(status().isCreated());
         User newAccount = userRepository.findByEmailIgnoreCase(email).orElseThrow();
         assertThat(newAccount.getId()).isNotEqualTo(user.getId());
+        assertThat(profileRow(newAccount).get("display_name")).isEqualTo("Signed up again");
+        assertThat(profileRow(newAccount).get("status")).isEqualTo("UNVERIFIED");
+        assertThat(profileRow(user).get("display_name")).isEqualTo("Deleted user");
     }
 
     // Inactivity warning
@@ -443,7 +470,9 @@ class UserRetentionTests {
         assertThat(userRepository.findById(user.getId())).isEmpty();
         assertThat(unrevokedRefreshTokensOf(user)).isZero();
         assertThat(rowsOf(user, "refresh_tokens")).isEqualTo(2);
-        assertThat(userRow(user).get("anonymized_at")).isNull();
+        assertThat(profileRow(user).get("status")).isEqualTo("DELETED");
+        assertThat(profileRow(user).get("display_name")).isEqualTo(user.getDisplayName());
+        assertThat(profileRow(user).get("anonymized_at")).isNull();
     }
 
     @Test
@@ -567,6 +596,7 @@ class UserRetentionTests {
         assertThat(preview.path("id").asString()).isEqualTo(user.getId().toString());
         assertThat(preview.path("displayName").asString()).isEqualTo("Deleted user");
         assertThat(preview.path("status").asString()).isEqualTo("DELETED");
+        assertThat(preview.path("avatarUrl").asString()).endsWith("/api/v1/identicons/" + user.getId());
     }
 
     private ResultActions login(String email) throws Exception {
@@ -619,6 +649,33 @@ class UserRetentionTests {
 
     private Map<String, Object> userRow(User user) {
         return jdbcTemplate.queryForMap("SELECT * FROM users WHERE id = ?", user.getId());
+    }
+
+    private Map<String, Object> profileRow(User user) {
+        return jdbcTemplate.queryForMap("SELECT * FROM user_profiles WHERE id = ?", user.getId());
+    }
+
+    private int accountRows(User user) {
+        return jdbcTemplate.queryForObject("SELECT count(*) FROM users WHERE id = ?", Integer.class, user.getId());
+    }
+
+    private UUID insertMedia(User uploader) {
+        return jdbcTemplate.queryForObject(
+                """
+                        INSERT INTO media
+                            (storage_key, usage, original_filename, content_type, size_bytes, sha256, uploaded_by_id,
+                             created_at)
+                        VALUES (?, 'AVATAR', 'photo.png', 'image/png', 1, repeat('0', 64), ?, now())
+                        RETURNING id
+                        """,
+                UUID.class,
+                "avatar/" + UUID.randomUUID(),
+                uploader.getId()
+        );
+    }
+
+    private int mediaRows(UUID mediaId) {
+        return jdbcTemplate.queryForObject("SELECT count(*) FROM media WHERE id = ?", Integer.class, mediaId);
     }
 
     private Instant warnedAt(User user) {

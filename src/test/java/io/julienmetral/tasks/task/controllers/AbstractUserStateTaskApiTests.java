@@ -20,15 +20,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 abstract class AbstractUserStateTaskApiTests extends AbstractTaskApiTests {
 
     protected User createUnverifiedUser(UserRole role) {
-        User user = createUser(role);
-        user.setEmailVerifiedAt(null);
-        return userRepository.saveAndFlush(user);
+        return updateUser(createUser(role), user -> user.setEmailVerifiedAt(null));
     }
 
     protected User createDisabledUser(UserRole role) {
-        User user = createUser(role);
-        user.setEnabled(false);
-        return userRepository.saveAndFlush(user);
+        return updateUser(createUser(role), user -> user.setEnabled(false));
     }
 
     /** Creates an ACTIVE user, then soft-deletes it through the API. */
@@ -54,9 +50,7 @@ abstract class AbstractUserStateTaskApiTests extends AbstractTaskApiTests {
 
     /** Clears the verification date of an existing user, as if it had never verified its email. */
     protected void unverify(User user) {
-        User reloaded = userRepository.findById(user.getId()).orElseThrow();
-        reloaded.setEmailVerifiedAt(null);
-        userRepository.saveAndFlush(reloaded);
+        updateUser(user, reloaded -> reloaded.setEmailVerifiedAt(null));
     }
 
     protected ResultActions getTask(User reader, UUID taskId) throws Exception {

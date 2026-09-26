@@ -1,8 +1,10 @@
 package io.julienmetral.tasks.identity.controllers;
 
+import com.jayway.jsonpath.JsonPath;
 import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
+import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -12,6 +14,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
@@ -43,6 +46,9 @@ class UserControllerTests {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private UserProfileRepository userProfileRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -85,6 +91,23 @@ class UserControllerTests {
         assertThat(saved.getPasswordHash())
                 .isNotEqualTo("password123")
                 .startsWith("{argon2id}");
+    }
+
+    @Test
+    void signUpResponsePointsToTheIdenticonOfTheNewUser() throws Exception {
+        MockHttpServletResponse response = mockMvc.perform(
+                        post("/api/v1/users")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(signUpBody(uniqueEmail(), "password123", "Alice"))
+                )
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.avatarPending").value(false))
+                .andReturn()
+                .getResponse();
+        UUID id = idFromLocation(response.getHeader("Location"));
+
+        assertThat(JsonPath.<String>read(response.getContentAsString(), "$.avatarUrl"))
+                .isEqualTo("http://localhost/api/v1/identicons/" + id);
     }
 
     @Test
@@ -346,7 +369,7 @@ class UserControllerTests {
                 .andExpect(jsonPath("$.id").value(user.getId().toString()))
                 .andExpect(jsonPath("$.displayName").value("Renamed"));
 
-        assertThat(userRepository.findById(user.getId()).orElseThrow().getDisplayName())
+        assertThat(userProfileRepository.findById(user.getId()).orElseThrow().getDisplayName())
                 .isEqualTo("Renamed");
     }
 
@@ -365,7 +388,7 @@ class UserControllerTests {
                 )
                 .andExpect(status().isForbidden());
 
-        assertThat(userRepository.findById(other.getId()).orElseThrow().getDisplayName())
+        assertThat(userProfileRepository.findById(other.getId()).orElseThrow().getDisplayName())
                 .isEqualTo(other.getDisplayName());
     }
 

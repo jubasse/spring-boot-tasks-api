@@ -2,7 +2,7 @@ package io.julienmetral.tasks.notification.mail;
 
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
+import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.mail.MailMessage;
 import io.julienmetral.tasks.mail.MailService;
 import io.julienmetral.tasks.notification.entities.TaskNotificationType;
@@ -35,7 +35,7 @@ import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
 
-import static io.julienmetral.tasks.support.UserSummaries.active;
+import static io.julienmetral.tasks.support.UserProfiles.active;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.params.provider.EnumSource.Mode.EXCLUDE;
 import static org.mockito.ArgumentMatchers.any;
@@ -61,7 +61,7 @@ class TaskNotificationSenderTest {
     private UserRepository userRepository;
 
     @Mock
-    private UserSummaryRepository userSummaryRepository;
+    private UserProfileRepository userProfileRepository;
 
     @Mock
     private NotificationSettingsService settingsService;
@@ -331,7 +331,7 @@ class TaskNotificationSenderTest {
 
             sender.onCommentAdded(commentAdded("Over to you <@" + RECIPIENT_ID + ">", RECIPIENT_ID, ACTOR_ID));
 
-            verifyNoInteractions(userRepository, userSummaryRepository, mailService);
+            verifyNoInteractions(userRepository, userProfileRepository, mailService);
         }
 
         @Test
@@ -414,7 +414,7 @@ class TaskNotificationSenderTest {
         void emailsTheMentionedUserNamingTheAuthorInTheSubject() {
             stubActiveRecipient(TaskNotificationType.MENTIONED);
             stubActor();
-            when(userSummaryRepository.findAllById(Set.of(RECIPIENT_ID)))
+            when(userProfileRepository.findAllById(Set.of(RECIPIENT_ID)))
                     .thenReturn(List.of(active(RECIPIENT_ID, "Alice")));
 
             sender.onMentioned(mentioned("Can you check, <@" + RECIPIENT_ID + ">?", ACTOR_ID, RECIPIENT_ID));
@@ -507,7 +507,7 @@ class TaskNotificationSenderTest {
 
         @Test
         void rendersMentionTokensAsNames() {
-            when(userSummaryRepository.findAllById(Set.of(OTHER_ID, ACTOR_ID)))
+            when(userProfileRepository.findAllById(Set.of(OTHER_ID, ACTOR_ID)))
                     .thenReturn(List.of(active(OTHER_ID, "Carol"), active(ACTOR_ID, "Bob")));
 
             String excerpt = commentExcerpt("<@" + OTHER_ID + "> and <@" + ACTOR_ID + ">, see <@" + OTHER_ID + ">");
@@ -517,7 +517,7 @@ class TaskNotificationSenderTest {
 
         @Test
         void keepsTheTokenOfAUserWhoCannotBeFound() {
-            when(userSummaryRepository.findAllById(Set.of(OTHER_ID))).thenReturn(List.of());
+            when(userProfileRepository.findAllById(Set.of(OTHER_ID))).thenReturn(List.of());
 
             String excerpt = commentExcerpt("Ask <@" + OTHER_ID + ">");
 
@@ -540,7 +540,7 @@ class TaskNotificationSenderTest {
 
         @Test
         void theLimitAppliesToTheRenderedText() {
-            when(userSummaryRepository.findAllById(Set.of(OTHER_ID))).thenReturn(List.of(active(OTHER_ID, "Carol")));
+            when(userProfileRepository.findAllById(Set.of(OTHER_ID))).thenReturn(List.of(active(OTHER_ID, "Carol")));
             // 1029 characters as written, 996 once the token becomes @Carol
             String body = "x".repeat(990) + "<@" + OTHER_ID + ">";
 
@@ -549,7 +549,7 @@ class TaskNotificationSenderTest {
 
         @Test
         void aNameThatPushesTheTextAboveTheLimitIsTruncated() {
-            when(userSummaryRepository.findAllById(Set.of(OTHER_ID)))
+            when(userProfileRepository.findAllById(Set.of(OTHER_ID)))
                     .thenReturn(List.of(active(OTHER_ID, "C".repeat(100))));
             String body = "x".repeat(950) + "<@" + OTHER_ID + ">";
 
@@ -560,7 +560,7 @@ class TaskNotificationSenderTest {
         void mentionEmailsUseTheSameTruncatedExcerpt() {
             stubActiveRecipient(TaskNotificationType.MENTIONED);
             stubActor();
-            when(userSummaryRepository.findAllById(Set.of(RECIPIENT_ID)))
+            when(userProfileRepository.findAllById(Set.of(RECIPIENT_ID)))
                     .thenReturn(List.of(active(RECIPIENT_ID, "Alice")));
             String body = "y".repeat(1_200) + "<@" + RECIPIENT_ID + ">";
 
@@ -635,7 +635,7 @@ class TaskNotificationSenderTest {
 
             verify(userRepository).findById(RECIPIENT_ID);
             verifyNoMoreInteractions(userRepository);
-            verifyNoInteractions(userSummaryRepository);
+            verifyNoInteractions(userProfileRepository);
         }
 
         @Test

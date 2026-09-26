@@ -121,11 +121,13 @@ class AvatarQueueDeadLetterTests extends AbstractAvatarApiTests {
         User user = createUser(UserRole.USER);
         AtomicReference<CompletableFuture<Void>> disable = new AtomicReference<>();
         doAnswer(invocation -> {
-            // Stands for a concurrent POST /users/{id}/disable: it waits for the worker's row lock, then commits
-            disable.set(CompletableFuture.runAsync(() -> jdbcTemplate.update(
-                    "update users set enabled = false where id = ?",
-                    user.getId()
-            )));
+            // Stands for a concurrent POST /users/{id}/disable. The profile's status commits before the worker writes
+            // the profile, so a full-row update by the worker would revert it; the account waits for the worker's
+            // row lock, then commits.
+            disable.set(CompletableFuture.runAsync(() -> {
+                jdbcTemplate.update("update user_profiles set status = 'DISABLED' where id = ?", user.getId());
+                jdbcTemplate.update("update users set enabled = false where id = ?", user.getId());
+            }));
 
             return invocation.callRealMethod();
         }).when(objectStorage).open(startsWith("avatar-upload/"));
@@ -141,11 +143,16 @@ class AvatarQueueDeadLetterTests extends AbstractAvatarApiTests {
                 Boolean.class,
                 user.getId()
         )).isFalse();
+        assertThat(jdbcTemplate.queryForObject(
+                "select status from user_profiles where id = ?",
+                String.class,
+                user.getId()
+        )).isEqualTo("DISABLED");
     }
 
     private UUID pendingAvatarMediaId(User user) {
         return jdbcTemplate.queryForObject(
-                "select pending_avatar_media_id from users where id = ?",
+                "select pending_avatar_media_id from user_profiles where id = ?",
                 UUID.class,
                 user.getId()
         );

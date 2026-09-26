@@ -20,12 +20,14 @@ class UserResponseDtoTest {
     private static final Instant VERIFIED_AT = Instant.parse("2026-01-01T00:00:00Z");
     private static final Instant LAST_LOGIN_AT = Instant.parse("2026-01-02T00:00:00Z");
     private static final String AVATAR_URL = "https://storage.example/avatar/key?signature=abc";
+    private static final String IDENTICON_URL = "http://localhost/api/v1/identicons/" + USER_ID;
 
     private final MediaUrls mediaUrls = mock(MediaUrls.class);
 
     private static User user() {
         User user = new User();
         user.setId(USER_ID);
+        user.getProfile().setId(USER_ID);
         user.setEmail("alice@example.com");
         user.setDisplayName("Alice");
         user.setEmailVerifiedAt(VERIFIED_AT);
@@ -35,11 +37,10 @@ class UserResponseDtoTest {
     }
 
     @Test
-    void userWithAvatarExposesItsPresignedUrl() {
+    void userExposesItsAccountAndTheAvatarUrlOfItsProfile() {
         User user = user();
-        Media avatar = new Media();
-        user.setAvatar(avatar);
-        when(mediaUrls.of(avatar)).thenReturn(AVATAR_URL);
+        user.getProfile().setAvatar(new Media());
+        when(mediaUrls.avatarOf(user.getProfile())).thenReturn(AVATAR_URL);
 
         UserResponseDto dto = new UserResponseDto(user, mediaUrls);
 
@@ -54,21 +55,22 @@ class UserResponseDtoTest {
     }
 
     @Test
-    void userWithoutAvatarHasNoAvatarUrl() {
-        UserResponseDto dto = new UserResponseDto(user(), mediaUrls);
+    void userWithoutAvatarGetsTheUrlMediaUrlsGivesForItsProfile() {
+        User user = user();
+        when(mediaUrls.avatarOf(user.getProfile())).thenReturn(IDENTICON_URL);
 
-        assertThat(dto.avatarUrl()).isNull();
+        UserResponseDto dto = new UserResponseDto(user, mediaUrls);
+
+        assertThat(dto.avatarUrl()).isEqualTo(IDENTICON_URL);
         assertThat(dto.avatarPending()).isFalse();
     }
 
     @Test
     void userWithPendingUploadIsMarkedPendingAndKeepsItsCurrentAvatarUrl() {
         User user = user();
-        Media avatar = new Media();
-        Media upload = new Media();
-        user.setAvatar(avatar);
-        user.setPendingAvatar(upload);
-        when(mediaUrls.of(avatar)).thenReturn(AVATAR_URL);
+        user.getProfile().setAvatar(new Media());
+        user.getProfile().setPendingAvatar(new Media());
+        when(mediaUrls.avatarOf(user.getProfile())).thenReturn(AVATAR_URL);
 
         UserResponseDto dto = new UserResponseDto(user, mediaUrls);
 
@@ -77,20 +79,21 @@ class UserResponseDtoTest {
     }
 
     @Test
-    void firstPendingUploadHasNoAvatarUrlYet() {
+    void firstPendingUploadIsMarkedPending() {
         User user = user();
-        user.setPendingAvatar(new Media());
+        user.getProfile().setPendingAvatar(new Media());
+        when(mediaUrls.avatarOf(user.getProfile())).thenReturn(IDENTICON_URL);
 
         UserResponseDto dto = new UserResponseDto(user, mediaUrls);
 
         assertThat(dto.avatarPending()).isTrue();
-        assertThat(dto.avatarUrl()).isNull();
+        assertThat(dto.avatarUrl()).isEqualTo(IDENTICON_URL);
     }
 
     @Test
     void processedAvatarIsNotPending() {
         User user = user();
-        user.setAvatar(new Media());
+        user.getProfile().setAvatar(new Media());
 
         assertThat(new UserResponseDto(user, mediaUrls).avatarPending()).isFalse();
     }

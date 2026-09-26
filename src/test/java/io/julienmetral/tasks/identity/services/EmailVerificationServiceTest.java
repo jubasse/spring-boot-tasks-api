@@ -2,7 +2,7 @@ package io.julienmetral.tasks.identity.services;
 
 import io.julienmetral.tasks.identity.entities.EmailVerificationToken;
 import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserSummary;
+import io.julienmetral.tasks.identity.entities.UserProfile;
 import io.julienmetral.tasks.identity.exceptions.EmailAlreadyVerifiedException;
 import io.julienmetral.tasks.identity.exceptions.InvalidEmailVerificationTokenException;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
@@ -10,7 +10,7 @@ import io.julienmetral.tasks.identity.mail.EmailVerificationProperties;
 import io.julienmetral.tasks.identity.mail.EmailVerificationRequested;
 import io.julienmetral.tasks.identity.repositories.EmailVerificationTokenRepository;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
+import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.identity.security.OpaqueTokens;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,7 +26,7 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
-import static io.julienmetral.tasks.support.UserSummaries.reference;
+import static io.julienmetral.tasks.support.UserProfiles.reference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -53,7 +53,7 @@ class EmailVerificationServiceTest {
     private UserRepository userRepository;
 
     @Mock
-    private UserSummaryRepository userSummaryRepository;
+    private UserProfileRepository userProfileRepository;
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
@@ -65,7 +65,7 @@ class EmailVerificationServiceTest {
         service = new EmailVerificationService(
                 tokenRepository,
                 userRepository,
-                userSummaryRepository,
+                userProfileRepository,
                 new EmailVerificationProperties(TTL, "https://app.example.com/verify-email"),
                 eventPublisher
         );
@@ -79,7 +79,7 @@ class EmailVerificationServiceTest {
         return user;
     }
 
-    private static EmailVerificationToken storedToken(UserSummary owner, Instant expiresAt, Instant usedAt) {
+    private static EmailVerificationToken storedToken(UserProfile owner, Instant expiresAt, Instant usedAt) {
         EmailVerificationToken token = new EmailVerificationToken();
         token.setUser(owner);
         token.setTokenHash(OpaqueTokens.hash(RAW_TOKEN));
@@ -89,19 +89,19 @@ class EmailVerificationServiceTest {
         return token;
     }
 
-    private EmailVerificationToken stubStored(UserSummary owner, Instant expiresAt, Instant usedAt) {
+    private EmailVerificationToken stubStored(UserProfile owner, Instant expiresAt, Instant usedAt) {
         EmailVerificationToken token = storedToken(owner, expiresAt, usedAt);
         when(tokenRepository.findByTokenHash(OpaqueTokens.hash(RAW_TOKEN))).thenReturn(Optional.of(token));
         return token;
     }
 
-    private UserSummary stubReference() {
-        UserSummary reference = reference(USER_ID);
-        when(userSummaryRepository.getReferenceById(USER_ID)).thenReturn(reference);
+    private UserProfile stubReference() {
+        UserProfile reference = reference(USER_ID);
+        when(userProfileRepository.getReferenceById(USER_ID)).thenReturn(reference);
         return reference;
     }
 
-    private void assertIssuedFor(UserSummary reference, Instant before, Instant after) {
+    private void assertIssuedFor(UserProfile reference, Instant before, Instant after) {
         InOrder order = inOrder(tokenRepository, eventPublisher);
         order.verify(tokenRepository).deleteUnusedForUser(USER_ID);
 
@@ -130,7 +130,7 @@ class EmailVerificationServiceTest {
 
     @Test
     void issueDeletesPendingTokensSavesHashAndPublishesEvent() {
-        UserSummary reference = stubReference();
+        UserProfile reference = stubReference();
         Instant before = Instant.now();
 
         service.issue(user());
@@ -238,7 +238,7 @@ class EmailVerificationServiceTest {
     @Test
     void resendUnverifiedUserIssuesNewToken() {
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user()));
-        UserSummary reference = stubReference();
+        UserProfile reference = stubReference();
         Instant before = Instant.now();
 
         service.resend(USER_ID);

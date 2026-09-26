@@ -373,12 +373,13 @@ class OutboxTests {
     }
 
     private UUID avatarId(User user) {
-        return jdbcTemplate.queryForObject("select avatar_media_id from users where id = ?", UUID.class, user.getId());
+        return jdbcTemplate.queryForObject(
+                "select avatar_media_id from user_profiles where id = ?", UUID.class, user.getId());
     }
 
     private UUID pendingAvatarId(User user) {
         return jdbcTemplate.queryForObject(
-                "select pending_avatar_media_id from users where id = ?", UUID.class, user.getId());
+                "select pending_avatar_media_id from user_profiles where id = ?", UUID.class, user.getId());
     }
 
     private boolean mediaExists(UUID id) {

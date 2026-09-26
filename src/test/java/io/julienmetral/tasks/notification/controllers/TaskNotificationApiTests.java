@@ -17,6 +17,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -25,6 +26,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.EnumSet;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -64,6 +66,9 @@ class TaskNotificationApiTests {
 
     @Autowired
     private Mailpit mailpit;
+
+    @Autowired
+    private TransactionTemplate transactionTemplate;
 
     @Value("${mailpit.api-url}")
     private String mailpitApiUrl;
@@ -551,15 +556,17 @@ class TaskNotificationApiTests {
     }
 
     private void disable(User user) {
-        User reloaded = userRepository.findById(user.getId()).orElseThrow();
-        reloaded.setEnabled(false);
-        userRepository.saveAndFlush(reloaded);
+        updateUser(user, reloaded -> reloaded.setEnabled(false));
     }
 
     private void unverify(User user) {
-        User reloaded = userRepository.findById(user.getId()).orElseThrow();
-        reloaded.setEmailVerifiedAt(null);
-        userRepository.saveAndFlush(reloaded);
+        updateUser(user, reloaded -> reloaded.setEmailVerifiedAt(null));
+    }
+
+    // On a managed entity, as a service does: saving a detached User would not carry the change to its profile
+    private void updateUser(User user, Consumer<User> change) {
+        transactionTemplate.executeWithoutResult(
+                status -> change.accept(userRepository.findById(user.getId()).orElseThrow()));
     }
 
     private void deleteUserThroughApi(User user) throws Exception {
