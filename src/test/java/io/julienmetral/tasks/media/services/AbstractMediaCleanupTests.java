@@ -116,6 +116,29 @@ abstract class AbstractMediaCleanupTests {
         return media;
     }
 
+    UUID createComment(UUID taskId, User author) {
+        return jdbcTemplate.queryForObject(
+                "insert into task_comments (task_id, author_id, body, created_at) values (?, ?, 'See file', now()) "
+                        + "returning id",
+                UUID.class,
+                taskId,
+                author.getId()
+        );
+    }
+
+    Media attachedToComment(UUID taskId, UUID commentId, User uploader) {
+        Media media = storeAttachment(uploader);
+
+        jdbcTemplate.update(
+                "insert into task_attachments (task_id, comment_id, media_id, created_at) values (?, ?, ?, now())",
+                taskId,
+                commentId,
+                media.getId()
+        );
+
+        return media;
+    }
+
     Media avatarOf(User user) {
         Media media = storeAvatar(user);
 
