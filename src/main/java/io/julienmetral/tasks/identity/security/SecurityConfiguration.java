@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.identity.security;
 
 import io.julienmetral.tasks.identity.services.DatabaseUserDetailsService;
+import org.springframework.boot.security.autoconfigure.actuate.web.servlet.EndpointRequest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -135,6 +136,9 @@ public class SecurityConfiguration {
                                         "/api/v1/auth/password-reset/request",
                                         "/api/v1/auth/password-reset/confirm"
                                 )
+                                .permitAll()
+                                // Actuator endpoints only exist on the management port, which must stay private
+                                .requestMatchers(EndpointRequest.toAnyEndpoint())
                                 .permitAll()
                                 // Tasks are reserved to enabled users with a verified email
                                 .requestMatchers("/api/v1/tasks/**")

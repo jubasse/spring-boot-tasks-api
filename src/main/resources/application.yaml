@@ -67,6 +67,24 @@ task:
     cron: ${TASK_REMINDERS_CRON:0 */15 * * * *}
     due-soon-lead-time: 24h
     overdue-lookback: 7d
+# Health, metrics and build info on a port of their own. Warning: expose it only to the monitoring network, never to
+# the internet; it needs no authentication.
+management:
+  server:
+    port: ${MANAGEMENT_PORT:8081}
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+      # Ready when the API can serve its core requests; the antivirus only blocks uploads, so it stays out
+      group:
+        readiness:
+          include: readinessState, db, rabbit, storage
 spring:
   config:
     import: optional:file:.env[.properties]
