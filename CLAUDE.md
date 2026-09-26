@@ -157,7 +157,7 @@ In development, SMTP goes to the Mailpit service of `compose.yaml` (web UI on ht
 ### Outbox
 
 Every message for RabbitMQ goes through `messaging.services.Outbox.enqueue`, never through `RabbitTemplate` directly. It writes an `outbox_messages` row in the caller's transaction (`Propagation.MANDATORY`), so the message exists if and only if the business change commits.
-- `OutboxRelay.publishNow` publishes it right after the commit, on an `@Async` thread, and waits for the broker's confirm (`spring.rabbitmq.publisher-confirm-type: simple`) before setting `published_at`.
+- `OutboxRelay.publishNow` publishes it right after the commit, on an `@Async` thread, and waits for the broker's confirm (`spring.rabbitmq.publisher-confirm-type: correlated`) and checks it was not returned as unroutable (the message is mandatory) before setting `published_at`: RabbitMQ also confirms a message for a missing queue.
 - A failed publish records `attempts`, `last_error` and `next_attempt_at` (5 s, doubling, capped at `messaging.outbox.max-retry-delay`). `OutboxRelayJob` retries due messages every `messaging.outbox.poll-interval` and deletes published ones after `messaging.outbox.retention`.
 - Rows are locked with `FOR UPDATE SKIP LOCKED`, so the immediate publish, the poller and other instances never send the same message twice at once. A crash between the confirm and the commit publishes it again: delivery is at least once, and consumers must tolerate a duplicate.
 - The message carries its class name in the `__TypeId__` header; the class's package must be trusted by the converter in `MessagingConfiguration`.

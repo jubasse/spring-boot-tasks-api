@@ -76,8 +76,12 @@ spring:
   # Connection: spring-boot-docker-compose provides it in development (rabbitmq service); set SPRING_RABBITMQ_HOST,
   # SPRING_RABBITMQ_USERNAME and SPRING_RABBITMQ_PASSWORD elsewhere
   rabbitmq:
-    # The outbox relay waits for the broker to confirm each message before marking it published
-    publisher-confirm-type: simple
+    # The outbox relay waits for the broker to confirm each message, and to not return it as unroutable, before
+    # marking it published
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
     listener:
       simple:
         concurrency: 2

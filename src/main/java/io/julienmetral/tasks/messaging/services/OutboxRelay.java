@@ -5,8 +5,11 @@ import io.julienmetral.tasks.messaging.entities.OutboxMessage;
 import io.julienmetral.tasks.messaging.repositories.OutboxMessageRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.AmqpException;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageProperties;
+import org.springframework.amqp.core.ReturnedMessage;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.AbstractJavaTypeMapper;
 import org.springframework.scheduling.annotation.Async;
@@ -20,6 +23,9 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 @Slf4j
 @Service
@@ -71,7 +77,9 @@ public class OutboxRelay {
     }
 
     // Waits for the broker's confirm: only a confirmed message is marked published. If the transaction then fails
-    // to commit, the message is published again later, hence at least once.
+    // to commit, the message is published again later, hence at least once. Sent as mandatory, because RabbitMQ also
+    // confirms a message it cannot route: without the return check, a message for a missing queue was marked
+    // published and lost.
     private void send(OutboxMessage message) {
         MessageProperties messageProperties = new MessageProperties();
 
@@ -81,12 +89,33 @@ public class OutboxRelay {
         messageProperties.setHeader(AbstractJavaTypeMapper.DEFAULT_CLASSID_FIELD_NAME, message.getType());
 
         Message amqpMessage = new Message(jsonMapper.writeValueAsBytes(message.getPayload()), messageProperties);
+        CorrelationData correlation = new CorrelationData(message.getId().toString());
 
-        rabbitTemplate.invoke(operations -> {
-            operations.send("", message.getQueue(), amqpMessage);
-            operations.waitForConfirmsOrDie(properties.confirmTimeout().toMillis());
-            return null;
-        });
+        rabbitTemplate.send("", message.getQueue(), amqpMessage, correlation);
+
+        CorrelationData.Confirm confirm = awaitConfirm(correlation);
+
+        if (!confirm.ack()) {
+            throw new AmqpException("Refused by the broker: " + confirm.reason());
+        }
+
+        ReturnedMessage returned = correlation.getReturned();
+
+        if (returned != null) {
+            throw new AmqpException("No queue " + message.getQueue() + " to route to: " + returned.getReplyText());
+        }
+    }
+
+    // Spring AMQP sets the returned message on the correlation before completing its confirm
+    private CorrelationData.Confirm awaitConfirm(CorrelationData correlation) {
+        try {
+            return correlation.getFuture().get(properties.confirmTimeout().toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new AmqpException("Interrupted while waiting for the broker's confirm", exception);
+        } catch (ExecutionException | TimeoutException exception) {
+            throw new AmqpException("No confirm from the broker", exception);
+        }
     }
 
     private void scheduleRetry(OutboxMessage message, RuntimeException exception) {
