@@ -157,6 +157,7 @@ The code lives under `src/main/java/io/julienmetral/tasks`, organized by feature
 | `notification` | Task emails and each user's notification settings |
 | `media` | Stored files: type and size checks, antivirus, object storage, download links, cleanup |
 | `mail` | Sending emails, used by every feature |
+| `messaging` | Outbox that saves messages for RabbitMQ with the change that triggers them, and publishes them |
 | `config` | Technical configuration: storage drivers, antivirus, messaging, scheduling |
 | `shared` | Base entity, error responses, reusable authorization annotations |
 
@@ -172,7 +173,7 @@ Files live in S3-compatible object storage, never in the database. Downloads do 
 
 ### Background work
 
-Work that must not slow down a request, or must survive a failure, goes through RabbitMQ once the request's transaction has committed:
+Work that must not slow down a request, or must survive a failure, goes through RabbitMQ. The message is first saved in the database with the change that triggers it, then published once that change is committed. If RabbitMQ is unreachable, the message waits in the database and is published when the broker is back, so it is delayed but not lost.
 
 | Queue | Consumer |
 |---|---|
@@ -217,7 +218,9 @@ A full run takes a few minutes and several GB of memory. Do not run two full run
 
 **A profile photo does not change after the upload.** The upload answers 202 and the photo is processed in the background: `avatarPending` stays `true` in the account until it is done. If it stays pending, check the `avatar.process.dead-letter` queue in the RabbitMQ console.
 
-**An email never arrives.** Emails leave shortly after the request, in the background. Check Mailpit locally, then the `mail.send.dead-letter` queue: a message lands there when the mail server kept failing.
+**An email never arrives.** Emails leave shortly after the request, in the background. Check Mailpit locally, then:
+- the `outbox_messages` table: a row with no `published_at` is waiting for RabbitMQ, and `last_error` says why;
+- the `mail.send.dead-letter` queue: a message lands there when the mail server kept failing.
 
 ## Contributing
 
