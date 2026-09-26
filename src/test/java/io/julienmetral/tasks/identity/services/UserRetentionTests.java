@@ -7,7 +7,6 @@ import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.repositories.UserRetentionQueries;
 import io.julienmetral.tasks.support.Mailpit;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -170,6 +169,7 @@ class UserRetentionTests {
         assertThat(row.get("last_active_at")).isNull();
         assertThat(row.get("inactivity_warned_at")).isNull();
         assertThat(instant(row.get("anonymized_at"))).isEqualTo(NOW);
+        assertThat(instant(row.get("updated_at"))).isEqualTo(NOW);
         assertThat(instant(row.get("deleted_at"))).isEqualTo(NOW.minus(Duration.ofDays(31)));
     }
 
@@ -405,11 +405,9 @@ class UserRetentionTests {
         setDate(user, "last_active_at", Instant.parse("2020-01-01T00:00:00Z"));
         setDate(user, "inactivity_warned_at", Instant.parse("2022-01-01T00:00:00Z"));
 
-        Instant before = Instant.now();
         login(user.getEmail()).andExpect(status().isOk());
-        Instant after = Instant.now();
 
-        assertThat(instant(userRow(user).get("last_active_at"))).isBetween(before, after);
+        assertThat(instant(userRow(user).get("last_active_at"))).isEqualTo(NOW);
         assertThat(warnedAt(user)).isNull();
     }
 
@@ -420,14 +418,12 @@ class UserRetentionTests {
         setDate(user, "last_active_at", Instant.parse("2020-01-01T00:00:00Z"));
         setDate(user, "inactivity_warned_at", Instant.parse("2022-01-01T00:00:00Z"));
 
-        Instant before = Instant.now();
         mockMvc.perform(post("/api/v1/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(Map.of("refreshToken", refreshToken))))
                 .andExpect(status().isOk());
-        Instant after = Instant.now();
 
-        assertThat(instant(userRow(user).get("last_active_at"))).isBetween(before, after);
+        assertThat(instant(userRow(user).get("last_active_at"))).isEqualTo(NOW);
         assertThat(warnedAt(user)).isNull();
     }
 
@@ -475,10 +471,28 @@ class UserRetentionTests {
 
         assertThat(deletedAt(user)).isNull();
         assertThat(userRepository.findById(user.getId())).isPresent();
+        // The login time comes from the same clock as the run, so the account is not warned again
+        assertThat(warnedAt(user)).isNull();
     }
 
-    @Disabled("bug: UserRetentionQueries.usersWarnedBefore does not exclude admins, so a user warned and then "
-            + "promoted to admin is deleted for inactivity, although admins are never deleted for inactivity")
+    @Test
+    void disabledAccountIsWarnedWithoutAnEmailAndDeletedAfterTheNotice() throws Exception {
+        User user = createUser(UserRole.USER);
+        setDate(user, "last_active_at", NOW.minus(Duration.ofDays(731)));
+        userService.disable(user.getId());
+
+        retentionService.apply();
+
+        assertThat(warnedAt(user)).isEqualTo(NOW);
+        waitForAsyncDispatch();
+        assertThat(mailpit.countTo(user.getEmail())).isZero();
+
+        setDate(user, "inactivity_warned_at", NOW.minus(Duration.ofDays(31)));
+        retentionService.apply();
+
+        assertThat(deletedAt(user)).isNotNull();
+    }
+
     @Test
     void userPromotedToAdminAfterTheWarningIsNotDeleted() {
         User user = createUser(UserRole.USER);
