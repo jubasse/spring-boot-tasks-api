@@ -4,20 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Stack
 
-Spring Boot 4.1 REST API (Java 25, Maven wrapper) backed by PostgreSQL 18, with media files in S3-compatible object storage. Spring Data JPA (Hibernate 7), Liquibase, Spring Security as a stateless OAuth2 resource server with self-issued HS256 JWTs, Lombok, springdoc-openapi. MapStruct is on the classpath but unused: DTOs are records that map from entities through their own constructor (e.g. `new TaskResponseDto(task)`).
+Spring Boot 4.1 REST API (Java 25, Maven wrapper) backed by PostgreSQL 18, with media files in S3-compatible object storage and background work on RabbitMQ. Spring Data JPA (Hibernate 7), Spring AMQP, Liquibase, Spring Security as a stateless OAuth2 resource server with self-issued HS256 JWTs, Lombok, springdoc-openapi. MapStruct is on the classpath but unused: DTOs are records that map from entities through their own constructor (e.g. `new TaskResponseDto(task)`).
 
 ## Commands
 
 ```bash
 ./mvnw compile                                  # build (runs Lombok + MapStruct + config annotation processors)
-./mvnw spring-boot:run                          # run; spring-boot-docker-compose starts compose.yaml (postgres, mailpit, rustfs, clamav)
+./mvnw spring-boot:run                          # run; spring-boot-docker-compose starts compose.yaml (postgres, mailpit, rustfs, clamav, rabbitmq)
 docker compose up -d                            # needed once after compose.yaml gains a service: see the note below
 ./mvnw spring-boot:test-run                     # run with a Testcontainers postgres (TestTasksApplication)
 ./mvnw test                                     # all tests (needs Docker, Testcontainers)
 ./mvnw test -Dtest=TasksApplicationTests#contextLoads   # a single test
 ```
 
-Note: `spring-boot-docker-compose` skips `docker compose up` when some services of the project already run. A service added to `compose.yaml` later (for example `rustfs` or `clamav`) therefore does not start by itself: run `docker compose up -d` once.
+Note: `spring-boot-docker-compose` skips `docker compose up` when some services of the project already run. A service added to `compose.yaml` later (for example `rustfs`, `clamav` or `rabbitmq`) therefore does not start by itself: run `docker compose up -d` once.
 
 Tests need no `.env`: `src/test/resources/config/application.yaml` provides a test-only JWT secret. Spring Boot loads that file on top of the main `application.yaml`.
 
@@ -113,9 +113,11 @@ Warning: Hibernate refuses a `LAZY` to-one association towards an entity with `@
 
 ### Mail
 
-`io.julienmetral.tasks.mail` is the cross-cutting mail service. Features call `MailService.send(MailMessage)`, usually from an event listener that writes the content (for example `identity.mail.VerificationEmailSender`). The message is dispatched after the surrounding transaction commits, on an `@Async` virtual thread (`MailDispatcher`). A delivery failure is logged and never fails the business operation. The sender address is `mail.from`.
+`io.julienmetral.tasks.mail` is the cross-cutting mail service. Features call `MailService.send(MailMessage)`, usually from an event listener that writes the content (for example `identity.mail.VerificationEmailSender`). The sender address is `mail.from`.
+- **Queueing:** after the surrounding transaction commits, `MailDispatcher` publishes the message to the durable RabbitMQ queue `mail.send`, on an `@Async` virtual thread. If the broker stays unreachable past the template retries, the email is lost and logged; the business operation is never failed.
+- **Sending:** `MailQueueListener` consumes the queue and sends through SMTP. A failure is retried in the consumer with backoff (`spring.rabbitmq.listener.simple.retry`, about 1.5 minutes), then the message goes to `mail.send.dead-letter`, where it stays for inspection or a manual move from the RabbitMQ management UI (http://localhost:15672 in development). A message that can never be built is dead-lettered at once. Delivery is at least once.
 
-In development, SMTP goes to the Mailpit service of `compose.yaml` (web UI on http://localhost:8025). Tests start a Mailpit container (`TestcontainersConfiguration`) and read the received emails with `support.Mailpit`. Sending is asynchronous, so use its waiting methods (`latestTextTo`, `latestVerificationTokenFor`).
+In development, SMTP goes to the Mailpit service of `compose.yaml` (web UI on http://localhost:8025). Tests start RabbitMQ and Mailpit containers (`TestcontainersConfiguration`) and read the received emails with `support.Mailpit`. Sending is asynchronous, so use its waiting methods (`latestTextTo`, `latestVerificationTokenFor`).
 
 ### Media storage
 
