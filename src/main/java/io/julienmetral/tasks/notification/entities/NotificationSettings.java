@@ -54,6 +54,14 @@ public class NotificationSettings {
     @Column(name = "task_mentioned", nullable = false)
     private boolean taskMentioned = true;
 
+    @ColumnDefault("true")
+    @Column(name = "task_due_soon", nullable = false)
+    private boolean taskDueSoon = true;
+
+    @ColumnDefault("true")
+    @Column(name = "task_overdue", nullable = false)
+    private boolean taskOverdue = true;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
@@ -79,6 +87,8 @@ public class NotificationSettings {
             case DELETED -> taskDeleted;
             case COMMENTED -> taskCommented;
             case MENTIONED -> taskMentioned;
+            case DUE_SOON -> taskDueSoon;
+            case OVERDUE -> taskOverdue;
         };
     }
 }
