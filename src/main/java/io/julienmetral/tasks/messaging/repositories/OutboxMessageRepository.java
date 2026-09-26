@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface OutboxMessageRepository extends JpaRepository<OutboxMessage, UUID> {
@@ -39,6 +40,11 @@ public interface OutboxMessageRepository extends JpaRepository<OutboxMessage, UU
             nativeQuery = true
     )
     List<OutboxMessage> lockDue(@Param("now") Instant now, @Param("limit") int limit);
+
+    long countByPublishedAtIsNull();
+
+    @Query(value = "SELECT min(created_at) FROM outbox_messages WHERE published_at IS NULL", nativeQuery = true)
+    Optional<Instant> oldestUnpublishedCreatedAt();
 
     @Modifying
     @Query(value = "DELETE FROM outbox_messages WHERE published_at < :cutoff", nativeQuery = true)

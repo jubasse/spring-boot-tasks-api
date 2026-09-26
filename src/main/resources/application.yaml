@@ -77,6 +77,26 @@ task:
     cron: ${TASK_REMINDERS_CRON:0 */15 * * * *}
     due-soon-lead-time: 24h
     overdue-lookback: 7d
+# Health, metrics and build info on a port of their own. Warning: expose it only to the monitoring network, never to
+# the internet; it needs no authentication.
+management:
+  server:
+    port: ${MANAGEMENT_PORT:8081}
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+      # Ready when every request can be served, which only needs the database. RabbitMQ down only delays emails and
+      # photos (the outbox keeps them), and storage or antivirus down only blocks files: the overall health reports
+      # them, but taking the API out of the load balancer for them would stop everything else too.
+      group:
+        readiness:
+          include: readinessState, db
 # Behind a reverse proxy, set FORWARD_HEADERS_STRATEGY=native (or framework) so that the client address used by the
 # rate limits comes from X-Forwarded-For; without a proxy, keep none, or clients could pick their own address
 server:

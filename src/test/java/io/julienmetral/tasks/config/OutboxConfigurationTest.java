@@ -4,6 +4,7 @@ import io.julienmetral.tasks.messaging.services.OutboxRelay;
 import io.julienmetral.tasks.messaging.services.OutboxRelayJob;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.env.YamlPropertySourceLoader;
+import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.io.ClassPathResource;
@@ -31,6 +32,7 @@ class OutboxConfigurationTest {
             .withUserConfiguration(MessagingConfiguration.class, SchedulingConfiguration.class, OutboxRelayJob.class)
             .withBean(JsonMapper.class, () -> JsonMapper.builder().build())
             .withBean(OutboxRelay.class, () -> mock(OutboxRelay.class))
+            .withBean(AmqpAdmin.class, () -> mock(AmqpAdmin.class))
             // SchedulingConfiguration also validates the media cleanup, task reminder and user retention properties
             .withPropertyValues(
                     "media.cleanup.enabled=false",

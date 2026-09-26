@@ -3,6 +3,8 @@ package io.julienmetral.tasks.messaging.services;
 import io.julienmetral.tasks.config.OutboxProperties;
 import io.julienmetral.tasks.messaging.entities.OutboxMessage;
 import io.julienmetral.tasks.messaging.repositories.OutboxMessageRepository;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -62,6 +64,8 @@ class OutboxRelayTest {
 
     private final JsonMapper jsonMapper = JsonMapper.builder().build();
 
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
     @Mock
     private OutboxMessageRepository repository;
 
@@ -72,7 +76,7 @@ class OutboxRelayTest {
 
     @BeforeEach
     void setUp() {
-        relay = new OutboxRelay(repository, rabbitTemplate, jsonMapper, PROPERTIES, Clock.fixed(NOW, ZoneOffset.UTC));
+        relay = new OutboxRelay(repository, rabbitTemplate, jsonMapper, PROPERTIES, Clock.fixed(NOW, ZoneOffset.UTC), meterRegistry);
     }
 
     @Test
@@ -103,7 +107,7 @@ class OutboxRelayTest {
     void messageNotConfirmedWithinTheTimeoutIsNotMarkedPublished() {
         OutboxProperties shortTimeout = new OutboxProperties(Duration.ofSeconds(5), BATCH_SIZE, Duration.ofMinutes(10),
                 Duration.ofMillis(50), Duration.ofDays(7), "0 0 * * * *");
-        relay = new OutboxRelay(repository, rabbitTemplate, jsonMapper, shortTimeout, Clock.fixed(NOW, ZoneOffset.UTC));
+        relay = new OutboxRelay(repository, rabbitTemplate, jsonMapper, shortTimeout, Clock.fixed(NOW, ZoneOffset.UTC), meterRegistry);
         OutboxMessage row = mailRow();
         when(repository.lockUnpublished(List.of(row.getId()))).thenReturn(List.of(row));
 
@@ -303,6 +307,117 @@ class OutboxRelayTest {
         when(repository.deletePublishedBefore(NOW.minus(Duration.ofDays(7)))).thenReturn(4);
 
         assertThat(relay.deletePublished()).isEqualTo(4);
+    }
+
+    @Test
+    void confirmedMessageIsCountedAsPublishedForItsQueue() {
+        OutboxMessage row = mailRow();
+        when(repository.lockUnpublished(List.of(row.getId()))).thenReturn(List.of(row));
+        brokerConfirms();
+
+        relay.publishNow(List.of(row.getId()));
+
+        assertThat(publishedCount("mail.send")).isEqualTo(1.0);
+        assertThat(meterRegistry.find("outbox.publish.failures").counters()).isEmpty();
+    }
+
+    @Test
+    void publishedCountAddsUpAcrossPublishes() {
+        OutboxMessage first = mailRow();
+        OutboxMessage second = mailRow();
+        when(repository.lockUnpublished(List.of(first.getId()))).thenReturn(List.of(first));
+        when(repository.lockDue(NOW, BATCH_SIZE)).thenReturn(List.of(second));
+        brokerConfirms();
+
+        relay.publishNow(List.of(first.getId()));
+        relay.publishDue();
+
+        assertThat(publishedCount("mail.send")).isEqualTo(2.0);
+    }
+
+    @Test
+    void unreachableBrokerIsCountedAsAFailureForTheQueueAndNotAsPublished() {
+        OutboxMessage row = mailRow();
+        when(repository.lockUnpublished(List.of(row.getId()))).thenReturn(List.of(row));
+        brokerIsUnreachable();
+
+        relay.publishNow(List.of(row.getId()));
+
+        assertThat(failureCount("mail.send")).isEqualTo(1.0);
+        assertThat(meterRegistry.find("outbox.messages.published").counters()).isEmpty();
+    }
+
+    @Test
+    void messageRefusedByTheBrokerIsCountedAsAFailure() {
+        OutboxMessage row = mailRow();
+        when(repository.lockUnpublished(List.of(row.getId()))).thenReturn(List.of(row));
+        brokerAnswers(correlation -> correlation.getFuture().complete(new CorrelationData.Confirm(false, "queue full")));
+
+        relay.publishNow(List.of(row.getId()));
+
+        assertThat(failureCount("mail.send")).isEqualTo(1.0);
+        assertThat(publishedCount("mail.send")).isZero();
+    }
+
+    @Test
+    void messageReturnedAsUnroutableIsCountedAsAFailureAndNotAsPublished() {
+        OutboxMessage row = mailRow();
+        when(repository.lockUnpublished(List.of(row.getId()))).thenReturn(List.of(row));
+        brokerAnswers(correlation -> {
+            correlation.setReturned(new ReturnedMessage(new Message(new byte[0]), 312, "NO_ROUTE", "", "mail.send"));
+            correlation.getFuture().complete(new CorrelationData.Confirm(true, null));
+        });
+
+        relay.publishNow(List.of(row.getId()));
+
+        assertThat(failureCount("mail.send")).isEqualTo(1.0);
+        assertThat(publishedCount("mail.send")).isZero();
+    }
+
+    @Test
+    void publishedAndFailedMessagesAreCountedPerQueue() {
+        OutboxMessage firstMail = mailRow();
+        OutboxMessage avatar = row("avatar.process", "io.julienmetral.tasks.identity.messaging.AvatarUploaded",
+                Map.of("userId", UUID.randomUUID().toString(), "uploadId", UUID.randomUUID().toString()));
+        OutboxMessage secondMail = mailRow();
+        when(repository.lockDue(NOW, BATCH_SIZE)).thenReturn(List.of(firstMail, avatar, secondMail));
+        doAnswer(invocation -> {
+            if ("avatar.process".equals(invocation.getArgument(1))) {
+                throw new AmqpConnectException(new ConnectException("Connection reset"));
+            }
+            invocation.<CorrelationData>getArgument(3).getFuture().complete(new CorrelationData.Confirm(true, null));
+            return null;
+        }).when(rabbitTemplate).send(anyString(), anyString(), any(Message.class), any(CorrelationData.class));
+
+        relay.publishDue();
+
+        assertThat(publishedCount("mail.send")).isEqualTo(2.0);
+        assertThat(failureCount("avatar.process")).isEqualTo(1.0);
+        assertThat(failureCount("mail.send")).isZero();
+        assertThat(publishedCount("avatar.process")).isZero();
+    }
+
+    @Test
+    void nothingToPublishRegistersNoCounter() {
+        when(repository.lockDue(NOW, BATCH_SIZE)).thenReturn(List.of());
+
+        relay.publishDue();
+
+        assertThat(meterRegistry.getMeters()).isEmpty();
+    }
+
+    private double publishedCount(String queue) {
+        return count("outbox.messages.published", queue);
+    }
+
+    private double failureCount(String queue) {
+        return count("outbox.publish.failures", queue);
+    }
+
+    private double count(String name, String queue) {
+        Counter counter = meterRegistry.find(name).tag("queue", queue).counter();
+
+        return counter == null ? 0 : counter.count();
     }
 
     private void brokerConfirms() {

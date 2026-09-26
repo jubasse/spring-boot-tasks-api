@@ -1,6 +1,10 @@
 package io.julienmetral.tasks.config;
 
+import io.julienmetral.tasks.identity.messaging.AvatarQueues;
+import io.julienmetral.tasks.mail.MailQueues;
+import io.julienmetral.tasks.messaging.services.DeadLetterQueueMetrics;
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
+import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.boot.amqp.autoconfigure.RabbitListenerRetrySettingsCustomizer;
@@ -8,6 +12,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import tools.jackson.databind.json.JsonMapper;
+
+import java.util.List;
 
 @Configuration
 @EnableConfigurationProperties(OutboxProperties.class)
@@ -28,6 +34,11 @@ public class MessagingConfiguration {
                 "io.julienmetral.tasks.mail",
                 "io.julienmetral.tasks.identity.messaging"
         );
+    }
+
+    @Bean
+    DeadLetterQueueMetrics deadLetterQueueMetrics(AmqpAdmin amqpAdmin) {
+        return new DeadLetterQueueMetrics(amqpAdmin, List.of(MailQueues.DEAD_LETTER, AvatarQueues.DEAD_LETTER));
     }
 
     /**
