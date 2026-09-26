@@ -4,6 +4,7 @@ import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.identity.services.UserService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -41,6 +42,9 @@ class NotificationSettingsApiTests {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private UserService userService;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -764,8 +768,7 @@ class NotificationSettingsApiTests {
     }
 
     private void softDelete(User user) {
-        userRepository.delete(userRepository.findById(user.getId()).orElseThrow());
-        userRepository.flush();
+        userService.delete(user.getId());
 
         Timestamp deletedAt = jdbcTemplate.queryForObject(
                 "select deleted_at from users where id = ?",

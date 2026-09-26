@@ -46,7 +46,7 @@ public class RefreshToken {
             updatable = false,
             foreignKey = @ForeignKey(name = "refresh_tokens_userFK")
     )
-    private UserSummary user;
+    private UserProfile user;
 
     @Column(name = "token_hash", nullable = false, updatable = false, length = 64)
     private String tokenHash;

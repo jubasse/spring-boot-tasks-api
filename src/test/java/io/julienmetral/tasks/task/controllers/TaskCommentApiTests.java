@@ -1131,8 +1131,6 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
     }
 
     private User createNamedUser(String displayName) {
-        User user = createUser(UserRole.USER);
-        user.setDisplayName(displayName);
-        return userRepository.saveAndFlush(user);
+        return updateUser(createUser(UserRole.USER), user -> user.setDisplayName(displayName));
     }
 }

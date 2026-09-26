@@ -1,6 +1,6 @@
 package io.julienmetral.tasks.task.dtos;
 
-import io.julienmetral.tasks.identity.dtos.UserPreviewResponseDto;
+import io.julienmetral.tasks.identity.dtos.UserProfileResponseDto;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.services.MediaUrls;
 import io.julienmetral.tasks.task.entities.TaskAttachment;
@@ -13,7 +13,7 @@ public record TaskAttachmentResponseDto(
         String filename,
         String contentType,
         long sizeBytes,
-        UserPreviewResponseDto uploadedBy,
+        UserProfileResponseDto uploadedBy,
         UUID commentId,
         Instant createdAt,
         String downloadUrl
@@ -29,7 +29,7 @@ public record TaskAttachmentResponseDto(
                 media.getOriginalFilename(),
                 media.getContentType(),
                 media.getSizeBytes(),
-                UserPreviewResponseDto.of(media.getUploadedBy(), mediaUrls),
+                UserProfileResponseDto.of(media.getUploadedBy(), mediaUrls),
                 attachment.getComment() == null ? null : attachment.getComment().getId(),
                 attachment.getCreatedAt(),
                 mediaUrls.of(media)

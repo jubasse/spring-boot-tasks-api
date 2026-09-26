@@ -42,7 +42,7 @@ public class EmailVerificationToken {
             updatable = false,
             foreignKey = @ForeignKey(name = "email_verification_tokens_userFK")
     )
-    private UserSummary user;
+    private UserProfile user;
 
     @Column(name = "token_hash", nullable = false, updatable = false, length = 64)
     private String tokenHash;

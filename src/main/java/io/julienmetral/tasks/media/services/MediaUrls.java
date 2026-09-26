@@ -1,5 +1,7 @@
 package io.julienmetral.tasks.media.services;
 
+import io.julienmetral.tasks.identity.controllers.IdenticonController;
+import io.julienmetral.tasks.identity.entities.UserProfile;
 import io.julienmetral.tasks.media.model.Media;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -14,5 +16,12 @@ public class MediaUrls {
     /** Null when there is no media. */
     public String of(Media media) {
         return media == null ? null : mediaService.downloadUrl(media).url().toString();
+    }
+
+    /** The profile's photo while others may see it, otherwise its identicon, so a client always has an image. */
+    public String avatarOf(UserProfile profile) {
+        Media avatar = profile.visibleAvatar();
+
+        return avatar == null ? IdenticonController.urlOf(profile.getId()) : of(avatar);
     }
 }

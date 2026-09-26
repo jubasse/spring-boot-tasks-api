@@ -2,10 +2,10 @@ package io.julienmetral.tasks.task.services;
 
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserStatus;
-import io.julienmetral.tasks.identity.entities.UserSummary;
+import io.julienmetral.tasks.identity.entities.UserProfile;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
+import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.task.dtos.CreateTaskDto;
 import io.julienmetral.tasks.task.dtos.UpdateTaskDto;
@@ -39,7 +39,7 @@ public class TaskService {
     private final TaskRepository taskRepository;
     private final TaskEventService taskEventService;
     private final UserRepository userRepository;
-    private final UserSummaryRepository userSummaryRepository;
+    private final UserProfileRepository userProfileRepository;
     private final CurrentUser currentUser;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -64,7 +64,7 @@ public class TaskService {
 
         currentUser.getId()
                 .filter(userRepository::existsById)
-                .map(userSummaryRepository::getReferenceById)
+                .map(userProfileRepository::getReferenceById)
                 .ifPresent(task::setCreatedBy);
 
         if (dto.assignedTo() != null) {
@@ -304,7 +304,7 @@ public class TaskService {
     }
 
     // Only enabled users with a verified email can work on tasks, so only they can be assigned
-    private UserSummary getAssignableUser(UUID userId) {
+    private UserProfile getAssignableUser(UUID userId) {
         User user = userRepository
                 .findById(userId)
                 .orElseThrow(() -> new UserNotFoundException(userId));
@@ -315,7 +315,7 @@ public class TaskService {
             throw new AssigneeNotActiveException(userId, status);
         }
 
-        return userSummaryRepository.getReferenceById(user.getId());
+        return userProfileRepository.getReferenceById(user.getId());
     }
 
     private Task getTask(UUID id) {

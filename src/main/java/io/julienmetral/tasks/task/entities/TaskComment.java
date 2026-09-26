@@ -1,6 +1,6 @@
 package io.julienmetral.tasks.task.entities;
 
-import io.julienmetral.tasks.identity.entities.UserSummary;
+import io.julienmetral.tasks.identity.entities.UserProfile;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -51,7 +51,7 @@ public class TaskComment {
             updatable = false,
             foreignKey = @ForeignKey(name = "task_comments_authorFK")
     )
-    private UserSummary author;
+    private UserProfile author;
 
     @Column(name = "body", nullable = false, columnDefinition = "TEXT")
     private String body;
@@ -69,7 +69,7 @@ public class TaskComment {
                     foreignKey = @ForeignKey(name = "task_comment_mentions_userFK")
             )
     )
-    private Set<UserSummary> mentions = new HashSet<>();
+    private Set<UserProfile> mentions = new HashSet<>();
 
     @BatchSize(size = 50)
     @OneToMany(mappedBy = "comment")

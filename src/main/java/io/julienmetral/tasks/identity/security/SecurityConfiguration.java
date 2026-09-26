@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.identity.security;
 
 import io.julienmetral.tasks.identity.services.DatabaseUserDetailsService;
+import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -121,6 +122,11 @@ public class SecurityConfiguration {
                 )
                 .authorizeHttpRequests(auth ->
                         auth
+                                // Errors are rendered by an internal dispatch to /error, after the request itself was
+                                // authorized. Securing that dispatch turned every 400 of a public endpoint (malformed
+                                // JSON on login or sign-up, an invalid identicon id) into a 401.
+                                .dispatcherTypeMatchers(DispatcherType.ERROR)
+                                .permitAll()
                                 .requestMatchers(
                                         HttpMethod.POST,
                                         "/api/v1/users"
@@ -143,6 +149,9 @@ public class SecurityConfiguration {
                                 // deployment. Matching the endpoints only left its error page (404, 406, 500)
                                 // behind authentication, so every error there answered 401.
                                 .requestMatchers(onManagementPort(environment))
+                                .permitAll()
+                                // Identicons are images loaded by <img> tags, which send no token
+                                .requestMatchers(HttpMethod.GET, "/api/v1/identicons/*")
                                 .permitAll()
                                 // Tasks are reserved to enabled users with a verified email
                                 .requestMatchers("/api/v1/tasks/**")

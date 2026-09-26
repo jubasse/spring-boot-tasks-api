@@ -6,6 +6,7 @@ import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.identity.services.UserService;
 import io.julienmetral.tasks.media.exceptions.EmptyMediaException;
 import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
 import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
@@ -68,6 +69,9 @@ class MediaStorageTests {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private UserService userService;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -293,14 +297,14 @@ class MediaStorageTests {
                 uploader.getId()
         );
 
-        userRepository.delete(userRepository.findById(uploader.getId()).orElseThrow());
+        userService.delete(uploader.getId());
 
         Media reloaded = reload(stored.getId());
 
         assertThat(reloaded.getUploadedBy()).isNotNull();
         assertThat(reloaded.getUploadedBy().getId()).isEqualTo(uploader.getId());
         assertThat(reloaded.getUploadedBy().getDisplayName()).isEqualTo(uploader.getDisplayName());
-        assertThat(UserStatus.of(reloaded.getUploadedBy())).isEqualTo(UserStatus.DELETED);
+        assertThat(reloaded.getUploadedBy().getStatus()).isEqualTo(UserStatus.DELETED);
     }
 
     @Test

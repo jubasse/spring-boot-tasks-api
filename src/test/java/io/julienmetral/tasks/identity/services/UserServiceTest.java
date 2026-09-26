@@ -26,6 +26,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -60,12 +61,15 @@ class UserServiceTest {
 
     private User stubExisting() {
         User user = existingUser();
-        when(userRepository.findById(ID)).thenReturn(Optional.of(user));
+        // Reads use findById, state changes lock the row with findByIdForUpdate
+        lenient().when(userRepository.findById(ID)).thenReturn(Optional.of(user));
+        lenient().when(userRepository.findByIdForUpdate(ID)).thenReturn(Optional.of(user));
         return user;
     }
 
     private void stubMissing() {
-        when(userRepository.findById(ID)).thenReturn(Optional.empty());
+        lenient().when(userRepository.findById(ID)).thenReturn(Optional.empty());
+        lenient().when(userRepository.findByIdForUpdate(ID)).thenReturn(Optional.empty());
     }
 
     @Test

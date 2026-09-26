@@ -77,7 +77,7 @@ Controllers are under `/api/v1/...`. Services own transactions and return entiti
 Refresh, verification and reset tokens are 256-bit random values (`OpaqueTokens`). Only their SHA-256 hash is stored.
 
 7. **GDPR retention** (`UserRetentionService`, run daily at 04:00 by `UserRetentionJob`, settings under `identity.retention`):
-   - users soft-deleted for 30 days are anonymized in native SQL (`UserRetentionQueries`): email `deleted-<id>@anonymized.invalid`, name "Deleted user", unusable password, settings and tokens deleted. The row stays for tasks and history, and the original email becomes free for a new sign-up. Their media go through the media cleanup, which uses the same 30 days.
+   - users soft-deleted for 30 days are erased in native SQL (`UserRetentionQueries`): their profile becomes "Deleted user" without photo, and their `users` row is deleted with its roles, settings and tokens. Tasks and history keep pointing to the profile, and the original email becomes free for a new sign-up. The photo files go with the media cleanup, which uses the same 30 days.
    - accounts without activity for 2 years get a warning email, then are deleted 30 days later if still inactive, and anonymized by a later run. Activity is `last_active_at`, set by login and by token refresh (`User.markActive`, which also clears the warning); older rows fall back to `last_login_at`, then `created_at`.
    - admins are never warned or deleted for inactivity, so the last admin cannot disappear.
 
@@ -98,7 +98,7 @@ Public endpoints: `POST /api/v1/users` (sign-up), and `POST /api/v1/auth/login`,
 Only **active** users can work on tasks. Active means enabled, not deleted, and with a verified email (`UserStatus.ACTIVE`).
 - **Callers:** `ActiveUserAuthorizationManager` guards `/api/v1/tasks/**` in `SecurityConfiguration`. It reloads the user on every request, so a disabled, deleted or unverified user gets 403 even with a still-valid access token. User and auth endpoints are not restricted.
 - **Assignees:** `TaskService` refuses to assign a task to a user who is not active and throws `AssigneeNotActiveException` (422).
-- **Responses:** task responses and task history expose referenced users as `UserPreviewResponseDto(id, displayName, status)`, with `status` one of `ACTIVE`, `UNVERIFIED`, `DISABLED` or `DELETED`.
+- **Responses:** task responses and task history expose referenced users as `UserProfileResponseDto(id, displayName, status, avatarUrl)`, with `status` one of `ACTIVE`, `UNVERIFIED`, `DISABLED` or `DELETED`.
 - **Listing:** `GET /api/v1/tasks` is paginated and filters on `status`, `assigneeId` and `archived`, which defaults to false.
 
 ### Task comments
@@ -116,16 +116,18 @@ Only **active** users can work on tasks. Active means enabled, not deleted, and 
 - A Postgres advisory lock keeps several instances from sending the same reminders, as for the media cleanup.
 - Tests disable the job (`task.reminders.enabled: false`) and call the service with a fixed `Clock`.
 
-### Soft-deleted users in associations
+### Users and their profile
 
-Entities never point to `User`, which carries `@SoftDelete`: they point to **`UserSummary`**. That is a read-only (`@Immutable`) view of the same `users` table, without `@SoftDelete`.
-- **Loading:** a soft-deleted user still loads through it, so a task, its history or a token referencing that user never fails to load. Responses show that user with status `DELETED` and their name.
-- **Writing:** services set an association with `userSummaryRepository.getReferenceById(user.getId())`, a proxy that does not query the database.
-- **Checking:** to know whether the referenced account can still act, load the full `User` with `userRepository.findById(summary.getId())`, which skips soft-deleted users.
+A user is two rows sharing one UUID: **`users`** (`User`) holds the account (email, password, roles, verification, activation, activity) and carries `@SoftDelete`; **`user_profiles`** (`UserProfile`) holds what others see (display name, photo, a copy of the status) and has no soft delete.
+- **References:** every entity that points to a user (tasks, history, comments, mentions, reminders, media, tokens) points to `UserProfile`, never to `User`. Services set it with `userProfileRepository.getReferenceById(id)`, a proxy that does not query the database. The profile outlives the account: a deleted user still loads, with status `DELETED`, and an anonymized one stays as "Deleted user" after its `users` row is gone.
+- **Direction of the key:** `users.id` is the foreign key to `user_profiles.id` (`@MapsId`), never the other way, so deleting the account leaves the profile. Creating a `User` creates its profile (cascade), and `user.getDisplayName()` reads the profile.
+- **Status:** `user_profiles.status` is a copy of the account state, for display. `User` writes it on every transition (`setEnabled`, `setEmailVerifiedAt`, `markDeleted`), and native SQL that changes an account must update it too. Checks that grant access (`ActiveUserAuthorizationManager`, assignees) read the account itself.
+- **Photo:** `UserProfile.visibleAvatar()` hides the photo of a disabled account (the file is kept) and of a deleted one. Without a visible photo, `avatarUrl` points to the identicon (see Media storage).
+- The name avoids Spring Security's `UserDetails` interface.
 
-Warning: do not map an association to `User` with `@NotFound(IGNORE)` to tolerate deleted users. Hibernate then drops the foreign key from its model, and `liquibase:diff` proposes dropping the real constraints. That is how 7 foreign keys went missing from the model before `UserSummary`.
+Warning: do not map an association to `User` with `@NotFound(IGNORE)` to tolerate deleted users. Hibernate then drops the foreign key from its model, and `liquibase:diff` proposes dropping the real constraints. That is how 7 foreign keys went missing from the model once.
 
-Warning: Hibernate refuses a `LAZY` to-one association towards an entity with `@SoftDelete` (`Task`, `User`) and fails when building the session factory, which only shows at startup. Map such associations `EAGER` (as `TaskAttachment.task` and `TaskEvent.task` are), or point to a view without `@SoftDelete` (as `UserSummary` does for users).
+Warning: Hibernate refuses a `LAZY` to-one association towards an entity with `@SoftDelete` (`Task`, `User`) and fails when building the session factory, which only shows at startup. Map such associations `EAGER` (as `TaskAttachment.task` and `TaskEvent.task` are), or point to an entity without `@SoftDelete` (as references to users point to `UserProfile`).
 
 ### Mail
 
@@ -144,12 +146,13 @@ In development, SMTP goes to the Mailpit service of `compose.yaml` (web UI on ht
   - `antivirus.enabled=false` (`ANTIVIRUS_ENABLED`) swaps in a scanner that accepts everything and logs a warning at startup. It is meant for development machines that cannot spare ClamAV's memory (about 1 GB).
   - Tests start a ClamAV container that loads only an EICAR signature (`TestcontainersConfiguration`), about 14 MB instead of about 1 GB for the full database, with freshclam disabled. The EICAR test string is the infected file, reported as `TestcontainersConfiguration.EICAR_THREAT`.
 - **Profile photos:** `PUT /api/v1/users/{id}/avatar` (multipart field `file`) and `DELETE /api/v1/users/{id}/avatar`, for the user or an admin, handled by `AvatarService`.
-  - **Upload (synchronous):** the request stores the file as uploaded (`MediaUsage.AVATAR_UPLOAD`, which checks size, type and viruses), rejects images above 10000 px or 40 MP from their header alone (422), and keeps it in `users.pending_avatar_media_id`. It answers 202 with `avatarPending: true`; a newer upload replaces a pending one.
+  - **Upload (synchronous):** the request stores the file as uploaded (`MediaUsage.AVATAR_UPLOAD`, which checks size, type and viruses), rejects images above 10000 px or 40 MP from their header alone (422), and keeps it in `user_profiles.pending_avatar_media_id`. It answers 202 with `avatarPending: true`; a newer upload replaces a pending one.
   - **Processing (worker):** the upload is written to the outbox for `avatar.process` in the same transaction, and `AvatarProcessingListener` calls `AvatarService.process`. It applies the EXIF orientation, crops to a centred square and scales down to 256 px, then re-encodes to JPEG, or to PNG when the original has transparency; re-encoding drops all metadata, GPS included. The result replaces the current photo and the upload is deleted. A stale message (upload replaced or removed since) does nothing; an image that cannot be decoded is dropped with a warning; other failures are retried, then dead-lettered to `avatar.process.dead-letter`.
-  - **Concurrency:** the upload request and the worker both lock the user row first (`UserRepository.findByIdForUpdate`); without that common lock they deadlocked. `User` is `@DynamicUpdate`, so an update writes only the columns it changed: the worker once rewrote the whole row and re-enabled an account an admin had disabled meanwhile.
+  - **Concurrency:** the upload request and the worker both lock the user row first (`UserRepository.findByIdForUpdate`); without that common lock they deadlocked. `User` and `UserProfile` are `@DynamicUpdate`, so an update writes only the columns it changed: the worker once rewrote the whole row and re-enabled an account an admin had disabled meanwhile.
   - The previous photo is deleted with `MediaService.delete`: the row goes with the change, and the object once the transaction commits.
-  - `users.avatar_media_id` and `users.pending_avatar_media_id` have explicit unique constraints (`users_avatar_media_idUQ`, `users_pending_avatar_media_idUQ`). The associations are `@ManyToOne`, because a `@OneToOne` makes Hibernate add an implicit unique constraint with a generated name, which `liquibase:diff` then reports.
-- **URLs in responses:** `UserResponseDto` and every `UserPreviewResponseDto` carry an `avatarUrl`, a presigned URL computed by `MediaUrls`. Controllers pass `MediaUrls` to the DTO constructors.
+  - `user_profiles.avatar_media_id` and `user_profiles.pending_avatar_media_id` have explicit unique constraints (`user_profiles_avatar_media_idUQ`, `user_profiles_pending_avatar_media_idUQ`). The associations are `@ManyToOne`, because a `@OneToOne` makes Hibernate add an implicit unique constraint with a generated name, which `liquibase:diff` then reports.
+- **URLs in responses:** `UserResponseDto` and every `UserProfileResponseDto` carry an `avatarUrl`, computed by `MediaUrls.avatarOf`: a presigned URL of the visible photo, otherwise the profile's identicon. Controllers pass `MediaUrls` to the DTO constructors.
+- **Identicons:** `GET /api/v1/identicons/{id}` (public, since `<img>` tags send no token) returns an SVG figure whose colours derive from the id alone (`IdenticonGenerator`): no database read, so it reveals nothing, and it is cached a year (`Cache-Control: immutable`, `ETag`).
 - **Cleanup:** `MediaCleanupJob` runs `MediaCleanupService` on `media.cleanup.cron`, daily at 03:30 by default.
   - It purges the attachments of tasks, and the profile photos of users, soft-deleted for longer than `media.cleanup.retention` (30 days).
   - It also purges media rows that nothing references and stored objects without a media row, once they are older than `media.cleanup.orphan-grace-period` (1 day), so uploads in progress are left alone.
@@ -221,7 +224,7 @@ Keep:
 - **A measured failure**: what went wrong and what it cost. For example, "Native on purpose: in JPQL, `t.user.id` joins users, which `@SoftDelete` filters, so nothing would be revoked once the user is deleted" on `RefreshTokenRepository.revokeAllForUser`. These lines stop a defect from being reintroduced.
 - **A constraint not visible locally**: framework or library behaviour the code depends on. Examples: why `NotificationSettings.defaults` leaves the id null (`@MapsId`, and Spring Data's `merge` instead of `persist`), or why `AuthService.refresh` needs `noRollbackFor`.
 - **A decision and its reason** when the code shows only the outcome. For example, why opaque tokens use SHA-256 rather than Argon2.
-- **A trap**, starting with `Warning:`, where the obvious change is the wrong one. For example, the warning on `UserSummary` against mapping associations to `User` with `@NotFound(IGNORE)`.
+- **A trap**, starting with `Warning:`, where the obvious change is the wrong one. For example, the warning on `User.profile` about the direction of the foreign key.
 
 Cut:
 - Anything that restates the code: `// save the user` above `userRepository.save(user)`.

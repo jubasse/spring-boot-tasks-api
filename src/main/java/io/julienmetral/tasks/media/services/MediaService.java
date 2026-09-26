@@ -1,7 +1,7 @@
 package io.julienmetral.tasks.media.services;
 
 import io.julienmetral.tasks.config.MediaProperties;
-import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
+import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.media.exceptions.EmptyMediaException;
 import io.julienmetral.tasks.media.exceptions.InfectedMediaException;
 import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
@@ -39,7 +39,7 @@ public class MediaService {
     private static final String FALLBACK_FILENAME = "file";
 
     private final MediaRepository mediaRepository;
-    private final UserSummaryRepository userSummaryRepository;
+    private final UserProfileRepository userProfileRepository;
     private final ObjectStorage objectStorage;
     private final ContentTypeDetector contentTypeDetector;
     private final VirusScanner virusScanner;
@@ -72,7 +72,7 @@ public class MediaService {
         media.setContentType(contentType);
         media.setSizeBytes(source.size());
         media.setSha256(sha256);
-        media.setUploadedBy(uploadedById == null ? null : userSummaryRepository.getReferenceById(uploadedById));
+        media.setUploadedBy(uploadedById == null ? null : userProfileRepository.getReferenceById(uploadedById));
         media.setCreatedAt(Instant.now());
 
         return mediaRepository.save(media);

@@ -9,7 +9,7 @@ import io.julienmetral.tasks.identity.mail.EmailVerificationProperties;
 import io.julienmetral.tasks.identity.mail.EmailVerificationRequested;
 import io.julienmetral.tasks.identity.repositories.EmailVerificationTokenRepository;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
+import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.identity.security.OpaqueTokens;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -25,7 +25,7 @@ public class EmailVerificationService {
 
     private final EmailVerificationTokenRepository tokenRepository;
     private final UserRepository userRepository;
-    private final UserSummaryRepository userSummaryRepository;
+    private final UserProfileRepository userProfileRepository;
     private final EmailVerificationProperties properties;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -39,7 +39,7 @@ public class EmailVerificationService {
 
         EmailVerificationToken token = new EmailVerificationToken();
 
-        token.setUser(userSummaryRepository.getReferenceById(user.getId()));
+        token.setUser(userProfileRepository.getReferenceById(user.getId()));
         token.setTokenHash(OpaqueTokens.hash(value));
         token.setCreatedAt(now);
         token.setExpiresAt(now.plus(properties.ttl()));
@@ -69,7 +69,7 @@ public class EmailVerificationService {
 
         // findById skips soft-deleted users
         User user = userRepository
-                .findById(token.getUser().getId())
+                .findByIdForUpdate(token.getUser().getId())
                 .orElseThrow(InvalidEmailVerificationTokenException::new);
 
         token.setUsedAt(now);

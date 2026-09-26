@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.task.dtos;
 
-import io.julienmetral.tasks.identity.dtos.UserPreviewResponseDto;
+import io.julienmetral.tasks.identity.dtos.UserProfileResponseDto;
+import io.julienmetral.tasks.identity.entities.UserProfile;
 import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.services.MediaUrls;
@@ -11,7 +12,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.util.UUID;
 
-import static io.julienmetral.tasks.support.UserSummaries.active;
+import static io.julienmetral.tasks.support.UserProfiles.active;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -50,11 +51,14 @@ class TaskAttachmentResponseDtoTest {
     @Test
     void exposesUploaderAsPreview() {
         UUID uploaderId = UUID.randomUUID();
-        media.setUploadedBy(active(uploaderId, "Ada"));
+        UserProfile uploader = active(uploaderId, "Ada");
+        media.setUploadedBy(uploader);
+        when(mediaUrls.avatarOf(uploader)).thenReturn("/api/v1/identicons/" + uploaderId);
 
         TaskAttachmentResponseDto dto = new TaskAttachmentResponseDto(attachment, mediaUrls);
 
-        assertThat(dto.uploadedBy()).isEqualTo(new UserPreviewResponseDto(uploaderId, "Ada", UserStatus.ACTIVE, null));
+        assertThat(dto.uploadedBy()).isEqualTo(
+                new UserProfileResponseDto(uploaderId, "Ada", UserStatus.ACTIVE, "/api/v1/identicons/" + uploaderId));
     }
 
     @Test

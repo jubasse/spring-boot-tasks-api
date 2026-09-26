@@ -1,23 +1,22 @@
 package io.julienmetral.tasks.task.dtos;
 
-import io.julienmetral.tasks.identity.dtos.UserPreviewResponseDto;
+import io.julienmetral.tasks.identity.dtos.UserProfileResponseDto;
 import io.julienmetral.tasks.identity.entities.UserStatus;
-import io.julienmetral.tasks.identity.entities.UserSummary;
-import io.julienmetral.tasks.media.model.Media;
+import io.julienmetral.tasks.identity.entities.UserProfile;
 import io.julienmetral.tasks.media.services.MediaUrls;
 import io.julienmetral.tasks.task.entities.Task;
 import io.julienmetral.tasks.task.entities.TaskEvent;
 import io.julienmetral.tasks.task.entities.TaskEventType;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
-import static io.julienmetral.tasks.support.UserSummaries.active;
-import static io.julienmetral.tasks.support.UserSummaries.summary;
+import static io.julienmetral.tasks.support.UserProfiles.active;
+import static io.julienmetral.tasks.support.UserProfiles.profile;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -26,17 +25,22 @@ class TaskResponseDtoTest {
 
     private static final UUID ASSIGNEE_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID CREATOR_ID = UUID.fromString("00000000-0000-0000-0000-000000000002");
-    private static final Instant VERIFIED_AT = Instant.parse("2026-01-01T00:00:00Z");
-    private static final Instant DELETED_AT = Instant.parse("2026-02-01T00:00:00Z");
     private static final String ASSIGNEE_AVATAR_URL = "https://storage.example/avatar/alice";
     private static final String CREATOR_AVATAR_URL = "https://storage.example/avatar/bob";
 
     private final MediaUrls mediaUrls = mock(MediaUrls.class);
 
-    private UserSummary withAvatar(UserSummary user, String url) {
-        Media avatar = new Media();
-        ReflectionTestUtils.setField(user, "avatar", avatar);
-        when(mediaUrls.of(avatar)).thenReturn(url);
+    TaskResponseDtoTest() {
+        when(mediaUrls.avatarOf(any(UserProfile.class)))
+                .thenAnswer(invocation -> identiconUrl(invocation.<UserProfile>getArgument(0).getId()));
+    }
+
+    private static String identiconUrl(UUID id) {
+        return "/api/v1/identicons/" + id;
+    }
+
+    private UserProfile withAvatar(UserProfile user, String url) {
+        when(mediaUrls.avatarOf(user)).thenReturn(url);
         return user;
     }
 
@@ -49,9 +53,10 @@ class TaskResponseDtoTest {
         TaskResponseDto dto = new TaskResponseDto(task, mediaUrls);
 
         assertThat(dto.assignedTo())
-                .isEqualTo(new UserPreviewResponseDto(ASSIGNEE_ID, "Alice", UserStatus.ACTIVE, null));
+                .isEqualTo(new UserProfileResponseDto(
+                        ASSIGNEE_ID, "Alice", UserStatus.ACTIVE, identiconUrl(ASSIGNEE_ID)));
         assertThat(dto.createdBy())
-                .isEqualTo(new UserPreviewResponseDto(CREATOR_ID, "Bob", UserStatus.ACTIVE, null));
+                .isEqualTo(new UserProfileResponseDto(CREATOR_ID, "Bob", UserStatus.ACTIVE, identiconUrl(CREATOR_ID)));
     }
 
     @Test
@@ -69,15 +74,16 @@ class TaskResponseDtoTest {
     @Test
     void softDeletedUsersKeepTheirNameAndAreShownAsDeleted() {
         Task task = new Task();
-        task.setAssignedTo(summary(ASSIGNEE_ID, "Alice", true, VERIFIED_AT, DELETED_AT));
-        task.setCreatedBy(summary(CREATOR_ID, "Bob", true, VERIFIED_AT, DELETED_AT));
+        task.setAssignedTo(profile(ASSIGNEE_ID, "Alice", UserStatus.DELETED));
+        task.setCreatedBy(profile(CREATOR_ID, "Bob", UserStatus.DELETED));
 
         TaskResponseDto dto = new TaskResponseDto(task, mediaUrls);
 
         assertThat(dto.assignedTo())
-                .isEqualTo(new UserPreviewResponseDto(ASSIGNEE_ID, "Alice", UserStatus.DELETED, null));
+                .isEqualTo(new UserProfileResponseDto(
+                        ASSIGNEE_ID, "Alice", UserStatus.DELETED, identiconUrl(ASSIGNEE_ID)));
         assertThat(dto.createdBy())
-                .isEqualTo(new UserPreviewResponseDto(CREATOR_ID, "Bob", UserStatus.DELETED, null));
+                .isEqualTo(new UserProfileResponseDto(CREATOR_ID, "Bob", UserStatus.DELETED, identiconUrl(CREATOR_ID)));
     }
 
     @Test
@@ -98,7 +104,8 @@ class TaskResponseDtoTest {
 
         TaskEventResponseDto dto = new TaskEventResponseDto(event, mediaUrls);
 
-        assertThat(dto.actor()).isEqualTo(new UserPreviewResponseDto(CREATOR_ID, "Bob", UserStatus.ACTIVE, null));
+        assertThat(dto.actor())
+                .isEqualTo(new UserProfileResponseDto(CREATOR_ID, "Bob", UserStatus.ACTIVE, identiconUrl(CREATOR_ID)));
         assertThat(dto.type()).isEqualTo(TaskEventType.CREATED);
     }
 
@@ -115,11 +122,12 @@ class TaskResponseDtoTest {
     @Test
     void softDeletedTaskEventActorKeepsItsNameAndIsShownAsDeleted() {
         TaskEvent event = new TaskEvent();
-        event.setActor(summary(CREATOR_ID, "Bob", true, VERIFIED_AT, DELETED_AT));
+        event.setActor(profile(CREATOR_ID, "Bob", UserStatus.DELETED));
 
         TaskEventResponseDto dto = new TaskEventResponseDto(event, mediaUrls);
 
-        assertThat(dto.actor()).isEqualTo(new UserPreviewResponseDto(CREATOR_ID, "Bob", UserStatus.DELETED, null));
+        assertThat(dto.actor())
+                .isEqualTo(new UserProfileResponseDto(CREATOR_ID, "Bob", UserStatus.DELETED, identiconUrl(CREATOR_ID)));
     }
 
     @Test

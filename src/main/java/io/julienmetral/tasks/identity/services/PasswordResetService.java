@@ -7,7 +7,7 @@ import io.julienmetral.tasks.identity.mail.PasswordResetProperties;
 import io.julienmetral.tasks.identity.mail.PasswordResetRequested;
 import io.julienmetral.tasks.identity.repositories.PasswordResetTokenRepository;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
+import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.identity.security.OpaqueTokens;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -24,7 +24,7 @@ public class PasswordResetService {
 
     private final PasswordResetTokenRepository tokenRepository;
     private final UserRepository userRepository;
-    private final UserSummaryRepository userSummaryRepository;
+    private final UserProfileRepository userProfileRepository;
     private final PasswordEncoder passwordEncoder;
     private final RefreshTokenService refreshTokenService;
     private final PasswordResetProperties properties;
@@ -58,7 +58,7 @@ public class PasswordResetService {
 
         // findById skips soft-deleted users; a disabled account cannot sign in, so it cannot reset either
         User user = userRepository
-                .findById(token.getUser().getId())
+                .findByIdForUpdate(token.getUser().getId())
                 .filter(User::isEnabled)
                 .orElseThrow(InvalidPasswordResetTokenException::new);
 
@@ -82,7 +82,7 @@ public class PasswordResetService {
 
         PasswordResetToken token = new PasswordResetToken();
 
-        token.setUser(userSummaryRepository.getReferenceById(user.getId()));
+        token.setUser(userProfileRepository.getReferenceById(user.getId()));
         token.setTokenHash(OpaqueTokens.hash(value));
         token.setCreatedAt(now);
         token.setExpiresAt(now.plus(properties.ttl()));

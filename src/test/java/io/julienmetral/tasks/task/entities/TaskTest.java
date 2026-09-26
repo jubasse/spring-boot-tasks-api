@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
 
-import static io.julienmetral.tasks.support.UserSummaries.reference;
+import static io.julienmetral.tasks.support.UserProfiles.reference;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class TaskTest {

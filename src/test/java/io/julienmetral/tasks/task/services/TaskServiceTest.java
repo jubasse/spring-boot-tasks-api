@@ -2,10 +2,10 @@ package io.julienmetral.tasks.task.services;
 
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserStatus;
-import io.julienmetral.tasks.identity.entities.UserSummary;
+import io.julienmetral.tasks.identity.entities.UserProfile;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
+import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.task.dtos.CreateTaskDto;
 import io.julienmetral.tasks.task.dtos.UpdateTaskDto;
@@ -46,8 +46,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import static io.julienmetral.tasks.support.UserSummaries.reference;
-import static io.julienmetral.tasks.support.UserSummaries.summary;
+import static io.julienmetral.tasks.support.UserProfiles.reference;
+import static io.julienmetral.tasks.support.UserProfiles.profile;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -78,7 +78,7 @@ class TaskServiceTest {
     private UserRepository userRepository;
 
     @Mock
-    private UserSummaryRepository userSummaryRepository;
+    private UserProfileRepository userProfileRepository;
 
     @Mock
     private CurrentUser currentUser;
@@ -111,13 +111,13 @@ class TaskServiceTest {
         return user;
     }
 
-    private static UserSummary softDeleted(UUID id) {
-        return summary(id, "Deleted " + id, true, VERIFIED_AT, Instant.parse("2026-02-01T00:00:00Z"));
+    private static UserProfile softDeleted(UUID id) {
+        return profile(id, "Deleted " + id, UserStatus.DELETED);
     }
 
-    private UserSummary stubReference(UUID id) {
-        UserSummary reference = reference(id);
-        when(userSummaryRepository.getReferenceById(id)).thenReturn(reference);
+    private UserProfile stubReference(UUID id) {
+        UserProfile reference = reference(id);
+        when(userProfileRepository.getReferenceById(id)).thenReturn(reference);
         return reference;
     }
 
@@ -147,9 +147,9 @@ class TaskServiceTest {
         when(taskRepository.existsByReferenceIncludingDeleted("TASK-1")).thenReturn(false);
         when(currentUser.getId()).thenReturn(Optional.of(creatorId));
         when(userRepository.existsById(creatorId)).thenReturn(true);
-        UserSummary creator = stubReference(creatorId);
+        UserProfile creator = stubReference(creatorId);
         when(userRepository.findById(assigneeId)).thenReturn(Optional.of(user(assigneeId)));
-        UserSummary assignee = stubReference(assigneeId);
+        UserProfile assignee = stubReference(assigneeId);
         Task saved = new Task();
         when(taskRepository.save(any(Task.class))).thenReturn(saved);
 
@@ -183,7 +183,7 @@ class TaskServiceTest {
         assertThat(result.getCreatedBy()).isNull();
         assertThat(result.getAssignedTo()).isNull();
         assertThat(result.getPriority()).isEqualTo(TaskPriority.MEDIUM);
-        verifyNoInteractions(userRepository, userSummaryRepository);
+        verifyNoInteractions(userRepository, userProfileRepository);
         verify(taskEventService).created(result);
         verifyNoInteractions(eventPublisher);
     }
@@ -198,7 +198,7 @@ class TaskServiceTest {
         when(taskRepository.save(any(Task.class))).thenAnswer(inv -> inv.getArgument(0));
 
         assertThat(taskService.create(dto).getCreatedBy()).isNull();
-        verifyNoInteractions(userSummaryRepository);
+        verifyNoInteractions(userProfileRepository);
     }
 
     @Test
@@ -242,7 +242,7 @@ class TaskServiceTest {
                 .hasMessageContaining(assigneeId.toString());
 
         verify(taskRepository, never()).save(any());
-        verifyNoInteractions(userSummaryRepository);
+        verifyNoInteractions(userProfileRepository);
         verifyNoInteractions(taskEventService);
         verifyNoInteractions(eventPublisher);
     }
@@ -262,7 +262,7 @@ class TaskServiceTest {
                 .hasMessageContaining(status.name());
 
         verify(taskRepository, never()).save(any());
-        verifyNoInteractions(userSummaryRepository);
+        verifyNoInteractions(userProfileRepository);
         verifyNoInteractions(taskEventService);
         verifyNoInteractions(eventPublisher);
     }
@@ -413,7 +413,7 @@ class TaskServiceTest {
         Task task = stubTask();
         UUID userId = UUID.randomUUID();
         when(userRepository.findById(userId)).thenReturn(Optional.of(user(userId)));
-        UserSummary assignee = stubReference(userId);
+        UserProfile assignee = stubReference(userId);
 
         Task result = taskService.assign(TASK_ID, userId);
 
@@ -428,7 +428,7 @@ class TaskServiceTest {
         task.setAssignedTo(reference(previousId));
         UUID userId = UUID.randomUUID();
         when(userRepository.findById(userId)).thenReturn(Optional.of(user(userId)));
-        UserSummary assignee = stubReference(userId);
+        UserProfile assignee = stubReference(userId);
 
         taskService.assign(TASK_ID, userId);
 
@@ -440,13 +440,13 @@ class TaskServiceTest {
     void assignToSameUserIsNoOp() {
         Task task = stubTask();
         UUID userId = UUID.randomUUID();
-        UserSummary current = reference(userId);
+        UserProfile current = reference(userId);
         task.setAssignedTo(current);
 
         Task result = taskService.assign(TASK_ID, userId);
 
         assertThat(result.getAssignedTo()).isSameAs(current);
-        verifyNoInteractions(userRepository, userSummaryRepository, taskEventService);
+        verifyNoInteractions(userRepository, userProfileRepository, taskEventService);
         verifyNoInteractions(eventPublisher);
     }
 
@@ -460,7 +460,7 @@ class TaskServiceTest {
                 .isInstanceOf(UserNotFoundException.class);
 
         assertThat(task.getAssignedTo()).isNull();
-        verifyNoInteractions(userSummaryRepository, taskEventService);
+        verifyNoInteractions(userProfileRepository, taskEventService);
         verifyNoInteractions(eventPublisher);
     }
 
@@ -468,7 +468,7 @@ class TaskServiceTest {
     @EnumSource(value = UserStatus.class, names = {"UNVERIFIED", "DISABLED"})
     void assignToInactiveUserThrowsAndKeepsCurrentAssignee(UserStatus status) {
         Task task = stubTask();
-        UserSummary previous = reference(UUID.randomUUID());
+        UserProfile previous = reference(UUID.randomUUID());
         task.setAssignedTo(previous);
         UUID userId = UUID.randomUUID();
         when(userRepository.findById(userId)).thenReturn(Optional.of(userWithStatus(userId, status)));
@@ -479,7 +479,7 @@ class TaskServiceTest {
                 .hasMessageContaining(status.name());
 
         assertThat(task.getAssignedTo()).isSameAs(previous);
-        verifyNoInteractions(userSummaryRepository, taskEventService);
+        verifyNoInteractions(userProfileRepository, taskEventService);
         verifyNoInteractions(eventPublisher);
     }
 
@@ -490,7 +490,7 @@ class TaskServiceTest {
         task.setAssignedTo(softDeleted(deletedId));
         UUID userId = UUID.randomUUID();
         when(userRepository.findById(userId)).thenReturn(Optional.of(user(userId)));
-        UserSummary assignee = stubReference(userId);
+        UserProfile assignee = stubReference(userId);
 
         taskService.assign(TASK_ID, userId);
 
@@ -502,14 +502,14 @@ class TaskServiceTest {
     void assignToSoftDeletedCurrentAssigneeIsNoOp() {
         Task task = stubTask();
         UUID deletedId = UUID.randomUUID();
-        UserSummary deleted = softDeleted(deletedId);
+        UserProfile deleted = softDeleted(deletedId);
         task.setAssignedTo(deleted);
 
         Task result = taskService.assign(TASK_ID, deletedId);
 
         assertThat(result).isSameAs(task);
         assertThat(task.getAssignedTo()).isSameAs(deleted);
-        verifyNoInteractions(userRepository, userSummaryRepository, taskEventService);
+        verifyNoInteractions(userRepository, userProfileRepository, taskEventService);
         verifyNoInteractions(eventPublisher);
     }
 

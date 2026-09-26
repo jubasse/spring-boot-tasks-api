@@ -42,7 +42,7 @@ public class PasswordResetToken {
             updatable = false,
             foreignKey = @ForeignKey(name = "password_reset_tokens_userFK")
     )
-    private UserSummary user;
+    private UserProfile user;
 
     @Column(name = "token_hash", nullable = false, updatable = false, length = 64)
     private String tokenHash;

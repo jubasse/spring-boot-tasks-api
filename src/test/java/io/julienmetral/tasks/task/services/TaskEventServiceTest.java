@@ -1,9 +1,9 @@
 package io.julienmetral.tasks.task.services;
 
 import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserSummary;
+import io.julienmetral.tasks.identity.entities.UserProfile;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
+import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.task.entities.Task;
@@ -33,7 +33,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
 
-import static io.julienmetral.tasks.support.UserSummaries.reference;
+import static io.julienmetral.tasks.support.UserProfiles.reference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -56,7 +56,7 @@ class TaskEventServiceTest {
     private UserRepository userRepository;
 
     @Mock
-    private UserSummaryRepository userSummaryRepository;
+    private UserProfileRepository userProfileRepository;
 
     @Mock
     private CurrentUser currentUser;
@@ -65,7 +65,7 @@ class TaskEventServiceTest {
 
     private final Task task = new Task();
     private final User actor = new User();
-    private final UserSummary actorReference = reference(ACTOR_ID);
+    private final UserProfile actorReference = reference(ACTOR_ID);
 
     @BeforeEach
     void setUp() {
@@ -73,7 +73,7 @@ class TaskEventServiceTest {
                 taskRepository,
                 taskEventRepository,
                 userRepository,
-                userSummaryRepository,
+                userProfileRepository,
                 currentUser,
                 JsonMapper.builder().build()
         );
@@ -83,7 +83,7 @@ class TaskEventServiceTest {
     private void stubActor() {
         when(currentUser.getId()).thenReturn(Optional.of(ACTOR_ID));
         when(userRepository.findById(ACTOR_ID)).thenReturn(Optional.of(actor));
-        when(userSummaryRepository.getReferenceById(ACTOR_ID)).thenReturn(actorReference);
+        when(userProfileRepository.getReferenceById(ACTOR_ID)).thenReturn(actorReference);
     }
 
     private TaskEvent recordedEvent(Consumer<TaskEventService> action) {
@@ -266,7 +266,7 @@ class TaskEventServiceTest {
         assertThatThrownBy(() -> service.created(task))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("No authenticated user");
-        verifyNoInteractions(taskEventRepository, userRepository, userSummaryRepository);
+        verifyNoInteractions(taskEventRepository, userRepository, userProfileRepository);
     }
 
     @Test
@@ -277,7 +277,7 @@ class TaskEventServiceTest {
         assertThatThrownBy(() -> service.updated(task))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Authenticated user not found");
-        verifyNoInteractions(taskEventRepository, userSummaryRepository);
+        verifyNoInteractions(taskEventRepository, userProfileRepository);
     }
 
     @Test

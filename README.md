@@ -5,9 +5,9 @@ Tasks API is the backend of a team task tracker, exposed as a REST API under `/a
 - **Tasks** have a reference, a status, a priority and a due date. They can be assigned, archived, cancelled and deleted, and every change is recorded in the task's history.
 - **Collaboration**: tasks take comments, with attached files and mentions of other users (written `<@user-id>` in the comment), and files can be attached to a task directly.
 - **Email notifications** tell the assignee when a task is assigned, cancelled, deleted or commented, tell mentioned people about the mention, and remind the assignee before and after the due date. Each user chooses which of these emails they receive.
-- **Accounts**: sign-up, email verification, password reset, and a profile photo. Admins can disable, re-enable and delete accounts.
+- **Accounts**: sign-up, email verification, password reset, and a profile photo. Every user has an image: their photo, or a generated geometric figure when they have none, or when their account is disabled or deleted. Admins can disable, re-enable and delete accounts.
 - **Files** are checked before they are stored: the type is detected from the content, the size is limited, and an antivirus scans every upload. Profile photos are cropped to a square and stripped of their metadata, GPS location included.
-- **Personal data retention**: a deleted account's personal data is erased after 30 days. An account unused for 2 years receives a warning email, and is deleted 30 days later unless its owner logs in.
+- **Personal data retention**: a deleted account is erased after 30 days; tasks, comments and history then show a "Deleted user". An account unused for 2 years receives a warning email, and is deleted 30 days later unless its owner logs in.
 
 Only accounts that are enabled and have a verified email address can work on tasks. The endpoints anyone can call (login, sign-up, password reset, resending the verification email) accept a limited number of requests per client address and per account; over the limit, the API answers 429 with a `Retry-After` header giving the seconds to wait.
 
