@@ -1,68 +1,47 @@
 package io.julienmetral.tasks.identity.dtos;
 
-import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserStatus;
+import io.julienmetral.tasks.identity.entities.UserSummary;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.UserSummaries.summary;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class UserPreviewResponseDtoTest {
 
     private static final UUID USER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
-    private static final UUID OTHER_ID = UUID.fromString("00000000-0000-0000-0000-000000000002");
+    private static final Instant VERIFIED_AT = Instant.parse("2026-01-01T00:00:00Z");
+    private static final Instant DELETED_AT = Instant.parse("2026-02-01T00:00:00Z");
 
-    private static User user(boolean enabled, Instant emailVerifiedAt) {
-        User user = new User();
-        user.setId(USER_ID);
-        user.setDisplayName("Alice");
-        user.setEnabled(enabled);
-        user.setEmailVerifiedAt(emailVerifiedAt);
-        return user;
+    private static UserSummary user(boolean enabled, Instant emailVerifiedAt, Instant deletedAt) {
+        return summary(USER_ID, "Alice", enabled, emailVerifiedAt, deletedAt);
     }
 
     @Test
-    void loadedActiveUserExposesItsIdNameAndStatus() {
-        UserPreviewResponseDto preview = UserPreviewResponseDto.of(
-                user(true, Instant.parse("2026-01-01T00:00:00Z")), USER_ID);
+    void activeUserExposesItsIdNameAndStatus() {
+        UserPreviewResponseDto preview = UserPreviewResponseDto.of(user(true, VERIFIED_AT, null));
 
         assertThat(preview).isEqualTo(new UserPreviewResponseDto(USER_ID, "Alice", UserStatus.ACTIVE));
     }
 
     @Test
-    void loadedUserStatusReflectsTheAccountState() {
-        assertThat(UserPreviewResponseDto.of(user(true, null), USER_ID).status())
-                .isEqualTo(UserStatus.UNVERIFIED);
-        assertThat(UserPreviewResponseDto.of(user(false, null), USER_ID).status())
-                .isEqualTo(UserStatus.DISABLED);
+    void statusReflectsTheAccountState() {
+        assertThat(UserPreviewResponseDto.of(user(true, null, null)).status()).isEqualTo(UserStatus.UNVERIFIED);
+        assertThat(UserPreviewResponseDto.of(user(false, VERIFIED_AT, null)).status()).isEqualTo(UserStatus.DISABLED);
     }
 
     @Test
-    void loadedUserWinsOverTheIdColumn() {
-        UserPreviewResponseDto preview = UserPreviewResponseDto.of(user(true, null), OTHER_ID);
+    void softDeletedUserKeepsItsNameAndIsShownAsDeleted() {
+        UserPreviewResponseDto preview = UserPreviewResponseDto.of(user(true, VERIFIED_AT, DELETED_AT));
 
-        assertThat(preview.id()).isEqualTo(USER_ID);
+        assertThat(preview).isEqualTo(new UserPreviewResponseDto(USER_ID, "Alice", UserStatus.DELETED));
     }
 
     @Test
-    void loadedUserWithoutIdColumnStillProducesAPreview() {
-        UserPreviewResponseDto preview = UserPreviewResponseDto.of(user(true, null), null);
-
-        assertThat(preview.id()).isEqualTo(USER_ID);
-        assertThat(preview.displayName()).isEqualTo("Alice");
-    }
-
-    @Test
-    void missingUserWithIdIsShownAsDeletedWithoutName() {
-        UserPreviewResponseDto preview = UserPreviewResponseDto.of(null, USER_ID);
-
-        assertThat(preview).isEqualTo(new UserPreviewResponseDto(USER_ID, null, UserStatus.DELETED));
-    }
-
-    @Test
-    void noUserAndNoIdGivesNull() {
-        assertThat(UserPreviewResponseDto.of(null, null)).isNull();
+    void noUserGivesNull() {
+        assertThat(UserPreviewResponseDto.of(null)).isNull();
     }
 }

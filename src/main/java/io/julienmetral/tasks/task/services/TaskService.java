@@ -2,8 +2,10 @@ package io.julienmetral.tasks.task.services;
 
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserStatus;
+import io.julienmetral.tasks.identity.entities.UserSummary;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.task.dtos.CreateTaskDto;
 import io.julienmetral.tasks.task.dtos.UpdateTaskDto;
@@ -37,6 +39,7 @@ public class TaskService {
     private final TaskRepository taskRepository;
     private final TaskEventService taskEventService;
     private final UserRepository userRepository;
+    private final UserSummaryRepository userSummaryRepository;
     private final CurrentUser currentUser;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -60,7 +63,8 @@ public class TaskService {
         task.setDueAt(dto.dueAt());
 
         currentUser.getId()
-                .flatMap(userRepository::findById)
+                .filter(userRepository::existsById)
+                .map(userSummaryRepository::getReferenceById)
                 .ifPresent(task::setCreatedBy);
 
         if (dto.assignedTo() != null) {
@@ -100,10 +104,9 @@ public class TaskService {
                 status == null
                         ? builder.conjunction()
                         : builder.equal(root.get("status"), status),
-                // The read-only id column avoids joining users, which @SoftDelete would filter
                 assigneeId == null
                         ? builder.conjunction()
-                        : builder.equal(root.get("assignedToId"), assigneeId)
+                        : builder.equal(root.get("assignedTo").get("id"), assigneeId)
         );
 
         return taskRepository.findAll(specification, pageable);
@@ -301,7 +304,7 @@ public class TaskService {
     }
 
     // Only enabled users with a verified email can work on tasks, so only they can be assigned
-    private User getAssignableUser(UUID userId) {
+    private UserSummary getAssignableUser(UUID userId) {
         User user = userRepository
                 .findById(userId)
                 .orElseThrow(() -> new UserNotFoundException(userId));
@@ -312,7 +315,7 @@ public class TaskService {
             throw new AssigneeNotActiveException(userId, status);
         }
 
-        return user;
+        return userSummaryRepository.getReferenceById(user.getId());
     }
 
     private Task getTask(UUID id) {
