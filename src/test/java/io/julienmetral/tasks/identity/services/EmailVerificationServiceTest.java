@@ -176,7 +176,7 @@ class EmailVerificationServiceTest {
     @Test
     void verifyTokenOfDeletedUserThrowsWithoutConsumingIt() {
         EmailVerificationToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.verify(RAW_TOKEN))
                 .isInstanceOf(InvalidEmailVerificationTokenException.class);
@@ -188,7 +188,7 @@ class EmailVerificationServiceTest {
     void verifyValidTokenMarksItUsedAndVerifiesEmail() {
         User loaded = user();
         EmailVerificationToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(loaded));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(loaded));
         Instant before = Instant.now();
 
         service.verify(RAW_TOKEN);
@@ -203,7 +203,7 @@ class EmailVerificationServiceTest {
         User user = user();
         user.setEmailVerifiedAt(verifiedAt);
         EmailVerificationToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
 
         service.verify(RAW_TOKEN);
 

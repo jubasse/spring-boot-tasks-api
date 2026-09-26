@@ -217,7 +217,7 @@ class PasswordResetServiceTest {
     @Test
     void confirmTokenOfSoftDeletedUserThrowsWithoutConsumingIt() {
         PasswordResetToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.confirm(RAW_TOKEN, NEW_PASSWORD))
                 .isInstanceOf(InvalidPasswordResetTokenException.class);
@@ -231,7 +231,7 @@ class PasswordResetServiceTest {
         User user = user();
         user.setEnabled(false);
         PasswordResetToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
 
         assertThatThrownBy(() -> service.confirm(RAW_TOKEN, NEW_PASSWORD))
                 .isInstanceOf(InvalidPasswordResetTokenException.class);
@@ -245,7 +245,7 @@ class PasswordResetServiceTest {
         // The token holds a lazy reference; the service works on the user loaded by id
         User loaded = user();
         PasswordResetToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(loaded));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(loaded));
         when(passwordEncoder.encode(NEW_PASSWORD)).thenReturn(ENCODED_PASSWORD);
         Instant before = Instant.now();
 
@@ -266,7 +266,7 @@ class PasswordResetServiceTest {
         User user = user();
         user.setEmailVerifiedAt(verifiedAt);
         PasswordResetToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
         when(passwordEncoder.encode(NEW_PASSWORD)).thenReturn(ENCODED_PASSWORD);
 
         service.confirm(RAW_TOKEN, NEW_PASSWORD);
