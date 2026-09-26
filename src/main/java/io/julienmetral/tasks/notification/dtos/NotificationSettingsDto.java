@@ -8,7 +8,9 @@ public record NotificationSettingsDto(
         @NotNull Boolean taskAssigned,
         @NotNull Boolean taskUnassigned,
         @NotNull Boolean taskCancelled,
-        @NotNull Boolean taskDeleted
+        @NotNull Boolean taskDeleted,
+        @NotNull Boolean taskCommented,
+        @NotNull Boolean taskMentioned
 ) {
 
     public NotificationSettingsDto(NotificationSettings settings) {
@@ -16,7 +18,9 @@ public record NotificationSettingsDto(
                 settings.isTaskAssigned(),
                 settings.isTaskUnassigned(),
                 settings.isTaskCancelled(),
-                settings.isTaskDeleted()
+                settings.isTaskDeleted(),
+                settings.isTaskCommented(),
+                settings.isTaskMentioned()
         );
     }
 }

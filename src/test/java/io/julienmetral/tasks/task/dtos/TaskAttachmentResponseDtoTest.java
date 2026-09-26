@@ -5,6 +5,7 @@ import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.services.MediaUrls;
 import io.julienmetral.tasks.task.entities.TaskAttachment;
+import io.julienmetral.tasks.task.entities.TaskComment;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -61,5 +62,24 @@ class TaskAttachmentResponseDtoTest {
         TaskAttachmentResponseDto dto = new TaskAttachmentResponseDto(attachment, mediaUrls);
 
         assertThat(dto.uploadedBy()).isNull();
+    }
+
+    @Test
+    void commentIdIsNullForAFileAddedToTheTaskDirectly() {
+        TaskAttachmentResponseDto dto = new TaskAttachmentResponseDto(attachment, mediaUrls);
+
+        assertThat(dto.commentId()).isNull();
+    }
+
+    @Test
+    void commentIdIsTheCommentTheFileWasPostedWith() {
+        UUID commentId = UUID.randomUUID();
+        TaskComment comment = new TaskComment();
+        comment.setId(commentId);
+        attachment.setComment(comment);
+
+        TaskAttachmentResponseDto dto = new TaskAttachmentResponseDto(attachment, mediaUrls);
+
+        assertThat(dto.commentId()).isEqualTo(commentId);
     }
 }

@@ -6,6 +6,7 @@ import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.task.entities.Task;
 import io.julienmetral.tasks.task.entities.TaskAttachment;
+import io.julienmetral.tasks.task.entities.TaskComment;
 import io.julienmetral.tasks.task.entities.TaskEvent;
 import io.julienmetral.tasks.task.entities.TaskEventType;
 import io.julienmetral.tasks.task.entities.TaskStatus;
@@ -155,6 +156,21 @@ public class TaskEventService {
         );
     }
 
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void commentAdded(Task task, TaskComment comment) {
+        record(task, TaskEventType.COMMENT_ADDED, new CommentPayload(comment.getId()));
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void commentEdited(Task task, TaskComment comment) {
+        record(task, TaskEventType.COMMENT_EDITED, new CommentPayload(comment.getId()));
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void commentDeleted(Task task, TaskComment comment) {
+        record(task, TaskEventType.COMMENT_DELETED, new CommentPayload(comment.getId()));
+    }
+
     private void record(
             Task task,
             TaskEventType type,
@@ -204,6 +220,11 @@ public class TaskEventService {
     private record AttachmentPayload(
             UUID attachmentId,
             String filename
+    ) {
+    }
+
+    private record CommentPayload(
+            UUID commentId
     ) {
     }
 

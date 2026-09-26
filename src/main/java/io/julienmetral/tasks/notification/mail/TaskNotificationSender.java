@@ -2,24 +2,31 @@ package io.julienmetral.tasks.notification.mail;
 
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserStatus;
+import io.julienmetral.tasks.identity.entities.UserSummary;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
 import io.julienmetral.tasks.mail.MailMessage;
 import io.julienmetral.tasks.mail.MailService;
 import io.julienmetral.tasks.notification.entities.TaskNotificationType;
 import io.julienmetral.tasks.notification.services.NotificationSettingsService;
 import io.julienmetral.tasks.task.events.TaskAssigned;
 import io.julienmetral.tasks.task.events.TaskCancelled;
+import io.julienmetral.tasks.task.events.TaskCommentAdded;
 import io.julienmetral.tasks.task.events.TaskDeleted;
 import io.julienmetral.tasks.task.events.TaskUnassigned;
+import io.julienmetral.tasks.task.events.UsersMentionedInComment;
+import io.julienmetral.tasks.task.services.CommentMentions;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
- * Emails the assignee concerned by a task change. Nobody is emailed about their own action, and only active users
+ * Emails the assignee concerned by a task change, and the users mentioned in a comment. Nobody is emailed about their own action, and only active users
  * (enabled, verified email) who kept the matching setting on receive anything. Runs inside the task transaction;
  * {@link MailService} sends after commit.
  */
@@ -29,7 +36,10 @@ public class TaskNotificationSender {
 
     private static final String FOOTER = "\n\nYou can turn these emails off in your notification settings.\n";
 
+    private static final int MAX_EXCERPT_LENGTH = 1_000;
+
     private final UserRepository userRepository;
+    private final UserSummaryRepository userSummaryRepository;
     private final NotificationSettingsService settingsService;
     private final MailService mailService;
 
@@ -67,6 +77,39 @@ public class TaskNotificationSender {
                         actorName(event.actorId()), event.reference(), event.title()));
     }
 
+    @EventListener
+    public void onCommentAdded(TaskCommentAdded event) {
+        UUID assigneeId = event.assigneeId();
+
+        // The null check comes first: Set.of(...).contains(null) throws, and this listener runs inside the comment's
+        // transaction
+        if (assigneeId == null) {
+            return;
+        }
+
+        // A mentioned assignee gets the mention email instead, unless they turned mentions off
+        if (event.mentionedUserIds().contains(assigneeId)
+                && settingsService.isEnabled(assigneeId, TaskNotificationType.MENTIONED)) {
+            return;
+        }
+
+        notify(TaskNotificationType.COMMENTED, assigneeId, event.authorId(),
+                "New comment on task %s".formatted(event.reference()),
+                "%s commented on the task %s: \"%s\".\n\n%s".formatted(
+                        actorName(event.authorId()), event.reference(), event.title(), excerpt(event.body())));
+    }
+
+    @EventListener
+    public void onMentioned(UsersMentionedInComment event) {
+        String actorName = actorName(event.authorId());
+        String subject = "%s mentioned you on task %s".formatted(actorName, event.reference());
+        String body = "%s mentioned you in a comment on the task %s: \"%s\".\n\n%s".formatted(
+                actorName, event.reference(), event.title(), excerpt(event.body()));
+
+        event.mentionedUserIds().forEach(userId ->
+                notify(TaskNotificationType.MENTIONED, userId, event.authorId(), subject, body));
+    }
+
     private void notify(TaskNotificationType type, UUID recipientId, UUID actorId, String subject, String body) {
         if (recipientId == null || Objects.equals(recipientId, actorId)) {
             return;
@@ -86,6 +129,18 @@ public class TaskNotificationSender {
                 subject,
                 "Hello %s,\n\n%s%s".formatted(recipient.getDisplayName(), body, FOOTER)
         ));
+    }
+
+    private String excerpt(String body) {
+        Map<UUID, String> names = userSummaryRepository
+                .findAllById(CommentMentions.parse(body))
+                .stream()
+                .collect(Collectors.toMap(UserSummary::getId, UserSummary::getDisplayName));
+        String rendered = CommentMentions.render(body, names::get);
+
+        return rendered.length() <= MAX_EXCERPT_LENGTH
+                ? rendered
+                : rendered.substring(0, MAX_EXCERPT_LENGTH) + "...";
     }
 
     private String actorName(UUID actorId) {

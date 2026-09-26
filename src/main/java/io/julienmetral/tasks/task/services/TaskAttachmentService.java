@@ -6,6 +6,7 @@ import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.media.services.MediaService;
 import io.julienmetral.tasks.task.entities.Task;
 import io.julienmetral.tasks.task.entities.TaskAttachment;
+import io.julienmetral.tasks.task.entities.TaskComment;
 import io.julienmetral.tasks.task.exceptions.TaskAttachmentNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.repositories.TaskAttachmentRepository;
@@ -32,13 +33,18 @@ public class TaskAttachmentService {
     /** Validates (size, type, antivirus) and stores the file, then records an ATTACHMENT_ADDED event. */
     @Transactional
     public TaskAttachment add(UUID taskId, MultipartFile file) {
-        Task task = getTask(taskId);
+        return add(getTask(taskId), null, file);
+    }
 
+    /** Same as {@link #add(UUID, MultipartFile)}, for a file posted with {@code comment} (null for none). */
+    @Transactional
+    public TaskAttachment add(Task task, TaskComment comment, MultipartFile file) {
         Media media = mediaService.store(file, MediaUsage.TASK_ATTACHMENT, currentUser.getId().orElse(null));
 
         TaskAttachment attachment = new TaskAttachment();
 
         attachment.setTask(task);
+        attachment.setComment(comment);
         attachment.setMedia(media);
         attachment.setCreatedAt(Instant.now());
 
@@ -66,9 +72,11 @@ public class TaskAttachmentService {
     /** Deletes the attachment and its file (the object once the transaction commits), and records the removal. */
     @Transactional
     public void remove(UUID taskId, UUID attachmentId) {
-        Task task = getTask(taskId);
-        TaskAttachment attachment = getAttachment(taskId, attachmentId);
+        remove(getTask(taskId), getAttachment(taskId, attachmentId));
+    }
 
+    @Transactional
+    public void remove(Task task, TaskAttachment attachment) {
         taskEventService.attachmentRemoved(task, attachment);
 
         attachmentRepository.delete(attachment);

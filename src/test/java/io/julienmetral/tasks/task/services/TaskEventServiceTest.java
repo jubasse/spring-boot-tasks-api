@@ -8,6 +8,7 @@ import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.task.entities.Task;
 import io.julienmetral.tasks.task.entities.TaskAttachment;
+import io.julienmetral.tasks.task.entities.TaskComment;
 import io.julienmetral.tasks.task.entities.TaskEvent;
 import io.julienmetral.tasks.task.entities.TaskEventType;
 import io.julienmetral.tasks.task.entities.TaskStatus;
@@ -213,6 +214,49 @@ class TaskEventServiceTest {
                 .containsOnlyKeys("attachmentId", "filename")
                 .containsEntry("attachmentId", attachmentId.toString())
                 .containsEntry("filename", "old.png");
+    }
+
+    private static TaskComment comment(UUID id) {
+        TaskComment comment = new TaskComment();
+        comment.setId(id);
+        comment.setBody("Looks good to me");
+        return comment;
+    }
+
+    @Test
+    void commentAddedRecordsOnlyTheCommentId() {
+        UUID commentId = UUID.randomUUID();
+
+        TaskEvent event = recordedEvent(s -> s.commentAdded(task, comment(commentId)));
+
+        assertThat(event.getType()).isEqualTo(TaskEventType.COMMENT_ADDED);
+        assertThat(event.getPayload())
+                .containsOnlyKeys("commentId")
+                .containsEntry("commentId", commentId.toString());
+    }
+
+    @Test
+    void commentEditedRecordsOnlyTheCommentId() {
+        UUID commentId = UUID.randomUUID();
+
+        TaskEvent event = recordedEvent(s -> s.commentEdited(task, comment(commentId)));
+
+        assertThat(event.getType()).isEqualTo(TaskEventType.COMMENT_EDITED);
+        assertThat(event.getPayload())
+                .containsOnlyKeys("commentId")
+                .containsEntry("commentId", commentId.toString());
+    }
+
+    @Test
+    void commentDeletedRecordsOnlyTheCommentId() {
+        UUID commentId = UUID.randomUUID();
+
+        TaskEvent event = recordedEvent(s -> s.commentDeleted(task, comment(commentId)));
+
+        assertThat(event.getType()).isEqualTo(TaskEventType.COMMENT_DELETED);
+        assertThat(event.getPayload())
+                .containsOnlyKeys("commentId")
+                .containsEntry("commentId", commentId.toString());
     }
 
     @Test

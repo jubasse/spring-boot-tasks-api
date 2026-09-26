@@ -18,7 +18,8 @@ import java.util.UUID;
                 @UniqueConstraint(name = "task_attachments_media_idUQ", columnNames = "media_id")
         },
         indexes = {
-                @Index(name = "task_attachments_task_idIDX", columnList = "task_id")
+                @Index(name = "task_attachments_task_idIDX", columnList = "task_id"),
+                @Index(name = "task_attachments_comment_idIDX", columnList = "comment_id")
         }
 )
 @Getter
@@ -52,6 +53,15 @@ public class TaskAttachment {
             foreignKey = @ForeignKey(name = "task_attachments_mediaFK")
     )
     private Media media;
+
+    // Null for a file added to the task directly rather than posted with a comment
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "comment_id",
+            updatable = false,
+            foreignKey = @ForeignKey(name = "task_attachments_commentFK")
+    )
+    private TaskComment comment;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

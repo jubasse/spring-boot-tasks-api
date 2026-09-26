@@ -54,6 +54,40 @@ class MediaCleanupTests extends AbstractMediaCleanupTests {
     }
 
     @Test
+    void commentFilesOfTaskDeletedBeyondRetentionArePurgedWithTheirObjects() {
+        User user = createUser();
+        UUID taskId = createTask(user);
+        UUID commentId = createComment(taskId, user);
+        Media commentFile = attachedToComment(taskId, commentId, user);
+        Media taskFile = attachedToTask(taskId, user);
+        backdateMedia(commentFile, BEYOND_RETENTION);
+        backdateMedia(taskFile, BEYOND_RETENTION);
+        softDeleteTask(taskId, BEYOND_RETENTION);
+
+        MediaCleanupReport report = cleanupService.cleanUp();
+
+        assertThat(report.detachedAttachments()).isGreaterThanOrEqualTo(2);
+        for (Media media : new Media[]{commentFile, taskFile}) {
+            assertThat(isAttached(media)).isFalse();
+            assertThat(mediaExists(media)).isFalse();
+            assertThat(objectExists(media.getStorageKey())).isFalse();
+        }
+    }
+
+    @Test
+    void commentFilesOfTaskDeletedWithinRetentionAreKept() {
+        User user = createUser();
+        UUID taskId = createTask(user);
+        Media commentFile = attachedToComment(taskId, createComment(taskId, user), user);
+        backdateMedia(commentFile, BEYOND_RETENTION);
+        softDeleteTask(taskId, WITHIN_RETENTION);
+
+        cleanupService.cleanUp();
+
+        assertKeptAsAttachment(commentFile);
+    }
+
+    @Test
     void attachmentsOfTaskDeletedWithinRetentionAreKept() {
         User user = createUser();
         UUID taskId = createTask(user);

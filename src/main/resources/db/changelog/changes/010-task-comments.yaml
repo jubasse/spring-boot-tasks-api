@@ -1,0 +1,131 @@
+databaseChangeLog:
+- changeSet:
+    id: 010-create-task-comments
+    author: julien-metral
+    comment: >
+      Comments on a task. Mentions are stored as <@user-id> tokens in the body and listed in task_comment_mentions.
+    changes:
+    - createTable:
+        tableName: task_comments
+        columns:
+        - column:
+            name: id
+            type: UUID
+            defaultValueComputed: uuidv7()
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: task_commentsPK
+        - column:
+            name: task_id
+            type: UUID
+            constraints:
+              nullable: false
+        - column:
+            name: author_id
+            type: UUID
+            constraints:
+              nullable: false
+        - column:
+            name: body
+            type: TEXT
+            constraints:
+              nullable: false
+        - column:
+            name: created_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+            constraints:
+              nullable: false
+        - column:
+            name: edited_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+    - addForeignKeyConstraint:
+        baseTableName: task_comments
+        baseColumnNames: task_id
+        constraintName: task_comments_taskFK
+        referencedTableName: tasks
+        referencedColumnNames: id
+    - addForeignKeyConstraint:
+        baseTableName: task_comments
+        baseColumnNames: author_id
+        constraintName: task_comments_authorFK
+        referencedTableName: users
+        referencedColumnNames: id
+    - createIndex:
+        tableName: task_comments
+        indexName: task_comments_task_idIDX
+        columns:
+        - column:
+            name: task_id
+    - createTable:
+        tableName: task_comment_mentions
+        columns:
+        - column:
+            name: comment_id
+            type: UUID
+            constraints:
+              nullable: false
+        - column:
+            name: user_id
+            type: UUID
+            constraints:
+              nullable: false
+    - addPrimaryKey:
+        tableName: task_comment_mentions
+        columnNames: comment_id, user_id
+        constraintName: task_comment_mentionsPK
+    - addForeignKeyConstraint:
+        baseTableName: task_comment_mentions
+        baseColumnNames: comment_id
+        constraintName: task_comment_mentions_commentFK
+        referencedTableName: task_comments
+        referencedColumnNames: id
+    - addForeignKeyConstraint:
+        baseTableName: task_comment_mentions
+        baseColumnNames: user_id
+        constraintName: task_comment_mentions_userFK
+        referencedTableName: users
+        referencedColumnNames: id
+- changeSet:
+    id: 010-add-task-attachments-comment
+    author: julien-metral
+    comment: >
+      Files posted with a comment are task attachments that also point to the comment.
+    changes:
+    - addColumn:
+        tableName: task_attachments
+        columns:
+        - column:
+            name: comment_id
+            type: UUID
+    - addForeignKeyConstraint:
+        baseTableName: task_attachments
+        baseColumnNames: comment_id
+        constraintName: task_attachments_commentFK
+        referencedTableName: task_comments
+        referencedColumnNames: id
+    - createIndex:
+        tableName: task_attachments
+        indexName: task_attachments_comment_idIDX
+        columns:
+        - column:
+            name: comment_id
+- changeSet:
+    id: 010-add-comment-notification-settings
+    author: julien-metral
+    changes:
+    - addColumn:
+        tableName: notification_settings
+        columns:
+        - column:
+            name: task_commented
+            type: BOOLEAN
+            defaultValueBoolean: true
+            constraints:
+              nullable: false
+        - column:
+            name: task_mentioned
+            type: BOOLEAN
+            defaultValueBoolean: true
+            constraints:
+              nullable: false

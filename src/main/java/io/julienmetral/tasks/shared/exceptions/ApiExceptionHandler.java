@@ -15,7 +15,10 @@ import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
 import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
 import io.julienmetral.tasks.task.exceptions.AssigneeNotActiveException;
+import io.julienmetral.tasks.task.exceptions.InvalidMentionException;
 import io.julienmetral.tasks.task.exceptions.TaskAttachmentNotFoundException;
+import io.julienmetral.tasks.task.exceptions.TaskCommentNotFoundException;
+import io.julienmetral.tasks.task.exceptions.TooManyCommentAttachmentsException;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -67,6 +70,27 @@ public class ApiExceptionHandler {
 
         problem.setTitle("Attachment not found");
 
+        return problem;
+    }
+
+    @ExceptionHandler(TaskCommentNotFoundException.class)
+    public ProblemDetail handleTaskCommentNotFound(TaskCommentNotFoundException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+        problem.setTitle("Comment not found");
+        return problem;
+    }
+
+    @ExceptionHandler(InvalidMentionException.class)
+    public ProblemDetail handleInvalidMention(InvalidMentionException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_CONTENT, ex.getMessage());
+        problem.setTitle("User cannot be mentioned");
+        return problem;
+    }
+
+    @ExceptionHandler(TooManyCommentAttachmentsException.class)
+    public ProblemDetail handleTooManyCommentAttachments(TooManyCommentAttachmentsException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        problem.setTitle("Too many files");
         return problem;
     }
 
