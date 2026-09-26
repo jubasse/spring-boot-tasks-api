@@ -11,10 +11,13 @@ Spring Boot 4.1 REST API (Java 25, Maven wrapper) backed by PostgreSQL 18, with 
 ```bash
 ./mvnw compile                                  # build (runs Lombok + MapStruct + config annotation processors)
 ./mvnw spring-boot:run                          # run; spring-boot-docker-compose starts compose.yaml (postgres, mailpit, rustfs, clamav)
+docker compose up -d                            # needed once after compose.yaml gains a service: see the note below
 ./mvnw spring-boot:test-run                     # run with a Testcontainers postgres (TestTasksApplication)
 ./mvnw test                                     # all tests (needs Docker, Testcontainers)
 ./mvnw test -Dtest=TasksApplicationTests#contextLoads   # a single test
 ```
+
+Note: `spring-boot-docker-compose` skips `docker compose up` when some services of the project already run. A service added to `compose.yaml` later (for example `rustfs` or `clamav`) therefore does not start by itself: run `docker compose up -d` once.
 
 Tests need no `.env`: `src/test/resources/config/application.yaml` provides a test-only JWT secret. Spring Boot loads that file on top of the main `application.yaml`.
 
@@ -105,6 +108,11 @@ In development, SMTP goes to the Mailpit service of `compose.yaml` (web UI on ht
   - If clamd cannot be reached, the upload fails with 503 instead of being stored unscanned (fail closed).
   - `antivirus.enabled=false` (`ANTIVIRUS_ENABLED`) swaps in a scanner that accepts everything and logs a warning at startup. It is meant for development machines that cannot spare ClamAV's memory (about 1 GB).
   - Tests start a ClamAV container with freshclam disabled, since the signatures are baked into the image, and use the EICAR test string as the infected file.
+- **Profile photos:** `PUT /api/v1/users/{id}/avatar` (multipart field `file`) and `DELETE /api/v1/users/{id}/avatar`, for the user or an admin, handled by `AvatarService`.
+  - The original upload goes through `MediaService.validate`, which checks size, type and viruses, before `AvatarImageProcessor` decodes it. The processor rejects images above 10000 px or 40 MP before decoding them (422), applies the EXIF orientation, crops to a centred square and scales down to 256 px. It then re-encodes to JPEG, or to PNG when the original has transparency, and re-encoding drops all metadata, GPS included.
+  - The previous photo is deleted with `MediaService.delete`: the row goes with the change, and the object once the transaction commits.
+  - `users.avatar_media_id` has an explicit unique constraint (`users_avatar_media_idUQ`). The associations are `@ManyToOne`, because a `@OneToOne` makes Hibernate add an implicit unique constraint with a generated name, which `liquibase:diff` then reports.
+- **URLs in responses:** `UserResponseDto` and every `UserPreviewResponseDto` carry an `avatarUrl`, a presigned URL computed by `MediaUrls`. Controllers pass `MediaUrls` to the DTO constructors.
 - **Downloads:** they never go through the application. `MediaService.downloadUrl` returns a presigned URL, valid `storage.presigned-url-ttl`, whose signed response headers force an attachment download under the original file name.
 - **Drivers:** the code depends on the `ObjectStorage` interface; `storage.driver` picks its configuration.
   - `rustfs` (`RustFsStorageConfiguration`): explicit endpoint, static keys, path-style URLs, and the bucket is created on startup. It is used in development (RustFS service of `compose.yaml`, console on http://localhost:9001) and in tests (RustFS container in `TestcontainersConfiguration`).
