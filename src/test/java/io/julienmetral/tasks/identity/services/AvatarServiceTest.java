@@ -2,6 +2,7 @@ package io.julienmetral.tasks.identity.services;
 
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
+import io.julienmetral.tasks.identity.messaging.AvatarQueues;
 import io.julienmetral.tasks.identity.messaging.AvatarUploaded;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
@@ -14,6 +15,7 @@ import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.media.model.ProcessedImage;
 import io.julienmetral.tasks.media.services.AvatarImageProcessor;
 import io.julienmetral.tasks.media.services.MediaService;
+import io.julienmetral.tasks.messaging.services.Outbox;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,7 +26,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -74,7 +75,7 @@ class AvatarServiceTest {
     private CurrentUser currentUser;
 
     @Mock
-    private ApplicationEventPublisher eventPublisher;
+    private Outbox outbox;
 
     @InjectMocks
     private AvatarService service;
@@ -128,10 +129,10 @@ class AvatarServiceTest {
             assertThat(user.getPendingAvatar()).isSameAs(stored);
             assertThat(user.getAvatar()).isSameAs(current);
 
-            InOrder order = inOrder(mediaService, imageProcessor, eventPublisher);
+            InOrder order = inOrder(mediaService, imageProcessor, outbox);
             order.verify(mediaService).store(file, MediaUsage.AVATAR_UPLOAD, USER_ID);
             order.verify(imageProcessor).checkDimensions(ORIGINAL);
-            order.verify(eventPublisher).publishEvent(new AvatarUploaded(USER_ID, UPLOAD_ID));
+            order.verify(outbox).enqueue(AvatarQueues.PROCESS, new AvatarUploaded(USER_ID, UPLOAD_ID));
             verify(imageProcessor, never()).process(any());
             verify(mediaService, never()).delete(any());
         }
@@ -147,7 +148,7 @@ class AvatarServiceTest {
             service.update(USER_ID, file);
 
             verify(mediaService).store(file, MediaUsage.AVATAR_UPLOAD, ADMIN_ID);
-            verify(eventPublisher).publishEvent(new AvatarUploaded(USER_ID, UPLOAD_ID));
+            verify(outbox).enqueue(AvatarQueues.PROCESS, new AvatarUploaded(USER_ID, UPLOAD_ID));
         }
 
         @Test
@@ -178,7 +179,7 @@ class AvatarServiceTest {
             InOrder order = inOrder(mediaService);
             order.verify(mediaService).store(file, MediaUsage.AVATAR_UPLOAD, USER_ID);
             order.verify(mediaService).delete(pending);
-            verify(eventPublisher).publishEvent(new AvatarUploaded(USER_ID, UPLOAD_ID));
+            verify(outbox).enqueue(AvatarQueues.PROCESS, new AvatarUploaded(USER_ID, UPLOAD_ID));
         }
 
         @Test
@@ -211,7 +212,7 @@ class AvatarServiceTest {
 
             assertThat(user.getPendingAvatar()).isSameAs(pending);
             verify(mediaService, never()).delete(any());
-            verifyNoInteractions(eventPublisher);
+            verifyNoInteractions(outbox);
         }
 
         @Test
@@ -225,7 +226,7 @@ class AvatarServiceTest {
 
             assertThatThrownBy(() -> service.update(USER_ID, file)).isSameAs(failure);
 
-            verifyNoInteractions(imageProcessor, eventPublisher);
+            verifyNoInteractions(imageProcessor, outbox);
             verify(mediaService, never()).delete(any());
             assertThat(user.getPendingAvatar()).isSameAs(pending);
         }
@@ -238,7 +239,7 @@ class AvatarServiceTest {
                     .isInstanceOf(UserNotFoundException.class)
                     .hasMessage("User not found with id: " + USER_ID);
 
-            verifyNoInteractions(mediaService, imageProcessor, eventPublisher);
+            verifyNoInteractions(mediaService, imageProcessor, outbox);
         }
 
         @Test
@@ -253,7 +254,7 @@ class AvatarServiceTest {
                     .isInstanceOf(UncheckedIOException.class)
                     .hasCause(failure);
 
-            verifyNoInteractions(imageProcessor, eventPublisher);
+            verifyNoInteractions(imageProcessor, outbox);
             assertThat(user.getPendingAvatar()).isNull();
         }
     }
