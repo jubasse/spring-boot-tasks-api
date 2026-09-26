@@ -23,4 +23,20 @@ public enum UserStatus {
 
         return ACTIVE;
     }
+
+    public static UserStatus of(UserSummary user) {
+        if (user.getDeletedAt() != null) {
+            return DELETED;
+        }
+
+        if (!user.isEnabled()) {
+            return DISABLED;
+        }
+
+        if (user.getEmailVerifiedAt() == null) {
+            return UNVERIFIED;
+        }
+
+        return ACTIVE;
+    }
 }
