@@ -39,7 +39,7 @@ Only accounts that are enabled and have a verified email address can work on tas
 
    The first start pulls the container images and starts the services of `compose.yaml` (PostgreSQL, RabbitMQ, the object storage, the antivirus and a mail catcher). The database schema is created on startup.
 
-The API listens on http://localhost:8080. The development services come with web consoles:
+The API listens on http://localhost:8080, and its health and metrics on http://localhost:8081 (see [Monitor the API](#monitor-the-api)). The development services come with web consoles:
 
 | Service | URL | Sign-in |
 |---|---|---|
@@ -143,8 +143,32 @@ The API reads its configuration from `src/main/resources/application.yaml`, whic
 | `ANTIVIRUS_ENABLED` | `true` | `false` stores uploads without scanning them |
 | `MEDIA_CLEANUP_RETENTION` | `30d` | How long the files of deleted tasks and accounts are kept |
 | `SPRING_RABBITMQ_HOST`, `SPRING_RABBITMQ_USERNAME`, `SPRING_RABBITMQ_PASSWORD` | provided by Docker Compose | RabbitMQ connection outside local development |
+| `MANAGEMENT_PORT` | `8081` | Port of the health and metrics endpoints |
 
 `.env.example` lists the other options, and `application.yaml` holds the fixed settings, such as the upload size limits and the schedules of the background jobs.
+
+## Monitor the API
+
+Health checks and metrics are served on a separate port, 8081 by default, without authentication.
+
+> Warning: make port 8081 reachable only from your monitoring systems, never from the internet.
+
+| URL | What you get |
+|---|---|
+| http://localhost:8081/actuator/health | Overall status and each dependency: database, RabbitMQ, mail server, object storage, antivirus, disk space |
+| http://localhost:8081/actuator/health/liveness | Whether the process should be restarted |
+| http://localhost:8081/actuator/health/readiness | Whether the API can take traffic: database, RabbitMQ and object storage are up. An unreachable antivirus only blocks uploads, so it does not make the API unready |
+| http://localhost:8081/actuator/prometheus | Metrics in Prometheus format |
+| http://localhost:8081/actuator/info | Deployed version |
+
+Metrics worth alerting on:
+
+| Metric | Alert when |
+|---|---|
+| `outbox_messages_pending`, `outbox_messages_oldest_pending_age_seconds` | They keep growing: emails and profile photos are waiting for RabbitMQ |
+| `rabbitmq_dead_letter_messages{queue=...}` | Above 0: a message failed all its retries |
+| `outbox_publish_failures_total` | It increases steadily |
+| `tasks_scheduled_execution_seconds_count{outcome="FAILURE"}` | A background job failed |
 
 ## Architecture
 

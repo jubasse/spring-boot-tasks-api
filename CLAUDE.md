@@ -162,6 +162,13 @@ Every message for RabbitMQ goes through `messaging.services.Outbox.enqueue`, nev
 - Rows are locked with `FOR UPDATE SKIP LOCKED`, so the immediate publish, the poller and other instances never send the same message twice at once. A crash between the confirm and the commit publishes it again: delivery is at least once, and consumers must tolerate a duplicate.
 - The message carries its class name in the `__TypeId__` header; the class's package must be trusted by the converter in `MessagingConfiguration`.
 
+### Monitoring
+
+Actuator runs on its own port, `management.server.port` (`MANAGEMENT_PORT`, 8081), with `health`, `info`, `metrics` and `prometheus` exposed and no authentication. Warning: that port must stay reachable only from the monitoring network. On the API port, `/actuator/**` does not exist; `SecurityConfiguration` permits `EndpointRequest.toAnyEndpoint()` for the management port only.
+- **Health:** Spring Boot's indicators (`db`, `rabbit`, `mail`, `diskSpace`) plus `storage` (`StorageHealthIndicator`, a `headBucket`) and `antivirus` (`AntivirusHealthIndicator`, clamd `PING` with a 5-second cap; up with `scanning: disabled` when the antivirus is off). Readiness (`/actuator/health/readiness`) includes `db`, `rabbit` and `storage`, not the antivirus, which only blocks uploads.
+- **Metrics:** `outbox.messages.pending` and `outbox.messages.oldest.pending.age` (`OutboxMetrics`), `outbox.messages.published` and `outbox.publish.failures` per queue (`OutboxRelay`), `rabbitmq.dead.letter.messages` per dead-letter queue (`DeadLetterQueueMetrics`, NaN while the broker is unreachable). Spring records every `@Scheduled` run as `tasks.scheduled.execution`.
+- **Info:** `spring-boot-maven-plugin` writes `build-info`, so `/actuator/info` shows the version.
+
 ### Method-security annotations
 
 Authorization is declared with custom meta-annotations wrapping `@PreAuthorize`, not with inline SpEL. `AnnotationTemplateExpressionDefaults` is registered so that `{value}` placeholders resolve, and `UserRole` implements `ExpressionTemplateValueProvider` so enum values render as quoted role names.
