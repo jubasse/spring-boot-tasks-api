@@ -4,6 +4,7 @@ import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.identity.entities.UserProfile;
 import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
+import io.julienmetral.tasks.identity.services.ProfilesForDisplay;
 import io.julienmetral.tasks.task.entities.Task;
 import io.julienmetral.tasks.task.entities.TaskAttachment;
 import io.julienmetral.tasks.task.entities.TaskComment;
@@ -86,21 +87,25 @@ public class TaskCommentService {
 
         publishMentions(task, saved, mentionedIds);
 
-        return saved;
+        return withDetailsLoaded(saved);
     }
 
     @Transactional(readOnly = true)
     public Page<TaskComment> findAll(UUID taskId, Pageable pageable) {
         getTask(taskId);
 
-        return commentRepository.findAllByTaskId(taskId, pageable);
+        Page<TaskComment> comments = commentRepository.findAllByTaskId(taskId, pageable);
+
+        comments.forEach(TaskCommentService::withDetailsLoaded);
+
+        return comments;
     }
 
     @Transactional(readOnly = true)
     public TaskComment find(UUID taskId, UUID commentId) {
         getTask(taskId);
 
-        return getComment(taskId, commentId);
+        return withDetailsLoaded(getComment(taskId, commentId));
     }
 
     /**
@@ -113,7 +118,7 @@ public class TaskCommentService {
         TaskComment comment = getComment(taskId, commentId);
 
         if (comment.getBody().equals(body)) {
-            return comment;
+            return withDetailsLoaded(comment);
         }
 
         Set<UUID> mentionedIds = CommentMentions.parse(body);
@@ -136,7 +141,7 @@ public class TaskCommentService {
 
         publishMentions(task, comment, newIds);
 
-        return comment;
+        return withDetailsLoaded(comment);
     }
 
     /** Deletes the comment with its files; the stored objects go once the transaction commits. */
@@ -212,5 +217,15 @@ public class TaskCommentService {
         return commentRepository
                 .findByIdAndTaskId(commentId, taskId)
                 .orElseThrow(() -> new TaskCommentNotFoundException(commentId));
+    }
+
+    // The response shows the author, the mentioned users and the files. With default_batch_fetch_size, the first
+    // comment's collections load those of the whole page in a few IN queries.
+    private static TaskComment withDetailsLoaded(TaskComment comment) {
+        ProfilesForDisplay.load(comment.getAuthor());
+        comment.getMentions().forEach(ProfilesForDisplay::load);
+        comment.getAttachments().forEach(TaskAttachmentService::withMediaLoaded);
+
+        return comment;
     }
 }

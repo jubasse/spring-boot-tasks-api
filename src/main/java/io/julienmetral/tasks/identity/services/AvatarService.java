@@ -54,6 +54,9 @@ public class AvatarService {
 
         outbox.enqueue(AvatarQueues.PROCESS, new AvatarUploaded(user.getId(), upload.getId()));
 
+        // The response shows the current photo, which stays until the worker replaces it
+        ProfilesForDisplay.load(user.getProfile());
+
         return user;
     }
 
