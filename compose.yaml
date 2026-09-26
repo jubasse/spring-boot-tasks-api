@@ -31,6 +31,15 @@ services:
     volumes:
       - rustfs_data:/data
 
+  # Antivirus scanning every upload; needs about 1 GB of RAM. Set ANTIVIRUS_ENABLED=false in .env to skip it.
+  clamav:
+    image: clamav/clamav:1.5.4-debian
+    ports:
+      - "${CLAMAV_PORT:-3310}:3310"
+    volumes:
+      - clamav_data:/var/lib/clamav
+
 volumes:
   postgres_data:
   rustfs_data:
+  clamav_data:

@@ -9,6 +9,8 @@ import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
+import java.time.Duration;
+
 @TestConfiguration(proxyBeanMethods = false)
 public class TestcontainersConfiguration {
 
@@ -17,6 +19,8 @@ public class TestcontainersConfiguration {
 	static final int MAILPIT_API_PORT = 8025;
 
 	static final int RUSTFS_S3_PORT = 9000;
+
+	static final int CLAMAV_PORT = 3310;
 
 	static final String RUSTFS_ACCESS_KEY = "test-access-key";
 
@@ -70,6 +74,25 @@ public class TestcontainersConfiguration {
 			registry.add("storage.driver", () -> "rustfs");
 			registry.add("storage.bucket", () -> "tasks-media-test");
 			registry.add("storage.rustfs.create-bucket", () -> "true");
+		};
+	}
+
+	// Signatures are baked into the image; freshclam is off so tests never depend on the network
+	@Bean
+	GenericContainer<?> clamavContainer() {
+		return new GenericContainer<>(DockerImageName.parse("clamav/clamav:1.5.4-debian"))
+				.withEnv("CLAMAV_NO_FRESHCLAMD", "true")
+				.withExposedPorts(CLAMAV_PORT)
+				.waitingFor(Wait.forLogMessage(".*socket found, clamd started.*", 1)
+						.withStartupTimeout(Duration.ofMinutes(3)));
+	}
+
+	@Bean
+	DynamicPropertyRegistrar clamavProperties(GenericContainer<?> clamavContainer) {
+		return registry -> {
+			registry.add("antivirus.enabled", () -> "true");
+			registry.add("antivirus.host", clamavContainer::getHost);
+			registry.add("antivirus.port", () -> clamavContainer.getMappedPort(CLAMAV_PORT));
 		};
 	}
 
