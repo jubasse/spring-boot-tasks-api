@@ -3,7 +3,6 @@ package io.julienmetral.tasks.config;
 import io.julienmetral.tasks.media.services.ObjectStorage;
 import io.julienmetral.tasks.media.services.S3ObjectStorage;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.util.Assert;
@@ -17,7 +16,6 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
  * The bucket is provisioned by the infrastructure, never created by the application.
  */
 @Configuration
-@EnableConfigurationProperties({StorageProperties.class, MediaProperties.class})
 @ConditionalOnProperty(name = "storage.driver", havingValue = "aws-s3")
 public class AwsS3StorageConfiguration {
 
