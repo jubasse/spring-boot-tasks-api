@@ -68,8 +68,6 @@ class UserServiceTest {
         when(userRepository.findById(ID)).thenReturn(Optional.empty());
     }
 
-    // --- create ---
-
     @Test
     void createNormalizesEmailTrimsDisplayNameEncodesPasswordAndAssignsUserRole() {
         when(userRepository.existsByEmailIncludingDeleted("jane@example.com")).thenReturn(false);
@@ -118,8 +116,6 @@ class UserServiceTest {
         verify(emailVerificationService).issue(persisted);
     }
 
-    // --- findById / findByEmail ---
-
     @Test
     void findByIdReturnsUser() {
         User user = stubExisting();
@@ -152,8 +148,6 @@ class UserServiceTest {
                 .isInstanceOf(UserNotFoundException.class)
                 .hasMessageContaining("nobody@example.com");
     }
-
-    // --- updateProfile ---
 
     @Test
     void updateProfileTrimsDisplayName() {
@@ -191,8 +185,6 @@ class UserServiceTest {
                 .isInstanceOf(UserNotFoundException.class);
     }
 
-    // --- changePassword ---
-
     @Test
     void changePasswordEncodesNewPassword() {
         User user = stubExisting();
@@ -211,8 +203,6 @@ class UserServiceTest {
                 .isInstanceOf(UserNotFoundException.class);
         verify(passwordEncoder, never()).encode(any());
     }
-
-    // --- verifyEmail ---
 
     @Test
     void verifyEmailSetsTimestampWhenNotYetVerified() {
@@ -235,8 +225,6 @@ class UserServiceTest {
         assertThat(user.getEmailVerifiedAt()).isEqualTo(original);
     }
 
-    // --- recordLogin ---
-
     @Test
     void recordLoginSetsLastLoginAt() {
         User user = stubExisting();
@@ -246,8 +234,6 @@ class UserServiceTest {
 
         assertThat(user.getLastLoginAt()).isBetween(before, Instant.now());
     }
-
-    // --- enable / disable ---
 
     @Test
     void enableSetsEnabledTrue() {
@@ -285,8 +271,6 @@ class UserServiceTest {
         assertThatThrownBy(() -> userService.enable(ID)).isInstanceOf(UserNotFoundException.class);
     }
 
-    // --- roles ---
-
     @Test
     void addRoleAddsRole() {
         User user = stubExisting();
@@ -322,8 +306,6 @@ class UserServiceTest {
         assertThatThrownBy(() -> userService.removeRole(ID, UserRole.USER))
                 .isInstanceOf(UserNotFoundException.class);
     }
-
-    // --- delete ---
 
     @Test
     void deleteDeletesLoadedUser() {

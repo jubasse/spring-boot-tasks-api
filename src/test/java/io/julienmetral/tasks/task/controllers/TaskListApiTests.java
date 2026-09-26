@@ -277,8 +277,6 @@ class TaskListApiTests extends AbstractUserStateTaskApiTests {
                 .andExpect(status().isBadRequest());
     }
 
-    // --- Helpers ---
-
     private JsonNode list(User reader, MockHttpServletRequestBuilder request) throws Exception {
         String body = mockMvc.perform(request.with(asAdmin(reader)))
                 .andExpect(status().isOk())

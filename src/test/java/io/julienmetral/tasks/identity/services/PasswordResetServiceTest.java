@@ -118,8 +118,6 @@ class PasswordResetServiceTest {
         assertNoSideEffects();
     }
 
-    // --- request ---
-
     @Test
     void requestForEnabledUserReplacesPendingTokensStoresHashAndPublishesEvent() {
         when(userRepository.findByEmailIgnoreCase("jane@example.com")).thenReturn(Optional.of(user()));
@@ -177,8 +175,6 @@ class PasswordResetServiceTest {
 
         verifyNoInteractions(tokenRepository, userSummaryRepository, eventPublisher);
     }
-
-    // --- confirm: rejected tokens ---
 
     @Test
     void confirmUnknownTokenThrows() {
@@ -243,8 +239,6 @@ class PasswordResetServiceTest {
         assertThat(token.getUsedAt()).isNull();
         assertNothingChanged(user);
     }
-
-    // --- confirm: success ---
 
     @Test
     void confirmValidTokenSetsPasswordVerifiesEmailAndSignsOutEverywhere() {

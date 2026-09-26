@@ -67,8 +67,6 @@ class RefreshTokenApiTests {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    // ---------------------------------------------------------------- login
-
     @Test
     void loginReturnsRefreshTokenExpiringInAboutThirtyDays() throws Exception {
         String email = uniqueEmail();
@@ -108,7 +106,6 @@ class RefreshTokenApiTests {
                     .matches("[0-9a-f]{64}");
             assertThat(row.get("user_id")).isEqualTo(userId);
 
-            // The raw value appears nowhere in the table, in any column
             Integer rawMatches = jdbcTemplate.queryForObject(
                     "SELECT count(*) FROM refresh_tokens t WHERE strpos(t::text, ?) > 0",
                     Integer.class,
@@ -118,8 +115,6 @@ class RefreshTokenApiTests {
             assertThat(rawMatches).isZero();
         }
     }
-
-    // ---------------------------------------------------------------- refresh: happy path
 
     @Test
     void refreshReturnsNewTokensAndRotatesRefreshTokenWithinSameFamily() throws Exception {
@@ -179,7 +174,6 @@ class RefreshTokenApiTests {
         assertThat(revokedAt(second)).isNotNull();
         assertThat(revokedAt(third)).isNull();
 
-        // The latest token keeps working
         refreshOk(third);
     }
 
@@ -233,8 +227,6 @@ class RefreshTokenApiTests {
                 .andExpect(status().isOk());
     }
 
-    // ---------------------------------------------------------------- refresh: reuse detection
-
     @Test
     void replayingUsedRefreshTokenRevokesWholeFamily() throws Exception {
         String email = uniqueEmail();
@@ -264,8 +256,6 @@ class RefreshTokenApiTests {
 
         refreshOk(otherSession);
     }
-
-    // ---------------------------------------------------------------- refresh: invalid tokens
 
     @Test
     void expiredRefreshTokenIsRejected() throws Exception {
@@ -319,8 +309,6 @@ class RefreshTokenApiTests {
     void oversizedRefreshTokenIsBadRequest() throws Exception {
         refresh("a".repeat(129)).andExpect(status().isBadRequest());
     }
-
-    // ---------------------------------------------------------------- refresh: user state
 
     @Test
     void disablingUserRevokesRefreshTokensEvenAfterReEnabling() throws Exception {
@@ -397,8 +385,6 @@ class RefreshTokenApiTests {
         expectInvalidRefreshToken(refresh(token));
     }
 
-    // ---------------------------------------------------------------- logout
-
     @Test
     void logoutRevokesTokenAndItCanNoLongerBeRefreshed() throws Exception {
         String email = uniqueEmail();
@@ -406,7 +392,6 @@ class RefreshTokenApiTests {
 
         String token = refreshTokenOf(loginJson(email));
 
-        // Public endpoint: no Authorization header
         logout(token).andExpect(status().isNoContent());
 
         assertThat(revokedAt(token)).isNotNull();
@@ -487,8 +472,6 @@ class RefreshTokenApiTests {
                     .andExpect(status().isBadRequest());
         }
     }
-
-    // ---------------------------------------------------------------- helpers
 
     private ResultActions refresh(String refreshToken) throws Exception {
         return mockMvc.perform(
