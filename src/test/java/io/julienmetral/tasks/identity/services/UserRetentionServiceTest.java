@@ -119,8 +119,8 @@ class UserRetentionServiceTest {
     void eachWarnedUserGetsOneWarningAnnouncingTheDeletionDate() {
         when(queries.tryLock()).thenReturn(true);
         when(queries.warnUsersInactiveSince(any(), any())).thenReturn(List.of(
-                new InactiveUser(UUID.randomUUID(), "jane@example.com", "Jane Doe"),
-                new InactiveUser(UUID.randomUUID(), "john@example.com", "John Roe")
+                new InactiveUser(UUID.randomUUID(), "jane@example.com", "Jane Doe", true),
+                new InactiveUser(UUID.randomUUID(), "john@example.com", "John Roe", true)
         ));
 
         service.apply();
@@ -135,14 +135,31 @@ class UserRetentionServiceTest {
     }
 
     @Test
+    void disabledAccountIsWarnedWithoutAnEmail() {
+        when(queries.tryLock()).thenReturn(true);
+        when(queries.warnUsersInactiveSince(any(), any())).thenReturn(List.of(
+                new InactiveUser(UUID.randomUUID(), "disabled@example.com", "Disabled", false),
+                new InactiveUser(UUID.randomUUID(), "jane@example.com", "Jane Doe", true)
+        ));
+
+        UserRetentionReport report = service.apply();
+
+        ArgumentCaptor<Object> events = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher).publishEvent(events.capture());
+        assertThat(events.getValue())
+                .isEqualTo(new InactiveAccountWarned("jane@example.com", "Jane Doe", Instant.parse("2030-07-06T04:00:00Z")));
+        assertThat(report.warned()).isEqualTo(2);
+    }
+
+    @Test
     void reportCountsAnonymizedWarnedAndDeletedAccounts() {
         when(queries.tryLock()).thenReturn(true);
         when(queries.anonymizeUsersDeletedBefore(any(), any()))
                 .thenReturn(List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()));
         when(queries.usersWarnedBefore(any())).thenReturn(List.of(UUID.randomUUID()));
         when(queries.warnUsersInactiveSince(any(), any())).thenReturn(List.of(
-                new InactiveUser(UUID.randomUUID(), "a@example.com", "A"),
-                new InactiveUser(UUID.randomUUID(), "b@example.com", "B")
+                new InactiveUser(UUID.randomUUID(), "a@example.com", "A", true),
+                new InactiveUser(UUID.randomUUID(), "b@example.com", "B", true)
         ));
 
         UserRetentionReport report = service.apply();
