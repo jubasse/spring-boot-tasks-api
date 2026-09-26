@@ -3,6 +3,7 @@ package io.julienmetral.tasks.media.services;
 import io.julienmetral.tasks.config.MediaProperties;
 import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
 import io.julienmetral.tasks.media.exceptions.EmptyMediaException;
+import io.julienmetral.tasks.media.exceptions.InfectedMediaException;
 import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
 import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
 import io.julienmetral.tasks.media.model.Media;
@@ -41,6 +42,7 @@ public class MediaService {
     private final UserSummaryRepository userSummaryRepository;
     private final ObjectStorage objectStorage;
     private final ContentTypeDetector contentTypeDetector;
+    private final VirusScanner virusScanner;
     private final MediaProperties properties;
 
     @Transactional
@@ -84,6 +86,7 @@ public class MediaService {
      * @throws EmptyMediaException           when the content is empty
      * @throws MediaTooLargeException        when it exceeds the usage's size limit
      * @throws UnsupportedMediaTypeException when the detected type is not allowed for the usage
+     * @throws InfectedMediaException        when the antivirus finds a threat
      */
     public String validate(MediaSource source, MediaUsage usage) {
         if (source.size() == 0) {
@@ -101,6 +104,8 @@ public class MediaService {
         if (!usage.allows(contentType)) {
             throw new UnsupportedMediaTypeException(contentType, usage);
         }
+
+        rejectIfInfected(source);
 
         return contentType;
     }
@@ -155,6 +160,16 @@ public class MediaService {
     private String detectContentType(MediaSource source, String filename) {
         try (InputStream content = source.open()) {
             return contentTypeDetector.detect(content, filename);
+        } catch (IOException exception) {
+            throw new UncheckedIOException(exception);
+        }
+    }
+
+    private void rejectIfInfected(MediaSource source) {
+        try (InputStream content = source.open()) {
+            virusScanner.findThreat(content).ifPresent(threat -> {
+                throw new InfectedMediaException(threat);
+            });
         } catch (IOException exception) {
             throw new UncheckedIOException(exception);
         }

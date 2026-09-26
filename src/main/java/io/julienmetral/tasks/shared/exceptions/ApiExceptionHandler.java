@@ -7,7 +7,9 @@ import io.julienmetral.tasks.identity.exceptions.InvalidPasswordResetTokenExcept
 import io.julienmetral.tasks.identity.exceptions.InvalidRefreshTokenException;
 import io.julienmetral.tasks.identity.exceptions.UserEmailAlreadyExistsException;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
+import io.julienmetral.tasks.media.exceptions.AntivirusUnavailableException;
 import io.julienmetral.tasks.media.exceptions.EmptyMediaException;
+import io.julienmetral.tasks.media.exceptions.InfectedMediaException;
 import io.julienmetral.tasks.media.exceptions.InvalidImageException;
 import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
@@ -210,6 +212,24 @@ public class ApiExceptionHandler {
     public ProblemDetail handleInvalidImage(InvalidImageException ex) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_CONTENT, ex.getMessage());
         problem.setTitle("Invalid image");
+        return problem;
+    }
+
+    @ExceptionHandler(InfectedMediaException.class)
+    public ProblemDetail handleInfectedMedia(InfectedMediaException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_CONTENT, ex.getMessage());
+        problem.setTitle("File rejected by the antivirus");
+        return problem;
+    }
+
+    // Fail closed: an upload is never stored unscanned while the antivirus is enabled
+    @ExceptionHandler(AntivirusUnavailableException.class)
+    public ProblemDetail handleAntivirusUnavailable(AntivirusUnavailableException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "The antivirus is temporarily unavailable, try again later"
+        );
+        problem.setTitle("Antivirus unavailable");
         return problem;
     }
 

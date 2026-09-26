@@ -3,7 +3,9 @@ package io.julienmetral.tasks.media.services;
 import io.julienmetral.tasks.config.MediaProperties;
 import io.julienmetral.tasks.identity.entities.UserSummary;
 import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
+import io.julienmetral.tasks.media.exceptions.AntivirusUnavailableException;
 import io.julienmetral.tasks.media.exceptions.EmptyMediaException;
+import io.julienmetral.tasks.media.exceptions.InfectedMediaException;
 import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
 import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
@@ -39,7 +41,9 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static io.julienmetral.tasks.support.UserSummaries.reference;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -57,6 +61,7 @@ import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -82,6 +87,10 @@ class MediaServiceTest {
     @Mock
     private ContentTypeDetector contentTypeDetector;
 
+    // Mockito answers an unstubbed Optional with Optional.empty(): every file is clean unless a test says otherwise
+    @Mock
+    private VirusScanner virusScanner;
+
     private MediaService service;
 
     @BeforeEach
@@ -91,6 +100,7 @@ class MediaServiceTest {
                 userSummaryRepository,
                 objectStorage,
                 contentTypeDetector,
+                virusScanner,
                 new MediaProperties(AVATAR_MAX, ATTACHMENT_MAX)
         );
         TransactionSynchronizationManager.initSynchronization();
@@ -222,7 +232,8 @@ class MediaServiceTest {
                     .isInstanceOf(EmptyMediaException.class)
                     .hasMessage("The file is empty");
 
-            verifyNoInteractions(contentTypeDetector, objectStorage, mediaRepository, userSummaryRepository);
+            verifyNoInteractions(contentTypeDetector, virusScanner, objectStorage, mediaRepository,
+                    userSummaryRepository);
             assertThat(synchronizations()).isEmpty();
         }
 
@@ -233,7 +244,7 @@ class MediaServiceTest {
             assertThatThrownBy(() -> service.store(file("me.png", content), MediaUsage.AVATAR, UPLOADER_ID))
                     .isInstanceOf(MediaTooLargeException.class);
 
-            verifyNoInteractions(contentTypeDetector, objectStorage, mediaRepository);
+            verifyNoInteractions(contentTypeDetector, virusScanner, objectStorage, mediaRepository);
         }
 
         @Test
@@ -243,7 +254,7 @@ class MediaServiceTest {
             assertThatThrownBy(() -> service.store(file("a.pdf", content), MediaUsage.TASK_ATTACHMENT, null))
                     .isInstanceOf(MediaTooLargeException.class);
 
-            verifyNoInteractions(contentTypeDetector, objectStorage, mediaRepository);
+            verifyNoInteractions(contentTypeDetector, virusScanner, objectStorage, mediaRepository);
         }
 
         @Test
@@ -279,7 +290,7 @@ class MediaServiceTest {
                     .isInstanceOf(UnsupportedMediaTypeException.class)
                     .hasMessage("Files of type application/pdf are not accepted for AVATAR");
 
-            verifyNoInteractions(objectStorage, mediaRepository, userSummaryRepository);
+            verifyNoInteractions(virusScanner, objectStorage, mediaRepository, userSummaryRepository);
             assertThat(synchronizations()).isEmpty();
         }
 
@@ -331,13 +342,16 @@ class MediaServiceTest {
             MultipartFile file = mock(MultipartFile.class);
             when(file.getSize()).thenReturn(5L);
             when(file.getOriginalFilename()).thenReturn("a.pdf");
-            when(file.getInputStream()).thenReturn(InputStream.nullInputStream()).thenThrow(failure);
+            when(file.getInputStream())
+                    .thenReturn(InputStream.nullInputStream(), InputStream.nullInputStream())
+                    .thenThrow(failure);
             detects("application/pdf");
 
             assertThatThrownBy(() -> service.store(file, MediaUsage.TASK_ATTACHMENT, null))
                     .isInstanceOf(UncheckedIOException.class)
                     .hasCause(failure);
 
+            verify(virusScanner).findThreat(any(InputStream.class));
             verifyNoInteractions(objectStorage, mediaRepository);
             assertThat(synchronizations()).isEmpty();
         }
@@ -369,6 +383,113 @@ class MediaServiceTest {
             }
 
             verifyNoInteractions(objectStorage, mediaRepository);
+        }
+    }
+
+    @Nested
+    class Scan {
+
+        @Test
+        void infectedFileIsRejectedWithTheThreatAndNothingIsStored() throws IOException {
+            detects("application/pdf");
+            when(virusScanner.findThreat(any(InputStream.class))).thenReturn(Optional.of("Eicar-Test-Signature"));
+
+            assertThatThrownBy(() -> service.store(file("a.pdf", CONTENT), MediaUsage.TASK_ATTACHMENT, UPLOADER_ID))
+                    .isInstanceOf(InfectedMediaException.class)
+                    .hasMessage("The file was rejected by the antivirus: Eicar-Test-Signature");
+
+            verifyNoInteractions(objectStorage, mediaRepository, userSummaryRepository);
+            assertThat(synchronizations()).isEmpty();
+        }
+
+        @Test
+        void unavailableAntivirusRejectsTheUploadAndNothingIsStored() throws IOException {
+            detects("application/pdf");
+            AntivirusUnavailableException failure = new AntivirusUnavailableException(new IOException("refused"));
+            when(virusScanner.findThreat(any(InputStream.class))).thenThrow(failure);
+
+            assertThatThrownBy(() -> service.store(file("a.pdf", CONTENT), MediaUsage.TASK_ATTACHMENT, UPLOADER_ID))
+                    .isSameAs(failure);
+
+            verifyNoInteractions(objectStorage, mediaRepository, userSummaryRepository);
+            assertThat(synchronizations()).isEmpty();
+        }
+
+        @Test
+        void scannerReceivesTheFileBytesOnce() throws IOException {
+            detects("application/pdf");
+            savesWhatItIsGiven();
+            byte[][] scanned = new byte[1][];
+            when(virusScanner.findThreat(any(InputStream.class))).thenAnswer(invocation -> {
+                scanned[0] = invocation.<InputStream>getArgument(0).readAllBytes();
+                return Optional.empty();
+            });
+
+            service.store(file("a.pdf", CONTENT), MediaUsage.TASK_ATTACHMENT, null);
+
+            assertThat(scanned[0]).isEqualTo(CONTENT);
+            verify(virusScanner).findThreat(any(InputStream.class));
+            verifyNoMoreInteractions(virusScanner);
+        }
+
+        @Test
+        void cleanFileIsScannedBeforeItIsUploaded() throws IOException {
+            detects("application/pdf");
+            savesWhatItIsGiven();
+            AtomicBoolean scanned = new AtomicBoolean();
+            when(virusScanner.findThreat(any(InputStream.class))).thenAnswer(invocation -> {
+                scanned.set(true);
+                return Optional.empty();
+            });
+            doAnswer(invocation -> {
+                assertThat(scanned).isTrue();
+                return null;
+            }).when(objectStorage).put(anyString(), any(InputStream.class), anyLong(), anyString());
+
+            service.store(file("a.pdf", CONTENT), MediaUsage.TASK_ATTACHMENT, null);
+
+            verify(objectStorage).put(anyString(), any(InputStream.class), anyLong(), eq("application/pdf"));
+        }
+
+        @Test
+        void scannedStreamIsClosedEvenWhenAThreatIsFound() throws IOException {
+            AtomicBoolean closed = new AtomicBoolean();
+            MultipartFile file = mock(MultipartFile.class);
+            when(file.getSize()).thenReturn((long) CONTENT.length);
+            when(file.getOriginalFilename()).thenReturn("a.pdf");
+            when(file.getInputStream()).then(invocation -> new ByteArrayInputStream(CONTENT) {
+                @Override
+                public void close() {
+                    closed.set(true);
+                }
+            });
+            detects("application/pdf");
+            when(virusScanner.findThreat(any(InputStream.class))).thenAnswer(invocation -> {
+                closed.set(false);
+                return Optional.of("Eicar-Test-Signature");
+            });
+
+            assertThatThrownBy(() -> service.store(file, MediaUsage.TASK_ATTACHMENT, null))
+                    .isInstanceOf(InfectedMediaException.class);
+
+            assertThat(closed).isTrue();
+        }
+
+        @Test
+        void fileUnreadableForTheScanIsRethrownUncheckedAndNothingIsStored() throws IOException {
+            IOException failure = new IOException("gone");
+            MultipartFile file = mock(MultipartFile.class);
+            when(file.getSize()).thenReturn(5L);
+            when(file.getOriginalFilename()).thenReturn("a.pdf");
+            when(file.getInputStream()).thenReturn(InputStream.nullInputStream()).thenThrow(failure);
+            detects("application/pdf");
+
+            assertThatThrownBy(() -> service.store(file, MediaUsage.TASK_ATTACHMENT, null))
+                    .isInstanceOf(UncheckedIOException.class)
+                    .hasCause(failure);
+
+            verifyNoInteractions(virusScanner, objectStorage, mediaRepository);
+            assertThat(synchronizations()).isEmpty();
         }
     }
 

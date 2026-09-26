@@ -8,7 +8,9 @@ import io.julienmetral.tasks.identity.exceptions.InvalidRefreshTokenException;
 import io.julienmetral.tasks.identity.exceptions.UserEmailAlreadyExistsException;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
 import io.julienmetral.tasks.identity.entities.UserStatus;
+import io.julienmetral.tasks.media.exceptions.AntivirusUnavailableException;
 import io.julienmetral.tasks.media.exceptions.EmptyMediaException;
+import io.julienmetral.tasks.media.exceptions.InfectedMediaException;
 import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
 import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
@@ -24,6 +26,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.util.unit.DataSize;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
+import java.net.ConnectException;
 import java.util.Map;
 import java.util.UUID;
 
@@ -208,5 +211,35 @@ class ApiExceptionHandlerTest {
         assertThat(problem.getDetail())
                 .isEqualTo("File storage is temporarily unavailable")
                 .doesNotContain("rustfs");
+    }
+
+    @Test
+    void infectedMediaMapsTo422NamingTheThreat() {
+        ProblemDetail problem = handler.handleInfectedMedia(new InfectedMediaException("Win.Test.EICAR_HDB-1"));
+
+        assertThat(problem.getStatus()).isEqualTo(422);
+        assertThat(problem.getTitle()).isEqualTo("File rejected by the antivirus");
+        assertThat(problem.getDetail()).isEqualTo("The file was rejected by the antivirus: Win.Test.EICAR_HDB-1");
+    }
+
+    @Test
+    void antivirusUnavailableMapsTo503WithoutLeakingTheCause() {
+        ProblemDetail problem = handler.handleAntivirusUnavailable(
+                new AntivirusUnavailableException(new ConnectException("Connection refused: clamav:3310")));
+
+        assertThat(problem.getStatus()).isEqualTo(503);
+        assertThat(problem.getTitle()).isEqualTo("Antivirus unavailable");
+        assertThat(problem.getDetail())
+                .isEqualTo("The antivirus is temporarily unavailable, try again later")
+                .doesNotContain("clamav");
+    }
+
+    @Test
+    void antivirusErrorReplyIsNotLeaked() {
+        ProblemDetail problem = handler.handleAntivirusUnavailable(
+                new AntivirusUnavailableException("Unexpected clamd reply: INSTREAM size limit exceeded. ERROR"));
+
+        assertThat(problem.getStatus()).isEqualTo(503);
+        assertThat(problem.getDetail()).doesNotContain("clamd", "INSTREAM");
     }
 }
