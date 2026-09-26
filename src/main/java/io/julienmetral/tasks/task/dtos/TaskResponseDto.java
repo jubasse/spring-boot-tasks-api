@@ -45,8 +45,8 @@ public record TaskResponseDto(
             task.getBlockedReason(),
             task.getVersion(),
             task.getUpdatedAt(),
-            UserPreviewResponseDto.of(task.getAssignedTo(), task.getAssignedToId()),
-            UserPreviewResponseDto.of(task.getCreatedBy(), task.getCreatedById())
+            UserPreviewResponseDto.of(task.getAssignedTo()),
+            UserPreviewResponseDto.of(task.getCreatedBy())
         );
     }
 }
