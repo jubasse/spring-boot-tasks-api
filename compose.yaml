@@ -39,7 +39,20 @@ services:
     volumes:
       - clamav_data:/var/lib/clamav
 
+  # Message broker for background work (emails); management UI on http://localhost:15672
+  rabbitmq:
+    image: rabbitmq:4.2.9-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-tasks}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-tasks-dev}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
 volumes:
   postgres_data:
   rustfs_data:
   clamav_data:
+  rabbitmq_data:

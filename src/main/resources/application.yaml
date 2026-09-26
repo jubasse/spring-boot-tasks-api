@@ -57,6 +57,23 @@ spring:
   application:
     name: tasks
 
+  # Connection: spring-boot-docker-compose provides it in development (rabbitmq service); set SPRING_RABBITMQ_HOST,
+  # SPRING_RABBITMQ_USERNAME and SPRING_RABBITMQ_PASSWORD elsewhere
+  rabbitmq:
+    template:
+      retry:
+        enabled: true
+    listener:
+      simple:
+        concurrency: 2
+        # Failed messages are retried in the consumer, then dead-lettered (see MailQueues): about 1.5 minutes in all
+        retry:
+          enabled: true
+          max-retries: 4
+          initial-interval: 2s
+          multiplier: 3
+          max-interval: 1m
+
   # Must allow the largest media upload (media.attachment-max-size)
   servlet:
     multipart:
