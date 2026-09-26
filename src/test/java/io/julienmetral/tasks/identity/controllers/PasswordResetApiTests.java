@@ -62,8 +62,6 @@ class PasswordResetApiTests {
     @Autowired
     private JsonMapper jsonMapper;
 
-    // ---------------------------------------------------------------- full flow
-
     @Test
     void fullFlowReplacesPasswordSoOnlyTheNewOneWorks() throws Exception {
         String email = uniqueEmail();
@@ -111,7 +109,6 @@ class PasswordResetApiTests {
 
         requestReset(email).andExpect(status().isAccepted());
 
-        // No Authorization header at all
         confirm(awaitResetToken(email, 2), NEW_PASSWORD).andExpect(status().isNoContent());
 
         String passwordHash = jdbcTemplate.queryForObject(
@@ -121,8 +118,6 @@ class PasswordResetApiTests {
         );
         assertThat(passwordHash).startsWith("{argon2id}$argon2id$").doesNotContain(NEW_PASSWORD);
     }
-
-    // ---------------------------------------------------------------- no email
 
     @Test
     void requestForUnknownEmailReturnsAcceptedAndSendsNoEmail() throws Exception {
@@ -152,8 +147,6 @@ class PasswordResetApiTests {
         assertThat(tokenRows(userId)).isEmpty();
     }
 
-    // ---------------------------------------------------------------- token lifecycle
-
     @Test
     void tokenIsSingleUse() throws Exception {
         String email = uniqueEmail();
@@ -168,7 +161,6 @@ class PasswordResetApiTests {
         login(email, NEW_PASSWORD).andExpect(status().isOk());
         login(email, "yet-another-password").andExpect(status().isUnauthorized());
 
-        // The used token stays, marked as used
         List<Map<String, Object>> rows = tokenRows(userId);
         assertThat(rows).hasSize(1);
         assertThat(rows.getFirst().get("used_at")).isNotNull();
@@ -211,7 +203,6 @@ class PasswordResetApiTests {
 
         assertThat(secondToken).isNotEqualTo(firstToken);
 
-        // Only the latest token remains, stored as its hash
         List<String> hashes = jdbcTemplate.queryForList(
                 "SELECT token_hash FROM password_reset_tokens WHERE user_id = ?",
                 String.class,
@@ -241,7 +232,6 @@ class PasswordResetApiTests {
 
         assertThat(row.get("token_hash")).isEqualTo(sha256Hex(token));
         assertThat(row.get("used_at")).isNull();
-        // The raw token appears in no column
         assertThat(row.values()).noneMatch(value -> value != null && value.toString().contains(token));
 
         Integer rawMatches = jdbcTemplate.queryForObject(
@@ -255,8 +245,6 @@ class PasswordResetApiTests {
         Instant expiresAt = ((Timestamp) row.get("expires_at")).toInstant();
         assertThat(Duration.between(createdAt, expiresAt)).isEqualTo(Duration.ofHours(1));
     }
-
-    // ---------------------------------------------------------------- side effects
 
     @Test
     void confirmRevokesExistingRefreshTokens() throws Exception {
@@ -340,8 +328,6 @@ class PasswordResetApiTests {
         login(email, PASSWORD).andExpect(status().isOk());
     }
 
-    // ---------------------------------------------------------------- validation
-
     @Test
     void requestWithInvalidEmailReturnsBadRequest() throws Exception {
         requestReset("not-an-email").andExpect(status().isBadRequest());
@@ -365,12 +351,10 @@ class PasswordResetApiTests {
         requestReset(email).andExpect(status().isAccepted());
         String token = awaitResetToken(email, 2);
 
-        // New password too short, too long, blank
         confirm(token, "short77").andExpect(status().isBadRequest());
         confirm(token, "x".repeat(129)).andExpect(status().isBadRequest());
         confirm(token, "        ").andExpect(status().isBadRequest());
 
-        // Blank or missing token
         confirm("", NEW_PASSWORD).andExpect(status().isBadRequest());
         confirm("   ", NEW_PASSWORD).andExpect(status().isBadRequest());
         mockMvc.perform(
@@ -382,7 +366,6 @@ class PasswordResetApiTests {
                 )
                 .andExpect(status().isBadRequest());
 
-        // None of the rejected requests consumed the token; boundary lengths are accepted
         assertThat(tokenRows(userId).getFirst().get("used_at")).isNull();
         String minimal = "12345678";
         confirm(token, minimal).andExpect(status().isNoContent());
@@ -400,8 +383,6 @@ class PasswordResetApiTests {
         confirm(awaitResetToken(email, 2), longest).andExpect(status().isNoContent());
         login(email, longest).andExpect(status().isOk());
     }
-
-    // ---------------------------------------------------------------- helpers
 
     private UUID signUp(String email) throws Exception {
         return signUp(email, "Reset test");

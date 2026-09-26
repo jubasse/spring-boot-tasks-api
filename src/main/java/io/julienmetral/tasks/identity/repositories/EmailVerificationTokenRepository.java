@@ -18,7 +18,7 @@ public interface EmailVerificationTokenRepository extends JpaRepository<EmailVer
     Optional<EmailVerificationToken> findByTokenHash(String tokenHash);
 
     // Only the latest link stays valid when a new one is sent.
-    // Native for the same reason as RefreshTokenRepository.revokeAllForUser: JPQL would join the soft-deletable users.
+    // Native for the same reason as RefreshTokenRepository.revokeAllForUser.
     @Modifying
     @Query(
             value = """

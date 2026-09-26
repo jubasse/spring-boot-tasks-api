@@ -21,6 +21,10 @@ class NotificationSettingsTest {
         assertThat(settings.isTaskUnassigned()).isTrue();
         assertThat(settings.isTaskCancelled()).isTrue();
         assertThat(settings.isTaskDeleted()).isTrue();
+        assertThat(settings.isTaskCommented()).isTrue();
+        assertThat(settings.isTaskMentioned()).isTrue();
+        assertThat(settings.isTaskDueSoon()).isTrue();
+        assertThat(settings.isTaskOverdue()).isTrue();
         assertThat(settings.getUpdatedAt()).isNull();
     }
 
@@ -38,6 +42,10 @@ class NotificationSettingsTest {
         assertThat(settings.isTaskUnassigned()).isTrue();
         assertThat(settings.isTaskCancelled()).isTrue();
         assertThat(settings.isTaskDeleted()).isTrue();
+        assertThat(settings.isTaskCommented()).isTrue();
+        assertThat(settings.isTaskMentioned()).isTrue();
+        assertThat(settings.isTaskDueSoon()).isTrue();
+        assertThat(settings.isTaskOverdue()).isTrue();
         // Not persisted yet: no timestamp until the user changes something.
         assertThat(settings.getUpdatedAt()).isNull();
     }
@@ -66,6 +74,10 @@ class NotificationSettingsTest {
             case UNASSIGNED -> onlyThisOneOff.setTaskUnassigned(false);
             case CANCELLED -> onlyThisOneOff.setTaskCancelled(false);
             case DELETED -> onlyThisOneOff.setTaskDeleted(false);
+            case COMMENTED -> onlyThisOneOff.setTaskCommented(false);
+            case MENTIONED -> onlyThisOneOff.setTaskMentioned(false);
+            case DUE_SOON -> onlyThisOneOff.setTaskDueSoon(false);
+            case OVERDUE -> onlyThisOneOff.setTaskOverdue(false);
         }
 
         for (TaskNotificationType other : TaskNotificationType.values()) {

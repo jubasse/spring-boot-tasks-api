@@ -14,13 +14,78 @@ identity:
     ttl: 1h
     # Front-end page that reads ?token=..., asks for a new password and calls POST /api/v1/auth/password-reset/confirm
     reset-url: ${PASSWORD_RESET_URL:http://localhost:3000/reset-password}
+  # GDPR retention: erases the personal data of deleted users, and deletes accounts left inactive after a warning
+  retention:
+    enabled: ${USER_RETENTION_ENABLED:true}
+    cron: ${USER_RETENTION_CRON:0 0 4 * * *}
+    anonymize-after: 30d
+    inactivity-period: 730d
+    deletion-notice: 30d
 mail:
   from: ${MAIL_FROM:no-reply@tasks.local}
+# Media file storage. storage.driver picks the implementation: rustfs (defaults match compose.yaml) or aws-s3.
+storage:
+  driver: ${STORAGE_DRIVER:rustfs}
+  bucket: ${S3_BUCKET:tasks-media}
+  presigned-url-ttl: 10m
+  rustfs:
+    endpoint: ${S3_ENDPOINT:http://localhost:9000}
+    public-endpoint: ${S3_PUBLIC_ENDPOINT:}
+    access-key: ${S3_ACCESS_KEY:tasks-dev}
+    secret-key: ${S3_SECRET_KEY:tasks-dev-secret}
+    create-bucket: ${S3_CREATE_BUCKET:true}
+  aws-s3:
+    # Credentials come from the AWS default chain (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, IAM role, ...)
+    region: ${AWS_REGION:eu-west-3}
+antivirus:
+  enabled: ${ANTIVIRUS_ENABLED:true}
+  host: ${CLAMAV_HOST:localhost}
+  port: ${CLAMAV_PORT:3310}
+  timeout: 60s
+media:
+  avatar-max-size: 5MB
+  attachment-max-size: 25MB
+  # Purges files of soft-deleted tasks and users after the retention period, and orphan rows or objects
+  cleanup:
+    enabled: ${MEDIA_CLEANUP_ENABLED:true}
+    cron: ${MEDIA_CLEANUP_CRON:0 30 3 * * *}
+    retention: ${MEDIA_CLEANUP_RETENTION:30d}
+    orphan-grace-period: 1d
+# Emails assignees when an open task is due soon and when it becomes overdue, once per due date
+task:
+  reminders:
+    enabled: ${TASK_REMINDERS_ENABLED:true}
+    cron: ${TASK_REMINDERS_CRON:0 */15 * * * *}
+    due-soon-lead-time: 24h
+    overdue-lookback: 7d
 spring:
   config:
     import: optional:file:.env[.properties]
   application:
     name: tasks
+
+  # Connection: spring-boot-docker-compose provides it in development (rabbitmq service); set SPRING_RABBITMQ_HOST,
+  # SPRING_RABBITMQ_USERNAME and SPRING_RABBITMQ_PASSWORD elsewhere
+  rabbitmq:
+    template:
+      retry:
+        enabled: true
+    listener:
+      simple:
+        concurrency: 2
+        # Failed messages are retried in the consumer, then dead-lettered (see MailQueues): about 1.5 minutes in all
+        retry:
+          enabled: true
+          max-retries: 4
+          initial-interval: 2s
+          multiplier: 3
+          max-interval: 1m
+
+  # Must allow the largest media upload (media.attachment-max-size)
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 26MB
 
   # Virtual threads for request handling and @Async work (e.g. sending emails)
   threads:

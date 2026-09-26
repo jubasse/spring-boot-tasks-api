@@ -1,0 +1,23 @@
+databaseChangeLog:
+- changeSet:
+    id: 012-add-users-pending-avatar
+    author: julien-metral
+    comment: >
+      The profile photo as uploaded, waiting for the worker that produces the square version.
+    changes:
+    - addColumn:
+        tableName: users
+        columns:
+        - column:
+            name: pending_avatar_media_id
+            type: UUID
+    - addUniqueConstraint:
+        tableName: users
+        columnNames: pending_avatar_media_id
+        constraintName: users_pending_avatar_media_idUQ
+    - addForeignKeyConstraint:
+        baseTableName: users
+        baseColumnNames: pending_avatar_media_id
+        constraintName: users_pending_avatar_mediaFK
+        referencedTableName: media
+        referencedColumnNames: id

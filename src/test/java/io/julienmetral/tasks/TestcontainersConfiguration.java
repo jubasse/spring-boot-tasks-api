@@ -7,7 +7,13 @@ import org.springframework.test.context.DynamicPropertyRegistrar;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import org.testcontainers.rabbitmq.RabbitMQContainer;
+import org.testcontainers.images.builder.Transferable;
 import org.testcontainers.utility.DockerImageName;
+
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.HexFormat;
 
 @TestConfiguration(proxyBeanMethods = false)
 public class TestcontainersConfiguration {
@@ -16,10 +22,33 @@ public class TestcontainersConfiguration {
 
 	static final int MAILPIT_API_PORT = 8025;
 
+	static final int RUSTFS_S3_PORT = 9000;
+
+	static final int CLAMAV_PORT = 3310;
+
+	static final String RUSTFS_ACCESS_KEY = "test-access-key";
+
+	static final String RUSTFS_SECRET_KEY = "test-secret-key";
+
+	/** The threat name clamd reports for the EICAR test file with the signature database below. */
+	public static final String EICAR_THREAT = "Eicar-Test-Signature.UNOFFICIAL";
+
+	// A body signature matches the EICAR string anywhere, including inside archives. ClamAV suffixes the name of a
+	// signature from an unsigned database with ".UNOFFICIAL".
+	private static final String EICAR_SIGNATURE = "Eicar-Test-Signature:0:*:" + HexFormat.of().formatHex(
+			"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*".getBytes(StandardCharsets.US_ASCII)
+	) + "\n";
+
 	@Bean
 	@ServiceConnection
 	PostgreSQLContainer postgresContainer() {
 		return new PostgreSQLContainer(DockerImageName.parse("postgres:18"));
+	}
+
+	@Bean
+	@ServiceConnection
+	RabbitMQContainer rabbitContainer() {
+		return new RabbitMQContainer(DockerImageName.parse("rabbitmq:4.2.9-management"));
 	}
 
 	// SMTP server that catches every email; tests read them through its HTTP API (see support.Mailpit)
@@ -39,6 +68,54 @@ public class TestcontainersConfiguration {
 					mailpitContainer.getHost(),
 					mailpitContainer.getMappedPort(MAILPIT_API_PORT)
 			));
+		};
+	}
+
+	// S3-compatible storage for media files; the bucket is created on startup (storage.rustfs.create-bucket)
+	@Bean
+	GenericContainer<?> rustfsContainer() {
+		return new GenericContainer<>(DockerImageName.parse("rustfs/rustfs:1.0.0"))
+				.withEnv("RUSTFS_ACCESS_KEY", RUSTFS_ACCESS_KEY)
+				.withEnv("RUSTFS_SECRET_KEY", RUSTFS_SECRET_KEY)
+				.withExposedPorts(RUSTFS_S3_PORT)
+				.waitingFor(Wait.forHttp("/health").forPort(RUSTFS_S3_PORT));
+	}
+
+	@Bean
+	DynamicPropertyRegistrar rustfsProperties(GenericContainer<?> rustfsContainer) {
+		return registry -> {
+			registry.add("storage.rustfs.endpoint", () -> "http://%s:%d".formatted(
+					rustfsContainer.getHost(),
+					rustfsContainer.getMappedPort(RUSTFS_S3_PORT)
+			));
+			registry.add("storage.rustfs.access-key", () -> RUSTFS_ACCESS_KEY);
+			registry.add("storage.rustfs.secret-key", () -> RUSTFS_SECRET_KEY);
+			registry.add("storage.driver", () -> "rustfs");
+			registry.add("storage.bucket", () -> "tasks-media-test");
+			registry.add("storage.rustfs.create-bucket", () -> "true");
+		};
+	}
+
+	// Loads only the EICAR signature: with the signatures baked into the image, every clamd took about 1 GB, one per
+	// Spring test context, and a full run exhausted the machine's memory. freshclam is off, so tests never depend on
+	// the network.
+	@Bean
+	GenericContainer<?> clamavContainer() {
+		return new GenericContainer<>(DockerImageName.parse("clamav/clamav:1.5.4-debian"))
+				.withEnv("CLAMAV_NO_FRESHCLAMD", "true")
+				.withEnv("CLAMD_CONF_DatabaseDirectory", "/var/lib/clamav-test")
+				.withCopyToContainer(Transferable.of(EICAR_SIGNATURE), "/var/lib/clamav-test/eicar.ndb")
+				.withExposedPorts(CLAMAV_PORT)
+				.waitingFor(Wait.forLogMessage(".*socket found, clamd started.*", 1)
+						.withStartupTimeout(Duration.ofMinutes(3)));
+	}
+
+	@Bean
+	DynamicPropertyRegistrar clamavProperties(GenericContainer<?> clamavContainer) {
+		return registry -> {
+			registry.add("antivirus.enabled", () -> "true");
+			registry.add("antivirus.host", clamavContainer::getHost);
+			registry.add("antivirus.port", () -> clamavContainer.getMappedPort(CLAMAV_PORT));
 		};
 	}
 

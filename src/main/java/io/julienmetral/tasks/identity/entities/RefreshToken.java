@@ -6,8 +6,6 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
-import org.hibernate.annotations.NotFound;
-import org.hibernate.annotations.NotFoundAction;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -41,17 +39,14 @@ public class RefreshToken {
     @Column(name = "id", nullable = false, updatable = false)
     private UUID id;
 
-    // The user may be soft-deleted (@SoftDelete): Hibernate then cannot find the row, so map it to null
-    // instead of failing the whole token lookup. Services treat a null user as an invalid token.
-    @ManyToOne(fetch = FetchType.LAZY)
-    @NotFound(action = NotFoundAction.IGNORE)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(
             name = "user_id",
             nullable = false,
             updatable = false,
             foreignKey = @ForeignKey(name = "refresh_tokens_userFK")
     )
-    private User user;
+    private UserSummary user;
 
     @Column(name = "token_hash", nullable = false, updatable = false, length = 64)
     private String tokenHash;

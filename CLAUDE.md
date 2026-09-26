@@ -4,17 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Stack
 
-Spring Boot 4.1 REST API (Java 25, Maven wrapper) backed by PostgreSQL 18. Spring Data JPA (Hibernate 7), Liquibase, Spring Security as a stateless OAuth2 resource server with self-issued HS256 JWTs, Lombok, springdoc-openapi. MapStruct is on the classpath but unused: DTOs are records that map from entities through their own constructor (e.g. `new TaskResponseDto(task)`).
+Spring Boot 4.1 REST API (Java 25, Maven wrapper) backed by PostgreSQL 18, with media files in S3-compatible object storage and background work on RabbitMQ. Spring Data JPA (Hibernate 7), Spring AMQP, Liquibase, Spring Security as a stateless OAuth2 resource server with self-issued HS256 JWTs, Lombok, springdoc-openapi. MapStruct is on the classpath but unused: DTOs are records that map from entities through their own constructor (e.g. `new TaskResponseDto(task)`).
 
 ## Commands
 
 ```bash
 ./mvnw compile                                  # build (runs Lombok + MapStruct + config annotation processors)
-./mvnw spring-boot:run                          # run; spring-boot-docker-compose starts compose.yaml (postgres, mailpit)
+./mvnw spring-boot:run                          # run; spring-boot-docker-compose starts compose.yaml (postgres, mailpit, rustfs, clamav, rabbitmq)
+docker compose up -d                            # needed once after compose.yaml gains a service: see the note below
 ./mvnw spring-boot:test-run                     # run with a Testcontainers postgres (TestTasksApplication)
 ./mvnw test                                     # all tests (needs Docker, Testcontainers)
 ./mvnw test -Dtest=TasksApplicationTests#contextLoads   # a single test
 ```
+
+Note: `spring-boot-docker-compose` skips `docker compose up` when some services of the project already run. A service added to `compose.yaml` later (for example `rustfs`, `clamav` or `rabbitmq`) therefore does not start by itself: run `docker compose up -d` once.
 
 Tests need no `.env`: `src/test/resources/config/application.yaml` provides a test-only JWT secret. Spring Boot loads that file on top of the main `application.yaml`.
 
@@ -49,11 +52,13 @@ Passwords are hashed with Argon2id (`SecurityConfiguration.passwordEncoder`, Bou
 Package-by-feature under `io.julienmetral.tasks`, and each feature uses the same sub-packages (`controllers`, `services`, `repositories`, `entities`, `dtos`, `exceptions`, `security`):
 
 - `identity`: users, login, JWT and refresh tokens, email verification, user-level authorization.
-- `task`: tasks and their event log.
+- `task`: tasks, their event log and their attachments (`/api/v1/tasks/{id}/attachments`: added by an admin or the assignee, listed by any active user, removed by an admin or the uploader; additions and removals are history events) and their comments (see Task comments below).
 - `mail`: the cross-cutting mail service (see Mail below).
+- `media`: stored files and their metadata (see Media storage below). Its sub-packages are `model` (entities, enums and value records), `services`, `repositories`, `controllers` and `exceptions`.
+- `config`: application-wide technical configuration, such as the storage drivers.
 - `notification`: task email notifications and their per-user settings.
-  - **Settings:** `GET`/`PUT /api/v1/users/{id}/notification-settings`, for the user or an admin. There is one switch per task event, and a user without a stored row gets `NotificationSettings.defaults` (everything enabled).
-  - **Emails:** `TaskService` publishes domain events (`task.events.TaskAssigned`, `TaskUnassigned`, `TaskCancelled`, `TaskDeleted`), and `notification.mail.TaskNotificationSender` turns them into emails. Only the concerned assignee receives one, never about their own action, only while their account is active, and only if the matching switch is on. The `task` package never depends on `notification`.
+  - **Settings:** `GET`/`PUT /api/v1/users/{id}/notification-settings`, for the user or an admin. There is one switch per task event (plus `taskCommented`, `taskMentioned`, `taskDueSoon` and `taskOverdue`), and a user without a stored row gets `NotificationSettings.defaults` (everything enabled).
+  - **Emails:** `TaskService` and `TaskCommentService` publish domain events (`task.events.TaskAssigned`, `TaskUnassigned`, `TaskCancelled`, `TaskDeleted`, `TaskCommentAdded`, `UsersMentionedInComment`), `TaskReminderService` publishes `TaskDueSoon` and `TaskOverdue`, and `notification.mail.TaskNotificationSender` turns them into emails. Only the concerned assignee (or mentioned user) receives one, never about their own action, only while their account is active, and only if the matching switch is on. The `task` package never depends on `notification`.
 - `shared`: the auditable base entity, the global `ApiExceptionHandler` (`@RestControllerAdvice` returning `ProblemDetail`), and the reusable security annotations.
 
 Controllers are under `/api/v1/...`. Services own transactions and return entities, and controllers wrap them in response DTOs.
@@ -70,6 +75,11 @@ Controllers are under `/api/v1/...`. Services own transactions and return entiti
 
 Refresh, verification and reset tokens are 256-bit random values (`OpaqueTokens`). Only their SHA-256 hash is stored.
 
+7. **GDPR retention** (`UserRetentionService`, run daily at 04:00 by `UserRetentionJob`, settings under `identity.retention`):
+   - users soft-deleted for 30 days are anonymized in native SQL (`UserRetentionQueries`): email `deleted-<id>@anonymized.invalid`, name "Deleted user", unusable password, settings and tokens deleted. The row stays for tasks and history, and the original email becomes free for a new sign-up. Their media go through the media cleanup, which uses the same 30 days.
+   - accounts without activity for 2 years get a warning email, then are deleted 30 days later if still inactive, and anonymized by a later run. Activity is `last_active_at`, set by login and by token refresh (`User.markActive`, which also clears the warning); older rows fall back to `last_login_at`, then `created_at`.
+   - admins are never warned or deleted for inactivity, so the last admin cannot disappear.
+
 Public endpoints: `POST /api/v1/users` (sign-up), and `POST /api/v1/auth/login`, `/refresh`, `/logout`, `/verify-email`, `/password-reset/request` and `/password-reset/confirm`.
 
 ### Task access rules
@@ -80,17 +90,68 @@ Only **active** users can work on tasks. Active means enabled, not deleted, and 
 - **Responses:** task responses and task history expose referenced users as `UserPreviewResponseDto(id, displayName, status)`, with `status` one of `ACTIVE`, `UNVERIFIED`, `DISABLED` or `DELETED`.
 - **Listing:** `GET /api/v1/tasks` is paginated and filters on `status`, `assigneeId` and `archived`, which defaults to false.
 
+### Task comments
+
+`/api/v1/tasks/{id}/comments`: any active user posts (JSON `{"body"}`, or multipart with a `body` field and up to 5 `files`) and lists them (paginated, oldest first). Only the author edits, admins included; the author or an admin deletes.
+- **Files** posted with a comment are task attachments with `comment_id` set, so they also appear in the task's attachment list. Deleting the comment deletes them.
+- **Mentions** are `<@user-id>` tokens in the body (`CommentMentions`), stored in `task_comment_mentions` and returned as `mentions`. A new mention must name an active user (`InvalidMentionException`, 422); an edit validates and notifies only the users it mentions for the first time.
+- **Emails:** mentioned users get a mention email; the assignee gets a comment email unless they are mentioned too and kept mention emails on.
+- Posting, editing and deleting are history events (`COMMENT_ADDED`, `COMMENT_EDITED`, `COMMENT_DELETED`); each file also records `ATTACHMENT_ADDED`/`ATTACHMENT_REMOVED`.
+
+### Due-date reminders
+
+`TaskReminderJob` runs `TaskReminderService.sendDueReminders` on `task.reminders.cron` (every 15 minutes). It emails the assignee of each open task (not done, cancelled or archived) once when the due date is within `task.reminders.due-soon-lead-time` (24 h), and once when it has passed, within `task.reminders.overdue-lookback` (7 days).
+- `task_reminders` records what was sent, one row per task, kind, due date and recipient, through an `INSERT ... ON CONFLICT DO NOTHING` (`TaskReminderQueries`). Moving the due date or reassigning the task makes a new reminder due.
+- A Postgres advisory lock keeps several instances from sending the same reminders, as for the media cleanup.
+- Tests disable the job (`task.reminders.enabled: false`) and call the service with a fixed `Clock`.
+
 ### Soft-deleted users in associations
 
-Entities that point to a `User` (for example `RefreshToken.user`) must tolerate a soft-deleted target. Hibernate cannot load the filtered row, so loading the owning entity fails. Map the association with `@NotFound(action = NotFoundAction.IGNORE)` and treat `null` as "deleted".
+Entities never point to `User`, which carries `@SoftDelete`: they point to **`UserSummary`**. That is a read-only (`@Immutable`) view of the same `users` table, without `@SoftDelete`.
+- **Loading:** a soft-deleted user still loads through it, so a task, its history or a token referencing that user never fails to load. Responses show that user with status `DELETED` and their name.
+- **Writing:** services set an association with `userSummaryRepository.getReferenceById(user.getId())`, a proxy that does not query the database.
+- **Checking:** to know whether the referenced account can still act, load the full `User` with `userRepository.findById(summary.getId())`, which skips soft-deleted users.
 
-When the owning entity is updated later (as `Task` is), the association must also be **read-only** (`insertable = false, updatable = false`), with a separate writable id column (`assignedToId`, `createdById`). Otherwise the `null` loaded for a deleted user is flushed back and erases the reference. Setters such as `Task.setAssignedTo` keep both fields in sync. Queries filter on the id column, not on `assignedTo.id`, to avoid a join that `@SoftDelete` would filter. A JPQL path such as `t.user.id` in a bulk update joins `users` and is filtered too: use a native query on the foreign key column instead.
+Warning: do not map an association to `User` with `@NotFound(IGNORE)` to tolerate deleted users. Hibernate then drops the foreign key from its model, and `liquibase:diff` proposes dropping the real constraints. That is how 7 foreign keys went missing from the model before `UserSummary`.
+
+Warning: Hibernate refuses a `LAZY` to-one association towards an entity with `@SoftDelete` (`Task`, `User`) and fails when building the session factory, which only shows at startup. Map such associations `EAGER` (as `TaskAttachment.task` and `TaskEvent.task` are), or point to a view without `@SoftDelete` (as `UserSummary` does for users).
 
 ### Mail
 
-`io.julienmetral.tasks.mail` is the cross-cutting mail service. Features call `MailService.send(MailMessage)`, usually from an event listener that writes the content (for example `identity.mail.VerificationEmailSender`). The message is dispatched after the surrounding transaction commits, on an `@Async` virtual thread (`MailDispatcher`). A delivery failure is logged and never fails the business operation. The sender address is `mail.from`.
+`io.julienmetral.tasks.mail` is the cross-cutting mail service. Features call `MailService.send(MailMessage)`, usually from an event listener that writes the content (for example `identity.mail.VerificationEmailSender`). The sender address is `mail.from`.
+- **Queueing:** after the surrounding transaction commits, `MailDispatcher` publishes the message to the durable RabbitMQ queue `mail.send`, on an `@Async` virtual thread. If the broker stays unreachable past the template retries, the email is lost and logged; the business operation is never failed.
+- **Sending:** `MailQueueListener` consumes the queue and sends through SMTP. A failure is retried in the consumer with backoff (`spring.rabbitmq.listener.simple.retry`, about 1.5 minutes), then the message goes to `mail.send.dead-letter`, where it stays for inspection or a manual move from the RabbitMQ management UI (http://localhost:15672 in development). A message that can never be built is dead-lettered at once. Delivery is at least once.
 
-In development, SMTP goes to the Mailpit service of `compose.yaml` (web UI on http://localhost:8025). Tests start a Mailpit container (`TestcontainersConfiguration`) and read the received emails with `support.Mailpit`. Sending is asynchronous, so use its waiting methods (`latestTextTo`, `latestVerificationTokenFor`).
+In development, SMTP goes to the Mailpit service of `compose.yaml` (web UI on http://localhost:8025). Tests start RabbitMQ and Mailpit containers (`TestcontainersConfiguration`) and read the received emails with `support.Mailpit`. Sending is asynchronous, so use its waiting methods (`latestTextTo`, `latestVerificationTokenFor`).
+
+### Media storage
+
+- **Uploads:** they go through the API as multipart requests. `MediaService.store` rejects empty files (400) and files above the usage's size limit (413, `media.*-max-size`). It detects the real type from the bytes with Apache Tika, and the client's `Content-Type` and file extension never decide it; a type outside `MediaUsage`'s list gets 415. It then streams the file to object storage under `<usage>/<uuid>` (never the client's file name) and saves a `media` row with the SHA-256. If the caller's transaction rolls back, the object is deleted again.
+- **Antivirus:** after the type check and before storage, `MediaService` streams the file to ClamAV through `VirusScanner`. `ClamAvScanner` speaks clamd's INSTREAM protocol over TCP, without a client library.
+  - An infected file is rejected with 422 and never stored.
+  - If clamd cannot be reached, the upload fails with 503 instead of being stored unscanned (fail closed).
+  - `antivirus.enabled=false` (`ANTIVIRUS_ENABLED`) swaps in a scanner that accepts everything and logs a warning at startup. It is meant for development machines that cannot spare ClamAV's memory (about 1 GB).
+  - Tests start a ClamAV container that loads only an EICAR signature (`TestcontainersConfiguration`), about 14 MB instead of about 1 GB for the full database, with freshclam disabled. The EICAR test string is the infected file, reported as `TestcontainersConfiguration.EICAR_THREAT`.
+- **Profile photos:** `PUT /api/v1/users/{id}/avatar` (multipart field `file`) and `DELETE /api/v1/users/{id}/avatar`, for the user or an admin, handled by `AvatarService`.
+  - **Upload (synchronous):** the request stores the file as uploaded (`MediaUsage.AVATAR_UPLOAD`, which checks size, type and viruses), rejects images above 10000 px or 40 MP from their header alone (422), and keeps it in `users.pending_avatar_media_id`. It answers 202 with `avatarPending: true`; a newer upload replaces a pending one.
+  - **Processing (worker):** after commit, `AvatarUploadPublisher` queues the upload on `avatar.process`, and `AvatarProcessingListener` calls `AvatarService.process`. It applies the EXIF orientation, crops to a centred square and scales down to 256 px, then re-encodes to JPEG, or to PNG when the original has transparency; re-encoding drops all metadata, GPS included. The result replaces the current photo and the upload is deleted. A stale message (upload replaced or removed since) does nothing; an image that cannot be decoded is dropped with a warning; other failures are retried, then dead-lettered to `avatar.process.dead-letter`.
+  - **Concurrency:** the upload request and the worker both lock the user row first (`UserRepository.findByIdForUpdate`); without that common lock they deadlocked. `User` is `@DynamicUpdate`, so an update writes only the columns it changed: the worker once rewrote the whole row and re-enabled an account an admin had disabled meanwhile.
+  - The previous photo is deleted with `MediaService.delete`: the row goes with the change, and the object once the transaction commits.
+  - `users.avatar_media_id` and `users.pending_avatar_media_id` have explicit unique constraints (`users_avatar_media_idUQ`, `users_pending_avatar_media_idUQ`). The associations are `@ManyToOne`, because a `@OneToOne` makes Hibernate add an implicit unique constraint with a generated name, which `liquibase:diff` then reports.
+- **URLs in responses:** `UserResponseDto` and every `UserPreviewResponseDto` carry an `avatarUrl`, a presigned URL computed by `MediaUrls`. Controllers pass `MediaUrls` to the DTO constructors.
+- **Cleanup:** `MediaCleanupJob` runs `MediaCleanupService` on `media.cleanup.cron`, daily at 03:30 by default.
+  - It purges the attachments of tasks, and the profile photos of users, soft-deleted for longer than `media.cleanup.retention` (30 days).
+  - It also purges media rows that nothing references and stored objects without a media row, once they are older than `media.cleanup.orphan-grace-period` (1 day), so uploads in progress are left alone.
+  - It uses native SQL (`MediaCleanupQueries`), because soft-deleted rows are invisible to JPA.
+  - One transaction holds a PostgreSQL advisory lock (`pg_try_advisory_xact_lock`), so a single instance works when several run. Rows are deleted in the transaction and objects after the commit, and an object that fails to delete is swept on the next run.
+  - Services that need the current time inject the `Clock` bean, so tests can move time forward.
+- **Downloads:** they never go through the application. `MediaService.downloadUrl` returns a presigned URL, valid `storage.presigned-url-ttl`, whose signed response headers force an attachment download under the original file name.
+- **Drivers:** the code depends on the `ObjectStorage` interface; `storage.driver` picks its configuration.
+  - `rustfs` (`RustFsStorageConfiguration`): explicit endpoint, static keys, path-style URLs, and the bucket is created on startup. It is used in development (RustFS service of `compose.yaml`, console on http://localhost:9001) and in tests (RustFS container in `TestcontainersConfiguration`).
+  - `aws-s3` (`AwsS3StorageConfiguration`): endpoint derived from `storage.aws-s3.region`, credentials from the AWS default chain (environment variables, IAM role), and a bucket provisioned by the infrastructure. It is not covered by integration tests.
+
+  Both use `S3ObjectStorage`; a non-S3 driver would only need another `ObjectStorage` implementation. S3 failures surface as `StorageUnavailableException` (503).
+- **Server:** MinIO no longer publishes Docker images, which is why development and tests use RustFS, an S3-compatible server.
 
 ### Method-security annotations
 
@@ -99,8 +160,9 @@ Authorization is declared with custom meta-annotations wrapping `@PreAuthorize`,
 - `@AdminOnly`, `@AllowedRoles(...)`: role checks.
 - `@SelfOnly`, `@AllowedRolesOrSelfOnly(...)`: delegate to the `userAuthorization` bean (`UserAuthorization`).
 - `@AllowedRolesOrAssignedToOnly(...)` (in `task.security`): delegates to the `taskAuthorization` bean (`TaskAuthorization`).
+- `@AllowedRolesOrUploaderOnly(...)`, `@CommentAuthorOnly`, `@AllowedRolesOrCommentAuthorOnly(...)` (in `task.security`): delegate to `taskAttachmentAuthorization` and `taskCommentAuthorization`, and read `#attachmentId` or `#commentId` instead.
 
-The SpEL in these annotations references the method parameter **`#id`**, so the annotated controller methods must name their path variable `id`. New ownership rules follow the same pattern: add a `@Component("name")` bean with a boolean method, plus a meta-annotation.
+The SpEL in the other annotations references the method parameter **`#id`**, so the annotated controller methods must name their path variable `id`. New ownership rules follow the same pattern: add a `@Component("name")` bean with a boolean method, plus a meta-annotation.
 
 ### Task event log
 
@@ -133,7 +195,7 @@ Keep:
 - **A measured failure**: what went wrong and what it cost. For example, "Native on purpose: in JPQL, `t.user.id` joins users, which `@SoftDelete` filters, so nothing would be revoked once the user is deleted" on `RefreshTokenRepository.revokeAllForUser`. These lines stop a defect from being reintroduced.
 - **A constraint not visible locally**: framework or library behaviour the code depends on. Examples: why `NotificationSettings.defaults` leaves the id null (`@MapsId`, and Spring Data's `merge` instead of `persist`), or why `AuthService.refresh` needs `noRollbackFor`.
 - **A decision and its reason** when the code shows only the outcome. For example, why opaque tokens use SHA-256 rather than Argon2.
-- **A trap**, marked `⚠`, where the obvious change is the wrong one. For example: `⚠ read-only association: writing the user through it would erase a soft-deleted assignee`.
+- **A trap**, starting with `Warning:`, where the obvious change is the wrong one. For example, the warning on `UserSummary` against mapping associations to `User` with `@NotFound(IGNORE)`.
 
 Cut:
 - Anything that restates the code: `// save the user` above `userRepository.save(user)`.
@@ -142,11 +204,13 @@ Cut:
 - Explanations of a well-named method. Naming it well is the comment.
 - A second copy of something already written in this file, an ADR or a PR description. Link to it instead.
 
+**No symbols or emojis.** Comments, Javadoc and documentation use plain words only: no warning signs, light bulbs, check marks or any other emoji or pictograph. Mark a trap with `Warning:` and a side remark with `Note:`.
+
 **Tests document themselves through their names.** Examples are `deletingUserRevokesRefreshTokens` and `signUpWithEmailOfSoftDeletedUserReturnsConflict`. A comment in a test explains only a non-obvious setup, such as waiting for the asynchronous mail dispatch.
 
 **Rough ceiling, a smell rather than a limit:** if comments exceed about a quarter of a file, ask whether the code itself is unclear.
 
-⚠ **This is not a licence to delete reasons.** The failure this rule addresses is verbosity. The failure it could create is losing the one paragraph that stopped someone from reintroducing a defect. When a comment is long because it records something expensive, shorten the prose and keep the fact. When in doubt, keep it and make it tighter.
+**Warning: this is not a licence to delete reasons.** The failure this rule addresses is verbosity. The failure it could create is losing the one paragraph that stopped someone from reintroducing a defect. When a comment is long because it records something expensive, shorten the prose and keep the fact. When in doubt, keep it and make it tighter.
 
 **Apply it opportunistically.** Any file you read or modify is one you may trim, while its context is loaded. This is the only way a convention reaches code written before it.
 
@@ -156,11 +220,13 @@ Cut:
 - **Integration tests** (`*Tests`) use `@SpringBootTest` + `@AutoConfigureMockMvc` + `@Import(TestcontainersConfiguration.class)`. That configuration provides a `@ServiceConnection` `PostgreSQLContainer`, so Liquibase migrations run against a real Postgres.
   - Most tests authenticate with the `jwt()` post-processor, a `uid` claim and a `ROLE_*` authority. The acting user must exist in the database, because `TaskEventService` loads it.
   - `AuthControllerTests` sends real `Authorization: Bearer` tokens obtained from the login endpoint.
-- The containers are shared across test classes. Use unique emails and references (random UUIDs) in every test.
+- The containers are shared across test classes that use the same Spring context. Use unique emails and references (random UUIDs) in every test.
+- Each cached Spring context runs its own set of containers. `src/test/resources/spring.properties` caps the context cache at 8, so an evicted context stops its containers. Warning: a full run needs several GB of memory; never run two full suites at once on the same machine.
 
 ## Git workflow and CI
 
 - **Branches:** `features/<name>` → PR to `develop` → `release/<version>`, tagged `v<version>` → merged to `main` → merged back to `develop`.
 - **Commits:** keep them small, and never mix production code and its tests in one commit. Use Conventional Commits prefixes (`feat`, `fix`, `test`, `build`, `ci`, `docs`, `chore`) in English.
+- **Pull requests:** plain text only in titles and descriptions, like commit messages: no emojis or symbols. Size the description to the change: for a small or routine change, one or two sentences of context and a bullet list of what was done are enough. Add sections such as a test plan or design notes only when the change needs them.
 - **CI:** `.github/workflows/ci.yml` runs `./mvnw verify` (tests + JaCoCo report artifact) and a gitleaks secret scan. It runs on pushes to those branches, on `v*` tags, and on PRs to `develop`/`main`. Actions are pinned to commit SHAs.
 - **Secret scanning:** run `gitleaks git . --redact` locally before pushing (gitleaks is installed through mise).

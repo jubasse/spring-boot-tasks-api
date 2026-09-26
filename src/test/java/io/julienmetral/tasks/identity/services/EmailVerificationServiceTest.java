@@ -2,6 +2,7 @@ package io.julienmetral.tasks.identity.services;
 
 import io.julienmetral.tasks.identity.entities.EmailVerificationToken;
 import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserSummary;
 import io.julienmetral.tasks.identity.exceptions.EmailAlreadyVerifiedException;
 import io.julienmetral.tasks.identity.exceptions.InvalidEmailVerificationTokenException;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
@@ -9,6 +10,7 @@ import io.julienmetral.tasks.identity.mail.EmailVerificationProperties;
 import io.julienmetral.tasks.identity.mail.EmailVerificationRequested;
 import io.julienmetral.tasks.identity.repositories.EmailVerificationTokenRepository;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
 import io.julienmetral.tasks.identity.security.OpaqueTokens;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,6 +26,7 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.UserSummaries.reference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -50,6 +53,9 @@ class EmailVerificationServiceTest {
     private UserRepository userRepository;
 
     @Mock
+    private UserSummaryRepository userSummaryRepository;
+
+    @Mock
     private ApplicationEventPublisher eventPublisher;
 
     private EmailVerificationService service;
@@ -59,6 +65,7 @@ class EmailVerificationServiceTest {
         service = new EmailVerificationService(
                 tokenRepository,
                 userRepository,
+                userSummaryRepository,
                 new EmailVerificationProperties(TTL, "https://app.example.com/verify-email"),
                 eventPublisher
         );
@@ -72,7 +79,7 @@ class EmailVerificationServiceTest {
         return user;
     }
 
-    private static EmailVerificationToken storedToken(User owner, Instant expiresAt, Instant usedAt) {
+    private static EmailVerificationToken storedToken(UserSummary owner, Instant expiresAt, Instant usedAt) {
         EmailVerificationToken token = new EmailVerificationToken();
         token.setUser(owner);
         token.setTokenHash(OpaqueTokens.hash(RAW_TOKEN));
@@ -82,13 +89,19 @@ class EmailVerificationServiceTest {
         return token;
     }
 
-    private EmailVerificationToken stubStored(User owner, Instant expiresAt, Instant usedAt) {
+    private EmailVerificationToken stubStored(UserSummary owner, Instant expiresAt, Instant usedAt) {
         EmailVerificationToken token = storedToken(owner, expiresAt, usedAt);
         when(tokenRepository.findByTokenHash(OpaqueTokens.hash(RAW_TOKEN))).thenReturn(Optional.of(token));
         return token;
     }
 
-    private void assertIssuedFor(User user, Instant before, Instant after) {
+    private UserSummary stubReference() {
+        UserSummary reference = reference(USER_ID);
+        when(userSummaryRepository.getReferenceById(USER_ID)).thenReturn(reference);
+        return reference;
+    }
+
+    private void assertIssuedFor(UserSummary reference, Instant before, Instant after) {
         InOrder order = inOrder(tokenRepository, eventPublisher);
         order.verify(tokenRepository).deleteUnusedForUser(USER_ID);
 
@@ -101,7 +114,7 @@ class EmailVerificationServiceTest {
         EmailVerificationToken token = saved.getValue();
         EmailVerificationRequested published = event.getValue();
 
-        assertThat(token.getUser()).isSameAs(user);
+        assertThat(token.getUser()).isSameAs(reference);
         assertThat(token.getUsedAt()).isNull();
         assertThat(token.getCreatedAt()).isBetween(before, after);
         assertThat(token.getExpiresAt()).isEqualTo(token.getCreatedAt().plus(TTL));
@@ -115,19 +128,15 @@ class EmailVerificationServiceTest {
         assertThat(token.getTokenHash()).isEqualTo(OpaqueTokens.hash(published.token()));
     }
 
-    // --- issue ---
-
     @Test
     void issueDeletesPendingTokensSavesHashAndPublishesEvent() {
-        User user = user();
+        UserSummary reference = stubReference();
         Instant before = Instant.now();
 
-        service.issue(user);
+        service.issue(user());
 
-        assertIssuedFor(user, before, Instant.now());
+        assertIssuedFor(reference, before, Instant.now());
     }
-
-    // --- verify ---
 
     @Test
     void verifyUnknownTokenThrows() {
@@ -144,7 +153,7 @@ class EmailVerificationServiceTest {
     @Test
     void verifyUsedTokenThrowsAndKeepsOriginalUsage() {
         Instant usedAt = Instant.now().minusSeconds(60);
-        EmailVerificationToken token = stubStored(user(), Instant.now().plus(TTL), usedAt);
+        EmailVerificationToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), usedAt);
 
         assertThatThrownBy(() -> service.verify(RAW_TOKEN))
                 .isInstanceOf(InvalidEmailVerificationTokenException.class);
@@ -155,20 +164,18 @@ class EmailVerificationServiceTest {
 
     @Test
     void verifyExpiredTokenThrows() {
-        User user = user();
-        EmailVerificationToken token = stubStored(user, Instant.now().minusSeconds(1), null);
+        EmailVerificationToken token = stubStored(reference(USER_ID), Instant.now().minusSeconds(1), null);
 
         assertThatThrownBy(() -> service.verify(RAW_TOKEN))
                 .isInstanceOf(InvalidEmailVerificationTokenException.class);
 
         assertThat(token.getUsedAt()).isNull();
-        assertThat(user.getEmailVerifiedAt()).isNull();
         verifyNoInteractions(userRepository);
     }
 
     @Test
     void verifyTokenOfDeletedUserThrowsWithoutConsumingIt() {
-        EmailVerificationToken token = stubStored(user(), Instant.now().plus(TTL), null);
+        EmailVerificationToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.verify(RAW_TOKEN))
@@ -179,10 +186,8 @@ class EmailVerificationServiceTest {
 
     @Test
     void verifyValidTokenMarksItUsedAndVerifiesEmail() {
-        User reference = new User();
-        reference.setId(USER_ID);
         User loaded = user();
-        EmailVerificationToken token = stubStored(reference, Instant.now().plus(TTL), null);
+        EmailVerificationToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(loaded));
         Instant before = Instant.now();
 
@@ -197,7 +202,7 @@ class EmailVerificationServiceTest {
         Instant verifiedAt = Instant.parse("2020-01-01T00:00:00Z");
         User user = user();
         user.setEmailVerifiedAt(verifiedAt);
-        EmailVerificationToken token = stubStored(user, Instant.now().plus(TTL), null);
+        EmailVerificationToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
 
         service.verify(RAW_TOKEN);
@@ -205,8 +210,6 @@ class EmailVerificationServiceTest {
         assertThat(token.getUsedAt()).isNotNull();
         assertThat(user.getEmailVerifiedAt()).isEqualTo(verifiedAt);
     }
-
-    // --- resend ---
 
     @Test
     void resendUnknownUserThrowsUserNotFound() {
@@ -234,13 +237,13 @@ class EmailVerificationServiceTest {
 
     @Test
     void resendUnverifiedUserIssuesNewToken() {
-        User user = user();
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user()));
+        UserSummary reference = stubReference();
         Instant before = Instant.now();
 
         service.resend(USER_ID);
 
-        assertIssuedFor(user, before, Instant.now());
+        assertIssuedFor(reference, before, Instant.now());
         verify(tokenRepository, never()).findByTokenHash(any());
     }
 }

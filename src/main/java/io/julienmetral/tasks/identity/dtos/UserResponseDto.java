@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.identity.dtos;
 
 import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.media.services.MediaUrls;
 import io.julienmetral.tasks.identity.entities.UserRole;
 
 import java.time.Instant;
@@ -16,10 +17,12 @@ public record UserResponseDto(
         Instant lastLoginAt,
         Set<UserRole> roles,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        String avatarUrl,
+        boolean avatarPending
 ) {
 
-    public UserResponseDto(User user) {
+    public UserResponseDto(User user, MediaUrls mediaUrls) {
         this(
                 user.getId(),
                 user.getEmail(),
@@ -29,7 +32,9 @@ public record UserResponseDto(
                 user.getLastLoginAt(),
                 Set.copyOf(user.getRoles()),
                 user.getCreatedAt(),
-                user.getUpdatedAt()
+                user.getUpdatedAt(),
+                mediaUrls.of(user.getAvatar()),
+                user.getPendingAvatar() != null
         );
     }
 }

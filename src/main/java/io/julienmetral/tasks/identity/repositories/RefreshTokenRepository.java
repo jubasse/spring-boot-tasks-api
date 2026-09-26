@@ -29,8 +29,9 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
             @Param("now") Instant now
     );
 
-    // Native on purpose: in JPQL, t.user.id joins users, which @SoftDelete filters, so nothing would be
-    // revoked once the user is soft-deleted
+    // Native on purpose: when tokens pointed to User, the JPQL path t.user.id joined users, which @SoftDelete
+    // filters, and revoked nothing for a deleted user (caught by the tests). Filtering on the foreign key column
+    // cannot regress that way, whatever the mapping.
     @Modifying
     @Query(
             value = """

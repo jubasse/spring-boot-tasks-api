@@ -2,8 +2,10 @@ package io.julienmetral.tasks.task.services;
 
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserStatus;
+import io.julienmetral.tasks.identity.entities.UserSummary;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.task.dtos.CreateTaskDto;
 import io.julienmetral.tasks.task.dtos.UpdateTaskDto;
@@ -38,13 +40,14 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.UserSummaries.reference;
+import static io.julienmetral.tasks.support.UserSummaries.summary;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -63,6 +66,7 @@ class TaskServiceTest {
     private static final UUID TASK_ID = UUID.fromString("00000000-0000-0000-0000-00000000000a");
     private static final Instant OLD = Instant.parse("2020-01-01T00:00:00Z");
     private static final UUID ACTOR_ID = UUID.fromString("00000000-0000-0000-0000-0000000000ac");
+    private static final Instant VERIFIED_AT = Instant.parse("2026-01-01T00:00:00Z");
 
     @Mock
     private TaskRepository taskRepository;
@@ -72,6 +76,9 @@ class TaskServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private UserSummaryRepository userSummaryRepository;
 
     @Mock
     private CurrentUser currentUser;
@@ -100,8 +107,18 @@ class TaskServiceTest {
         user.setId(id);
         user.setDisplayName("User " + id);
         // Only enabled users with a verified email can be assigned
-        user.setEmailVerifiedAt(Instant.parse("2026-01-01T00:00:00Z"));
+        user.setEmailVerifiedAt(VERIFIED_AT);
         return user;
+    }
+
+    private static UserSummary softDeleted(UUID id) {
+        return summary(id, "Deleted " + id, true, VERIFIED_AT, Instant.parse("2026-02-01T00:00:00Z"));
+    }
+
+    private UserSummary stubReference(UUID id) {
+        UserSummary reference = reference(id);
+        when(userSummaryRepository.getReferenceById(id)).thenReturn(reference);
+        return reference;
     }
 
     private Task stubTask() {
@@ -120,21 +137,19 @@ class TaskServiceTest {
         when(taskRepository.findById(TASK_ID)).thenReturn(Optional.empty());
     }
 
-    // --- create ---
-
     @Test
     void createPopulatesTaskSetsCreatorAndAssigneeAndRecordsEvent() {
         UUID creatorId = UUID.randomUUID();
         UUID assigneeId = UUID.randomUUID();
-        User creator = user(creatorId);
-        User assignee = user(assigneeId);
         Instant due = Instant.parse("2030-01-01T00:00:00Z");
         var dto = new CreateTaskDto("TASK-1", "Title", "Desc", TaskPriority.HIGH, due, assigneeId);
 
         when(taskRepository.existsByReferenceIncludingDeleted("TASK-1")).thenReturn(false);
         when(currentUser.getId()).thenReturn(Optional.of(creatorId));
-        when(userRepository.findById(creatorId)).thenReturn(Optional.of(creator));
-        when(userRepository.findById(assigneeId)).thenReturn(Optional.of(assignee));
+        when(userRepository.existsById(creatorId)).thenReturn(true);
+        UserSummary creator = stubReference(creatorId);
+        when(userRepository.findById(assigneeId)).thenReturn(Optional.of(user(assigneeId)));
+        UserSummary assignee = stubReference(assigneeId);
         Task saved = new Task();
         when(taskRepository.save(any(Task.class))).thenReturn(saved);
 
@@ -168,7 +183,7 @@ class TaskServiceTest {
         assertThat(result.getCreatedBy()).isNull();
         assertThat(result.getAssignedTo()).isNull();
         assertThat(result.getPriority()).isEqualTo(TaskPriority.MEDIUM);
-        verifyNoInteractions(userRepository);
+        verifyNoInteractions(userRepository, userSummaryRepository);
         verify(taskEventService).created(result);
         verifyNoInteractions(eventPublisher);
     }
@@ -179,10 +194,11 @@ class TaskServiceTest {
         var dto = new CreateTaskDto("TASK-3", "Title", null, null, null, null);
         when(taskRepository.existsByReferenceIncludingDeleted("TASK-3")).thenReturn(false);
         when(currentUser.getId()).thenReturn(Optional.of(creatorId));
-        when(userRepository.findById(creatorId)).thenReturn(Optional.empty());
+        when(userRepository.existsById(creatorId)).thenReturn(false);
         when(taskRepository.save(any(Task.class))).thenAnswer(inv -> inv.getArgument(0));
 
         assertThat(taskService.create(dto).getCreatedBy()).isNull();
+        verifyNoInteractions(userSummaryRepository);
     }
 
     @Test
@@ -226,6 +242,7 @@ class TaskServiceTest {
                 .hasMessageContaining(assigneeId.toString());
 
         verify(taskRepository, never()).save(any());
+        verifyNoInteractions(userSummaryRepository);
         verifyNoInteractions(taskEventService);
         verifyNoInteractions(eventPublisher);
     }
@@ -245,11 +262,10 @@ class TaskServiceTest {
                 .hasMessageContaining(status.name());
 
         verify(taskRepository, never()).save(any());
+        verifyNoInteractions(userSummaryRepository);
         verifyNoInteractions(taskEventService);
         verifyNoInteractions(eventPublisher);
     }
-
-    // --- find ---
 
     @Test
     void findByIdReturnsTask() {
@@ -283,8 +299,6 @@ class TaskServiceTest {
                 .isInstanceOf(TaskNotFoundException.class)
                 .hasMessageContaining("NOPE");
     }
-
-    // --- update ---
 
     @Test
     void updateAppliesAllProvidedFields() {
@@ -322,8 +336,6 @@ class TaskServiceTest {
                 .isInstanceOf(TaskNotFoundException.class);
         verifyNoInteractions(taskEventService);
     }
-
-    // --- changeStatus ---
 
     @Test
     void changeStatusToSameStatusIsNoOp() {
@@ -396,14 +408,12 @@ class TaskServiceTest {
         verifyNoInteractions(eventPublisher);
     }
 
-    // --- assign ---
-
     @Test
     void assignUnassignedTaskRecordsNullPreviousAssignee() {
         Task task = stubTask();
         UUID userId = UUID.randomUUID();
-        User assignee = user(userId);
-        when(userRepository.findById(userId)).thenReturn(Optional.of(assignee));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user(userId)));
+        UserSummary assignee = stubReference(userId);
 
         Task result = taskService.assign(TASK_ID, userId);
 
@@ -415,10 +425,10 @@ class TaskServiceTest {
     void reassignRecordsPreviousAssignee() {
         Task task = stubTask();
         UUID previousId = UUID.randomUUID();
-        task.setAssignedTo(user(previousId));
+        task.setAssignedTo(reference(previousId));
         UUID userId = UUID.randomUUID();
-        User assignee = user(userId);
-        when(userRepository.findById(userId)).thenReturn(Optional.of(assignee));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user(userId)));
+        UserSummary assignee = stubReference(userId);
 
         taskService.assign(TASK_ID, userId);
 
@@ -430,13 +440,13 @@ class TaskServiceTest {
     void assignToSameUserIsNoOp() {
         Task task = stubTask();
         UUID userId = UUID.randomUUID();
-        User current = user(userId);
+        UserSummary current = reference(userId);
         task.setAssignedTo(current);
 
         Task result = taskService.assign(TASK_ID, userId);
 
         assertThat(result.getAssignedTo()).isSameAs(current);
-        verifyNoInteractions(userRepository, taskEventService);
+        verifyNoInteractions(userRepository, userSummaryRepository, taskEventService);
         verifyNoInteractions(eventPublisher);
     }
 
@@ -450,7 +460,7 @@ class TaskServiceTest {
                 .isInstanceOf(UserNotFoundException.class);
 
         assertThat(task.getAssignedTo()).isNull();
-        verifyNoInteractions(taskEventService);
+        verifyNoInteractions(userSummaryRepository, taskEventService);
         verifyNoInteractions(eventPublisher);
     }
 
@@ -458,7 +468,7 @@ class TaskServiceTest {
     @EnumSource(value = UserStatus.class, names = {"UNVERIFIED", "DISABLED"})
     void assignToInactiveUserThrowsAndKeepsCurrentAssignee(UserStatus status) {
         Task task = stubTask();
-        User previous = user(UUID.randomUUID());
+        UserSummary previous = reference(UUID.randomUUID());
         task.setAssignedTo(previous);
         UUID userId = UUID.randomUUID();
         when(userRepository.findById(userId)).thenReturn(Optional.of(userWithStatus(userId, status)));
@@ -469,19 +479,18 @@ class TaskServiceTest {
                 .hasMessageContaining(status.name());
 
         assertThat(task.getAssignedTo()).isSameAs(previous);
-        verifyNoInteractions(taskEventService);
+        verifyNoInteractions(userSummaryRepository, taskEventService);
         verifyNoInteractions(eventPublisher);
     }
 
     @Test
     void reassignFromSoftDeletedAssigneeRecordsItsIdAsPrevious() {
         Task task = stubTask();
-        // The previous assignee is soft-deleted: the association is null, only the id column is left
         UUID deletedId = UUID.randomUUID();
-        ReflectionTestUtils.setField(task, "assignedToId", deletedId);
+        task.setAssignedTo(softDeleted(deletedId));
         UUID userId = UUID.randomUUID();
-        User assignee = user(userId);
-        when(userRepository.findById(userId)).thenReturn(Optional.of(assignee));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user(userId)));
+        UserSummary assignee = stubReference(userId);
 
         taskService.assign(TASK_ID, userId);
 
@@ -493,13 +502,14 @@ class TaskServiceTest {
     void assignToSoftDeletedCurrentAssigneeIsNoOp() {
         Task task = stubTask();
         UUID deletedId = UUID.randomUUID();
-        ReflectionTestUtils.setField(task, "assignedToId", deletedId);
+        UserSummary deleted = softDeleted(deletedId);
+        task.setAssignedTo(deleted);
 
         Task result = taskService.assign(TASK_ID, deletedId);
 
         assertThat(result).isSameAs(task);
-        assertThat(task.getAssignedTo()).isNull();
-        verifyNoInteractions(userRepository, taskEventService);
+        assertThat(task.getAssignedTo()).isSameAs(deleted);
+        verifyNoInteractions(userRepository, userSummaryRepository, taskEventService);
         verifyNoInteractions(eventPublisher);
     }
 
@@ -511,14 +521,13 @@ class TaskServiceTest {
                 .isInstanceOf(TaskNotFoundException.class);
     }
 
-    // --- findAll ---
-
     @SuppressWarnings("unchecked")
     private final Root<Task> root = mock(Root.class);
     private final CriteriaQuery<?> query = mock(CriteriaQuery.class);
     private final CriteriaBuilder builder = mock(CriteriaBuilder.class);
     private final Path<Object> archivedAtPath = mock(Path.class);
     private final Path<Object> statusPath = mock(Path.class);
+    private final Path<Object> assignedToPath = mock(Path.class);
     private final Path<Object> assignedToIdPath = mock(Path.class);
     private final Predicate archivedPredicate = mock(Predicate.class);
     private final Predicate statusPredicate = mock(Predicate.class);
@@ -549,28 +558,25 @@ class TaskServiceTest {
 
         assertThat(specification.toPredicate(root, query, builder)).isSameAs(combined);
         verify(root, never()).get("status");
-        verify(root, never()).get("assignedToId");
+        verify(root, never()).get("assignedTo");
     }
 
     @Test
-    void findAllWithAllFiltersMatchesArchivedStatusAndAssigneeColumn() {
+    void findAllWithAllFiltersMatchesArchivedStatusAndAssigneeId() {
         UUID assigneeId = UUID.randomUUID();
         Specification<Task> specification = findAllAndCaptureSpecification(TaskStatus.DONE, assigneeId, true);
         doReturn(archivedAtPath).when(root).get("archivedAt");
         doReturn(statusPath).when(root).get("status");
-        doReturn(assignedToIdPath).when(root).get("assignedToId");
+        doReturn(assignedToPath).when(root).get("assignedTo");
+        doReturn(assignedToIdPath).when(assignedToPath).get("id");
         when(builder.isNotNull(archivedAtPath)).thenReturn(archivedPredicate);
         when(builder.equal(statusPath, TaskStatus.DONE)).thenReturn(statusPredicate);
         when(builder.equal(assignedToIdPath, assigneeId)).thenReturn(assigneePredicate);
         when(builder.and(archivedPredicate, statusPredicate, assigneePredicate)).thenReturn(combined);
 
         assertThat(specification.toPredicate(root, query, builder)).isSameAs(combined);
-        // Filtering on the id column must not join users, which @SoftDelete would filter
-        verify(root, never()).get("assignedTo");
         verify(root, never()).join(any(String.class));
     }
-
-    // --- archive / unarchive ---
 
     @Test
     void archiveSetsArchivedAtAndRecordsEvent() {
@@ -627,8 +633,6 @@ class TaskServiceTest {
         assertThatThrownBy(() -> taskService.unarchive(TASK_ID)).isInstanceOf(TaskNotFoundException.class);
     }
 
-    // --- cancel ---
-
     @Test
     void cancelSetsCancellationFieldsClearsCompletionAndRecordsEvent() {
         Task task = stubTask();
@@ -654,8 +658,6 @@ class TaskServiceTest {
         verifyNoInteractions(eventPublisher);
     }
 
-    // --- delete ---
-
     @Test
     void deleteDeletesLoadedTask() {
         Task task = stubTask();
@@ -674,8 +676,6 @@ class TaskServiceTest {
         verifyNoInteractions(eventPublisher);
     }
 
-    // --- published events ---
-
     private <E> E publishedEvent(Class<E> type) {
         ArgumentCaptor<E> captor = ArgumentCaptor.forClass(type);
         verify(eventPublisher).publishEvent(captor.capture());
@@ -688,8 +688,10 @@ class TaskServiceTest {
         var dto = new CreateTaskDto("TASK-5", "Title", null, null, null, assigneeId);
         when(taskRepository.existsByReferenceIncludingDeleted("TASK-5")).thenReturn(false);
         when(currentUser.getId()).thenReturn(Optional.of(ACTOR_ID));
-        when(userRepository.findById(ACTOR_ID)).thenReturn(Optional.of(user(ACTOR_ID)));
+        when(userRepository.existsById(ACTOR_ID)).thenReturn(true);
+        stubReference(ACTOR_ID);
         when(userRepository.findById(assigneeId)).thenReturn(Optional.of(user(assigneeId)));
+        stubReference(assigneeId);
         when(taskRepository.save(any(Task.class))).thenAnswer(inv -> {
             Task task = inv.getArgument(0);
             task.setId(TASK_ID);
@@ -709,6 +711,7 @@ class TaskServiceTest {
         when(taskRepository.existsByReferenceIncludingDeleted("TASK-6")).thenReturn(false);
         when(currentUser.getId()).thenReturn(Optional.empty());
         when(userRepository.findById(assigneeId)).thenReturn(Optional.of(user(assigneeId)));
+        stubReference(assigneeId);
         when(taskRepository.save(any(Task.class))).thenAnswer(inv -> inv.getArgument(0));
 
         taskService.create(dto);
@@ -722,6 +725,7 @@ class TaskServiceTest {
         stubTask();
         UUID userId = UUID.randomUUID();
         when(userRepository.findById(userId)).thenReturn(Optional.of(user(userId)));
+        stubReference(userId);
         when(currentUser.getId()).thenReturn(Optional.of(ACTOR_ID));
 
         taskService.assign(TASK_ID, userId);
@@ -734,9 +738,10 @@ class TaskServiceTest {
     void reassignPublishesTaskAssignedThenTaskUnassignedForThePreviousAssignee() {
         Task task = stubTask();
         UUID previousId = UUID.randomUUID();
-        task.setAssignedTo(user(previousId));
+        task.setAssignedTo(reference(previousId));
         UUID userId = UUID.randomUUID();
         when(userRepository.findById(userId)).thenReturn(Optional.of(user(userId)));
+        stubReference(userId);
         when(currentUser.getId()).thenReturn(Optional.of(ACTOR_ID));
 
         taskService.assign(TASK_ID, userId);
@@ -751,9 +756,10 @@ class TaskServiceTest {
     void reassignFromSoftDeletedAssigneePublishesTaskUnassignedWithItsId() {
         Task task = stubTask();
         UUID deletedId = UUID.randomUUID();
-        ReflectionTestUtils.setField(task, "assignedToId", deletedId);
+        task.setAssignedTo(softDeleted(deletedId));
         UUID userId = UUID.randomUUID();
         when(userRepository.findById(userId)).thenReturn(Optional.of(user(userId)));
+        stubReference(userId);
         when(currentUser.getId()).thenReturn(Optional.empty());
 
         taskService.assign(TASK_ID, userId);
@@ -766,7 +772,7 @@ class TaskServiceTest {
     void changeStatusToCancelledPublishesTaskCancelledWithoutReason() {
         Task task = stubTask();
         UUID assigneeId = UUID.randomUUID();
-        task.setAssignedTo(user(assigneeId));
+        task.setAssignedTo(reference(assigneeId));
         when(currentUser.getId()).thenReturn(Optional.of(ACTOR_ID));
 
         taskService.changeStatus(TASK_ID, TaskStatus.CANCELLED);
@@ -791,7 +797,7 @@ class TaskServiceTest {
     void changeStatusToAnotherStatusPublishesNothing(TaskStatus target) {
         Task task = stubTask();
         task.setStatus(TaskStatus.CANCELLED);
-        task.setAssignedTo(user(UUID.randomUUID()));
+        task.setAssignedTo(reference(UUID.randomUUID()));
 
         taskService.changeStatus(TASK_ID, target);
 
@@ -802,7 +808,7 @@ class TaskServiceTest {
     void changeStatusOfAlreadyCancelledTaskToCancelledPublishesNothing() {
         Task task = stubTask();
         task.setStatus(TaskStatus.CANCELLED);
-        task.setAssignedTo(user(UUID.randomUUID()));
+        task.setAssignedTo(reference(UUID.randomUUID()));
 
         taskService.changeStatus(TASK_ID, TaskStatus.CANCELLED);
 
@@ -813,7 +819,7 @@ class TaskServiceTest {
     void cancelPublishesTaskCancelledWithReason() {
         Task task = stubTask();
         UUID assigneeId = UUID.randomUUID();
-        task.setAssignedTo(user(assigneeId));
+        task.setAssignedTo(reference(assigneeId));
         when(currentUser.getId()).thenReturn(Optional.of(ACTOR_ID));
 
         taskService.cancel(TASK_ID, "no longer needed");
@@ -837,7 +843,7 @@ class TaskServiceTest {
     void deletePublishesTaskDeletedWithTheAssignee() {
         Task task = stubTask();
         UUID assigneeId = UUID.randomUUID();
-        task.setAssignedTo(user(assigneeId));
+        task.setAssignedTo(reference(assigneeId));
         when(currentUser.getId()).thenReturn(Optional.of(ACTOR_ID));
 
         taskService.delete(TASK_ID);
@@ -850,7 +856,7 @@ class TaskServiceTest {
     void deleteTaskOfSoftDeletedAssigneePublishesTaskDeletedWithItsId() {
         Task task = stubTask();
         UUID deletedId = UUID.randomUUID();
-        ReflectionTestUtils.setField(task, "assignedToId", deletedId);
+        task.setAssignedTo(softDeleted(deletedId));
         when(currentUser.getId()).thenReturn(Optional.empty());
 
         taskService.delete(TASK_ID);
@@ -873,7 +879,7 @@ class TaskServiceTest {
     @Test
     void updateArchiveAndUnarchivePublishNothing() {
         Task task = stubTask();
-        task.setAssignedTo(user(UUID.randomUUID()));
+        task.setAssignedTo(reference(UUID.randomUUID()));
 
         taskService.update(TASK_ID, new UpdateTaskDto("New", null, null, null));
         taskService.archive(TASK_ID);

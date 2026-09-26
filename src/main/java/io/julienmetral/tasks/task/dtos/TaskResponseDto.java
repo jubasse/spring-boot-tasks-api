@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.task.dtos;
 
 import io.julienmetral.tasks.identity.dtos.UserPreviewResponseDto;
+import io.julienmetral.tasks.media.services.MediaUrls;
 import io.julienmetral.tasks.task.entities.Task;
 import io.julienmetral.tasks.task.entities.TaskPriority;
 import io.julienmetral.tasks.task.entities.TaskStatus;
@@ -28,7 +29,7 @@ public record TaskResponseDto(
     UserPreviewResponseDto createdBy
 ) {
 
-    public TaskResponseDto(Task task) {
+    public TaskResponseDto(Task task, MediaUrls mediaUrls) {
         this(
             task.getId(),
             task.getReference(),
@@ -45,8 +46,8 @@ public record TaskResponseDto(
             task.getBlockedReason(),
             task.getVersion(),
             task.getUpdatedAt(),
-            UserPreviewResponseDto.of(task.getAssignedTo(), task.getAssignedToId()),
-            UserPreviewResponseDto.of(task.getCreatedBy(), task.getCreatedById())
+            UserPreviewResponseDto.of(task.getAssignedTo(), mediaUrls),
+            UserPreviewResponseDto.of(task.getCreatedBy(), mediaUrls)
         );
     }
 }

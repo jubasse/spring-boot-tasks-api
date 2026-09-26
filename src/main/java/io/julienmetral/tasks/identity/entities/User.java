@@ -1,12 +1,13 @@
 package io.julienmetral.tasks.identity.entities;
 
+import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.shared.entities.AuditableEntity;
-import io.julienmetral.tasks.task.entities.Task;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.Generated;
 
 import java.io.Serializable;
@@ -15,7 +16,10 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
+// Updates write only the changed columns. Otherwise every update rewrites the whole row from the loaded state, and
+// the profile photo worker re-enabled an account that an admin disabled while the photo was being processed.
 @Entity
+@DynamicUpdate
 @Table(
         name = "users",
         uniqueConstraints = {
@@ -23,6 +27,15 @@ import java.util.UUID;
                 @UniqueConstraint(
                         name = "users_emailUQ",
                         columnNames = "email"
+                ),
+                // A media file is the avatar of one user at most
+                @UniqueConstraint(
+                        name = "users_avatar_media_idUQ",
+                        columnNames = "avatar_media_id"
+                ),
+                @UniqueConstraint(
+                        name = "users_pending_avatar_media_idUQ",
+                        columnNames = "pending_avatar_media_id"
                 )
         }
 )
@@ -46,6 +59,17 @@ public class User extends AuditableEntity implements Serializable {
     @Column(name = "last_login_at")
     private Instant lastLoginAt;
 
+    // Login or token refresh: what the inactivity retention measures (see UserRetentionService)
+    @Column(name = "last_active_at")
+    private Instant lastActiveAt;
+
+    @Column(name = "inactivity_warned_at")
+    private Instant inactivityWarnedAt;
+
+    // Set on soft-deleted rows only, which JPA never loads: written by UserRetentionQueries
+    @Column(name = "anonymized_at")
+    private Instant anonymizedAt;
+
     @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;
 
@@ -65,12 +89,25 @@ public class User extends AuditableEntity implements Serializable {
     @Enumerated(EnumType.STRING)
     private Set<UserRole> roles = new HashSet<>();
 
-    @OneToMany(mappedBy = "assignedTo")
-    private Set<Task> assignedTasks = new HashSet<>();
-
-/*    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "avatar_media_id")
+    // ManyToOne rather than OneToOne: the uniqueness is the named constraint above, not an implicit generated one
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "avatar_media_id",
+            foreignKey = @ForeignKey(name = "users_avatar_mediaFK")
+    )
     private Media avatar;
-    Todo: when medias are ok
-    */
+
+    // The uploaded photo waiting for the worker (see AvatarService.process); null once processed
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "pending_avatar_media_id",
+            foreignKey = @ForeignKey(name = "users_pending_avatar_mediaFK")
+    )
+    private Media pendingAvatar;
+
+    /** Any activity cancels a pending inactivity deletion. */
+    public void markActive(Instant now) {
+        lastActiveAt = now;
+        inactivityWarnedAt = null;
+    }
 }

@@ -71,8 +71,6 @@ class TaskNotificationApiTests {
     private record CreatedTask(UUID id, String reference) {
     }
 
-    // ---------------------------------------------------------------- assignment
-
     @Test
     void creatingAssignedTaskEmailsAssigneeWithGreetingActorReferenceTitleAndSettingsFooter() throws Exception {
         User admin = createUser(UserRole.ADMIN);
@@ -189,8 +187,6 @@ class TaskNotificationApiTests {
         assertThat(mailpit.countTo(admin.getEmail())).isZero();
     }
 
-    // ---------------------------------------------------------------- cancellation
-
     @Test
     void cancellingTaskEmailsAssigneeWithReason() throws Exception {
         User admin = createUser(UserRole.ADMIN);
@@ -280,8 +276,6 @@ class TaskNotificationApiTests {
         assertThat(mailpit.countTo(admin.getEmail())).isZero();
     }
 
-    // ---------------------------------------------------------------- deletion
-
     @Test
     void deletingTaskEmailsAssignee() throws Exception {
         User admin = createUser(UserRole.ADMIN);
@@ -325,8 +319,6 @@ class TaskNotificationApiTests {
         waitForAsyncDispatch();
         assertThat(mailpit.countTo(admin.getEmail())).isZero();
     }
-
-    // ---------------------------------------------------------------- inactive recipients
 
     @Test
     void reassigningTaskAwayFromDeletedUserSucceedsAndEmailsOnlyNewAssignee() throws Exception {
@@ -432,8 +424,6 @@ class TaskNotificationApiTests {
         assertThat(countWithSubject(assignee, cancelledSubject(task))).isZero();
     }
 
-    // ---------------------------------------------------------------- failed requests
-
     @Test
     void assigningInactiveUserFailsAndEmailsNobody() throws Exception {
         User admin = createUser(UserRole.ADMIN);
@@ -465,8 +455,6 @@ class TaskNotificationApiTests {
         waitForAsyncDispatch();
         assertThat(mailpit.countTo(unverified.getEmail())).isZero();
     }
-
-    // ---------------------------------------------------------------- notification settings
 
     @Test
     void assigneeWithTaskAssignedOffIsNotEmailedOnAssignment() throws Exception {
@@ -548,8 +536,6 @@ class TaskNotificationApiTests {
 
         awaitTextWithSubject(assignee, assignedSubject(task));
     }
-
-    // ---------------------------------------------------------------- fixtures
 
     private User createUser(UserRole role) {
         User user = new User();
@@ -657,12 +643,12 @@ class TaskNotificationApiTests {
                         .with(asUser(user))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"taskAssigned": %s, "taskUnassigned": %s, "taskCancelled": %s, "taskDeleted": %s}
+                                {"taskAssigned": %s, "taskUnassigned": %s, "taskCancelled": %s, "taskDeleted": %s,
+                                 "taskCommented": true, "taskMentioned": true,
+                                 "taskDueSoon": true, "taskOverdue": true}
                                 """.formatted(assigned, unassigned, cancelled, deleted)))
                 .andExpect(status().isOk());
     }
-
-    // ---------------------------------------------------------------- mail
 
     private static String assignedSubject(CreatedTask task) {
         return "Task " + task.reference() + " was assigned to you";

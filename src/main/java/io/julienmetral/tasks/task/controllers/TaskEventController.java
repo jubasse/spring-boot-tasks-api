@@ -1,6 +1,8 @@
 package io.julienmetral.tasks.task.controllers;
 
+import io.julienmetral.tasks.media.services.MediaUrls;
 import io.julienmetral.tasks.task.dtos.TaskEventResponseDto;
+import io.julienmetral.tasks.task.entities.TaskEvent;
 import io.julienmetral.tasks.task.services.TaskEventService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -18,6 +20,7 @@ import java.util.UUID;
 public class TaskEventController {
 
     private final TaskEventService taskEventService;
+    private final MediaUrls mediaUrls;
 
     @GetMapping
     public Page<TaskEventResponseDto> findAll(
@@ -26,6 +29,10 @@ public class TaskEventController {
     ) {
         return taskEventService
                 .findAllByTaskId(taskId, pageable)
-                .map(TaskEventResponseDto::new);
+                .map(this::response);
+    }
+
+    private TaskEventResponseDto response(TaskEvent entity) {
+        return new TaskEventResponseDto(entity, mediaUrls);
     }
 }

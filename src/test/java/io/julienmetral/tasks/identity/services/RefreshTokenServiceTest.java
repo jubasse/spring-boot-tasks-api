@@ -2,9 +2,11 @@ package io.julienmetral.tasks.identity.services;
 
 import io.julienmetral.tasks.identity.entities.RefreshToken;
 import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserSummary;
 import io.julienmetral.tasks.identity.exceptions.InvalidRefreshTokenException;
 import io.julienmetral.tasks.identity.repositories.RefreshTokenRepository;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
 import io.julienmetral.tasks.identity.security.OpaqueTokens;
 import io.julienmetral.tasks.identity.security.RefreshTokenProperties;
 import io.julienmetral.tasks.identity.services.RefreshTokenService.IssuedRefreshToken;
@@ -21,6 +23,7 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.UserSummaries.reference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -50,11 +53,19 @@ class RefreshTokenServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private UserSummaryRepository userSummaryRepository;
+
     private RefreshTokenService service;
 
     @BeforeEach
     void setUp() {
-        service = new RefreshTokenService(refreshTokenRepository, userRepository, new RefreshTokenProperties(TTL));
+        service = new RefreshTokenService(
+                refreshTokenRepository,
+                userRepository,
+                userSummaryRepository,
+                new RefreshTokenProperties(TTL)
+        );
     }
 
     private static User user() {
@@ -65,7 +76,7 @@ class RefreshTokenServiceTest {
         return user;
     }
 
-    private static RefreshToken storedToken(User owner, Instant expiresAt, Instant revokedAt) {
+    private static RefreshToken storedToken(UserSummary owner, Instant expiresAt, Instant revokedAt) {
         RefreshToken token = new RefreshToken();
         token.setUser(owner);
         token.setTokenHash(OpaqueTokens.hash(RAW_TOKEN));
@@ -76,10 +87,16 @@ class RefreshTokenServiceTest {
         return token;
     }
 
-    private RefreshToken stubStored(User owner, Instant expiresAt, Instant revokedAt) {
+    private RefreshToken stubStored(UserSummary owner, Instant expiresAt, Instant revokedAt) {
         RefreshToken token = storedToken(owner, expiresAt, revokedAt);
         when(refreshTokenRepository.findByTokenHash(OpaqueTokens.hash(RAW_TOKEN))).thenReturn(Optional.of(token));
         return token;
+    }
+
+    private UserSummary stubReference() {
+        UserSummary reference = reference(USER_ID);
+        when(userSummaryRepository.getReferenceById(USER_ID)).thenReturn(reference);
+        return reference;
     }
 
     private RefreshToken captureSaved() {
@@ -88,21 +105,19 @@ class RefreshTokenServiceTest {
         return captor.getValue();
     }
 
-    // --- issue ---
-
     @Test
     void issueSavesHashedTokenInNewFamilyAndReturnsRawValue() {
-        User user = user();
+        UserSummary reference = stubReference();
         Instant before = Instant.now();
 
-        IssuedRefreshToken issued = service.issue(user);
+        IssuedRefreshToken issued = service.issue(user());
 
         Instant after = Instant.now();
         RefreshToken saved = captureSaved();
 
         assertThat(issued.value()).hasSize(43);
         assertThat(saved.getTokenHash()).isEqualTo(OpaqueTokens.hash(issued.value())).isNotEqualTo(issued.value());
-        assertThat(saved.getUser()).isSameAs(user);
+        assertThat(saved.getUser()).isSameAs(reference);
         assertThat(saved.getFamilyId()).isNotNull();
         assertThat(saved.getRevokedAt()).isNull();
         assertThat(saved.getCreatedAt()).isBetween(before, after);
@@ -112,6 +127,7 @@ class RefreshTokenServiceTest {
 
     @Test
     void issueStartsADistinctFamilyOnEveryLogin() {
+        stubReference();
         User user = user();
 
         IssuedRefreshToken first = service.issue(user);
@@ -124,8 +140,6 @@ class RefreshTokenServiceTest {
         assertThat(captor.getAllValues().get(0).getFamilyId())
                 .isNotEqualTo(captor.getAllValues().get(1).getFamilyId());
     }
-
-    // --- rotate ---
 
     @Test
     void rotateUnknownTokenThrowsWithoutRevokingAnything() {
@@ -142,7 +156,7 @@ class RefreshTokenServiceTest {
 
     @Test
     void rotateRevokedTokenRevokesWholeFamilyAndThrows() {
-        stubStored(user(), Instant.now().plus(TTL), Instant.now().minusSeconds(60));
+        stubStored(reference(USER_ID), Instant.now().plus(TTL), Instant.now().minusSeconds(60));
         Instant before = Instant.now();
 
         assertThatThrownBy(() -> service.rotate(RAW_TOKEN)).isInstanceOf(InvalidRefreshTokenException.class);
@@ -156,7 +170,7 @@ class RefreshTokenServiceTest {
 
     @Test
     void rotateExpiredTokenThrowsWithoutRevokingFamily() {
-        RefreshToken token = stubStored(user(), Instant.now().minusSeconds(1), null);
+        RefreshToken token = stubStored(reference(USER_ID), Instant.now().minusSeconds(1), null);
 
         assertThatThrownBy(() -> service.rotate(RAW_TOKEN)).isInstanceOf(InvalidRefreshTokenException.class);
 
@@ -167,8 +181,8 @@ class RefreshTokenServiceTest {
     }
 
     @Test
-    void rotateTokenOfMissingUserRevokesWholeFamilyAndThrows() {
-        RefreshToken token = stubStored(user(), Instant.now().plus(TTL), null);
+    void rotateTokenOfSoftDeletedUserRevokesWholeFamilyAndThrows() {
+        RefreshToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.rotate(RAW_TOKEN)).isInstanceOf(InvalidRefreshTokenException.class);
@@ -182,7 +196,7 @@ class RefreshTokenServiceTest {
     void rotateTokenOfDisabledUserRevokesWholeFamilyAndThrows() {
         User disabled = user();
         disabled.setEnabled(false);
-        stubStored(disabled, Instant.now().plus(TTL), null);
+        stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(disabled));
 
         assertThatThrownBy(() -> service.rotate(RAW_TOKEN)).isInstanceOf(InvalidRefreshTokenException.class);
@@ -193,12 +207,11 @@ class RefreshTokenServiceTest {
 
     @Test
     void rotateValidTokenRevokesItAndIssuesSuccessorInSameFamily() {
-        // The token references a stale user reference; the returned user is the one reloaded from the database
-        User reference = new User();
-        reference.setId(USER_ID);
+        // The token holds a lazy reference; the returned user is the one reloaded from the database
         User loaded = user();
-        RefreshToken current = stubStored(reference, Instant.now().plus(TTL), null);
+        RefreshToken current = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(loaded));
+        UserSummary successorReference = stubReference();
         Instant before = Instant.now();
 
         RotatedRefreshToken rotated = service.rotate(RAW_TOKEN);
@@ -211,7 +224,7 @@ class RefreshTokenServiceTest {
 
         assertThat(successor).isNotSameAs(current);
         assertThat(successor.getFamilyId()).isEqualTo(FAMILY_ID);
-        assertThat(successor.getUser()).isSameAs(loaded);
+        assertThat(successor.getUser()).isSameAs(successorReference);
         assertThat(successor.getRevokedAt()).isNull();
         assertThat(successor.getCreatedAt()).isEqualTo(current.getRevokedAt());
         assertThat(successor.getExpiresAt()).isEqualTo(successor.getCreatedAt().plus(TTL));
@@ -223,11 +236,9 @@ class RefreshTokenServiceTest {
         verify(refreshTokenRepository, never()).revokeFamily(any(), any());
     }
 
-    // --- revoke ---
-
     @Test
     void revokeKnownTokenRevokesItsFamily() {
-        stubStored(user(), Instant.now().plus(TTL), null);
+        stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
         Instant before = Instant.now();
 
         service.revoke(RAW_TOKEN);
@@ -246,8 +257,6 @@ class RefreshTokenServiceTest {
         verify(refreshTokenRepository).findByTokenHash(OpaqueTokens.hash(RAW_TOKEN));
         verifyNoMoreInteractions(refreshTokenRepository);
     }
-
-    // --- revokeAllForUser ---
 
     @Test
     void revokeAllForUserDelegatesWithCurrentTime() {

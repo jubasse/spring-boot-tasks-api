@@ -1,9 +1,14 @@
 package io.julienmetral.tasks.task.services;
 
 import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserSummary;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
+import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.task.entities.Task;
+import io.julienmetral.tasks.task.entities.TaskAttachment;
+import io.julienmetral.tasks.task.entities.TaskComment;
 import io.julienmetral.tasks.task.entities.TaskEvent;
 import io.julienmetral.tasks.task.entities.TaskEventType;
 import io.julienmetral.tasks.task.entities.TaskStatus;
@@ -28,6 +33,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
 
+import static io.julienmetral.tasks.support.UserSummaries.reference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -50,23 +56,34 @@ class TaskEventServiceTest {
     private UserRepository userRepository;
 
     @Mock
+    private UserSummaryRepository userSummaryRepository;
+
+    @Mock
     private CurrentUser currentUser;
 
     private TaskEventService service;
 
     private final Task task = new Task();
     private final User actor = new User();
+    private final UserSummary actorReference = reference(ACTOR_ID);
 
     @BeforeEach
     void setUp() {
         service = new TaskEventService(
-                taskRepository, taskEventRepository, userRepository, currentUser, JsonMapper.builder().build());
+                taskRepository,
+                taskEventRepository,
+                userRepository,
+                userSummaryRepository,
+                currentUser,
+                JsonMapper.builder().build()
+        );
         actor.setId(ACTOR_ID);
     }
 
     private void stubActor() {
         when(currentUser.getId()).thenReturn(Optional.of(ACTOR_ID));
         when(userRepository.findById(ACTOR_ID)).thenReturn(Optional.of(actor));
+        when(userSummaryRepository.getReferenceById(ACTOR_ID)).thenReturn(actorReference);
     }
 
     private TaskEvent recordedEvent(Consumer<TaskEventService> action) {
@@ -79,7 +96,7 @@ class TaskEventServiceTest {
         verify(taskEventRepository).save(captor.capture());
         TaskEvent event = captor.getValue();
         assertThat(event.getTask()).isSameAs(task);
-        assertThat(event.getActor()).isSameAs(actor);
+        assertThat(event.getActor()).isSameAs(actorReference);
         assertThat(event.getOccurredAt()).isBetween(before, Instant.now());
         return event;
     }
@@ -164,6 +181,84 @@ class TaskEventServiceTest {
                 .containsEntry("reason", "duplicate");
     }
 
+    private static TaskAttachment attachment(UUID id, String filename) {
+        Media media = new Media();
+        media.setOriginalFilename(filename);
+        TaskAttachment attachment = new TaskAttachment();
+        attachment.setId(id);
+        attachment.setMedia(media);
+        return attachment;
+    }
+
+    @Test
+    void attachmentAddedRecordsAttachmentIdAndFilename() {
+        UUID attachmentId = UUID.randomUUID();
+
+        TaskEvent event = recordedEvent(s -> s.attachmentAdded(task, attachment(attachmentId, "specs.pdf")));
+
+        assertThat(event.getType()).isEqualTo(TaskEventType.ATTACHMENT_ADDED);
+        assertThat(event.getPayload())
+                .containsOnlyKeys("attachmentId", "filename")
+                .containsEntry("attachmentId", attachmentId.toString())
+                .containsEntry("filename", "specs.pdf");
+    }
+
+    @Test
+    void attachmentRemovedRecordsAttachmentIdAndFilename() {
+        UUID attachmentId = UUID.randomUUID();
+
+        TaskEvent event = recordedEvent(s -> s.attachmentRemoved(task, attachment(attachmentId, "old.png")));
+
+        assertThat(event.getType()).isEqualTo(TaskEventType.ATTACHMENT_REMOVED);
+        assertThat(event.getPayload())
+                .containsOnlyKeys("attachmentId", "filename")
+                .containsEntry("attachmentId", attachmentId.toString())
+                .containsEntry("filename", "old.png");
+    }
+
+    private static TaskComment comment(UUID id) {
+        TaskComment comment = new TaskComment();
+        comment.setId(id);
+        comment.setBody("Looks good to me");
+        return comment;
+    }
+
+    @Test
+    void commentAddedRecordsOnlyTheCommentId() {
+        UUID commentId = UUID.randomUUID();
+
+        TaskEvent event = recordedEvent(s -> s.commentAdded(task, comment(commentId)));
+
+        assertThat(event.getType()).isEqualTo(TaskEventType.COMMENT_ADDED);
+        assertThat(event.getPayload())
+                .containsOnlyKeys("commentId")
+                .containsEntry("commentId", commentId.toString());
+    }
+
+    @Test
+    void commentEditedRecordsOnlyTheCommentId() {
+        UUID commentId = UUID.randomUUID();
+
+        TaskEvent event = recordedEvent(s -> s.commentEdited(task, comment(commentId)));
+
+        assertThat(event.getType()).isEqualTo(TaskEventType.COMMENT_EDITED);
+        assertThat(event.getPayload())
+                .containsOnlyKeys("commentId")
+                .containsEntry("commentId", commentId.toString());
+    }
+
+    @Test
+    void commentDeletedRecordsOnlyTheCommentId() {
+        UUID commentId = UUID.randomUUID();
+
+        TaskEvent event = recordedEvent(s -> s.commentDeleted(task, comment(commentId)));
+
+        assertThat(event.getType()).isEqualTo(TaskEventType.COMMENT_DELETED);
+        assertThat(event.getPayload())
+                .containsOnlyKeys("commentId")
+                .containsEntry("commentId", commentId.toString());
+    }
+
     @Test
     void recordingWithoutAuthenticatedUserThrows() {
         when(currentUser.getId()).thenReturn(Optional.empty());
@@ -171,7 +266,7 @@ class TaskEventServiceTest {
         assertThatThrownBy(() -> service.created(task))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("No authenticated user");
-        verifyNoInteractions(taskEventRepository, userRepository);
+        verifyNoInteractions(taskEventRepository, userRepository, userSummaryRepository);
     }
 
     @Test
@@ -182,7 +277,7 @@ class TaskEventServiceTest {
         assertThatThrownBy(() -> service.updated(task))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Authenticated user not found");
-        verifyNoInteractions(taskEventRepository);
+        verifyNoInteractions(taskEventRepository, userSummaryRepository);
     }
 
     @Test

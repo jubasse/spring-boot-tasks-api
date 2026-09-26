@@ -19,5 +19,40 @@ services:
       - "${MAIL_PORT:-1025}:1025"
       - "8025:8025"
 
+  # S3-compatible object storage for media files; web console on http://localhost:9001
+  rustfs:
+    image: rustfs/rustfs:1.0.0
+    environment:
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY:-tasks-dev}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_KEY:-tasks-dev-secret}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - rustfs_data:/data
+
+  # Antivirus scanning every upload; needs about 1 GB of RAM. Set ANTIVIRUS_ENABLED=false in .env to skip it.
+  clamav:
+    image: clamav/clamav:1.5.4-debian
+    ports:
+      - "${CLAMAV_PORT:-3310}:3310"
+    volumes:
+      - clamav_data:/var/lib/clamav
+
+  # Message broker for background work (emails); management UI on http://localhost:15672
+  rabbitmq:
+    image: rabbitmq:4.2.9-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-tasks}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-tasks-dev}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
 volumes:
   postgres_data:
+  rustfs_data:
+  clamav_data:
+  rabbitmq_data:

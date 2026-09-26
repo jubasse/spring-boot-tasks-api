@@ -2,8 +2,11 @@ package io.julienmetral.tasks.task.services;
 
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.task.entities.Task;
+import io.julienmetral.tasks.task.entities.TaskAttachment;
+import io.julienmetral.tasks.task.entities.TaskComment;
 import io.julienmetral.tasks.task.entities.TaskEvent;
 import io.julienmetral.tasks.task.entities.TaskEventType;
 import io.julienmetral.tasks.task.entities.TaskStatus;
@@ -30,6 +33,7 @@ public class TaskEventService {
     private final TaskRepository taskRepository;
     private final TaskEventRepository taskEventRepository;
     private final UserRepository userRepository;
+    private final UserSummaryRepository userSummaryRepository;
     private final CurrentUser currentUser;
     private final JsonMapper jsonMapper;
 
@@ -134,6 +138,39 @@ public class TaskEventService {
                 );
     }
 
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void attachmentAdded(Task task, TaskAttachment attachment) {
+        record(
+                task,
+                TaskEventType.ATTACHMENT_ADDED,
+                new AttachmentPayload(attachment.getId(), attachment.getMedia().getOriginalFilename())
+        );
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void attachmentRemoved(Task task, TaskAttachment attachment) {
+        record(
+                task,
+                TaskEventType.ATTACHMENT_REMOVED,
+                new AttachmentPayload(attachment.getId(), attachment.getMedia().getOriginalFilename())
+        );
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void commentAdded(Task task, TaskComment comment) {
+        record(task, TaskEventType.COMMENT_ADDED, new CommentPayload(comment.getId()));
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void commentEdited(Task task, TaskComment comment) {
+        record(task, TaskEventType.COMMENT_EDITED, new CommentPayload(comment.getId()));
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void commentDeleted(Task task, TaskComment comment) {
+        record(task, TaskEventType.COMMENT_DELETED, new CommentPayload(comment.getId()));
+    }
+
     private void record(
             Task task,
             TaskEventType type,
@@ -142,7 +179,7 @@ public class TaskEventService {
         TaskEvent event = new TaskEvent();
 
         event.setTask(task);
-        event.setActor(getCurrentActor());
+        event.setActor(userSummaryRepository.getReferenceById(getCurrentActor().getId()));
         event.setType(type);
         event.setOccurredAt(Instant.now());
         event.setPayload(serialize(payload));
@@ -178,6 +215,17 @@ public class TaskEventService {
                 new TypeReference<>() {
                 }
         );
+    }
+
+    private record AttachmentPayload(
+            UUID attachmentId,
+            String filename
+    ) {
+    }
+
+    private record CommentPayload(
+            UUID commentId
+    ) {
     }
 
     private record StatusChangedPayload(
