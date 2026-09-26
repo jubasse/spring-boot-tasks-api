@@ -75,6 +75,12 @@ class UserProfilesMigrationTests {
     @AfterEach
     void dropTheSchema() throws SQLException {
         try {
+            // Liquibase turns auto-commit off: closing the connection rolled the drop back, and every run left its
+            // schemas in the shared database
+            if (!connection.getAutoCommit()) {
+                connection.rollback();
+                connection.setAutoCommit(true);
+            }
             connection.createStatement().execute("DROP SCHEMA " + schema + " CASCADE");
         } finally {
             connection.close();
