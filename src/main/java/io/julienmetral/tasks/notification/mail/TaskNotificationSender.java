@@ -79,8 +79,9 @@ public class TaskNotificationSender {
 
     @EventListener
     public void onCommentAdded(TaskCommentAdded event) {
-        // A mentioned assignee gets the mention email instead
-        if (event.mentionedUserIds().contains(event.assigneeId())) {
+        // A mentioned assignee gets the mention email instead. The null check comes first: Set.of(...).contains(null)
+        // throws, and this listener runs inside the comment's transaction.
+        if (event.assigneeId() == null || event.mentionedUserIds().contains(event.assigneeId())) {
             return;
         }
 
