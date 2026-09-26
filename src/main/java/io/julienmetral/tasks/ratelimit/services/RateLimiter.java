@@ -12,7 +12,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -30,30 +29,30 @@ public class RateLimiter {
     /** @throws RateLimitExceededException when either the address or the email is over its login limit */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void login(String clientAddress, String email) {
-        consume("login:ip:" + clientAddress, properties.loginPerIp());
-        consume("login:email:" + normalized(email), properties.loginPerEmail());
+        consume(RateLimitKeys.address("login", clientAddress), properties.loginPerIp());
+        consume(RateLimitKeys.email("login", email), properties.loginPerEmail());
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void signUp(String clientAddress) {
-        consume("sign-up:ip:" + clientAddress, properties.signUpPerIp());
+        consume(RateLimitKeys.address("sign-up", clientAddress), properties.signUpPerIp());
     }
 
     // Counted per email whether or not an account uses it, so that a 429 reveals nothing about the account
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void passwordResetRequest(String clientAddress, String email) {
-        consume("password-reset:ip:" + clientAddress, properties.passwordResetPerIp());
-        consume("password-reset:email:" + normalized(email), properties.passwordResetPerEmail());
+        consume(RateLimitKeys.address("password-reset", clientAddress), properties.passwordResetPerIp());
+        consume(RateLimitKeys.email("password-reset", email), properties.passwordResetPerEmail());
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void passwordResetConfirm(String clientAddress) {
-        consume("password-reset:ip:" + clientAddress, properties.passwordResetPerIp());
+        consume(RateLimitKeys.address("password-reset", clientAddress), properties.passwordResetPerIp());
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void verificationResend(UUID userId) {
-        consume("verification-resend:user:" + userId, properties.verificationResendPerUser());
+        consume(RateLimitKeys.user("verification-resend", userId), properties.verificationResendPerUser());
     }
 
     private void consume(String key, Limit limit) {
@@ -68,9 +67,5 @@ public class RateLimiter {
         if (queries.increment(key, windowStart) > limit.requests()) {
             throw new RateLimitExceededException(Duration.between(now, windowStart.plus(limit.window())));
         }
-    }
-
-    private static String normalized(String email) {
-        return email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
     }
 }
