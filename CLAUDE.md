@@ -82,9 +82,12 @@ Only **active** users can work on tasks. Active means enabled, not deleted, and 
 
 ### Soft-deleted users in associations
 
-Entities that point to a `User` (for example `RefreshToken.user`) must tolerate a soft-deleted target. Hibernate cannot load the filtered row, so loading the owning entity fails. Map the association with `@NotFound(action = NotFoundAction.IGNORE)` and treat `null` as "deleted".
+Entities never point to `User`, which carries `@SoftDelete`: they point to **`UserSummary`**. That is a read-only (`@Immutable`) view of the same `users` table, without `@SoftDelete`.
+- **Loading:** a soft-deleted user still loads through it, so a task, its history or a token referencing that user never fails to load. Responses show that user with status `DELETED` and their name.
+- **Writing:** services set an association with `userSummaryRepository.getReferenceById(user.getId())`, a proxy that does not query the database.
+- **Checking:** to know whether the referenced account can still act, load the full `User` with `userRepository.findById(summary.getId())`, which skips soft-deleted users.
 
-When the owning entity is updated later (as `Task` is), the association must also be **read-only** (`insertable = false, updatable = false`), with a separate writable id column (`assignedToId`, `createdById`). Otherwise the `null` loaded for a deleted user is flushed back and erases the reference. Setters such as `Task.setAssignedTo` keep both fields in sync. Queries filter on the id column, not on `assignedTo.id`, to avoid a join that `@SoftDelete` would filter. A JPQL path such as `t.user.id` in a bulk update joins `users` and is filtered too: use a native query on the foreign key column instead.
+Warning: do not map an association to `User` with `@NotFound(IGNORE)` to tolerate deleted users. Hibernate then drops the foreign key from its model, and `liquibase:diff` proposes dropping the real constraints. That is how 7 foreign keys went missing from the model before `UserSummary`.
 
 ### Mail
 
