@@ -316,9 +316,22 @@ class TaskNotificationSenderTest {
 
         @Test
         void isNotEmailedToAnAssigneeWhoIsMentioned() {
+            when(settingsService.isEnabled(RECIPIENT_ID, TaskNotificationType.MENTIONED)).thenReturn(true);
+
             sender.onCommentAdded(commentAdded("Over to you <@" + RECIPIENT_ID + ">", RECIPIENT_ID, ACTOR_ID));
 
-            verifyNoInteractions(userRepository, userSummaryRepository, settingsService, mailService);
+            verifyNoInteractions(userRepository, userSummaryRepository, mailService);
+        }
+
+        @Test
+        void isEmailedToAMentionedAssigneeWhoTurnedMentionsOff() {
+            when(settingsService.isEnabled(RECIPIENT_ID, TaskNotificationType.MENTIONED)).thenReturn(false);
+            stubActiveRecipient(TaskNotificationType.COMMENTED);
+            stubActor();
+
+            sender.onCommentAdded(commentAdded("Over to you <@" + RECIPIENT_ID + ">", RECIPIENT_ID, ACTOR_ID));
+
+            assertThat(sentMessage().subject()).isEqualTo("New comment on task TASK-1");
         }
 
         @Test

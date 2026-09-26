@@ -173,6 +173,21 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
     }
 
     @Test
+    void mentionedAssigneeWithTaskMentionedOffReceivesTheCommentEmail() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User assignee = createUser(UserRole.USER);
+        User author = createUser(UserRole.USER);
+        UUID taskId = createTask(admin, assignee);
+        updateSettings(assignee, true, false);
+
+        addComment(asUser(author), taskId, "Question for " + mention(assignee));
+
+        awaitTextWithSubject(assignee, commentSubject(referenceOf(taskId)));
+        waitForAsyncDispatch();
+        assertThat(countWithSubject(assignee, mentionSubject(author, referenceOf(taskId)))).isZero();
+    }
+
+    @Test
     void userWithTaskMentionedOffIsNotEmailedAboutMentions() throws Exception {
         User admin = createUser(UserRole.ADMIN);
         User assignee = createUser(UserRole.USER);
