@@ -1,6 +1,6 @@
 package io.julienmetral.tasks.identity.repositories;
 
-import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.JdbcSliceTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
 /** The schema Liquibase leaves behind (migration 016), read from the Postgres catalog. */
-@IntegrationTest
+@JdbcSliceTest
 class UserProfileSchemaTests {
 
     // One row per single-column foreign key of the current schema
