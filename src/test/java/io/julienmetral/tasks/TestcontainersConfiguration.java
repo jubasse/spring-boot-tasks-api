@@ -30,6 +30,9 @@ public class TestcontainersConfiguration {
 
 	static final String RUSTFS_SECRET_KEY = "test-secret-key";
 
+	/** Marks the reusable containers, so that they can be removed without touching any other container. */
+	public static final String REUSABLE_LABEL = "io.julienmetral.tasks.test-container";
+
 	/** The threat name clamd reports for the EICAR test file with the signature database below. */
 	public static final String EICAR_THREAT = "Eicar-Test-Signature.UNOFFICIAL";
 
@@ -39,12 +42,19 @@ public class TestcontainersConfiguration {
 			"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*".getBytes(StandardCharsets.US_ASCII)
 	) + "\n";
 
+	// Postgres, Mailpit, RustFS and ClamAV are reused when testcontainers.reuse.enable is set (see the README): one of
+	// each serves every test context and every run, instead of one set per cached context. They must stay identical
+	// across contexts for that, so a context cannot customise them.
 	@Bean
 	@ServiceConnection
 	PostgreSQLContainer postgresContainer() {
-		return new PostgreSQLContainer(DockerImageName.parse("postgres:18"));
+		return new PostgreSQLContainer(DockerImageName.parse("postgres:18"))
+				.withLabel(REUSABLE_LABEL, "true")
+				.withReuse(true);
 	}
 
+	// Not reused: the dead-letter tests make the listeners' collaborators fail, and on a shared broker those listeners
+	// would consume, and dead-letter, the messages of every other context
 	@Bean
 	@ServiceConnection
 	RabbitMQContainer rabbitContainer() {
@@ -56,7 +66,9 @@ public class TestcontainersConfiguration {
 	GenericContainer<?> mailpitContainer() {
 		return new GenericContainer<>(DockerImageName.parse("axllent/mailpit:v1.31.2"))
 				.withExposedPorts(MAILPIT_SMTP_PORT, MAILPIT_API_PORT)
-				.waitingFor(Wait.forHttp("/livez").forPort(MAILPIT_API_PORT));
+				.waitingFor(Wait.forHttp("/livez").forPort(MAILPIT_API_PORT))
+				.withLabel(REUSABLE_LABEL, "true")
+				.withReuse(true);
 	}
 
 	@Bean
@@ -78,7 +90,9 @@ public class TestcontainersConfiguration {
 				.withEnv("RUSTFS_ACCESS_KEY", RUSTFS_ACCESS_KEY)
 				.withEnv("RUSTFS_SECRET_KEY", RUSTFS_SECRET_KEY)
 				.withExposedPorts(RUSTFS_S3_PORT)
-				.waitingFor(Wait.forHttp("/health").forPort(RUSTFS_S3_PORT));
+				.waitingFor(Wait.forHttp("/health").forPort(RUSTFS_S3_PORT))
+				.withLabel(REUSABLE_LABEL, "true")
+				.withReuse(true);
 	}
 
 	@Bean
@@ -107,7 +121,9 @@ public class TestcontainersConfiguration {
 				.withCopyToContainer(Transferable.of(EICAR_SIGNATURE), "/var/lib/clamav-test/eicar.ndb")
 				.withExposedPorts(CLAMAV_PORT)
 				.waitingFor(Wait.forLogMessage(".*socket found, clamd started.*", 1)
-						.withStartupTimeout(Duration.ofMinutes(3)));
+						.withStartupTimeout(Duration.ofMinutes(3)))
+				.withLabel(REUSABLE_LABEL, "true")
+				.withReuse(true);
 	}
 
 	@Bean

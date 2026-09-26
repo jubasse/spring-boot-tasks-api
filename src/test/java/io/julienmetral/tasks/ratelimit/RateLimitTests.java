@@ -109,9 +109,12 @@ class RateLimitTests {
     @Autowired
     private TestClock clock;
 
+    // The reused test database keeps the counters of earlier runs, whose windows are the same since the clock is
+    // pinned: a test with a fixed email or address would start over its limit. Only this class turns the limits on.
     @BeforeEach
-    void pinTheClock() {
+    void pinTheClockAndForgetEarlierCounters() {
         clock.set(NOW);
+        jdbcTemplate.update("DELETE FROM rate_limit_counters");
     }
 
     @Nested
@@ -428,8 +431,8 @@ class RateLimitTests {
 
         @Test
         void countersOfDifferentAddressesAreIndependent() throws Exception {
-            String limitedAddress = "198.51.100.10";
-            String otherAddress = "198.51.100.11";
+            String limitedAddress = uniqueAddress();
+            String otherAddress = uniqueAddress();
             for (int attempt = 0; attempt < LOGIN_PER_IP; attempt++) {
                 login(limitedAddress, uniqueEmail(), PASSWORD).andExpect(status().isUnauthorized());
             }
