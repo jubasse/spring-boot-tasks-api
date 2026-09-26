@@ -3,6 +3,7 @@ package io.julienmetral.tasks.messaging.services;
 import io.julienmetral.tasks.config.OutboxProperties;
 import io.julienmetral.tasks.messaging.entities.OutboxMessage;
 import io.julienmetral.tasks.messaging.repositories.OutboxMessageRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -62,6 +63,8 @@ class OutboxRelayTest {
 
     private final JsonMapper jsonMapper = JsonMapper.builder().build();
 
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
     @Mock
     private OutboxMessageRepository repository;
 
@@ -72,7 +75,7 @@ class OutboxRelayTest {
 
     @BeforeEach
     void setUp() {
-        relay = new OutboxRelay(repository, rabbitTemplate, jsonMapper, PROPERTIES, Clock.fixed(NOW, ZoneOffset.UTC));
+        relay = new OutboxRelay(repository, rabbitTemplate, jsonMapper, PROPERTIES, Clock.fixed(NOW, ZoneOffset.UTC), meterRegistry);
     }
 
     @Test
@@ -103,7 +106,7 @@ class OutboxRelayTest {
     void messageNotConfirmedWithinTheTimeoutIsNotMarkedPublished() {
         OutboxProperties shortTimeout = new OutboxProperties(Duration.ofSeconds(5), BATCH_SIZE, Duration.ofMinutes(10),
                 Duration.ofMillis(50), Duration.ofDays(7), "0 0 * * * *");
-        relay = new OutboxRelay(repository, rabbitTemplate, jsonMapper, shortTimeout, Clock.fixed(NOW, ZoneOffset.UTC));
+        relay = new OutboxRelay(repository, rabbitTemplate, jsonMapper, shortTimeout, Clock.fixed(NOW, ZoneOffset.UTC), meterRegistry);
         OutboxMessage row = mailRow();
         when(repository.lockUnpublished(List.of(row.getId()))).thenReturn(List.of(row));
 
