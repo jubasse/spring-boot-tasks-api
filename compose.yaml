@@ -19,5 +19,18 @@ services:
       - "${MAIL_PORT:-1025}:1025"
       - "8025:8025"
 
+  # S3-compatible object storage for media files; web console on http://localhost:9001
+  rustfs:
+    image: rustfs/rustfs:1.0.0
+    environment:
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY:-tasks-dev}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_KEY:-tasks-dev-secret}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - rustfs_data:/data
+
 volumes:
   postgres_data:
+  rustfs_data:
