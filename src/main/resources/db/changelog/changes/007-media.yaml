@@ -1,0 +1,66 @@
+databaseChangeLog:
+- changeSet:
+    id: 007-create-media
+    author: julien-metral
+    comment: >
+      Metadata of files stored in S3-compatible object storage (profile photos, task attachments).
+    changes:
+    - createTable:
+        tableName: media
+        columns:
+        - column:
+            name: id
+            type: UUID
+            defaultValueComputed: uuidv7()
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: mediaPK
+        - column:
+            name: storage_key
+            type: VARCHAR(512)
+            constraints:
+              nullable: false
+        - column:
+            name: usage
+            type: VARCHAR(30)
+            constraints:
+              nullable: false
+        - column:
+            name: original_filename
+            type: VARCHAR(255)
+            constraints:
+              nullable: false
+        - column:
+            name: content_type
+            type: VARCHAR(255)
+            constraints:
+              nullable: false
+        - column:
+            name: size_bytes
+            type: BIGINT
+            constraints:
+              nullable: false
+        - column:
+            name: sha256
+            type: VARCHAR(64)
+            constraints:
+              nullable: false
+        - column:
+            name: uploaded_by_id
+            type: UUID
+        - column:
+            name: created_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+            constraints:
+              nullable: false
+    - addUniqueConstraint:
+        tableName: media
+        columnNames: storage_key
+        constraintName: media_storage_keyUQ
+    - addForeignKeyConstraint:
+        baseTableName: media
+        baseColumnNames: uploaded_by_id
+        constraintName: media_uploaded_byFK
+        referencedTableName: users
+        referencedColumnNames: id
