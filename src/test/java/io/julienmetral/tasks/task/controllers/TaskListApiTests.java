@@ -238,7 +238,7 @@ class TaskListApiTests extends AbstractUserStateTaskApiTests {
         assertThat(ids(page)).containsExactly(taskId);
         JsonNode assignedTo = page.get("content").get(0).get("assignedTo");
         assertThat(assignedTo.get("id").asString()).isEqualTo(assignee.getId().toString());
-        assertThat(assignedTo.get("displayName").isNull()).isTrue();
+        assertThat(assignedTo.get("displayName").asString()).isEqualTo(assignee.getDisplayName());
         assertThat(assignedTo.get("status").asString()).isEqualTo("DELETED");
     }
 

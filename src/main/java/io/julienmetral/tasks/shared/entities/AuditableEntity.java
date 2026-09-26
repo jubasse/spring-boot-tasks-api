@@ -31,7 +31,7 @@ public abstract class AuditableEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    // 💡 later with spring security
+    // Later, with Spring Security:
     // @CreatedBy
     // @Column(name = "created_by", updatable = false)
     // private String createdBy;

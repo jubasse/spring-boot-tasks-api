@@ -17,7 +17,7 @@ public interface PasswordResetTokenRepository extends JpaRepository<PasswordRese
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<PasswordResetToken> findByTokenHash(String tokenHash);
 
-    // Only the latest link stays valid. Native because JPQL would join the soft-deletable users.
+    // Only the latest link stays valid. Native for the same reason as RefreshTokenRepository.revokeAllForUser.
     @Modifying
     @Query(
             value = """

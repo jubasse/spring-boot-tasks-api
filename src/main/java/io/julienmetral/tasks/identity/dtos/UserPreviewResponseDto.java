@@ -1,31 +1,23 @@
 package io.julienmetral.tasks.identity.dtos;
 
-import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserStatus;
+import io.julienmetral.tasks.identity.entities.UserSummary;
 
 import java.util.UUID;
 
-/** A user as shown inside other resources (tasks, task history). {@code displayName} is null once deleted. */
+/** A user as shown inside other resources (tasks, task history), deleted users included. */
 public record UserPreviewResponseDto(
         UUID id,
         String displayName,
         UserStatus status
 ) {
 
-    /**
-     * @param user the loaded association, null when the user is soft-deleted
-     * @param id   the foreign key, still known when the user is soft-deleted
-     * @return null when there is no user at all (for example an unassigned task)
-     */
-    public static UserPreviewResponseDto of(User user, UUID id) {
-        if (user != null) {
-            return new UserPreviewResponseDto(user.getId(), user.getDisplayName(), UserStatus.of(user));
+    /** Null when there is no user at all, for example an unassigned task. */
+    public static UserPreviewResponseDto of(UserSummary user) {
+        if (user == null) {
+            return null;
         }
 
-        if (id != null) {
-            return new UserPreviewResponseDto(id, null, UserStatus.DELETED);
-        }
-
-        return null;
+        return new UserPreviewResponseDto(user.getId(), user.getDisplayName(), UserStatus.of(user));
     }
 }

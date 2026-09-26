@@ -1,38 +1,32 @@
 package io.julienmetral.tasks.task.dtos;
 
 import io.julienmetral.tasks.identity.dtos.UserPreviewResponseDto;
-import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.task.entities.Task;
 import io.julienmetral.tasks.task.entities.TaskEvent;
 import io.julienmetral.tasks.task.entities.TaskEventType;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.UserSummaries.active;
+import static io.julienmetral.tasks.support.UserSummaries.summary;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class TaskResponseDtoTest {
 
     private static final UUID ASSIGNEE_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID CREATOR_ID = UUID.fromString("00000000-0000-0000-0000-000000000002");
-
-    private static User activeUser(UUID id, String displayName) {
-        User user = new User();
-        user.setId(id);
-        user.setDisplayName(displayName);
-        user.setEmailVerifiedAt(Instant.parse("2026-01-01T00:00:00Z"));
-        return user;
-    }
+    private static final Instant VERIFIED_AT = Instant.parse("2026-01-01T00:00:00Z");
+    private static final Instant DELETED_AT = Instant.parse("2026-02-01T00:00:00Z");
 
     @Test
-    void loadedUsersAreShownWithTheirNameAndStatus() {
+    void usersAreShownWithTheirNameAndStatus() {
         Task task = new Task();
-        task.setAssignedTo(activeUser(ASSIGNEE_ID, "Alice"));
-        task.setCreatedBy(activeUser(CREATOR_ID, "Bob"));
+        task.setAssignedTo(active(ASSIGNEE_ID, "Alice"));
+        task.setCreatedBy(active(CREATOR_ID, "Bob"));
 
         TaskResponseDto dto = new TaskResponseDto(task);
 
@@ -43,18 +37,17 @@ class TaskResponseDtoTest {
     }
 
     @Test
-    void softDeletedUsersAreShownAsDeletedFromTheIdColumns() {
-        // A soft-deleted user leaves the association null; only the read-only id columns are left
+    void softDeletedUsersKeepTheirNameAndAreShownAsDeleted() {
         Task task = new Task();
-        ReflectionTestUtils.setField(task, "assignedToId", ASSIGNEE_ID);
-        ReflectionTestUtils.setField(task, "createdById", CREATOR_ID);
+        task.setAssignedTo(summary(ASSIGNEE_ID, "Alice", true, VERIFIED_AT, DELETED_AT));
+        task.setCreatedBy(summary(CREATOR_ID, "Bob", true, VERIFIED_AT, DELETED_AT));
 
         TaskResponseDto dto = new TaskResponseDto(task);
 
         assertThat(dto.assignedTo())
-                .isEqualTo(new UserPreviewResponseDto(ASSIGNEE_ID, null, UserStatus.DELETED));
+                .isEqualTo(new UserPreviewResponseDto(ASSIGNEE_ID, "Alice", UserStatus.DELETED));
         assertThat(dto.createdBy())
-                .isEqualTo(new UserPreviewResponseDto(CREATOR_ID, null, UserStatus.DELETED));
+                .isEqualTo(new UserPreviewResponseDto(CREATOR_ID, "Bob", UserStatus.DELETED));
     }
 
     @Test
@@ -66,10 +59,10 @@ class TaskResponseDtoTest {
     }
 
     @Test
-    void taskEventActorIsShownFromTheAssociation() {
+    void taskEventActorIsShownWithItsNameAndStatus() {
         TaskEvent event = new TaskEvent();
         event.setType(TaskEventType.CREATED);
-        event.setActor(activeUser(CREATOR_ID, "Bob"));
+        event.setActor(active(CREATOR_ID, "Bob"));
         event.setPayload(Map.of());
 
         TaskEventResponseDto dto = new TaskEventResponseDto(event);
@@ -79,12 +72,17 @@ class TaskResponseDtoTest {
     }
 
     @Test
-    void softDeletedTaskEventActorIsShownAsDeletedFromTheIdColumn() {
+    void softDeletedTaskEventActorKeepsItsNameAndIsShownAsDeleted() {
         TaskEvent event = new TaskEvent();
-        ReflectionTestUtils.setField(event, "actorId", CREATOR_ID);
+        event.setActor(summary(CREATOR_ID, "Bob", true, VERIFIED_AT, DELETED_AT));
 
         TaskEventResponseDto dto = new TaskEventResponseDto(event);
 
-        assertThat(dto.actor()).isEqualTo(new UserPreviewResponseDto(CREATOR_ID, null, UserStatus.DELETED));
+        assertThat(dto.actor()).isEqualTo(new UserPreviewResponseDto(CREATOR_ID, "Bob", UserStatus.DELETED));
+    }
+
+    @Test
+    void taskEventWithoutActorHasNullActor() {
+        assertThat(new TaskEventResponseDto(new TaskEvent()).actor()).isNull();
     }
 }
