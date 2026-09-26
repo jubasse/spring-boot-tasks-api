@@ -8,9 +8,12 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.rabbitmq.RabbitMQContainer;
+import org.testcontainers.images.builder.Transferable;
 import org.testcontainers.utility.DockerImageName;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.HexFormat;
 
 @TestConfiguration(proxyBeanMethods = false)
 public class TestcontainersConfiguration {
@@ -26,6 +29,15 @@ public class TestcontainersConfiguration {
 	static final String RUSTFS_ACCESS_KEY = "test-access-key";
 
 	static final String RUSTFS_SECRET_KEY = "test-secret-key";
+
+	/** The threat name clamd reports for the EICAR test file with the signature database below. */
+	public static final String EICAR_THREAT = "Eicar-Test-Signature.UNOFFICIAL";
+
+	// A body signature matches the EICAR string anywhere, including inside archives. ClamAV suffixes the name of a
+	// signature from an unsigned database with ".UNOFFICIAL".
+	private static final String EICAR_SIGNATURE = "Eicar-Test-Signature:0:*:" + HexFormat.of().formatHex(
+			"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*".getBytes(StandardCharsets.US_ASCII)
+	) + "\n";
 
 	@Bean
 	@ServiceConnection
@@ -84,11 +96,15 @@ public class TestcontainersConfiguration {
 		};
 	}
 
-	// Signatures are baked into the image; freshclam is off so tests never depend on the network
+	// Loads only the EICAR signature: with the signatures baked into the image, every clamd took about 1 GB, one per
+	// Spring test context, and a full run exhausted the machine's memory. freshclam is off, so tests never depend on
+	// the network.
 	@Bean
 	GenericContainer<?> clamavContainer() {
 		return new GenericContainer<>(DockerImageName.parse("clamav/clamav:1.5.4-debian"))
 				.withEnv("CLAMAV_NO_FRESHCLAMD", "true")
+				.withEnv("CLAMD_CONF_DatabaseDirectory", "/var/lib/clamav-test")
+				.withCopyToContainer(Transferable.of(EICAR_SIGNATURE), "/var/lib/clamav-test/eicar.ndb")
 				.withExposedPorts(CLAMAV_PORT)
 				.waitingFor(Wait.forLogMessage(".*socket found, clamd started.*", 1)
 						.withStartupTimeout(Duration.ofMinutes(3)));

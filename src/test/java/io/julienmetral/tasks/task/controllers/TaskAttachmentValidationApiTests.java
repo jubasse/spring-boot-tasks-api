@@ -1,5 +1,6 @@
 package io.julienmetral.tasks.task.controllers;
 
+import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import org.junit.jupiter.api.Test;
@@ -93,7 +94,7 @@ class TaskAttachmentValidationApiTests extends AbstractTaskAttachmentApiTests {
         assertRejected(admin, taskId, upload(asAdmin(admin), taskId, "notes.txt", "text/plain", EICAR))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.title").value("File rejected by the antivirus"))
-                .andExpect(jsonPath("$.detail").value("The file was rejected by the antivirus: Eicar-Test-Signature"));
+                .andExpect(jsonPath("$.detail").value("The file was rejected by the antivirus: " + TestcontainersConfiguration.EICAR_THREAT));
     }
 
     @Test
