@@ -115,6 +115,12 @@ In development, SMTP goes to the Mailpit service of `compose.yaml` (web UI on ht
   - The previous photo is deleted with `MediaService.delete`: the row goes with the change, and the object once the transaction commits.
   - `users.avatar_media_id` has an explicit unique constraint (`users_avatar_media_idUQ`). The associations are `@ManyToOne`, because a `@OneToOne` makes Hibernate add an implicit unique constraint with a generated name, which `liquibase:diff` then reports.
 - **URLs in responses:** `UserResponseDto` and every `UserPreviewResponseDto` carry an `avatarUrl`, a presigned URL computed by `MediaUrls`. Controllers pass `MediaUrls` to the DTO constructors.
+- **Cleanup:** `MediaCleanupJob` runs `MediaCleanupService` on `media.cleanup.cron`, daily at 03:30 by default.
+  - It purges the attachments of tasks, and the profile photos of users, soft-deleted for longer than `media.cleanup.retention` (30 days).
+  - It also purges media rows that nothing references and stored objects without a media row, once they are older than `media.cleanup.orphan-grace-period` (1 day), so uploads in progress are left alone.
+  - It uses native SQL (`MediaCleanupQueries`), because soft-deleted rows are invisible to JPA.
+  - One transaction holds a PostgreSQL advisory lock (`pg_try_advisory_xact_lock`), so a single instance works when several run. Rows are deleted in the transaction and objects after the commit, and an object that fails to delete is swept on the next run.
+  - Services that need the current time inject the `Clock` bean, so tests can move time forward.
 - **Downloads:** they never go through the application. `MediaService.downloadUrl` returns a presigned URL, valid `storage.presigned-url-ttl`, whose signed response headers force an attachment download under the original file name.
 - **Drivers:** the code depends on the `ObjectStorage` interface; `storage.driver` picks its configuration.
   - `rustfs` (`RustFsStorageConfiguration`): explicit endpoint, static keys, path-style URLs, and the bucket is created on startup. It is used in development (RustFS service of `compose.yaml`, console on http://localhost:9001) and in tests (RustFS container in `TestcontainersConfiguration`).

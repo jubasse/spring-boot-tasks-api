@@ -38,6 +38,12 @@ antivirus:
 media:
   avatar-max-size: 5MB
   attachment-max-size: 25MB
+  # Purges files of soft-deleted tasks and users after the retention period, and orphan rows or objects
+  cleanup:
+    enabled: ${MEDIA_CLEANUP_ENABLED:true}
+    cron: ${MEDIA_CLEANUP_CRON:0 30 3 * * *}
+    retention: ${MEDIA_CLEANUP_RETENTION:30d}
+    orphan-grace-period: 1d
 spring:
   config:
     import: optional:file:.env[.properties]

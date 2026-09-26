@@ -19,8 +19,12 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.model.S3Object;
+import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Iterable;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 import java.io.ByteArrayInputStream;
@@ -31,7 +35,9 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -41,7 +47,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class S3ObjectStorageTest {
@@ -61,6 +69,9 @@ class S3ObjectStorageTest {
 
     @Captor
     private ArgumentCaptor<Consumer<DeleteObjectRequest.Builder>> deleteRequest;
+
+    @Captor
+    private ArgumentCaptor<ListObjectsV2Request> listRequests;
 
     private S3Presigner presigner;
 
@@ -194,6 +205,99 @@ class S3ObjectStorageTest {
         ContentDisposition disposition = ContentDisposition.parse(header);
         assertThat(disposition.isAttachment()).isTrue();
         assertThat(disposition.getFilename()).isEqualTo(hostile);
+    }
+
+    @Test
+    void listingReturnsTheKeysModifiedBeforeTheCutoffAcrossAllPages() {
+        Instant cutoff = Instant.parse("2026-09-25T03:30:00Z");
+        paginateOver(
+                page("page-2",
+                        object("avatar/old", cutoff.minusSeconds(3600)),
+                        object("avatar/recent", cutoff.plusSeconds(1))),
+                page("page-3",
+                        object("task-attachment/old", cutoff.minus(Duration.ofDays(40)))),
+                page(null,
+                        object("task-attachment/older", cutoff.minusMillis(1)))
+        );
+
+        List<String> keys = storage.listKeysModifiedBefore(cutoff);
+
+        assertThat(keys).containsExactly("avatar/old", "task-attachment/old", "task-attachment/older");
+        verify(s3Client, times(3)).listObjectsV2(listRequests.capture());
+        assertThat(listRequests.getAllValues())
+                .extracting(ListObjectsV2Request::bucket)
+                .containsOnly(BUCKET);
+        assertThat(listRequests.getAllValues())
+                .extracting(ListObjectsV2Request::continuationToken)
+                .containsExactly(null, "page-2", "page-3");
+    }
+
+    @Test
+    void listingExcludesAnObjectModifiedExactlyAtTheCutoff() {
+        Instant cutoff = Instant.parse("2026-09-25T03:30:00Z");
+        paginateOver(page(null,
+                object("avatar/at-cutoff", cutoff),
+                object("avatar/just-before", cutoff.minusNanos(1))));
+
+        assertThat(storage.listKeysModifiedBefore(cutoff)).containsExactly("avatar/just-before");
+    }
+
+    @Test
+    void listingAnEmptyBucketReturnsNoKeys() {
+        paginateOver(ListObjectsV2Response.builder().build());
+
+        assertThat(storage.listKeysModifiedBefore(Instant.now())).isEmpty();
+    }
+
+    @Test
+    void failingListingIsReportedAsStorageUnavailable() {
+        SdkClientException failure = SdkClientException.create("Unable to connect");
+        paginateOver();
+        when(s3Client.listObjectsV2(any(ListObjectsV2Request.class))).thenThrow(failure);
+
+        assertThatThrownBy(() -> storage.listKeysModifiedBefore(Instant.now()))
+                .isInstanceOf(StorageUnavailableException.class)
+                .hasCause(failure);
+    }
+
+    @Test
+    void failureOnALaterPageIsReportedAsStorageUnavailable() {
+        S3Exception failure = (S3Exception) S3Exception.builder().statusCode(503).message("Slow down").build();
+        paginateOver();
+        when(s3Client.listObjectsV2(any(ListObjectsV2Request.class)))
+                .thenReturn(page("page-2", object("avatar/old", Instant.EPOCH)))
+                .thenThrow(failure);
+
+        assertThatThrownBy(() -> storage.listKeysModifiedBefore(Instant.now()))
+                .isInstanceOf(StorageUnavailableException.class)
+                .hasCause(failure);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void paginateOver(ListObjectsV2Response... pages) {
+        when(s3Client.listObjectsV2Paginator(any(Consumer.class))).thenAnswer(invocation -> {
+            ListObjectsV2Request.Builder builder = ListObjectsV2Request.builder();
+            invocation.<Consumer<ListObjectsV2Request.Builder>>getArgument(0).accept(builder);
+            return new ListObjectsV2Iterable(s3Client, builder.build());
+        });
+        if (pages.length > 0) {
+            List<ListObjectsV2Response> remaining = new ArrayList<>(List.of(pages));
+            when(s3Client.listObjectsV2(any(ListObjectsV2Request.class)))
+                    .thenAnswer(invocation -> remaining.removeFirst());
+        }
+    }
+
+    private static ListObjectsV2Response page(String nextContinuationToken, S3Object... objects) {
+        return ListObjectsV2Response
+                .builder()
+                .contents(objects)
+                .isTruncated(nextContinuationToken != null)
+                .nextContinuationToken(nextContinuationToken)
+                .build();
+    }
+
+    private static S3Object object(String key, Instant lastModified) {
+        return S3Object.builder().key(key).lastModified(lastModified).build();
     }
 
     private static Map<String, String> query(URI url) {
