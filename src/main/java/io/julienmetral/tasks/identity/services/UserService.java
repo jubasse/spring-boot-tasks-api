@@ -84,7 +84,7 @@ public class UserService {
 
     @Transactional
     public void verifyEmail(UUID id) {
-        User user = getUser(id);
+        User user = getUserForUpdate(id);
 
         if (user.getEmailVerifiedAt() == null) {
             user.setEmailVerifiedAt(Instant.now());
@@ -98,12 +98,12 @@ public class UserService {
 
     @Transactional
     public void enable(UUID id) {
-        getUser(id).setEnabled(true);
+        getUserForUpdate(id).setEnabled(true);
     }
 
     @Transactional
     public void disable(UUID id) {
-        getUser(id).setEnabled(false);
+        getUserForUpdate(id).setEnabled(false);
 
         // Access tokens expire on their own; refresh tokens must stop working now
         refreshTokenService.revokeAllForUser(id);
@@ -127,12 +127,19 @@ public class UserService {
 
     @Transactional
     public void delete(UUID id) {
-        User user = getUser(id);
+        User user = getUserForUpdate(id);
 
         user.markDeleted();
         userRepository.delete(user);
 
         refreshTokenService.revokeAllForUser(id);
+    }
+
+    // Every change of the account state locks the row first, so it is computed from the committed state: without
+    // it, a verification racing a disable left the profile ACTIVE on a disabled account
+    private User getUserForUpdate(UUID id) {
+        return userRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new UserNotFoundException(id));
     }
 
     private User getUser(UUID id) {

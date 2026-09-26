@@ -58,7 +58,7 @@ public class PasswordResetService {
 
         // findById skips soft-deleted users; a disabled account cannot sign in, so it cannot reset either
         User user = userRepository
-                .findById(token.getUser().getId())
+                .findByIdForUpdate(token.getUser().getId())
                 .filter(User::isEnabled)
                 .orElseThrow(InvalidPasswordResetTokenException::new);
 
