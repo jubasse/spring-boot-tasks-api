@@ -83,6 +83,16 @@ Refresh, verification and reset tokens are 256-bit random values (`OpaqueTokens`
 
 Public endpoints: `POST /api/v1/users` (sign-up), and `POST /api/v1/auth/login`, `/refresh`, `/logout`, `/verify-email`, `/password-reset/request` and `/password-reset/confirm`.
 
+### Rate limiting
+
+`RateLimiter` limits the endpoints anyone can call: login (per client address and per email), sign-up (per address), password reset request (per address and per email) and confirmation (per address), and verification email resend (per user). Limits are fixed windows set under `rate-limit.*`; over a limit, `RateLimitExceededException` becomes 429 with a `Retry-After` header.
+- Counting is one atomic `INSERT ... ON CONFLICT ... RETURNING` on `rate_limit_counters` (`RateLimitQueries`), so it holds across instances without Redis. Each check runs in its own transaction (`REQUIRES_NEW`), committed before the request is handled, so a failed login still counts.
+- The per-email password reset limit counts every email, used by an account or not: a 429 reveals nothing about which emails exist.
+- Keys are built by `RateLimitKeys`: addresses and emails are SHA-256 hashed (fixed length, no personal data in clear; an email that lower-casing lengthened once overflowed the column and failed the request), and an IPv6 address counts as its /64, which one client usually holds entirely.
+- A window lasts from 1 second to 1 day (`@DurationMin`/`@DurationMax`): a zero window divided by zero, and counters are purged after a day. `Retry-After` is rounded up to the next whole second.
+- The client address is `HttpServletRequest.getRemoteAddr()`. Behind a reverse proxy, set `server.forward-headers-strategy` (`FORWARD_HEADERS_STRATEGY`) so it comes from `X-Forwarded-For`. Warning: never enable it without a proxy that overwrites that header, or clients choose their own address and escape the limits.
+- Tests turn the limits off (`rate-limit.enabled: false`), except `RateLimitTests`.
+
 ### Task access rules
 
 Only **active** users can work on tasks. Active means enabled, not deleted, and with a verified email (`UserStatus.ACTIVE`).
