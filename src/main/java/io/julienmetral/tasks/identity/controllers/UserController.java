@@ -10,6 +10,8 @@ import io.julienmetral.tasks.identity.services.UserService;
 import io.julienmetral.tasks.media.services.MediaUrls;
 import io.julienmetral.tasks.shared.security.AdminOnly;
 import io.julienmetral.tasks.shared.security.AllowedRolesOrSelfOnly;
+import io.julienmetral.tasks.ratelimit.services.RateLimiter;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -28,11 +30,15 @@ public class UserController {
     private final UserService userService;
     private final AvatarService avatarService;
     private final MediaUrls mediaUrls;
+    private final RateLimiter rateLimiter;
 
     @PostMapping
     public ResponseEntity<UserResponseDto> create(
-            @Valid @RequestBody CreateUserDto dto
+            @Valid @RequestBody CreateUserDto dto,
+            HttpServletRequest request
     ) {
+        rateLimiter.signUp(request.getRemoteAddr());
+
         User user = userService.create(
                 dto.email(),
                 dto.password(),

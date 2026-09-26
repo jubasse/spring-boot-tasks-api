@@ -3,6 +3,7 @@ package io.julienmetral.tasks.identity.security;
 import io.julienmetral.tasks.identity.services.DatabaseUserDetailsService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
@@ -19,6 +20,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 
 import java.util.Map;
 
@@ -106,7 +108,8 @@ public class SecurityConfiguration {
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             JwtAuthenticationConverter jwtAuthenticationConverter,
-            ActiveUserAuthorizationManager activeUserAuthorizationManager
+            ActiveUserAuthorizationManager activeUserAuthorizationManager,
+            Environment environment
     ) {
 
         http
@@ -136,6 +139,11 @@ public class SecurityConfiguration {
                                         "/api/v1/auth/password-reset/confirm"
                                 )
                                 .permitAll()
+                                // Everything on the management port is public, that port being private by
+                                // deployment. Matching the endpoints only left its error page (404, 406, 500)
+                                // behind authentication, so every error there answered 401.
+                                .requestMatchers(onManagementPort(environment))
+                                .permitAll()
                                 // Tasks are reserved to enabled users with a verified email
                                 .requestMatchers("/api/v1/tasks/**")
                                 .access(activeUserAuthorizationManager)
@@ -154,5 +162,12 @@ public class SecurityConfiguration {
                 .httpBasic(AbstractHttpConfigurer::disable);
 
         return http.build();
+    }
+
+    // local.management.port is published once the management server has started, with its actual port (also when
+    // it is random). It is absent when management shares the API port, and then nothing matches.
+    private static RequestMatcher onManagementPort(Environment environment) {
+        return request -> String.valueOf(request.getLocalPort())
+                .equals(environment.getProperty("local.management.port"));
     }
 }

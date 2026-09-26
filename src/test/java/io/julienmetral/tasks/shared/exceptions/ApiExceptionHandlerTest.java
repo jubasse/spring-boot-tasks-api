@@ -16,6 +16,7 @@ import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
 import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
 import io.julienmetral.tasks.media.model.MediaUsage;
+import io.julienmetral.tasks.ratelimit.exceptions.RateLimitExceededException;
 import io.julienmetral.tasks.task.exceptions.AssigneeNotActiveException;
 import io.julienmetral.tasks.task.exceptions.InvalidMentionException;
 import io.julienmetral.tasks.task.exceptions.TaskAttachmentNotFoundException;
@@ -24,7 +25,10 @@ import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException;
 import io.julienmetral.tasks.task.exceptions.TooManyCommentAttachmentsException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -32,6 +36,7 @@ import org.springframework.util.unit.DataSize;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.net.ConnectException;
+import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
 
@@ -162,6 +167,48 @@ class ApiExceptionHandlerTest {
                 "status", 401,
                 "message", "Invalid email or password"
         ));
+    }
+
+    @Test
+    void rateLimitExceededMapsTo429WithRetryAfterInSeconds() {
+        ResponseEntity<ProblemDetail> response = handler.handleRateLimitExceeded(
+                new RateLimitExceededException(Duration.ofMinutes(42).plusSeconds(17)));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        assertThat(response.getHeaders().get(HttpHeaders.RETRY_AFTER)).containsExactly("2537");
+
+        ProblemDetail problem = response.getBody();
+        assertThat(problem).isNotNull();
+        assertThat(problem.getStatus()).isEqualTo(429);
+        assertThat(problem.getTitle()).isEqualTo("Too many requests");
+        assertThat(problem.getDetail()).isEqualTo("Too many requests, try again in 2537 seconds");
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {0, 1, 500, 999})
+    void retryAfterUnderOneSecondIsOneSecond(long millis) {
+        ResponseEntity<ProblemDetail> response = handler.handleRateLimitExceeded(
+                new RateLimitExceededException(Duration.ofMillis(millis)));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        assertThat(response.getHeaders().getFirst(HttpHeaders.RETRY_AFTER)).isEqualTo("1");
+    }
+
+    @Test
+    void retryAfterOfWholeSecondsIsKeptAsIs() {
+        ResponseEntity<ProblemDetail> response = handler.handleRateLimitExceeded(
+                new RateLimitExceededException(Duration.ofSeconds(60)));
+
+        assertThat(response.getHeaders().getFirst(HttpHeaders.RETRY_AFTER)).isEqualTo("60");
+    }
+    @Test
+    void retryAfterWithAFractionOfASecondIsRoundedUp() {
+        ResponseEntity<ProblemDetail> response = handler.handleRateLimitExceeded(
+                new RateLimitExceededException(Duration.ofMillis(1_500)));
+
+        assertThat(response.getHeaders().getFirst(HttpHeaders.RETRY_AFTER)).isEqualTo("2");
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getDetail()).isEqualTo("Too many requests, try again in 2 seconds");
     }
 
     @Test

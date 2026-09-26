@@ -131,6 +131,10 @@
     {
       "key": "commentAttachmentId",
       "value": ""
+    },
+    {
+      "key": "rateLimitedEmail",
+      "value": ""
     }
   ],
   "item": [
@@ -3903,6 +3907,77 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status is one of [202]', () => pm.expect(pm.response.code).to.be.oneOf([202]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Request password reset too often (429)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/password-reset/request",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "password-reset",
+                "request"
+              ]
+            },
+            "description": "Password reset requests are limited to 3 per hour for one email (and 20 per hour for one client address), whether or not an account uses it. The pre-request script sends 3 requests for a fresh email; this 4th one is refused.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{rateLimitedEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const email = `rate-limited-${Date.now()}@example.com`;",
+                  "pm.collectionVariables.set('rateLimitedEmail', email);",
+                  "const send = (remaining) => {",
+                  "  if (remaining === 0) return;",
+                  "  pm.sendRequest({",
+                  "    url: pm.collectionVariables.get('baseUrl') + '/api/v1/auth/password-reset/request',",
+                  "    method: 'POST',",
+                  "    header: { 'Content-Type': 'application/json' },",
+                  "    body: { mode: 'raw', raw: JSON.stringify({ email }) }",
+                  "  }, () => send(remaining - 1));",
+                  "};",
+                  "send(3);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [429]', () => pm.expect(pm.response.code).to.be.oneOf([429]));",
+                  "pm.test('says when to retry', () => pm.expect(Number(pm.response.headers.get('Retry-After'))).to.be.above(0));",
+                  "pm.test('explains why', () => pm.expect(pm.response.json().title).to.eql('Too many requests'));"
                 ]
               }
             }

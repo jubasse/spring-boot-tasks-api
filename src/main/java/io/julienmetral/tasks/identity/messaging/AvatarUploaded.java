@@ -2,7 +2,7 @@ package io.julienmetral.tasks.identity.messaging;
 
 import java.util.UUID;
 
-/** Published in the upload's transaction, then queued for the worker once it commits. */
+/** Written to the outbox in the upload's transaction; the worker receives it once that commits. */
 public record AvatarUploaded(
         UUID userId,
         UUID uploadId
