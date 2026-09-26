@@ -1,7 +1,6 @@
 package io.julienmetral.tasks.identity.entities;
 
 import io.julienmetral.tasks.shared.entities.AuditableEntity;
-import io.julienmetral.tasks.task.entities.Task;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -64,9 +63,6 @@ public class User extends AuditableEntity implements Serializable {
     @Column(name = "role", nullable = false, length = 50)
     @Enumerated(EnumType.STRING)
     private Set<UserRole> roles = new HashSet<>();
-
-    @OneToMany(mappedBy = "assignedTo")
-    private Set<Task> assignedTasks = new HashSet<>();
 
 /*    @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "avatar_media_id")
