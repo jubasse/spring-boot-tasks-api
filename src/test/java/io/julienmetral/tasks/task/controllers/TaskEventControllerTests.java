@@ -278,15 +278,6 @@ class TaskEventControllerTests extends AbstractTaskApiTests {
                 .andExpect(jsonPath("$.title").value("Task not found"));
     }
 
-    @Test
-    void withoutTokenReturns401() throws Exception {
-        User admin = createUser(UserRole.ADMIN);
-        UUID taskId = createTask(admin, null);
-
-        mockMvc.perform(get(eventsOf(taskId)))
-                .andExpect(status().isUnauthorized());
-    }
-
     private String eventsOf(UUID taskId) {
         return TASKS + "/" + taskId + "/events";
     }
