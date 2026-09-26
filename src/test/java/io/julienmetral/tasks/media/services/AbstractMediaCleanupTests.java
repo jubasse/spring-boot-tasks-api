@@ -104,6 +104,14 @@ abstract class AbstractMediaCleanupTests {
         );
     }
 
+    Media storeAvatarUpload(User uploader) {
+        return mediaService.store(
+                new MockMultipartFile("file", "photo.png", "image/png", uniquePng()),
+                MediaUsage.AVATAR_UPLOAD,
+                uploader.getId()
+        );
+    }
+
     Media attachedToTask(UUID taskId, User uploader) {
         Media media = storeAttachment(uploader);
 
@@ -143,6 +151,14 @@ abstract class AbstractMediaCleanupTests {
         Media media = storeAvatar(user);
 
         jdbcTemplate.update("update users set avatar_media_id = ? where id = ?", media.getId(), user.getId());
+
+        return media;
+    }
+
+    Media pendingUploadOf(User user) {
+        Media media = storeAvatarUpload(user);
+
+        jdbcTemplate.update("update users set pending_avatar_media_id = ? where id = ?", media.getId(), user.getId());
 
         return media;
     }
@@ -189,6 +205,14 @@ abstract class AbstractMediaCleanupTests {
     UUID avatarMediaIdOf(User user) {
         return jdbcTemplate.queryForObject(
                 "select avatar_media_id from users where id = ?",
+                UUID.class,
+                user.getId()
+        );
+    }
+
+    UUID pendingAvatarMediaIdOf(User user) {
+        return jdbcTemplate.queryForObject(
+                "select pending_avatar_media_id from users where id = ?",
                 UUID.class,
                 user.getId()
         );
