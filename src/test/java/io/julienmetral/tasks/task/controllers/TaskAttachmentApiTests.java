@@ -40,6 +40,7 @@ class TaskAttachmentApiTests extends AbstractTaskAttachmentApiTests {
                 .andExpect(jsonPath("$.uploadedBy.displayName").value(assignee.getDisplayName()))
                 .andExpect(jsonPath("$.uploadedBy.status").value("ACTIVE"))
                 .andExpect(jsonPath("$.uploadedBy.avatarUrl").value(nullValue()))
+                .andExpect(jsonPath("$.commentId").value(nullValue()))
                 .andExpect(jsonPath("$.downloadUrl").isNotEmpty())
                 .andReturn()
                 .getResponse();
