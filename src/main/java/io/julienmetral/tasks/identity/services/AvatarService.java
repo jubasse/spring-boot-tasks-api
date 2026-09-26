@@ -64,7 +64,7 @@ public class AvatarService {
      */
     @Transactional
     public void process(UUID userId, UUID uploadId) {
-        User user = userRepository.findById(userId).orElse(null);
+        User user = userRepository.findByIdForUpdate(userId).orElse(null);
 
         if (user == null
                 || user.getPendingAvatar() == null
@@ -125,9 +125,11 @@ public class AvatarService {
         }
     }
 
+    // Every photo change locks the user row first: the upload request and the worker both update it and delete media
+    // rows, and without a common first lock they deadlocked (Postgres 40P01) or read a pending upload already replaced
     private User getUser(UUID userId) {
         return userRepository
-                .findById(userId)
+                .findByIdForUpdate(userId)
                 .orElseThrow(() -> new UserNotFoundException(userId));
     }
 
