@@ -49,8 +49,16 @@ public class ClamAvScanner implements VirusScanner {
             socket.connect(new InetSocketAddress(host, port), timeoutMillis);
             socket.setSoTimeout(timeoutMillis);
 
-            send(content, new DataOutputStream(socket.getOutputStream()));
-            reply = readReply(socket.getInputStream());
+            // setSoTimeout only bounds reads: a clamd that accepts but stops reading would block the write forever
+            // (reproduced with a 16 MB file). Closing the socket at the deadline makes the blocked write fail.
+            Thread deadline = Thread.ofVirtual().start(() -> closeAfterTimeout(socket));
+
+            try {
+                send(content, new DataOutputStream(socket.getOutputStream()));
+                reply = readReply(socket.getInputStream());
+            } finally {
+                deadline.interrupt();
+            }
         } catch (IOException exception) {
             throw new AntivirusUnavailableException(exception);
         }
@@ -65,6 +73,15 @@ public class ClamAvScanner implements VirusScanner {
 
         // For example "INSTREAM size limit exceeded. ERROR"
         throw new AntivirusUnavailableException("Unexpected clamd reply: " + reply);
+    }
+
+    private void closeAfterTimeout(Socket socket) {
+        try {
+            Thread.sleep(timeoutMillis);
+            socket.close();
+        } catch (InterruptedException | IOException finishedInTime) {
+            // Interrupted: the scan completed before the deadline
+        }
     }
 
     private static void send(InputStream content, DataOutputStream out) throws IOException {
