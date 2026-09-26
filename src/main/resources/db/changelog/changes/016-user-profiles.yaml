@@ -1,0 +1,215 @@
+databaseChangeLog:
+- changeSet:
+    id: 016-create-user-profiles
+    author: julien-metral
+    comment: >
+      What other resources show of a user moves to user_profiles, which outlives the account: users.id becomes a
+      foreign key to user_profiles.id, and every public reference (tasks, history, comments, mentions, reminders,
+      media) and the tokens point to user_profiles. Profiles keep the ids of their users, so no reference changes
+      value.
+    changes:
+    - createTable:
+        tableName: user_profiles
+        columns:
+        - column:
+            name: id
+            type: UUID
+            defaultValueComputed: uuidv7()
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: user_profilesPK
+        - column:
+            name: display_name
+            type: VARCHAR(255)
+            constraints:
+              nullable: false
+        - column:
+            name: status
+            type: VARCHAR(20)
+            constraints:
+              nullable: false
+        - column:
+            name: avatar_media_id
+            type: UUID
+        - column:
+            name: pending_avatar_media_id
+            type: UUID
+        - column:
+            name: anonymized_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            name: created_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+            constraints:
+              nullable: false
+        - column:
+            name: updated_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+            constraints:
+              nullable: false
+    - sql:
+        comment: One profile per user, deleted and anonymized users included, with the status computed like UserStatus
+        sql: >
+          INSERT INTO user_profiles
+            (id, display_name, status, avatar_media_id, pending_avatar_media_id, anonymized_at, created_at, updated_at)
+          SELECT id, display_name,
+                 CASE
+                   WHEN deleted_at IS NOT NULL THEN 'DELETED'
+                   WHEN NOT enabled THEN 'DISABLED'
+                   WHEN email_verified_at IS NULL THEN 'UNVERIFIED'
+                   ELSE 'ACTIVE'
+                 END,
+                 avatar_media_id, pending_avatar_media_id, anonymized_at, created_at, updated_at
+          FROM users
+    - dropForeignKeyConstraint:
+        baseTableName: tasks
+        constraintName: tasks_assigned_toFK
+    - dropForeignKeyConstraint:
+        baseTableName: tasks
+        constraintName: tasks_created_byFK
+    - dropForeignKeyConstraint:
+        baseTableName: task_events
+        constraintName: task_events_actorFK
+    - dropForeignKeyConstraint:
+        baseTableName: task_comments
+        constraintName: task_comments_authorFK
+    - dropForeignKeyConstraint:
+        baseTableName: task_comment_mentions
+        constraintName: task_comment_mentions_userFK
+    - dropForeignKeyConstraint:
+        baseTableName: task_reminders
+        constraintName: task_reminders_recipientFK
+    - dropForeignKeyConstraint:
+        baseTableName: media
+        constraintName: media_uploaded_byFK
+    - dropForeignKeyConstraint:
+        baseTableName: refresh_tokens
+        constraintName: refresh_tokens_userFK
+    - dropForeignKeyConstraint:
+        baseTableName: email_verification_tokens
+        constraintName: email_verification_tokens_userFK
+    - dropForeignKeyConstraint:
+        baseTableName: password_reset_tokens
+        constraintName: password_reset_tokens_userFK
+    - addForeignKeyConstraint:
+        baseTableName: tasks
+        baseColumnNames: assigned_to_id
+        constraintName: tasks_assigned_toFK
+        referencedTableName: user_profiles
+        referencedColumnNames: id
+    - addForeignKeyConstraint:
+        baseTableName: tasks
+        baseColumnNames: created_by_id
+        constraintName: tasks_created_byFK
+        referencedTableName: user_profiles
+        referencedColumnNames: id
+    - addForeignKeyConstraint:
+        baseTableName: task_events
+        baseColumnNames: actor_id
+        constraintName: task_events_actorFK
+        referencedTableName: user_profiles
+        referencedColumnNames: id
+    - addForeignKeyConstraint:
+        baseTableName: task_comments
+        baseColumnNames: author_id
+        constraintName: task_comments_authorFK
+        referencedTableName: user_profiles
+        referencedColumnNames: id
+    - addForeignKeyConstraint:
+        baseTableName: task_comment_mentions
+        baseColumnNames: user_id
+        constraintName: task_comment_mentions_userFK
+        referencedTableName: user_profiles
+        referencedColumnNames: id
+    - addForeignKeyConstraint:
+        baseTableName: task_reminders
+        baseColumnNames: recipient_id
+        constraintName: task_reminders_recipientFK
+        referencedTableName: user_profiles
+        referencedColumnNames: id
+    - addForeignKeyConstraint:
+        baseTableName: media
+        baseColumnNames: uploaded_by_id
+        constraintName: media_uploaded_byFK
+        referencedTableName: user_profiles
+        referencedColumnNames: id
+    - addForeignKeyConstraint:
+        baseTableName: refresh_tokens
+        baseColumnNames: user_id
+        constraintName: refresh_tokens_userFK
+        referencedTableName: user_profiles
+        referencedColumnNames: id
+    - addForeignKeyConstraint:
+        baseTableName: email_verification_tokens
+        baseColumnNames: user_id
+        constraintName: email_verification_tokens_userFK
+        referencedTableName: user_profiles
+        referencedColumnNames: id
+    - addForeignKeyConstraint:
+        baseTableName: password_reset_tokens
+        baseColumnNames: user_id
+        constraintName: password_reset_tokens_userFK
+        referencedTableName: user_profiles
+        referencedColumnNames: id
+    - dropForeignKeyConstraint:
+        baseTableName: users
+        constraintName: users_avatar_mediaFK
+    - dropForeignKeyConstraint:
+        baseTableName: users
+        constraintName: users_pending_avatar_mediaFK
+    - dropUniqueConstraint:
+        tableName: users
+        constraintName: users_avatar_media_idUQ
+    - dropUniqueConstraint:
+        tableName: users
+        constraintName: users_pending_avatar_media_idUQ
+    - addUniqueConstraint:
+        tableName: user_profiles
+        columnNames: avatar_media_id
+        constraintName: user_profiles_avatar_media_idUQ
+    - addUniqueConstraint:
+        tableName: user_profiles
+        columnNames: pending_avatar_media_id
+        constraintName: user_profiles_pending_avatar_media_idUQ
+    - addForeignKeyConstraint:
+        baseTableName: user_profiles
+        baseColumnNames: avatar_media_id
+        constraintName: user_profiles_avatar_mediaFK
+        referencedTableName: media
+        referencedColumnNames: id
+    - addForeignKeyConstraint:
+        baseTableName: user_profiles
+        baseColumnNames: pending_avatar_media_id
+        constraintName: user_profiles_pending_avatar_mediaFK
+        referencedTableName: media
+        referencedColumnNames: id
+    - sql:
+        comment: Users already anonymized lose their account row, as anonymization now does; their profile stays
+        sql: >
+          DELETE FROM user_roles WHERE user_id IN (SELECT id FROM users WHERE anonymized_at IS NOT NULL);
+          DELETE FROM notification_settings WHERE user_id IN (SELECT id FROM users WHERE anonymized_at IS NOT NULL);
+          DELETE FROM refresh_tokens WHERE user_id IN (SELECT id FROM users WHERE anonymized_at IS NOT NULL);
+          DELETE FROM email_verification_tokens WHERE user_id IN (SELECT id FROM users WHERE anonymized_at IS NOT NULL);
+          DELETE FROM password_reset_tokens WHERE user_id IN (SELECT id FROM users WHERE anonymized_at IS NOT NULL);
+          DELETE FROM users WHERE anonymized_at IS NOT NULL
+    - dropColumn:
+        tableName: users
+        columns:
+        - column:
+            name: display_name
+        - column:
+            name: avatar_media_id
+        - column:
+            name: pending_avatar_media_id
+        - column:
+            name: anonymized_at
+    - dropDefaultValue:
+        tableName: users
+        columnName: id
+    - addForeignKeyConstraint:
+        baseTableName: users
+        baseColumnNames: id
+        constraintName: users_profileFK
+        referencedTableName: user_profiles
+        referencedColumnNames: id
