@@ -55,7 +55,7 @@ class TaskUserStatusApiTests extends AbstractUserStateTaskApiTests {
     }
 
     @Test
-    void deletedAssigneeIsShownAsDeleted() throws Exception {
+    void deletedAssigneeKeepsTheirNameAndIsShownAsDeleted() throws Exception {
         User admin = createUser(UserRole.ADMIN);
         User assignee = createUser(UserRole.USER);
         UUID taskId = createTask(admin, assignee);
@@ -65,13 +65,13 @@ class TaskUserStatusApiTests extends AbstractUserStateTaskApiTests {
         getTask(admin, taskId)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.assignedTo.id").value(assignee.getId().toString()))
-                .andExpect(jsonPath("$.assignedTo.displayName").value(nullValue()))
+                .andExpect(jsonPath("$.assignedTo.displayName").value(assignee.getDisplayName()))
                 .andExpect(jsonPath("$.assignedTo.status").value("DELETED"))
                 .andExpect(jsonPath("$.createdBy.status").value("ACTIVE"));
     }
 
     @Test
-    void deletedCreatorAndActorAreShownAsDeleted() throws Exception {
+    void deletedCreatorAndActorKeepTheirNameAndAreShownAsDeleted() throws Exception {
         User creator = createUser(UserRole.ADMIN);
         User reader = createUser(UserRole.ADMIN);
         UUID taskId = createTask(creator, null);
@@ -81,14 +81,14 @@ class TaskUserStatusApiTests extends AbstractUserStateTaskApiTests {
         getTask(reader, taskId)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.createdBy.id").value(creator.getId().toString()))
-                .andExpect(jsonPath("$.createdBy.displayName").value(nullValue()))
+                .andExpect(jsonPath("$.createdBy.displayName").value(creator.getDisplayName()))
                 .andExpect(jsonPath("$.createdBy.status").value("DELETED"));
 
         getEvents(reader, taskId)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].type").value("CREATED"))
                 .andExpect(jsonPath("$.content[0].actor.id").value(creator.getId().toString()))
-                .andExpect(jsonPath("$.content[0].actor.displayName").value(nullValue()))
+                .andExpect(jsonPath("$.content[0].actor.displayName").value(creator.getDisplayName()))
                 .andExpect(jsonPath("$.content[0].actor.status").value("DELETED"));
     }
 
@@ -292,7 +292,7 @@ class TaskUserStatusApiTests extends AbstractUserStateTaskApiTests {
     }
 
     @Test
-    void historyOfDeletedActorOnLaterEventsIsShownAsDeleted() throws Exception {
+    void historyOfDeletedActorOnLaterEventsKeepsTheirNameAndIsShownAsDeleted() throws Exception {
         User creator = createUser(UserRole.ADMIN);
         User editor = createUser(UserRole.ADMIN);
         UUID taskId = createTask(creator, null);
@@ -308,7 +308,7 @@ class TaskUserStatusApiTests extends AbstractUserStateTaskApiTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].type").value("UPDATED"))
                 .andExpect(jsonPath("$.content[0].actor.id").value(editor.getId().toString()))
-                .andExpect(jsonPath("$.content[0].actor.displayName").value(nullValue()))
+                .andExpect(jsonPath("$.content[0].actor.displayName").value(editor.getDisplayName()))
                 .andExpect(jsonPath("$.content[0].actor.status").value("DELETED"))
                 .andExpect(jsonPath("$.content[1].type").value("CREATED"))
                 .andExpect(jsonPath("$.content[1].actor.status").value("ACTIVE"));
