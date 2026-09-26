@@ -11,6 +11,7 @@ import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.media.exceptions.AntivirusUnavailableException;
 import io.julienmetral.tasks.media.exceptions.EmptyMediaException;
 import io.julienmetral.tasks.media.exceptions.InfectedMediaException;
+import io.julienmetral.tasks.media.exceptions.InvalidImageException;
 import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
 import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
@@ -211,6 +212,17 @@ class ApiExceptionHandlerTest {
         assertThat(problem.getDetail())
                 .isEqualTo("File storage is temporarily unavailable")
                 .doesNotContain("rustfs");
+    }
+
+    @Test
+    void invalidImageMapsTo422WithTheReason() {
+        ProblemDetail problem = handler.handleInvalidImage(
+                new InvalidImageException("dimensions 50000x50000 are too large"));
+
+        assertThat(problem.getStatus()).isEqualTo(422);
+        assertThat(problem.getTitle()).isEqualTo("Invalid image");
+        assertThat(problem.getDetail())
+                .isEqualTo("The image cannot be used: dimensions 50000x50000 are too large");
     }
 
     @Test
