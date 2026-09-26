@@ -213,3 +213,15 @@ databaseChangeLog:
         constraintName: users_profileFK
         referencedTableName: user_profiles
         referencedColumnNames: id
+- changeSet:
+    id: 016-clear-photos-of-anonymized-profiles
+    author: julien-metral
+    comment: >
+      The first changeset copied the photo references of users already anonymized, whose account rows it then
+      deleted: the media cleanup only purges media nothing references, so those files would have been kept forever.
+    changes:
+    - sql:
+        sql: >
+          UPDATE user_profiles
+          SET avatar_media_id = NULL, pending_avatar_media_id = NULL
+          WHERE anonymized_at IS NOT NULL

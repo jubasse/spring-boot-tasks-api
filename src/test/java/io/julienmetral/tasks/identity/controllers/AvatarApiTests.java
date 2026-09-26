@@ -8,6 +8,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.http.MediaType;
 import tools.jackson.databind.JsonNode;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.UUID;
@@ -15,10 +16,10 @@ import java.util.concurrent.ThreadLocalRandom;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -35,7 +36,7 @@ class AvatarApiTests extends AbstractAvatarApiTests {
                 .andExpect(jsonPath("$.id").value(user.getId().toString()))
                 .andExpect(jsonPath("$.email").value(user.getEmail()))
                 .andExpect(jsonPath("$.avatarPending").value(true))
-                .andExpect(jsonPath("$.avatarUrl").value(nullValue()));
+                .andExpect(jsonPath("$.avatarUrl").value(identiconUrl(user)));
 
         awaitProcessed(user);
 
@@ -238,7 +239,7 @@ class AvatarApiTests extends AbstractAvatarApiTests {
 
         mockMvc.perform(get(USERS + "/{id}", user.getId()).with(asUser(user)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.avatarUrl").value(nullValue()));
+                .andExpect(jsonPath("$.avatarUrl").value(identiconUrl(user)));
     }
 
     @Test
@@ -317,12 +318,84 @@ class AvatarApiTests extends AbstractAvatarApiTests {
     }
 
     @Test
-    void userResponseWithoutAvatarHasNullAvatarUrl() throws Exception {
+    void userResponseWithoutAvatarPointsToItsIdenticon() throws Exception {
         User user = createUser(UserRole.USER);
 
         mockMvc.perform(get(USERS + "/{id}", user.getId()).with(asUser(user)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.avatarUrl").value(nullValue()));
+                .andExpect(jsonPath("$.avatarUrl").value(identiconUrl(user)));
+    }
+
+    @Test
+    void identiconUrlOfAUserWithoutAvatarServesAnImageWithoutAToken() throws Exception {
+        User user = createUser(UserRole.USER);
+
+        String avatarUrl = userJson(user).get("avatarUrl").asString();
+
+        mockMvc.perform(get(URI.create(avatarUrl)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("image/svg+xml"));
+    }
+
+    @Test
+    void disabledUserWithAvatarShowsItsIdenticonWhileThePhotoIsKept() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User user = createUser(UserRole.USER);
+        uploadOwnAvatar(user, opaquePng());
+        String key = avatarStorageKey(user);
+        UUID taskId = createTask(admin, user);
+
+        mockMvc.perform(post(USERS + "/{id}/disable", user.getId()).with(asAdmin(admin)))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get(USERS + "/{id}", user.getId()).with(asAdmin(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(false))
+                .andExpect(jsonPath("$.avatarUrl").value(identiconUrl(user)));
+        mockMvc.perform(get("/api/v1/tasks/{id}", taskId).with(asAdmin(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.assignedTo.status").value("DISABLED"))
+                .andExpect(jsonPath("$.assignedTo.avatarUrl").value(identiconUrl(user)));
+        assertThat(avatarStorageKey(user)).isEqualTo(key);
+        assertThat(mediaRowCount(key)).isOne();
+        assertThat(headObject(key).contentLength()).isPositive();
+    }
+
+    @Test
+    void reEnabledUserShowsTheKeptPhotoAgain() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User user = createUser(UserRole.USER);
+        uploadOwnAvatar(user, opaquePng());
+        String key = avatarStorageKey(user);
+        mockMvc.perform(post(USERS + "/{id}/disable", user.getId()).with(asAdmin(admin)))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(post(USERS + "/{id}/enable", user.getId()).with(asAdmin(admin)))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get(USERS + "/{id}", user.getId()).with(asAdmin(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.avatarUrl", containsString(key)));
+    }
+
+    @Test
+    void deletedUserWithAvatarIsShownWithItsIdenticon() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User user = createUser(UserRole.USER);
+        uploadOwnAvatar(user, opaquePng());
+        String key = avatarStorageKey(user);
+        UUID taskId = createTask(admin, user);
+
+        mockMvc.perform(delete(USERS + "/{id}", user.getId()).with(asAdmin(admin)))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/v1/tasks/{id}", taskId).with(asAdmin(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.assignedTo.status").value("DELETED"))
+                .andExpect(jsonPath("$.assignedTo.avatarUrl").value(identiconUrl(user)));
+        // The photo stays until the media cleanup's retention period is over
+        assertThat(avatarStorageKey(user)).isEqualTo(key);
+        assertThat(mediaRowCount(key)).isOne();
     }
 
     @Test
@@ -357,7 +430,7 @@ class AvatarApiTests extends AbstractAvatarApiTests {
     }
 
     @Test
-    void taskAndHistoryPreviewsWithoutAvatarHaveNullAvatarUrl() throws Exception {
+    void taskAndHistoryPreviewsWithoutAvatarPointToTheirIdenticons() throws Exception {
         User admin = createUser(UserRole.ADMIN);
         User assignee = createUser(UserRole.USER);
 
@@ -366,13 +439,13 @@ class AvatarApiTests extends AbstractAvatarApiTests {
         mockMvc.perform(get("/api/v1/tasks/{id}", taskId).with(asAdmin(admin)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.assignedTo.id").value(assignee.getId().toString()))
-                .andExpect(jsonPath("$.assignedTo.avatarUrl").value(nullValue()))
-                .andExpect(jsonPath("$.createdBy.avatarUrl").value(nullValue()));
+                .andExpect(jsonPath("$.assignedTo.avatarUrl").value(identiconUrl(assignee)))
+                .andExpect(jsonPath("$.createdBy.avatarUrl").value(identiconUrl(admin)));
 
         mockMvc.perform(get("/api/v1/tasks/{taskId}/events", taskId).with(asAdmin(admin)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].actor.id").value(admin.getId().toString()))
-                .andExpect(jsonPath("$.content[0].actor.avatarUrl").value(nullValue()));
+                .andExpect(jsonPath("$.content[0].actor.avatarUrl").value(identiconUrl(admin)));
     }
 
     private UUID createTask(User admin, User assignee) throws Exception {

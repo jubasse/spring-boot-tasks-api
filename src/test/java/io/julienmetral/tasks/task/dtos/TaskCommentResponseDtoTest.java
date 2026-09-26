@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.task.dtos;
 
-import io.julienmetral.tasks.identity.dtos.UserPreviewResponseDto;
+import io.julienmetral.tasks.identity.dtos.UserProfileResponseDto;
+import io.julienmetral.tasks.identity.entities.UserProfile;
 import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.services.MediaUrls;
@@ -12,10 +13,11 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
-import static io.julienmetral.tasks.support.UserSummaries.active;
-import static io.julienmetral.tasks.support.UserSummaries.summary;
+import static io.julienmetral.tasks.support.UserProfiles.active;
+import static io.julienmetral.tasks.support.UserProfiles.profile;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -23,7 +25,6 @@ class TaskCommentResponseDtoTest {
 
     private static final Instant CREATED_AT = Instant.parse("2026-03-01T10:15:30Z");
     private static final Instant EDITED_AT = Instant.parse("2026-03-01T11:00:00Z");
-    private static final Instant VERIFIED_AT = Instant.parse("2026-01-01T00:00:00Z");
 
     private final MediaUrls mediaUrls = mock(MediaUrls.class);
     private final UUID commentId = UUID.randomUUID();
@@ -31,10 +32,16 @@ class TaskCommentResponseDtoTest {
     private final TaskComment comment = new TaskComment();
 
     TaskCommentResponseDtoTest() {
+        when(mediaUrls.avatarOf(any(UserProfile.class)))
+                .thenAnswer(invocation -> identiconUrl(invocation.<UserProfile>getArgument(0).getId()));
         comment.setId(commentId);
         comment.setAuthor(active(authorId, "Ada"));
         comment.setBody("Ping <@" + authorId + ">");
         comment.setCreatedAt(CREATED_AT);
+    }
+
+    private static String identiconUrl(UUID id) {
+        return "/api/v1/identicons/" + id;
     }
 
     private TaskAttachment attachment(String filename) {
@@ -56,7 +63,8 @@ class TaskCommentResponseDtoTest {
 
         assertThat(dto.id()).isEqualTo(commentId);
         assertThat(dto.body()).isEqualTo("Ping <@" + authorId + ">");
-        assertThat(dto.author()).isEqualTo(new UserPreviewResponseDto(authorId, "Ada", UserStatus.ACTIVE, null));
+        assertThat(dto.author())
+                .isEqualTo(new UserProfileResponseDto(authorId, "Ada", UserStatus.ACTIVE, identiconUrl(authorId)));
         assertThat(dto.createdAt()).isEqualTo(CREATED_AT);
         assertThat(dto.editedAt()).isEqualTo(EDITED_AT);
     }
@@ -76,11 +84,12 @@ class TaskCommentResponseDtoTest {
 
     @Test
     void deletedAuthorKeepsTheirNameAndShowsDeleted() {
-        comment.setAuthor(summary(authorId, "Ada", true, VERIFIED_AT, Instant.parse("2026-02-01T00:00:00Z")));
+        comment.setAuthor(profile(authorId, "Ada", UserStatus.DELETED));
 
         TaskCommentResponseDto dto = new TaskCommentResponseDto(comment, mediaUrls);
 
-        assertThat(dto.author()).isEqualTo(new UserPreviewResponseDto(authorId, "Ada", UserStatus.DELETED, null));
+        assertThat(dto.author())
+                .isEqualTo(new UserProfileResponseDto(authorId, "Ada", UserStatus.DELETED, identiconUrl(authorId)));
     }
 
     @Test
@@ -95,22 +104,22 @@ class TaskCommentResponseDtoTest {
         TaskCommentResponseDto dto = new TaskCommentResponseDto(comment, mediaUrls);
 
         assertThat(dto.mentions())
-                .extracting(UserPreviewResponseDto::displayName)
+                .extracting(UserProfileResponseDto::displayName)
                 .containsExactly("Bob", "Mia", "Zoe");
         assertThat(dto.mentions())
-                .extracting(UserPreviewResponseDto::id)
+                .extracting(UserProfileResponseDto::id)
                 .containsExactly(bob, mia, zoe);
     }
 
     @Test
     void mentionedUsersShowTheirCurrentStatus() {
         UUID disabledId = UUID.randomUUID();
-        comment.getMentions().add(summary(disabledId, "Dan", false, VERIFIED_AT, null));
+        comment.getMentions().add(profile(disabledId, "Dan", UserStatus.DISABLED));
 
         TaskCommentResponseDto dto = new TaskCommentResponseDto(comment, mediaUrls);
 
-        assertThat(dto.mentions())
-                .containsExactly(new UserPreviewResponseDto(disabledId, "Dan", UserStatus.DISABLED, null));
+        assertThat(dto.mentions()).containsExactly(
+                new UserProfileResponseDto(disabledId, "Dan", UserStatus.DISABLED, identiconUrl(disabledId)));
     }
 
     @Test

@@ -69,7 +69,7 @@ public class EmailVerificationService {
 
         // findById skips soft-deleted users
         User user = userRepository
-                .findById(token.getUser().getId())
+                .findByIdForUpdate(token.getUser().getId())
                 .orElseThrow(InvalidEmailVerificationTokenException::new);
 
         token.setUsedAt(now);

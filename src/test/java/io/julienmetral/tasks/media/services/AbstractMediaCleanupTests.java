@@ -150,7 +150,7 @@ abstract class AbstractMediaCleanupTests {
     Media avatarOf(User user) {
         Media media = storeAvatar(user);
 
-        jdbcTemplate.update("update users set avatar_media_id = ? where id = ?", media.getId(), user.getId());
+        jdbcTemplate.update("update user_profiles set avatar_media_id = ? where id = ?", media.getId(), user.getId());
 
         return media;
     }
@@ -158,7 +158,11 @@ abstract class AbstractMediaCleanupTests {
     Media pendingUploadOf(User user) {
         Media media = storeAvatarUpload(user);
 
-        jdbcTemplate.update("update users set pending_avatar_media_id = ? where id = ?", media.getId(), user.getId());
+        jdbcTemplate.update(
+                "update user_profiles set pending_avatar_media_id = ? where id = ?",
+                media.getId(),
+                user.getId()
+        );
 
         return media;
     }
@@ -169,6 +173,7 @@ abstract class AbstractMediaCleanupTests {
 
     void softDeleteUser(User user, Duration ago) {
         jdbcTemplate.update("update users set deleted_at = ? where id = ?", ago(ago), user.getId());
+        jdbcTemplate.update("update user_profiles set status = 'DELETED' where id = ?", user.getId());
     }
 
     void backdateMedia(Media media, Duration ago) {
@@ -204,7 +209,7 @@ abstract class AbstractMediaCleanupTests {
 
     UUID avatarMediaIdOf(User user) {
         return jdbcTemplate.queryForObject(
-                "select avatar_media_id from users where id = ?",
+                "select avatar_media_id from user_profiles where id = ?",
                 UUID.class,
                 user.getId()
         );
@@ -212,7 +217,7 @@ abstract class AbstractMediaCleanupTests {
 
     UUID pendingAvatarMediaIdOf(User user) {
         return jdbcTemplate.queryForObject(
-                "select pending_avatar_media_id from users where id = ?",
+                "select pending_avatar_media_id from user_profiles where id = ?",
                 UUID.class,
                 user.getId()
         );
