@@ -81,10 +81,12 @@ management:
       show-details: always
       probes:
         enabled: true
-      # Ready when the API can serve its core requests; the antivirus only blocks uploads, so it stays out
+      # Ready when every request can be served, which only needs the database. RabbitMQ down only delays emails and
+      # photos (the outbox keeps them), and storage or antivirus down only blocks files: the overall health reports
+      # them, but taking the API out of the load balancer for them would stop everything else too.
       group:
         readiness:
-          include: readinessState, db, rabbit, storage
+          include: readinessState, db
 spring:
   config:
     import: optional:file:.env[.properties]
