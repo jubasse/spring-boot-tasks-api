@@ -52,7 +52,7 @@ Passwords are hashed with Argon2id (`SecurityConfiguration.passwordEncoder`, Bou
 Package-by-feature under `io.julienmetral.tasks`, and each feature uses the same sub-packages (`controllers`, `services`, `repositories`, `entities`, `dtos`, `exceptions`, `security`):
 
 - `identity`: users, login, JWT and refresh tokens, email verification, user-level authorization.
-- `task`: tasks and their event log.
+- `task`: tasks, their event log and their attachments (`/api/v1/tasks/{id}/attachments`: added by an admin or the assignee, listed by any active user, removed by an admin or the uploader; additions and removals are history events).
 - `mail`: the cross-cutting mail service (see Mail below).
 - `media`: stored files and their metadata (see Media storage below). Its sub-packages are `model` (entities, enums and value records), `services`, `repositories`, `controllers` and `exceptions`.
 - `config`: application-wide technical configuration, such as the storage drivers.
@@ -93,6 +93,8 @@ Entities never point to `User`, which carries `@SoftDelete`: they point to **`Us
 - **Checking:** to know whether the referenced account can still act, load the full `User` with `userRepository.findById(summary.getId())`, which skips soft-deleted users.
 
 Warning: do not map an association to `User` with `@NotFound(IGNORE)` to tolerate deleted users. Hibernate then drops the foreign key from its model, and `liquibase:diff` proposes dropping the real constraints. That is how 7 foreign keys went missing from the model before `UserSummary`.
+
+Warning: Hibernate refuses a `LAZY` to-one association towards an entity with `@SoftDelete` (`Task`, `User`) and fails when building the session factory, which only shows at startup. Map such associations `EAGER` (as `TaskAttachment.task` and `TaskEvent.task` are), or point to a view without `@SoftDelete` (as `UserSummary` does for users).
 
 ### Mail
 
