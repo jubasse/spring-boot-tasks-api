@@ -16,10 +16,12 @@ class NotificationSettingsDtoTest {
         settings.setTaskDeleted(false);
         settings.setTaskCommented(true);
         settings.setTaskMentioned(false);
+        settings.setTaskDueSoon(true);
+        settings.setTaskOverdue(false);
 
         NotificationSettingsDto dto = new NotificationSettingsDto(settings);
 
-        assertThat(dto).isEqualTo(new NotificationSettingsDto(true, false, true, false, true, false));
+        assertThat(dto).isEqualTo(new NotificationSettingsDto(true, false, true, false, true, false, true, false));
     }
 
     @Test
@@ -31,6 +33,8 @@ class NotificationSettingsDtoTest {
         settings.setTaskDeleted(true);
         settings.setTaskCommented(false);
         settings.setTaskMentioned(true);
+        settings.setTaskDueSoon(false);
+        settings.setTaskOverdue(true);
 
         NotificationSettingsDto dto = new NotificationSettingsDto(settings);
 
@@ -40,6 +44,8 @@ class NotificationSettingsDtoTest {
         assertThat(dto.taskDeleted()).isTrue();
         assertThat(dto.taskCommented()).isFalse();
         assertThat(dto.taskMentioned()).isTrue();
+        assertThat(dto.taskDueSoon()).isFalse();
+        assertThat(dto.taskOverdue()).isTrue();
     }
 
     @Test
@@ -54,9 +60,22 @@ class NotificationSettingsDtoTest {
     }
 
     @Test
+    void mapsDueSoonAndOverdueIndependently() {
+        NotificationSettings dueSoonOff = new NotificationSettings();
+        dueSoonOff.setTaskDueSoon(false);
+        NotificationSettings overdueOff = new NotificationSettings();
+        overdueOff.setTaskOverdue(false);
+
+        assertThat(new NotificationSettingsDto(dueSoonOff))
+                .isEqualTo(new NotificationSettingsDto(true, true, true, true, true, true, false, true));
+        assertThat(new NotificationSettingsDto(overdueOff))
+                .isEqualTo(new NotificationSettingsDto(true, true, true, true, true, true, true, false));
+    }
+
+    @Test
     void mapsDefaultsAsEverythingEnabled() {
         NotificationSettingsDto dto = new NotificationSettingsDto(new NotificationSettings());
 
-        assertThat(dto).isEqualTo(new NotificationSettingsDto(true, true, true, true, true, true));
+        assertThat(dto).isEqualTo(new NotificationSettingsDto(true, true, true, true, true, true, true, true));
     }
 }
