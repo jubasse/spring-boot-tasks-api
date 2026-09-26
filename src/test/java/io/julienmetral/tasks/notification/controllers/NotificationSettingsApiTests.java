@@ -48,8 +48,6 @@ class NotificationSettingsApiTests {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    // ---------------------------------------------------------------- GET defaults
-
     @Test
     void getReturnsDefaultsForUserWithoutSettings() throws Exception {
         User user = createUser(UserRole.USER);
@@ -82,8 +80,6 @@ class NotificationSettingsApiTests {
                 .andExpect(jsonPath("$.updatedAt").doesNotExist());
     }
 
-    // ---------------------------------------------------------------- PUT
-
     @Test
     void putStoresAndReturnsValues() throws Exception {
         User user = createUser(UserRole.USER);
@@ -101,7 +97,6 @@ class NotificationSettingsApiTests {
         assertThat(row.get("task_deleted")).isEqualTo(true);
         assertThat(row.get("updated_at")).isNotNull();
 
-        // A later GET reads the stored values, not the defaults.
         expectFlags(
                 mockMvc.perform(get(SETTINGS, user.getId()).with(as(user, UserRole.USER)))
                         .andExpect(status().isOk()),
@@ -167,7 +162,6 @@ class NotificationSettingsApiTests {
         assertThat(row.get("task_deleted")).isEqualTo(false);
         assertThat((Timestamp) row.get("updated_at")).isAfter(seededAt);
 
-        // Updating again still touches the same row.
         expectFlags(
                 putSettings(user, as(user, UserRole.USER), body(false, true, false, true))
                         .andExpect(status().isOk()),
@@ -203,8 +197,6 @@ class NotificationSettingsApiTests {
 
         assertThat(row(other).get("task_assigned")).isEqualTo(true);
     }
-
-    // ---------------------------------------------------------------- authorization
 
     @Test
     void userCannotReadAnotherUsersSettings() throws Exception {
@@ -275,8 +267,6 @@ class NotificationSettingsApiTests {
         assertThat(rowCount(user)).isZero();
     }
 
-    // ---------------------------------------------------------------- not found
-
     @Test
     void getForUnknownUserReturnsNotFound() throws Exception {
         User admin = createUser(UserRole.ADMIN);
@@ -338,8 +328,6 @@ class NotificationSettingsApiTests {
         mockMvc.perform(get(SETTINGS, deleted.getId()).with(as(admin, UserRole.ADMIN)))
                 .andExpect(status().isNotFound());
     }
-
-    // ---------------------------------------------------------------- bad request
 
     @Test
     void putWithMissingFieldReturnsBadRequest() throws Exception {
@@ -411,8 +399,6 @@ class NotificationSettingsApiTests {
 
         assertThat(rowCount(user)).isZero();
     }
-
-    // ---------------------------------------------------------------- helpers
 
     private ResultActions putSettings(User target, RequestPostProcessor auth, String body) throws Exception {
         return mockMvc.perform(

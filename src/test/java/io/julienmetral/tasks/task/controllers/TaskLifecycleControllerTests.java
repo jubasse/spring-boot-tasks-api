@@ -29,8 +29,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class TaskLifecycleControllerTests extends AbstractTaskApiTests {
 
-    // ---------- GET /{id} ----------
-
     @Test
     void findByIdReturnsTask() throws Exception {
         User admin = createUser(UserRole.ADMIN);
@@ -67,8 +65,6 @@ class TaskLifecycleControllerTests extends AbstractTaskApiTests {
         mockMvc.perform(get(TASKS + "/not-a-uuid").with(asUser(createUser(UserRole.USER))))
                 .andExpect(status().isBadRequest());
     }
-
-    // ---------- POST create ----------
 
     @Test
     void createWithDuplicateReferenceReturns409() throws Exception {
@@ -209,8 +205,6 @@ class TaskLifecycleControllerTests extends AbstractTaskApiTests {
                 .andExpect(status().isCreated());
     }
 
-    // ---------- PATCH /{id} (update) ----------
-
     @Test
     void partialUpdateChangesOnlyProvidedFields() throws Exception {
         User admin = createUser(UserRole.ADMIN);
@@ -278,8 +272,6 @@ class TaskLifecycleControllerTests extends AbstractTaskApiTests {
                                 """))
                 .andExpect(status().isNotFound());
     }
-
-    // ---------- PATCH /{id}/status ----------
 
     @Test
     void statusDoneSetsCompletedAtAndBackToTodoClearsIt() throws Exception {
@@ -374,8 +366,6 @@ class TaskLifecycleControllerTests extends AbstractTaskApiTests {
                 .andExpect(status().isNotFound());
     }
 
-    // ---------- POST /{id}/cancel ----------
-
     @Test
     void cancelStoresReasonAndCancelledAt() throws Exception {
         User admin = createUser(UserRole.ADMIN);
@@ -427,8 +417,6 @@ class TaskLifecycleControllerTests extends AbstractTaskApiTests {
                 .andExpect(status().isNotFound());
     }
 
-    // ---------- PATCH /{id}/assign ----------
-
     @Test
     void adminCanAssignAndReassign() throws Exception {
         User admin = createUser(UserRole.ADMIN);
@@ -477,8 +465,6 @@ class TaskLifecycleControllerTests extends AbstractTaskApiTests {
                         .content("{}"))
                 .andExpect(status().isBadRequest());
     }
-
-    // ---------- archive / unarchive ----------
 
     @Test
     void archiveAndUnarchiveAreIdempotent() throws Exception {
@@ -533,8 +519,6 @@ class TaskLifecycleControllerTests extends AbstractTaskApiTests {
                 .andExpect(status().isNotFound());
     }
 
-    // ---------- DELETE /{id} ----------
-
     @Test
     void deleteIsSoftAndHidesTheTask() throws Exception {
         User admin = createUser(UserRole.ADMIN);
@@ -580,8 +564,6 @@ class TaskLifecycleControllerTests extends AbstractTaskApiTests {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.title").value("Task reference already exists"));
     }
-
-    // ---------- helpers ----------
 
     private ResultActions changeStatusRaw(User admin, UUID taskId, String status)
             throws Exception {

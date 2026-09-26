@@ -39,8 +39,6 @@ class TaskAuthorizationControllerTests extends AbstractTaskApiTests {
         taskId = createTask(admin, assignee);
     }
 
-    // ---------- anonymous ----------
-
     @Test
     void everyEndpointRequiresAuthentication() throws Exception {
         List<MockHttpServletRequestBuilder> requests = List.of(
@@ -72,8 +70,6 @@ class TaskAuthorizationControllerTests extends AbstractTaskApiTests {
         mockMvc.perform(get(TASKS + "/" + taskId).with(asUser(otherUser)))
                 .andExpect(status().isOk());
     }
-
-    // ---------- update / status / cancel: ADMIN or assignee ----------
 
     @Test
     void assigneeCanUpdate() throws Exception {
@@ -172,8 +168,6 @@ class TaskAuthorizationControllerTests extends AbstractTaskApiTests {
                 .andExpect(status().isForbidden());
     }
 
-    // ---------- assign / archive / unarchive / delete: ADMIN only ----------
-
     @Test
     void usersCannotAssignEvenTheAssignee() throws Exception {
         for (User user : List.of(assignee, otherUser)) {
@@ -231,8 +225,6 @@ class TaskAuthorizationControllerTests extends AbstractTaskApiTests {
         mockMvc.perform(post(TASKS + "/" + unknown + "/archive").with(asUser(assignee)))
                 .andExpect(status().isForbidden());
     }
-
-    // ---------- helpers ----------
 
     private ResultActions update(RequestPostProcessor auth) throws Exception {
         return mockMvc.perform(patch(TASKS + "/" + taskId).with(auth)

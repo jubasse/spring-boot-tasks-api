@@ -58,8 +58,6 @@ class NotificationSettingsServiceTest {
         return settings;
     }
 
-    // ---------------------------------------------------------------- get
-
     @Test
     void getReturnsStoredSettings() {
         User user = user();
@@ -97,8 +95,6 @@ class NotificationSettingsServiceTest {
                 .hasMessageContaining(USER_ID.toString());
         verifyNoInteractions(settingsRepository);
     }
-
-    // ---------------------------------------------------------------- update
 
     @Test
     void updateCreatesSettingsWhenNoRowExists() {
@@ -168,8 +164,6 @@ class NotificationSettingsServiceTest {
                 .hasMessageContaining(USER_ID.toString());
         verifyNoInteractions(settingsRepository);
     }
-
-    // ---------------------------------------------------------------- isEnabled
 
     @ParameterizedTest
     @EnumSource(TaskNotificationType.class)
