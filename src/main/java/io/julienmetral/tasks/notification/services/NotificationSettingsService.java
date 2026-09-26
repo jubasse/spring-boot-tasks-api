@@ -52,6 +52,8 @@ public class NotificationSettingsService {
         settings.setTaskUnassigned(dto.taskUnassigned());
         settings.setTaskCancelled(dto.taskCancelled());
         settings.setTaskDeleted(dto.taskDeleted());
+        settings.setTaskCommented(dto.taskCommented());
+        settings.setTaskMentioned(dto.taskMentioned());
         settings.setUpdatedAt(Instant.now());
 
         return settingsRepository.save(settings);
