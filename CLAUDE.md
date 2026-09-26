@@ -129,6 +129,16 @@ Warning: do not map an association to `User` with `@NotFound(IGNORE)` to tolerat
 
 Warning: Hibernate refuses a `LAZY` to-one association towards an entity with `@SoftDelete` (`Task`, `User`) and fails when building the session factory, which only shows at startup. Map such associations `EAGER` (as `TaskAttachment.task` and `TaskEvent.task` are), or point to an entity without `@SoftDelete` (as references to users point to `UserProfile`).
 
+### Loading data
+
+`spring.jpa.open-in-view` is off: the persistence context closes with the service's transaction, before the controller writes the response. A response that reads an association nobody loaded fails with `LazyInitializationException` in tests, instead of silently running one query per row.
+- **To-one associations** are loaded by `@EntityGraph` on the repository methods that feed responses (tasks with their users and photos, events with their actor, comments with their author, attachments with their media and uploader, `UserRepository.findWithProfileById`).
+- Warning: every graph is `type = EntityGraphType.LOAD`. The default, FETCH, turns every attribute it does not list into LAZY, EAGER mappings included, which dropped the account's roles.
+- **Collections and nested photos** (comment mentions and files) are touched by the service before it returns (`TaskCommentService.withDetailsLoaded`); `hibernate.default_batch_fetch_size: 50` then loads them for a whole page with a few `IN` queries.
+- **Proxies** set with `getReferenceById` (a new task's creator, a new comment's author) are loaded with `ProfilesForDisplay.load` before a service returns them.
+- Associations to users and media are LAZY; only those to `Task`, which carries `@SoftDelete`, stay EAGER.
+- Measured on a page of 20 tasks: 3 queries, whatever the number of distinct users (8 before, growing with them).
+
 ### Mail
 
 `io.julienmetral.tasks.mail` is the cross-cutting mail service. Features call `MailService.send(MailMessage)`, usually from an event listener that writes the content (for example `identity.mail.VerificationEmailSender`). The sender address is `mail.from`.
