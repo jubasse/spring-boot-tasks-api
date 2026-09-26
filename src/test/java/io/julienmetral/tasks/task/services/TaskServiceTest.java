@@ -137,8 +137,6 @@ class TaskServiceTest {
         when(taskRepository.findById(TASK_ID)).thenReturn(Optional.empty());
     }
 
-    // --- create ---
-
     @Test
     void createPopulatesTaskSetsCreatorAndAssigneeAndRecordsEvent() {
         UUID creatorId = UUID.randomUUID();
@@ -269,8 +267,6 @@ class TaskServiceTest {
         verifyNoInteractions(eventPublisher);
     }
 
-    // --- find ---
-
     @Test
     void findByIdReturnsTask() {
         Task task = stubTask();
@@ -303,8 +299,6 @@ class TaskServiceTest {
                 .isInstanceOf(TaskNotFoundException.class)
                 .hasMessageContaining("NOPE");
     }
-
-    // --- update ---
 
     @Test
     void updateAppliesAllProvidedFields() {
@@ -342,8 +336,6 @@ class TaskServiceTest {
                 .isInstanceOf(TaskNotFoundException.class);
         verifyNoInteractions(taskEventService);
     }
-
-    // --- changeStatus ---
 
     @Test
     void changeStatusToSameStatusIsNoOp() {
@@ -415,8 +407,6 @@ class TaskServiceTest {
         verifyNoInteractions(taskEventService);
         verifyNoInteractions(eventPublisher);
     }
-
-    // --- assign ---
 
     @Test
     void assignUnassignedTaskRecordsNullPreviousAssignee() {
@@ -531,8 +521,6 @@ class TaskServiceTest {
                 .isInstanceOf(TaskNotFoundException.class);
     }
 
-    // --- findAll ---
-
     @SuppressWarnings("unchecked")
     private final Root<Task> root = mock(Root.class);
     private final CriteriaQuery<?> query = mock(CriteriaQuery.class);
@@ -590,8 +578,6 @@ class TaskServiceTest {
         verify(root, never()).join(any(String.class));
     }
 
-    // --- archive / unarchive ---
-
     @Test
     void archiveSetsArchivedAtAndRecordsEvent() {
         Task task = stubTask();
@@ -647,8 +633,6 @@ class TaskServiceTest {
         assertThatThrownBy(() -> taskService.unarchive(TASK_ID)).isInstanceOf(TaskNotFoundException.class);
     }
 
-    // --- cancel ---
-
     @Test
     void cancelSetsCancellationFieldsClearsCompletionAndRecordsEvent() {
         Task task = stubTask();
@@ -674,8 +658,6 @@ class TaskServiceTest {
         verifyNoInteractions(eventPublisher);
     }
 
-    // --- delete ---
-
     @Test
     void deleteDeletesLoadedTask() {
         Task task = stubTask();
@@ -693,8 +675,6 @@ class TaskServiceTest {
         verify(taskRepository, never()).delete(any(Task.class));
         verifyNoInteractions(eventPublisher);
     }
-
-    // --- published events ---
 
     private <E> E publishedEvent(Class<E> type) {
         ArgumentCaptor<E> captor = ArgumentCaptor.forClass(type);

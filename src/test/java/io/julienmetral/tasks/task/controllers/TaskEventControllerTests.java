@@ -287,8 +287,6 @@ class TaskEventControllerTests extends AbstractTaskApiTests {
                 .andExpect(status().isUnauthorized());
     }
 
-    // ---------- helpers ----------
-
     private String eventsOf(UUID taskId) {
         return TASKS + "/" + taskId + "/events";
     }
