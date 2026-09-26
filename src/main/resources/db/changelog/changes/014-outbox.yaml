@@ -1,0 +1,64 @@
+databaseChangeLog:
+- changeSet:
+    id: 014-create-outbox-messages
+    author: julien-metral
+    comment: >
+      Messages for RabbitMQ, written in the transaction of the business change and published by the outbox relay
+      once it commits, so a message is neither lost when the broker is down nor sent for a rolled-back change.
+    changes:
+    - createTable:
+        tableName: outbox_messages
+        columns:
+        - column:
+            name: id
+            type: UUID
+            defaultValueComputed: uuidv7()
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: outbox_messagesPK
+        - column:
+            name: queue
+            type: VARCHAR(255)
+            constraints:
+              nullable: false
+        - column:
+            name: type
+            type: VARCHAR(255)
+            constraints:
+              nullable: false
+        - column:
+            name: payload
+            type: JSONB
+            constraints:
+              nullable: false
+        - column:
+            name: created_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+            constraints:
+              nullable: false
+        - column:
+            name: attempts
+            type: INTEGER
+            defaultValueNumeric: 0
+            constraints:
+              nullable: false
+        - column:
+            name: next_attempt_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+            constraints:
+              nullable: false
+        - column:
+            name: last_error
+            type: VARCHAR(1000)
+        - column:
+            name: published_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+    - createIndex:
+        tableName: outbox_messages
+        indexName: outbox_messages_pendingIDX
+        columns:
+        - column:
+            name: published_at
+        - column:
+            name: next_attempt_at
