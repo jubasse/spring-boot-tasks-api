@@ -3,6 +3,7 @@ package io.julienmetral.tasks.messaging.services;
 import io.julienmetral.tasks.config.OutboxProperties;
 import io.julienmetral.tasks.messaging.entities.OutboxMessage;
 import io.julienmetral.tasks.messaging.repositories.OutboxMessageRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.AmqpException;
@@ -41,6 +42,7 @@ public class OutboxRelay {
     private final JsonMapper jsonMapper;
     private final OutboxProperties properties;
     private final Clock clock;
+    private final MeterRegistry meterRegistry;
 
     /** Publishes these messages as soon as the transaction that wrote them has committed, off the request thread. */
     @Async
@@ -67,8 +69,10 @@ public class OutboxRelay {
             try {
                 send(message);
                 message.setPublishedAt(clock.instant());
+                meterRegistry.counter("outbox.messages.published", "queue", message.getQueue()).increment();
                 published++;
             } catch (RuntimeException exception) {
+                meterRegistry.counter("outbox.publish.failures", "queue", message.getQueue()).increment();
                 scheduleRetry(message, exception);
             }
         }
