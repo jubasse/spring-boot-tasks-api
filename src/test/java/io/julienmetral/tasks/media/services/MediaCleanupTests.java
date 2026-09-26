@@ -1,15 +1,13 @@
 package io.julienmetral.tasks.media.services;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.model.MediaCleanupReport;
 import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.media.repositories.MediaCleanupQueries;
+import io.julienmetral.tasks.support.IntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import javax.sql.DataSource;
@@ -22,8 +20,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
+@IntegrationTest
 class MediaCleanupTests extends AbstractMediaCleanupTests {
 
     private static final long LOCK_KEY = (long) ReflectionTestUtils.getField(MediaCleanupQueries.class, "LOCK_KEY");

@@ -1,17 +1,14 @@
 package io.julienmetral.tasks.task.controllers;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.task.entities.TaskEvent;
 import io.julienmetral.tasks.task.repositories.TaskEventRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.hibernate.Hibernate;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -36,9 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * database, a JWT post-processor carrying the {@code uid} claim, and a helper to create tasks
  * through the API.
  */
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
-@AutoConfigureMockMvc
+@IntegrationTest
 abstract class AbstractTaskApiTests {
 
     static final String TASKS = "/api/v1/tasks";

@@ -1,30 +1,27 @@
 package io.julienmetral.tasks.identity.controllers;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
+import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.services.IdenticonGenerator;
+import io.julienmetral.tasks.support.WebLayerTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
-import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.startsWith;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
-@AutoConfigureMockMvc
-class IdenticonControllerTests {
+@WebLayerTest
+class IdenticonControllerWebMvcTests {
 
     private static final String IDENTICON = "/api/v1/identicons/{id}";
 
@@ -33,6 +30,9 @@ class IdenticonControllerTests {
 
     @Autowired
     private IdenticonGenerator generator;
+
+    @Autowired
+    private UserRepository userRepository;
 
     @Test
     void identiconIsServedAsSvgWithoutAToken() throws Exception {
@@ -82,13 +82,12 @@ class IdenticonControllerTests {
     }
 
     @Test
-    void anyWellFormedIdGetsAnImageWhetherAnAccountExistsOrNot() throws Exception {
-        MockHttpServletResponse response = mockMvc.perform(get(IDENTICON, UUID.randomUUID()))
-                .andReturn()
-                .getResponse();
+    void anyWellFormedIdGetsAnImageWithoutLookingForAnAccount() throws Exception {
+        mockMvc.perform(get(IDENTICON, UUID.randomUUID()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(startsWith("<svg ")));
 
-        assertThat(response.getStatus()).isEqualTo(200);
-        assertThat(response.getContentAsString()).startsWith("<svg ");
+        verifyNoInteractions(userRepository);
     }
 
     @Test

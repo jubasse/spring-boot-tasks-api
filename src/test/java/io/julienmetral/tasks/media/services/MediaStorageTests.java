@@ -1,6 +1,5 @@
 package io.julienmetral.tasks.media.services;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.config.StorageProperties;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
@@ -14,10 +13,9 @@ import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.model.MediaDownload;
 import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.media.repositories.MediaRepository;
+import io.julienmetral.tasks.support.IntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.ContentDisposition;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
@@ -53,8 +51,7 @@ import java.util.stream.Collectors;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
+@IntegrationTest
 class MediaStorageTests {
 
     private static final long AVATAR_MAX_BYTES = 5L * 1024 * 1024;

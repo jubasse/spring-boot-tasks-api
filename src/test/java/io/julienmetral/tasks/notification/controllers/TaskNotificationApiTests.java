@@ -1,16 +1,13 @@
 package io.julienmetral.tasks.notification.controllers;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -40,9 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * End-to-end tests of task email notifications: task requests go through the API, and the emails
  * sent after commit are read back from the Mailpit container.
  */
-@Import({TestcontainersConfiguration.class, Mailpit.class})
-@SpringBootTest
-@AutoConfigureMockMvc
+@IntegrationTest
 class TaskNotificationApiTests {
 
     private static final String TASKS = "/api/v1/tasks";

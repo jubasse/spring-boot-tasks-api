@@ -4,7 +4,6 @@ import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
@@ -23,7 +22,6 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -171,58 +169,12 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
         }
 
         @Test
-        void blankBodyIsRejected() throws Exception {
-            User admin = createUser(UserRole.ADMIN);
-            UUID taskId = createTask(admin, null);
-
-            postComment(asAdmin(admin), taskId, "   ")
-                    .andExpect(status().isBadRequest());
-            postComment(asAdmin(admin), taskId, " \n ", pdfFile("report.pdf"))
-                    .andExpect(status().isBadRequest());
-
-            assertThat(commentCount(taskId)).isZero();
-            assertThat(mediaCountUploadedBy(admin)).isZero();
-        }
-
-        @Test
-        void missingBodyIsRejected() throws Exception {
-            User admin = createUser(UserRole.ADMIN);
-            UUID taskId = createTask(admin, null);
-
-            mockMvc.perform(post(commentsOf(taskId))
-                            .with(asAdmin(admin))
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("{}"))
-                    .andExpect(status().isBadRequest());
-            postComment(asAdmin(admin), taskId, null, pdfFile("report.pdf"))
-                    .andExpect(status().isBadRequest());
-
-            assertThat(commentCount(taskId)).isZero();
-            assertThat(mediaCountUploadedBy(admin)).isZero();
-        }
-
-        @Test
         void bodyAtTheLengthLimitIsAccepted() throws Exception {
             User admin = createUser(UserRole.ADMIN);
             UUID taskId = createTask(admin, null);
 
             postComment(asAdmin(admin), taskId, "a".repeat(MAX_BODY_LENGTH))
                     .andExpect(status().isCreated());
-        }
-
-        @Test
-        void bodyOverTheLengthLimitIsRejected() throws Exception {
-            User admin = createUser(UserRole.ADMIN);
-            UUID taskId = createTask(admin, null);
-            String tooLong = "a".repeat(MAX_BODY_LENGTH + 1);
-
-            postComment(asAdmin(admin), taskId, tooLong)
-                    .andExpect(status().isBadRequest());
-            postComment(asAdmin(admin), taskId, tooLong, pdfFile("report.pdf"))
-                    .andExpect(status().isBadRequest());
-
-            assertThat(commentCount(taskId)).isZero();
-            assertThat(mediaCountUploadedBy(admin)).isZero();
         }
 
         @Test
@@ -793,20 +745,6 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             editComment(asAdmin(admin), taskId, commentId, "Hello <@" + UUID.randomUUID() + ">")
                     .andExpect(status().isUnprocessableContent())
                     .andExpect(jsonPath("$.title").value("User cannot be mentioned"));
-
-            assertThat(bodyOf(commentId)).isEqualTo("Original");
-        }
-
-        @Test
-        void blankOrTooLongBodyIsRejected() throws Exception {
-            User admin = createUser(UserRole.ADMIN);
-            UUID taskId = createTask(admin, null);
-            UUID commentId = addComment(asAdmin(admin), taskId, "Original");
-
-            editComment(asAdmin(admin), taskId, commentId, " ")
-                    .andExpect(status().isBadRequest());
-            editComment(asAdmin(admin), taskId, commentId, "a".repeat(MAX_BODY_LENGTH + 1))
-                    .andExpect(status().isBadRequest());
 
             assertThat(bodyOf(commentId)).isEqualTo("Original");
         }

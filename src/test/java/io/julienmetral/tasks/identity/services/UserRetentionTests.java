@@ -1,20 +1,15 @@
 package io.julienmetral.tasks.identity.services;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.repositories.UserRetentionQueries;
+import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
+import io.julienmetral.tasks.support.TestClock;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -31,11 +26,8 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -56,9 +48,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * dates of this class's users are set relative to it with JDBC. Tests assert on their own users only, never on
  * the counts of the report.
  */
-@Import({TestcontainersConfiguration.class, Mailpit.class, UserRetentionTests.RetentionClock.class})
-@SpringBootTest
-@AutoConfigureMockMvc
+@IntegrationTest
 class UserRetentionTests {
 
     private static final Instant NOW = Instant.parse("2100-01-01T00:00:00Z");
@@ -66,44 +56,6 @@ class UserRetentionTests {
     private static final String PASSWORD = "password123";
 
     private static final long LOCK_KEY = (long) ReflectionTestUtils.getField(UserRetentionQueries.class, "LOCK_KEY");
-
-    @TestConfiguration(proxyBeanMethods = false)
-    static class RetentionClock {
-
-        @Bean
-        @Primary
-        SettableClock settableClock() {
-            return new SettableClock(NOW);
-        }
-    }
-
-    static final class SettableClock extends Clock {
-
-        private volatile Instant instant;
-
-        SettableClock(Instant instant) {
-            this.instant = instant;
-        }
-
-        void set(Instant instant) {
-            this.instant = instant;
-        }
-
-        @Override
-        public Instant instant() {
-            return instant;
-        }
-
-        @Override
-        public ZoneId getZone() {
-            return ZoneOffset.UTC;
-        }
-
-        @Override
-        public Clock withZone(ZoneId zone) {
-            return Clock.fixed(instant, zone);
-        }
-    }
 
     @Autowired
     private UserRetentionService retentionService;
@@ -118,7 +70,7 @@ class UserRetentionTests {
     private PasswordEncoder passwordEncoder;
 
     @Autowired
-    private SettableClock clock;
+    private TestClock clock;
 
     @Autowired
     private MockMvc mockMvc;

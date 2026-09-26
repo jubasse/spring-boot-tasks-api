@@ -6,14 +6,13 @@ import io.julienmetral.tasks.identity.messaging.AvatarQueues;
 import io.julienmetral.tasks.identity.messaging.AvatarUploaded;
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
 import io.julienmetral.tasks.media.services.ObjectStorage;
+import io.julienmetral.tasks.support.DeadLetterIntegrationTest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 import java.time.Duration;
 import java.util.List;
@@ -33,21 +32,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Retries and dead-lettering of the profile photo queue, with reads from storage made to fail through a spy. The
- * retry backoff is shortened so that a message reaches the dead-letter queue in well under a second. The same spy
- * also lets a test act while the worker's transaction is open.
+ * same spy also lets a test act while the worker's transaction is open.
  */
-@SpringBootTest(properties = {
-        "spring.rabbitmq.listener.simple.retry.max-retries=" + AvatarQueueDeadLetterTests.MAX_RETRIES,
-        "spring.rabbitmq.listener.simple.retry.initial-interval=50ms",
-        "spring.rabbitmq.listener.simple.retry.max-interval=100ms"
-})
+@DeadLetterIntegrationTest
 class AvatarQueueDeadLetterTests extends AbstractAvatarApiTests {
 
-    static final int MAX_RETRIES = 1;
+    private static final int MAX_RETRIES = DeadLetterIntegrationTest.MAX_RETRIES;
 
     private static final long DEAD_LETTER_TIMEOUT_MILLIS = Duration.ofSeconds(10).toMillis();
 
-    @MockitoSpyBean
+    @Autowired
     private ObjectStorage objectStorage;
 
     @Autowired

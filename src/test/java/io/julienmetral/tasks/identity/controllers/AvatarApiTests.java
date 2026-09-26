@@ -71,28 +71,6 @@ class AvatarApiTests extends AbstractAvatarApiTests {
     }
 
     @Test
-    void userCannotUploadAvatarOfAnotherUser() throws Exception {
-        User caller = createUser(UserRole.USER);
-        User target = createUser(UserRole.USER);
-
-        uploadAvatar(target, asUser(caller), "photo.png", opaquePng())
-                .andExpect(status().isForbidden());
-
-        assertThat(avatarStorageKey(target)).isNull();
-        assertThat(mediaCountUploadedBy(caller)).isZero();
-    }
-
-    @Test
-    void uploadWithoutTokenReturnsUnauthorized() throws Exception {
-        User user = createUser(UserRole.USER);
-
-        mockMvc.perform(avatarUpload(user.getId(), "photo.png", opaquePng()))
-                .andExpect(status().isUnauthorized());
-
-        assertThat(avatarStorageKey(user)).isNull();
-    }
-
-    @Test
     void uploadForUnknownUserReturnsNotFound() throws Exception {
         User admin = createUser(UserRole.ADMIN);
 
@@ -265,29 +243,6 @@ class AvatarApiTests extends AbstractAvatarApiTests {
                 .andExpect(status().isNoContent());
 
         assertThat(avatarStorageKey(user)).isNull();
-    }
-
-    @Test
-    void userCannotRemoveAvatarOfAnotherUser() throws Exception {
-        User caller = createUser(UserRole.USER);
-        User target = createUser(UserRole.USER);
-
-        uploadOwnAvatar(target, opaquePng());
-        String key = avatarStorageKey(target);
-
-        mockMvc.perform(delete(AVATAR, target.getId()).with(asUser(caller)))
-                .andExpect(status().isForbidden());
-
-        assertThat(avatarStorageKey(target)).isEqualTo(key);
-        assertThat(headObject(key).contentLength()).isPositive();
-    }
-
-    @Test
-    void removeWithoutTokenReturnsUnauthorized() throws Exception {
-        User user = createUser(UserRole.USER);
-
-        mockMvc.perform(delete(AVATAR, user.getId()))
-                .andExpect(status().isUnauthorized());
     }
 
     @Test

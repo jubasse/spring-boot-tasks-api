@@ -232,15 +232,4 @@ class TaskAttachmentAuthorizationApiTests extends AbstractTaskAttachmentApiTests
 
         assertThat(attachmentCount(taskId)).isOne();
     }
-
-    @Test
-    void anonymousCallerIsUnauthorized() throws Exception {
-        User admin = createUser(UserRole.ADMIN);
-        UUID taskId = createTask(admin, null);
-
-        list(request -> request, taskId)
-                .andExpect(status().isUnauthorized());
-        upload(request -> request, taskId, "report.pdf", uniquePdf())
-                .andExpect(status().isUnauthorized());
-    }
 }

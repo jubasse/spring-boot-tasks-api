@@ -1,13 +1,10 @@
 package io.julienmetral.tasks.mail;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
+import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.listener.RabbitListenerEndpointRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -28,9 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * End-to-end tests of the mail queue: {@link MailService} queues on RabbitMQ after commit, and
  * {@link MailQueueListener} sends to the Mailpit container.
  */
-@Import({TestcontainersConfiguration.class, Mailpit.class})
-@SpringBootTest
-@AutoConfigureMockMvc
+@IntegrationTest
 class MailQueueTests {
 
     // Mail is queued asynchronously after commit: "nothing sent" can only be checked after a grace period

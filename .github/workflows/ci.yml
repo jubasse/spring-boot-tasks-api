@@ -39,8 +39,11 @@ jobs:
           java-version: "25"
           cache: maven
 
-      # Unit and integration tests; Testcontainers uses the runner's Docker daemon for PostgreSQL
+      # Unit and integration tests; Testcontainers uses the runner's Docker daemon. Reuse is on, as on developer
+      # machines, so that every test context shares one database here too and an isolation defect shows in both.
       - name: Build and test
+        env:
+          TESTCONTAINERS_REUSE_ENABLE: "true"
         run: ./mvnw --batch-mode --no-transfer-progress verify
 
       - name: Upload coverage report

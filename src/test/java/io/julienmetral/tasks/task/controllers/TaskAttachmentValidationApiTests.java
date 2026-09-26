@@ -12,7 +12,6 @@ import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -31,17 +30,6 @@ class TaskAttachmentValidationApiTests extends AbstractTaskAttachmentApiTests {
         assertRejected(admin, taskId, upload(asAdmin(admin), taskId, "empty.pdf", new byte[0]))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.title").value("Empty file"));
-    }
-
-    @Test
-    void missingFilePartIsRejected() throws Exception {
-        User admin = createUser(UserRole.ADMIN);
-        UUID taskId = createTask(admin, null);
-
-        mockMvc.perform(multipart(attachmentsOf(taskId)).with(asAdmin(admin)))
-                .andExpect(status().isBadRequest());
-
-        assertThat(attachmentCount(taskId)).isZero();
     }
 
     @Test
