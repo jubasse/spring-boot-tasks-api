@@ -7,7 +7,6 @@ import io.julienmetral.tasks.mail.MailService;
 import io.julienmetral.tasks.messaging.entities.OutboxMessage;
 import io.julienmetral.tasks.messaging.repositories.OutboxMessageRepository;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -54,9 +53,6 @@ class MonitoringTests {
 
     private static final Duration SCRAPE_TIMEOUT = Duration.ofSeconds(10);
 
-    private static final String MANAGEMENT_ERRORS_BUG = "bug: SecurityConfiguration permits "
-            + "EndpointRequest.toAnyEndpoint() but not the management port's /error, so every error dispatched there "
-            + "(unknown path, 406, exception in an endpoint) answers 401";
 
     @LocalServerPort
     private int apiPort;
@@ -113,12 +109,12 @@ class MonitoringTests {
     }
 
     @Test
-    void readinessIsUpAndChecksOnlyTheDatabaseTheBrokerAndTheStorage() {
+    void readinessIsUpAndChecksOnlyTheDatabase() {
         JsonNode readiness = managementJson("/actuator/health/readiness");
 
         assertThat(readiness.path("status").asString()).isEqualTo("UP");
         assertThat(readiness.path("components").propertyNames())
-                .containsExactlyInAnyOrder("readinessState", "db", "rabbit", "storage");
+                .containsExactlyInAnyOrder("readinessState", "db");
     }
 
     @Test
@@ -213,13 +209,11 @@ class MonitoringTests {
         assertThat(Objects.toString(response.getBody(), "")).doesNotContain("UP", "outbox_messages_pending");
     }
 
-    @Disabled(MANAGEMENT_ERRORS_BUG)
     @Test
     void unknownPathOnTheManagementPortIsNotFound() {
         assertThat(get(managementPort, "/actuator/unknown").getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
-    @Disabled(MANAGEMENT_ERRORS_BUG)
     @Test
     void prometheusScrapeAskedAsJsonIsNotAcceptable() {
         ResponseEntity<String> response = get(managementPort, "/actuator/prometheus", MediaType.APPLICATION_JSON);
