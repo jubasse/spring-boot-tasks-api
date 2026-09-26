@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Stack
 
-Spring Boot 4.1 REST API (Java 25, Maven wrapper) backed by PostgreSQL 18. Spring Data JPA (Hibernate 7), Liquibase, Spring Security as a stateless OAuth2 resource server with self-issued HS256 JWTs, Lombok, springdoc-openapi. MapStruct is on the classpath but unused: DTOs are records that map from entities through their own constructor (e.g. `new TaskResponseDto(task)`).
+Spring Boot 4.1 REST API (Java 25, Maven wrapper) backed by PostgreSQL 18, with media files in S3-compatible object storage. Spring Data JPA (Hibernate 7), Liquibase, Spring Security as a stateless OAuth2 resource server with self-issued HS256 JWTs, Lombok, springdoc-openapi. MapStruct is on the classpath but unused: DTOs are records that map from entities through their own constructor (e.g. `new TaskResponseDto(task)`).
 
 ## Commands
 
 ```bash
 ./mvnw compile                                  # build (runs Lombok + MapStruct + config annotation processors)
-./mvnw spring-boot:run                          # run; spring-boot-docker-compose starts compose.yaml (postgres, mailpit)
+./mvnw spring-boot:run                          # run; spring-boot-docker-compose starts compose.yaml (postgres, mailpit, rustfs)
 ./mvnw spring-boot:test-run                     # run with a Testcontainers postgres (TestTasksApplication)
 ./mvnw test                                     # all tests (needs Docker, Testcontainers)
 ./mvnw test -Dtest=TasksApplicationTests#contextLoads   # a single test
@@ -51,6 +51,8 @@ Package-by-feature under `io.julienmetral.tasks`, and each feature uses the same
 - `identity`: users, login, JWT and refresh tokens, email verification, user-level authorization.
 - `task`: tasks and their event log.
 - `mail`: the cross-cutting mail service (see Mail below).
+- `media`: stored files and their metadata (see Media storage below). Its sub-packages are `model` (entities, enums and value records), `services`, `repositories`, `controllers` and `exceptions`.
+- `config`: application-wide technical configuration, such as the storage drivers.
 - `notification`: task email notifications and their per-user settings.
   - **Settings:** `GET`/`PUT /api/v1/users/{id}/notification-settings`, for the user or an admin. There is one switch per task event, and a user without a stored row gets `NotificationSettings.defaults` (everything enabled).
   - **Emails:** `TaskService` publishes domain events (`task.events.TaskAssigned`, `TaskUnassigned`, `TaskCancelled`, `TaskDeleted`), and `notification.mail.TaskNotificationSender` turns them into emails. Only the concerned assignee receives one, never about their own action, only while their account is active, and only if the matching switch is on. The `task` package never depends on `notification`.
@@ -94,6 +96,17 @@ Warning: do not map an association to `User` with `@NotFound(IGNORE)` to tolerat
 `io.julienmetral.tasks.mail` is the cross-cutting mail service. Features call `MailService.send(MailMessage)`, usually from an event listener that writes the content (for example `identity.mail.VerificationEmailSender`). The message is dispatched after the surrounding transaction commits, on an `@Async` virtual thread (`MailDispatcher`). A delivery failure is logged and never fails the business operation. The sender address is `mail.from`.
 
 In development, SMTP goes to the Mailpit service of `compose.yaml` (web UI on http://localhost:8025). Tests start a Mailpit container (`TestcontainersConfiguration`) and read the received emails with `support.Mailpit`. Sending is asynchronous, so use its waiting methods (`latestTextTo`, `latestVerificationTokenFor`).
+
+### Media storage
+
+- **Uploads:** they go through the API as multipart requests. `MediaService.store` rejects empty files (400) and files above the usage's size limit (413, `media.*-max-size`). It detects the real type from the bytes with Apache Tika, and the client's `Content-Type` and file extension never decide it; a type outside `MediaUsage`'s list gets 415. It then streams the file to object storage under `<usage>/<uuid>` (never the client's file name) and saves a `media` row with the SHA-256. If the caller's transaction rolls back, the object is deleted again.
+- **Downloads:** they never go through the application. `MediaService.downloadUrl` returns a presigned URL, valid `storage.presigned-url-ttl`, whose signed response headers force an attachment download under the original file name.
+- **Drivers:** the code depends on the `ObjectStorage` interface; `storage.driver` picks its configuration.
+  - `rustfs` (`RustFsStorageConfiguration`): explicit endpoint, static keys, path-style URLs, and the bucket is created on startup. It is used in development (RustFS service of `compose.yaml`, console on http://localhost:9001) and in tests (RustFS container in `TestcontainersConfiguration`).
+  - `aws-s3` (`AwsS3StorageConfiguration`): endpoint derived from `storage.aws-s3.region`, credentials from the AWS default chain (environment variables, IAM role), and a bucket provisioned by the infrastructure. It is not covered by integration tests.
+
+  Both use `S3ObjectStorage`; a non-S3 driver would only need another `ObjectStorage` implementation. S3 failures surface as `StorageUnavailableException` (503).
+- **Server:** MinIO no longer publishes Docker images, which is why development and tests use RustFS, an S3-compatible server.
 
 ### Method-security annotations
 
