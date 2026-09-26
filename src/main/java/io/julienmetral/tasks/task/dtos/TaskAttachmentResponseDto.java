@@ -14,6 +14,7 @@ public record TaskAttachmentResponseDto(
         String contentType,
         long sizeBytes,
         UserPreviewResponseDto uploadedBy,
+        UUID commentId,
         Instant createdAt,
         String downloadUrl
 ) {
@@ -29,6 +30,7 @@ public record TaskAttachmentResponseDto(
                 media.getContentType(),
                 media.getSizeBytes(),
                 UserPreviewResponseDto.of(media.getUploadedBy(), mediaUrls),
+                attachment.getComment() == null ? null : attachment.getComment().getId(),
                 attachment.getCreatedAt(),
                 mediaUrls.of(media)
         );
