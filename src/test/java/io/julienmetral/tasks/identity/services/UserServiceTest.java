@@ -61,14 +61,14 @@ class UserServiceTest {
 
     private User stubExisting() {
         User user = existingUser();
-        // Reads use findById, state changes lock the row with findByIdForUpdate
-        lenient().when(userRepository.findById(ID)).thenReturn(Optional.of(user));
+        // Reads load the profile with findWithProfileById, state changes lock the row with findByIdForUpdate
+        lenient().when(userRepository.findWithProfileById(ID)).thenReturn(Optional.of(user));
         lenient().when(userRepository.findByIdForUpdate(ID)).thenReturn(Optional.of(user));
         return user;
     }
 
     private void stubMissing() {
-        lenient().when(userRepository.findById(ID)).thenReturn(Optional.empty());
+        lenient().when(userRepository.findWithProfileById(ID)).thenReturn(Optional.empty());
         lenient().when(userRepository.findByIdForUpdate(ID)).thenReturn(Optional.empty());
     }
 

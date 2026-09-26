@@ -35,7 +35,7 @@ public class TaskEvent {
     )
     private Task task;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "actor_id",
             foreignKey = @ForeignKey(name = "task_events_actorFK")

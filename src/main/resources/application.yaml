@@ -146,6 +146,12 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
+    # Off: the persistence context closes with the service's transaction, so a response that reads an association
+    # nobody loaded fails in tests instead of silently firing one query per row while rendering JSON
+    open-in-view: false
+    properties:
+      # Any lazy association or collection left unloaded is fetched for up to 50 rows at once (IN) instead of per row
+      hibernate.default_batch_fetch_size: 50
 
   liquibase:
     enabled: true

@@ -5,6 +5,7 @@ import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.identity.entities.UserProfile;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.identity.services.ProfilesForDisplay;
 import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.task.dtos.CreateTaskDto;
@@ -82,7 +83,7 @@ public class TaskService {
             ));
         }
 
-        return savedTask;
+        return withUsersLoaded(savedTask);
     }
 
     /**
@@ -120,8 +121,8 @@ public class TaskService {
 
     @Transactional(readOnly = true)
     public Task findByReference(String reference) {
-        return taskRepository.findByReference(reference)
-            .orElseThrow(() -> new TaskNotFoundException(reference));
+        return withUsersLoaded(taskRepository.findByReference(reference)
+            .orElseThrow(() -> new TaskNotFoundException(reference)));
     }
 
     @Transactional
@@ -146,7 +147,7 @@ public class TaskService {
 
         taskEventService.updated(task);
 
-        return task;
+        return withUsersLoaded(task);
     }
 
     @Transactional
@@ -155,7 +156,7 @@ public class TaskService {
         Instant now = Instant.now();
 
         if (task.getStatus() == status) {
-            return task;
+            return withUsersLoaded(task);
         }
 
         TaskStatus previousStatus =
@@ -195,7 +196,7 @@ public class TaskService {
             ));
         }
 
-        return task;
+        return withUsersLoaded(task);
     }
 
     @Transactional
@@ -205,7 +206,7 @@ public class TaskService {
         UUID currentAssignedToId = task.currentAssigneeId();
 
         if (Objects.equals(currentAssignedToId, userId)) {
-            return task;
+            return withUsersLoaded(task);
         }
 
         task.setAssignedTo(getAssignableUser(userId));
@@ -226,7 +227,7 @@ public class TaskService {
             ));
         }
 
-        return task;
+        return withUsersLoaded(task);
     }
 
     @Transactional
@@ -234,14 +235,14 @@ public class TaskService {
         Task task = getTask(id);
 
         if (task.getArchivedAt() != null) {
-            return task;
+            return withUsersLoaded(task);
         }
 
         task.setArchivedAt(Instant.now());
 
         taskEventService.archived(task);
 
-        return task;
+        return withUsersLoaded(task);
     }
 
     @Transactional
@@ -249,14 +250,14 @@ public class TaskService {
         Task task = getTask(id);
 
         if (task.getArchivedAt() == null) {
-            return task;
+            return withUsersLoaded(task);
         }
 
         task.setArchivedAt(null);
 
         taskEventService.unarchived(task);
 
-        return task;
+        return withUsersLoaded(task);
     }
 
     @Transactional
@@ -283,7 +284,7 @@ public class TaskService {
                 task.currentAssigneeId(), reason, actorId()
         ));
 
-        return task;
+        return withUsersLoaded(task);
     }
 
     @Transactional
@@ -321,5 +322,13 @@ public class TaskService {
     private Task getTask(UUID id) {
         return taskRepository.findById(id)
             .orElseThrow(() -> new TaskNotFoundException(id));
+    }
+
+    // The response shows the assignee and the creator, which may still be proxies set with getReferenceById
+    private static Task withUsersLoaded(Task task) {
+        ProfilesForDisplay.load(task.getAssignedTo());
+        ProfilesForDisplay.load(task.getCreatedBy());
+
+        return task;
     }
 }

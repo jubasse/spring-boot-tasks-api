@@ -2,6 +2,8 @@ package io.julienmetral.tasks.identity.repositories;
 
 import io.julienmetral.tasks.identity.entities.User;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.EntityGraph.EntityGraphType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -13,6 +15,11 @@ import java.util.UUID;
 public interface UserRepository extends JpaRepository<User, UUID> {
 
     Optional<User> findByEmailIgnoreCase(String email);
+
+    /** For responses: the profile and both photos in the same query. */
+    @EntityGraph(type = EntityGraphType.LOAD, attributePaths = {"profile", "profile.avatar", "profile.pendingAvatar"})
+    @Query("SELECT u FROM User u WHERE u.id = :id")
+    Optional<User> findWithProfileById(@Param("id") UUID id);
 
     /** Locks the row until the transaction ends ({@code SELECT ... FOR UPDATE}); skips soft-deleted users. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)

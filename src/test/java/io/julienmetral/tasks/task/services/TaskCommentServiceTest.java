@@ -5,6 +5,8 @@ import io.julienmetral.tasks.identity.entities.UserProfile;
 import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
+import io.julienmetral.tasks.media.model.Media;
+import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.task.entities.Task;
 import io.julienmetral.tasks.task.entities.TaskAttachment;
 import io.julienmetral.tasks.task.entities.TaskComment;
@@ -115,6 +117,23 @@ class TaskCommentServiceTest {
                 .toList();
     }
 
+    private TaskAttachment storedAttachment(MultipartFile file) {
+        Media media = new Media();
+        media.setId(UUID.randomUUID());
+        media.setUsage(MediaUsage.TASK_ATTACHMENT);
+        media.setOriginalFilename(file.getOriginalFilename());
+        media.setContentType("text/plain");
+        media.setSizeBytes(1);
+        media.setUploadedBy(authorReference);
+
+        TaskAttachment attachment = new TaskAttachment();
+        attachment.setId(UUID.randomUUID());
+        attachment.setTask(task);
+        attachment.setMedia(media);
+        attachment.setCreatedAt(Instant.now());
+        return attachment;
+    }
+
     private static UserProfile withStatus(UUID id, UserStatus status) {
         return profile(id, "User", status);
     }
@@ -183,11 +202,15 @@ class TaskCommentServiceTest {
         @Test
         void exactlyFiveFilesAreAccepted() {
             stubAddUpToSave();
+            when(attachmentService.add(any(Task.class), any(TaskComment.class), any(MultipartFile.class)))
+                    .thenAnswer(invocation -> storedAttachment(invocation.getArgument(2)));
 
             TaskComment result = service.add(TASK_ID, "Five files", files(TaskCommentService.MAX_FILES));
 
             verify(attachmentService, times(5)).add(any(Task.class), any(TaskComment.class), any(MultipartFile.class));
-            assertThat(result.getAttachments()).hasSize(5);
+            assertThat(result.getAttachments())
+                    .extracting(attachment -> attachment.getMedia().getOriginalFilename())
+                    .containsExactly("file-0.txt", "file-1.txt", "file-2.txt", "file-3.txt", "file-4.txt");
         }
 
         @Test
@@ -350,8 +373,8 @@ class TaskCommentServiceTest {
         void storesEachFileAsAnAttachmentLinkedToTheSavedComment() {
             MultipartFile first = file("first.txt");
             MultipartFile second = file("second.txt");
-            TaskAttachment firstAttachment = new TaskAttachment();
-            TaskAttachment secondAttachment = new TaskAttachment();
+            TaskAttachment firstAttachment = storedAttachment(first);
+            TaskAttachment secondAttachment = storedAttachment(second);
             stubAddUpToSave();
             when(attachmentService.add(any(Task.class), any(TaskComment.class), any(MultipartFile.class)))
                     .thenAnswer(invocation -> invocation.getArgument(2) == first ? firstAttachment : secondAttachment);

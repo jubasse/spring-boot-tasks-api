@@ -54,7 +54,7 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public User findById(UUID id) {
-        return userRepository.findById(id)
+        return userRepository.findWithProfileById(id)
                 .orElseThrow(() -> new UserNotFoundException(id));
     }
 
@@ -143,7 +143,7 @@ public class UserService {
     }
 
     private User getUser(UUID id) {
-        return userRepository.findById(id)
+        return userRepository.findWithProfileById(id)
                 .orElseThrow(() -> new UserNotFoundException(id));
     }
 
