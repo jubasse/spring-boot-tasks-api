@@ -21,6 +21,10 @@ import java.util.UUID;
                     name = "tasks_referenceUQ",
                     columnNames = "reference"
             )
+    },
+    indexes = {
+            // The reminder job scans tasks by due date
+            @Index(name = "tasks_due_atIDX", columnList = "due_at")
     }
 )
 @Getter

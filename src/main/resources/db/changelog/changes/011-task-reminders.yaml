@@ -1,0 +1,85 @@
+databaseChangeLog:
+- changeSet:
+    id: 011-create-task-reminders
+    author: julien-metral
+    comment: >
+      Due-date reminders already sent. One row per task, kind, due date and recipient: moving the due date or
+      reassigning the task makes a new reminder due.
+    changes:
+    - createTable:
+        tableName: task_reminders
+        columns:
+        - column:
+            name: id
+            type: UUID
+            defaultValueComputed: uuidv7()
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: task_remindersPK
+        - column:
+            name: task_id
+            type: UUID
+            constraints:
+              nullable: false
+        - column:
+            name: recipient_id
+            type: UUID
+            constraints:
+              nullable: false
+        - column:
+            name: kind
+            type: VARCHAR(20)
+            constraints:
+              nullable: false
+        - column:
+            name: due_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+            constraints:
+              nullable: false
+        - column:
+            name: sent_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+            constraints:
+              nullable: false
+    - addUniqueConstraint:
+        tableName: task_reminders
+        columnNames: task_id, kind, due_at, recipient_id
+        constraintName: task_reminders_task_id_kind_due_at_recipient_idUQ
+    - addForeignKeyConstraint:
+        baseTableName: task_reminders
+        baseColumnNames: task_id
+        constraintName: task_reminders_taskFK
+        referencedTableName: tasks
+        referencedColumnNames: id
+    - addForeignKeyConstraint:
+        baseTableName: task_reminders
+        baseColumnNames: recipient_id
+        constraintName: task_reminders_recipientFK
+        referencedTableName: users
+        referencedColumnNames: id
+    - createIndex:
+        tableName: tasks
+        indexName: tasks_due_atIDX
+        columns:
+        - column:
+            name: due_at
+- changeSet:
+    id: 011-add-reminder-notification-settings
+    author: julien-metral
+    changes:
+    - addColumn:
+        tableName: notification_settings
+        columns:
+        - column:
+            name: task_due_soon
+            type: BOOLEAN
+            defaultValueBoolean: true
+            constraints:
+              nullable: false
+        - column:
+            name: task_overdue
+            type: BOOLEAN
+            defaultValueBoolean: true
+            constraints:
+              nullable: false
