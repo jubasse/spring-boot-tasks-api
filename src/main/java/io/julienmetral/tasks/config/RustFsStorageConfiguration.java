@@ -6,7 +6,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.util.Assert;
@@ -24,7 +23,6 @@ import java.net.URI;
 /** Self-hosted S3 (RustFS in development and tests): explicit endpoint, static keys, path-style URLs. */
 @Slf4j
 @Configuration
-@EnableConfigurationProperties({StorageProperties.class, MediaProperties.class})
 @ConditionalOnProperty(name = "storage.driver", havingValue = "rustfs")
 public class RustFsStorageConfiguration {
 

@@ -128,8 +128,6 @@ class EmailVerificationServiceTest {
         assertThat(token.getTokenHash()).isEqualTo(OpaqueTokens.hash(published.token()));
     }
 
-    // --- issue ---
-
     @Test
     void issueDeletesPendingTokensSavesHashAndPublishesEvent() {
         UserSummary reference = stubReference();
@@ -139,8 +137,6 @@ class EmailVerificationServiceTest {
 
         assertIssuedFor(reference, before, Instant.now());
     }
-
-    // --- verify ---
 
     @Test
     void verifyUnknownTokenThrows() {
@@ -214,8 +210,6 @@ class EmailVerificationServiceTest {
         assertThat(token.getUsedAt()).isNotNull();
         assertThat(user.getEmailVerifiedAt()).isEqualTo(verifiedAt);
     }
-
-    // --- resend ---
 
     @Test
     void resendUnknownUserThrowsUserNotFound() {

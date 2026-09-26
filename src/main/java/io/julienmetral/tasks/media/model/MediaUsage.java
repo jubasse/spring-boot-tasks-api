@@ -19,8 +19,7 @@ public enum MediaUsage {
             "application/pdf",
             "text/plain",
             "text/csv",
-            // Tika's name for Markdown
-            "text/x-web-markdown",
+            "text/markdown",
             "application/rtf",
             "application/msword",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

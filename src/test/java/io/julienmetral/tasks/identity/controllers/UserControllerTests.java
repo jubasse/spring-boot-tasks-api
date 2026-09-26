@@ -50,8 +50,6 @@ class UserControllerTests {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    // ---------------------------------------------------------------- sign-up
-
     @Test
     void signUpCreatesUserAndReturnsLocationAndBody() throws Exception {
         String email = uniqueEmail();
@@ -257,8 +255,6 @@ class UserControllerTests {
                 .andExpect(jsonPath("$.title").value("User email already exists"));
     }
 
-    // ---------------------------------------------------------------- GET /{id}
-
     @Test
     void getUserWithoutTokenReturnsUnauthorized() throws Exception {
         User user = createUser(UserRole.USER);
@@ -333,8 +329,6 @@ class UserControllerTests {
         mockMvc.perform(get("/api/v1/users/{id}", "not-a-uuid").with(as(admin, UserRole.ADMIN)))
                 .andExpect(status().isBadRequest());
     }
-
-    // ---------------------------------------------------------------- PATCH /{id}
 
     @Test
     void userCanUpdateOwnDisplayName() throws Exception {
@@ -466,8 +460,6 @@ class UserControllerTests {
                 .andExpect(jsonPath("$.displayName").value(user.getDisplayName()));
     }
 
-    // ---------------------------------------------------------------- enable / disable
-
     @Test
     void userCannotDisableOrEnableUsersIncludingSelf() throws Exception {
         User user = createUser(UserRole.USER);
@@ -539,8 +531,6 @@ class UserControllerTests {
                 .andExpect(status().isUnauthorized());
     }
 
-    // ---------------------------------------------------------------- DELETE /{id}
-
     @Test
     void userCannotDeleteUsersIncludingSelf() throws Exception {
         User user = createUser(UserRole.USER);
@@ -576,7 +566,6 @@ class UserControllerTests {
 
         assertThat(userRepository.findById(other.getId())).isEmpty();
 
-        // The row is still there, only flagged with deleted_at.
         Timestamp deletedAt = jdbcTemplate.queryForObject(
                 "select deleted_at from users where id = ?",
                 Timestamp.class,
@@ -627,8 +616,6 @@ class UserControllerTests {
         mockMvc.perform(delete("/api/v1/users/{id}", UUID.randomUUID()).with(as(admin, UserRole.ADMIN)))
                 .andExpect(status().isNotFound());
     }
-
-    // ---------------------------------------------------------------- helpers
 
     private UUID signUp(String email, String password, String displayName) throws Exception {
         String location = mockMvc.perform(

@@ -33,8 +33,6 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
     @Autowired
     private TaskRepository taskRepository;
 
-    // --- Access to the task endpoints ---
-
     @Test
     void unverifiedUserIsForbiddenOnEveryTaskEndpoint() throws Exception {
         User admin = createUser(UserRole.ADMIN);
@@ -188,8 +186,6 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
         mockMvc.perform(get(TASKS + "/" + taskId + "/events").with(asUser(user))).andExpect(status().isOk());
     }
 
-    // --- Assignment rules ---
-
     @Test
     void createWithUnverifiedAssigneeIsRejected() throws Exception {
         User admin = createUser(UserRole.ADMIN);
@@ -277,8 +273,6 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
 
         assertThat(events(taskId)).hasSize(1);
     }
-
-    // --- Helpers ---
 
     private void assertCreateRejected(User admin, UUID assigneeId, String expectedStatus) throws Exception {
         String reference = uniqueReference();

@@ -56,9 +56,8 @@ public class Task extends AuditableEntity {
     @Column(nullable = false, length = 20)
     private TaskPriority priority = TaskPriority.MEDIUM;
 
-    // Optional business dates
     @Column(name = "due_at")
-    private Instant dueAt; // Task deadline
+    private Instant dueAt;
 
     @Column(name = "completed_at")
     private Instant completedAt;

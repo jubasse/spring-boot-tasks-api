@@ -105,8 +105,6 @@ class RefreshTokenServiceTest {
         return captor.getValue();
     }
 
-    // --- issue ---
-
     @Test
     void issueSavesHashedTokenInNewFamilyAndReturnsRawValue() {
         UserSummary reference = stubReference();
@@ -142,8 +140,6 @@ class RefreshTokenServiceTest {
         assertThat(captor.getAllValues().get(0).getFamilyId())
                 .isNotEqualTo(captor.getAllValues().get(1).getFamilyId());
     }
-
-    // --- rotate ---
 
     @Test
     void rotateUnknownTokenThrowsWithoutRevokingAnything() {
@@ -240,8 +236,6 @@ class RefreshTokenServiceTest {
         verify(refreshTokenRepository, never()).revokeFamily(any(), any());
     }
 
-    // --- revoke ---
-
     @Test
     void revokeKnownTokenRevokesItsFamily() {
         stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
@@ -263,8 +257,6 @@ class RefreshTokenServiceTest {
         verify(refreshTokenRepository).findByTokenHash(OpaqueTokens.hash(RAW_TOKEN));
         verifyNoMoreInteractions(refreshTokenRepository);
     }
-
-    // --- revokeAllForUser ---
 
     @Test
     void revokeAllForUserDelegatesWithCurrentTime() {

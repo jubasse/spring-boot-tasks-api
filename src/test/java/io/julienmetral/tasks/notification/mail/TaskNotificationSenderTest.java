@@ -85,8 +85,6 @@ class TaskNotificationSenderTest {
         }
     }
 
-    // --- content per event ---
-
     @Test
     void assignedEmailsTheAssigneeNamingTheActor() {
         stubActiveRecipient(TaskNotificationType.ASSIGNED);
@@ -157,8 +155,6 @@ class TaskNotificationSenderTest {
         ));
     }
 
-    // --- actor name ---
-
     @ParameterizedTest
     @EnumSource(TaskNotificationType.class)
     void unknownActorIsNamedSomeone(TaskNotificationType type) {
@@ -180,8 +176,6 @@ class TaskNotificationSenderTest {
 
         assertThat(sentMessage().text()).startsWith("Hello Alice,\n\nSomeone ");
     }
-
-    // --- skipped recipients ---
 
     @ParameterizedTest
     @EnumSource(TaskNotificationType.class)

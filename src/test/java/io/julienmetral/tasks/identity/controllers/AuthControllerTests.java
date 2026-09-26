@@ -74,8 +74,6 @@ class AuthControllerTests {
     @Autowired
     private JwtDecoder jwtDecoder;
 
-    // ---------------------------------------------------------------- happy path
-
     @Test
     void signedUpUserCanLogInAndUseTokenOnProtectedEndpoint() throws Exception {
         String email = uniqueEmail();
@@ -220,7 +218,6 @@ class AuthControllerTests {
         assertThat(upgradedHash).startsWith("{argon2id}");
         assertThat(passwordEncoder.matches("password", upgradedHash)).isTrue();
 
-        // The upgraded hash keeps working
         login(user.getEmail(), "password");
     }
 
@@ -245,8 +242,6 @@ class AuthControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lastLoginAt").isNotEmpty());
     }
-
-    // ---------------------------------------------------------------- failures
 
     @Test
     void loginWithWrongPasswordReturnsUnauthorized() throws Exception {
@@ -354,8 +349,6 @@ class AuthControllerTests {
                 .andExpect(status().isBadRequest());
     }
 
-    // ---------------------------------------------------------------- token validation
-
     @Test
     void protectedEndpointWithoutTokenReturnsUnauthorizedWithBearerChallenge() throws Exception {
         mockMvc.perform(get("/api/v1/users/{id}", UUID.randomUUID()))
@@ -456,8 +449,6 @@ class AuthControllerTests {
                 )
                 .andExpect(status().isForbidden());
     }
-
-    // ---------------------------------------------------------------- helpers
 
     private UUID signUp(String email) throws Exception {
         String location = mockMvc.perform(

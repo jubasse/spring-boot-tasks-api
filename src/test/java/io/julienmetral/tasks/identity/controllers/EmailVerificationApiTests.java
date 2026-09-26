@@ -66,8 +66,6 @@ class EmailVerificationApiTests {
     @Value("${mailpit.api-url}")
     private String mailpitApiUrl;
 
-    // ---------------------------------------------------------------- sign-up email
-
     @Test
     void signUpSendsVerificationEmailToLowerCasedAddressGreetingDisplayName() throws Exception {
         String localPart = UUID.randomUUID().toString();
@@ -104,7 +102,6 @@ class EmailVerificationApiTests {
 
         assertThat(row.get("token_hash")).isEqualTo(sha256Hex(token));
         assertThat(row.get("used_at")).isNull();
-        // The raw token appears in no column
         assertThat(row.values()).noneMatch(value -> value != null && value.toString().contains(token));
 
         Integer rawMatches = jdbcTemplate.queryForObject(
@@ -139,8 +136,6 @@ class EmailVerificationApiTests {
         assertThat(mailpit.latestTextTo(email)).doesNotContain("Duplicate");
     }
 
-    // ---------------------------------------------------------------- verify
-
     @Test
     void verifyWithTokenFromEmailMarksUserVerifiedAndTokenUsed() throws Exception {
         String email = uniqueEmail();
@@ -172,7 +167,6 @@ class EmailVerificationApiTests {
         String email = uniqueEmail();
         signUp(email);
 
-        // No Authorization header at all
         mockMvc.perform(
                         post("/api/v1/auth/verify-email")
                                 .contentType(MediaType.APPLICATION_JSON)
@@ -263,8 +257,6 @@ class EmailVerificationApiTests {
         assertThat(user.get("email_verified_at")).isNull();
     }
 
-    // ---------------------------------------------------------------- login
-
     @Test
     void unverifiedUserCanLogIn() throws Exception {
         String email = uniqueEmail();
@@ -274,8 +266,6 @@ class EmailVerificationApiTests {
 
         assertThat(verifiedAt(userId, accessToken)).isNull();
     }
-
-    // ---------------------------------------------------------------- resend
 
     @Test
     void resendSendsNewEmailAndInvalidatesPreviousLink() throws Exception {
@@ -292,7 +282,6 @@ class EmailVerificationApiTests {
         assertThat(secondToken).isNotEqualTo(firstToken);
         assertThat(latestMessageTo(email).path("Subject").asString()).isEqualTo("Verify your email address");
 
-        // Only the new token remains, stored as its hash
         List<String> hashes = jdbcTemplate.queryForList(
                 "SELECT token_hash FROM email_verification_tokens WHERE user_id = ?",
                 String.class,
@@ -365,8 +354,6 @@ class EmailVerificationApiTests {
 
         awaitEmailCount(email, 2);
     }
-
-    // ---------------------------------------------------------------- helpers
 
     private UUID signUp(String email) throws Exception {
         return signUp(email, DISPLAY_NAME);
