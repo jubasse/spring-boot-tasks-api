@@ -1,14 +1,11 @@
 package io.julienmetral.tasks.identity.controllers;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.identity.services.EmailVerificationService;
 import io.julienmetral.tasks.identity.services.UserService;
+import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -35,9 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * {@code user_profiles.status} is a copy of the account state: after every transition made through the API, it must
  * match what {@code users} says.
  */
-@Import({TestcontainersConfiguration.class, Mailpit.class})
-@SpringBootTest
-@AutoConfigureMockMvc
+@IntegrationTest
 class UserProfileStatusApiTests {
 
     private static final String PASSWORD = "password123";

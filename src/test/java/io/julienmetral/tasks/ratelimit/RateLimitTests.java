@@ -1,36 +1,29 @@
 package io.julienmetral.tasks.ratelimit;
 
 import io.julienmetral.tasks.ratelimit.services.RateLimitKeys;
-import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.ratelimit.exceptions.RateLimitExceededException;
 import io.julienmetral.tasks.ratelimit.repositories.RateLimitQueries;
 import io.julienmetral.tasks.ratelimit.services.RateLimiter;
+import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
-import org.junit.jupiter.api.AfterEach;
+import io.julienmetral.tasks.support.TestClock;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.sql.Timestamp;
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -57,8 +50,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * falls in the same window and {@code Retry-After} is exact. Counters are shared by every test of this context: each
  * test uses its own client addresses and emails.
  */
-@Import({TestcontainersConfiguration.class, Mailpit.class, RateLimitTests.PinnedClockConfiguration.class})
-@SpringBootTest(properties = {
+@IntegrationTest
+@TestPropertySource(properties = {
         "rate-limit.enabled=true",
         // Never fires while the tests run, so no window disappears under an assertion
         "rate-limit.purge-cron=0 0 0 1 1 *",
@@ -75,7 +68,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "rate-limit.verification-resend-per-user.requests=" + RateLimitTests.VERIFICATION_RESEND_PER_USER,
         "rate-limit.verification-resend-per-user.window=PT1H"
 })
-@AutoConfigureMockMvc
 class RateLimitTests {
 
     static final int LOGIN_PER_IP = 5;
@@ -99,44 +91,6 @@ class RateLimitTests {
 
     private static final int PARALLEL_REQUESTS = 20;
 
-    @TestConfiguration(proxyBeanMethods = false)
-    static class PinnedClockConfiguration {
-
-        @Bean
-        @Primary
-        SettableClock settableClock() {
-            return new SettableClock(NOW);
-        }
-    }
-
-    static final class SettableClock extends Clock {
-
-        private volatile Instant instant;
-
-        SettableClock(Instant instant) {
-            this.instant = instant;
-        }
-
-        void set(Instant instant) {
-            this.instant = instant;
-        }
-
-        @Override
-        public Instant instant() {
-            return instant;
-        }
-
-        @Override
-        public ZoneId getZone() {
-            return ZoneOffset.UTC;
-        }
-
-        @Override
-        public Clock withZone(ZoneId zone) {
-            return Clock.fixed(instant, zone);
-        }
-    }
-
     @Autowired
     private MockMvc mockMvc;
 
@@ -153,10 +107,10 @@ class RateLimitTests {
     private RateLimitQueries queries;
 
     @Autowired
-    private SettableClock clock;
+    private TestClock clock;
 
-    @AfterEach
-    void pinTheClockAgain() {
+    @BeforeEach
+    void pinTheClock() {
         clock.set(NOW);
     }
 

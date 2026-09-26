@@ -1,12 +1,10 @@
 package io.julienmetral.tasks.identity.repositories;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
+import io.julienmetral.tasks.support.IntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
@@ -16,8 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
 /** The schema Liquibase leaves behind (migration 016), read from the Postgres catalog. */
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
+@IntegrationTest
 class UserProfileSchemaTests {
 
     // One row per single-column foreign key of the current schema

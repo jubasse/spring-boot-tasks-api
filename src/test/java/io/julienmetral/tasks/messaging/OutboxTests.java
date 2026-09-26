@@ -1,6 +1,5 @@
 package io.julienmetral.tasks.messaging;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.messaging.AvatarQueues;
@@ -13,13 +12,11 @@ import io.julienmetral.tasks.messaging.entities.OutboxMessage;
 import io.julienmetral.tasks.messaging.repositories.OutboxMessageRepository;
 import io.julienmetral.tasks.messaging.services.Outbox;
 import io.julienmetral.tasks.messaging.services.OutboxRelay;
+import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
@@ -63,9 +60,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * The outbox against the real containers: rows written in the business transaction, published to RabbitMQ after
  * commit, locked with {@code SKIP LOCKED} and purged after the retention.
  */
-@Import({TestcontainersConfiguration.class, Mailpit.class})
-@SpringBootTest
-@AutoConfigureMockMvc
+@IntegrationTest
 class OutboxTests {
 
     // Publishing runs asynchronously after commit: "nothing sent" can only be checked after a grace period

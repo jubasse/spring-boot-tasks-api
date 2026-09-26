@@ -1,7 +1,7 @@
 package io.julienmetral.tasks.identity.repositories;
 
 import com.zaxxer.hikari.HikariDataSource;
-import io.julienmetral.tasks.TestcontainersConfiguration;
+import io.julienmetral.tasks.support.IntegrationTest;
 import liquibase.Liquibase;
 import liquibase.database.Database;
 import liquibase.database.DatabaseFactory;
@@ -11,8 +11,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
@@ -30,8 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * connection outside the pool: Liquibase changes the connection's search path, which a pooled connection would keep
  * for the next test.
  */
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
+@IntegrationTest
 class UserProfilesMigrationTests {
 
     private static final String CHANGELOG = "db/changelog/db.changelog-master.yaml";
