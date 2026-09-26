@@ -11,6 +11,7 @@ import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
 import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.model.MediaDownload;
+import io.julienmetral.tasks.media.model.MediaSource;
 import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.media.repositories.MediaRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -22,6 +23,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -56,6 +58,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -70,6 +73,8 @@ class MediaServiceTest {
     private static final UUID UPLOADER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
     private static final byte[] CONTENT = "%PDF-1.4 report".getBytes(UTF_8);
+
+    private static final byte[] PHOTO = "photo".getBytes(UTF_8);
 
     private static final DataSize AVATAR_MAX = DataSize.ofBytes(10);
 
@@ -619,6 +624,207 @@ class MediaServiceTest {
 
             String key = uploadedKey();
             verify(objectStorage).delete(key);
+        }
+    }
+
+    @Nested
+    class Validate {
+
+        @Test
+        void cleanAllowedContentGivesTheDetectedType() throws IOException {
+            detects("image/png");
+
+            String contentType = service.validate(MediaSource.of(PHOTO, "me.png"), MediaUsage.AVATAR);
+
+            assertThat(contentType).isEqualTo("image/png");
+            verify(virusScanner).findThreat(any(InputStream.class));
+        }
+
+        @Test
+        void validContentIsNeitherUploadedNorSaved() throws IOException {
+            detects("image/png");
+
+            service.validate(MediaSource.of(PHOTO, "me.png"), MediaUsage.AVATAR);
+
+            verifyNoInteractions(objectStorage, mediaRepository, userSummaryRepository);
+            assertThat(synchronizations()).isEmpty();
+        }
+
+        @Test
+        void emptyContentIsRejectedBeforeDetectionAndScan() {
+            assertThatThrownBy(() -> service.validate(MediaSource.of(new byte[0], "me.png"), MediaUsage.AVATAR))
+                    .isInstanceOf(EmptyMediaException.class);
+
+            verifyNoInteractions(contentTypeDetector, virusScanner);
+        }
+
+        @Test
+        void contentAboveTheUsageLimitIsRejectedBeforeDetectionAndScan() {
+            byte[] content = new byte[(int) AVATAR_MAX.toBytes() + 1];
+
+            assertThatThrownBy(() -> service.validate(MediaSource.of(content, "me.png"), MediaUsage.AVATAR))
+                    .isInstanceOf(MediaTooLargeException.class);
+
+            verifyNoInteractions(contentTypeDetector, virusScanner);
+        }
+
+        @Test
+        void typeNotAllowedForTheUsageIsRejectedBeforeTheScan() throws IOException {
+            detects("application/pdf");
+
+            assertThatThrownBy(() -> service.validate(MediaSource.of(PHOTO, "me.png"), MediaUsage.AVATAR))
+                    .isInstanceOf(UnsupportedMediaTypeException.class)
+                    .hasMessage("Files of type application/pdf are not accepted for AVATAR");
+
+            verifyNoInteractions(virusScanner);
+        }
+
+        @Test
+        void detectorSeesTheSanitizedName() throws IOException {
+            when(contentTypeDetector.detect(any(InputStream.class), eq("me.png"))).thenReturn("image/png");
+
+            assertThat(service.validate(MediaSource.of(PHOTO, "../../me.png"), MediaUsage.AVATAR))
+                    .isEqualTo("image/png");
+        }
+
+        @Test
+        void detectorSeesTheFallbackNameWhenTheSourceHasNone() throws IOException {
+            when(contentTypeDetector.detect(any(InputStream.class), eq("file"))).thenReturn("image/png");
+
+            assertThat(service.validate(MediaSource.of(PHOTO, null), MediaUsage.AVATAR)).isEqualTo("image/png");
+        }
+
+        @Test
+        void infectedContentIsRejectedWithTheThreat() throws IOException {
+            detects("image/png");
+            when(virusScanner.findThreat(any(InputStream.class))).thenReturn(Optional.of("Eicar-Test-Signature"));
+
+            assertThatThrownBy(() -> service.validate(MediaSource.of(PHOTO, "me.png"), MediaUsage.AVATAR))
+                    .isInstanceOf(InfectedMediaException.class)
+                    .hasMessage("The file was rejected by the antivirus: Eicar-Test-Signature");
+
+            verifyNoInteractions(objectStorage, mediaRepository);
+        }
+
+        @Test
+        void scannerReceivesTheWholeContent() throws IOException {
+            detects("image/png");
+            byte[][] scanned = new byte[1][];
+            when(virusScanner.findThreat(any(InputStream.class))).thenAnswer(invocation -> {
+                scanned[0] = invocation.<InputStream>getArgument(0).readAllBytes();
+                return Optional.empty();
+            });
+
+            service.validate(MediaSource.of(PHOTO, "me.png"), MediaUsage.AVATAR);
+
+            assertThat(scanned[0]).isEqualTo(PHOTO);
+        }
+    }
+
+    @Nested
+    class StoreFromBytes {
+
+        @Test
+        void storesTheBytesUnderTheGivenNameWithTheirSizeAndChecksum() throws IOException {
+            detects("image/jpeg");
+            savesWhatItIsGiven();
+            byte[][] uploaded = new byte[1][];
+            doAnswer(invocation -> {
+                uploaded[0] = invocation.<InputStream>getArgument(1).readAllBytes();
+                return null;
+            }).when(objectStorage).put(anyString(), any(InputStream.class), anyLong(), anyString());
+
+            Media media = service.store(MediaSource.of(PHOTO, "avatar.jpg"), MediaUsage.AVATAR, null);
+
+            assertThat(uploadedKey()).startsWith("avatar/");
+            assertThat(uploaded[0]).isEqualTo(PHOTO);
+            assertThat(media.getOriginalFilename()).isEqualTo("avatar.jpg");
+            assertThat(media.getContentType()).isEqualTo("image/jpeg");
+            assertThat(media.getSizeBytes()).isEqualTo(PHOTO.length);
+            assertThat(media.getSha256()).isEqualTo(sha256Hex(PHOTO));
+        }
+
+        @Test
+        void scansOnceBeforeUploading() throws IOException {
+            detects("image/jpeg");
+            savesWhatItIsGiven();
+
+            service.store(MediaSource.of(PHOTO, "avatar.jpg"), MediaUsage.AVATAR, null);
+
+            InOrder order = inOrder(virusScanner, objectStorage);
+            order.verify(virusScanner).findThreat(any(InputStream.class));
+            order.verify(objectStorage).put(anyString(), any(InputStream.class), anyLong(), eq("image/jpeg"));
+            verifyNoMoreInteractions(virusScanner);
+        }
+    }
+
+    @Nested
+    class Delete {
+
+        private static final String KEY = "avatar/previous";
+
+        private Media media() {
+            Media media = new Media();
+            media.setStorageKey(KEY);
+            return media;
+        }
+
+        @Test
+        void deletesTheRowAtOnceAndTheObjectOnlyAfterCommit() {
+            Media media = media();
+
+            service.delete(media);
+
+            verify(mediaRepository).delete(media);
+            verifyNoInteractions(objectStorage);
+            assertThat(synchronizations()).hasSize(1);
+
+            synchronizations().getFirst().afterCommit();
+
+            verify(objectStorage).delete(KEY);
+        }
+
+        @Test
+        void rollbackKeepsTheObject() {
+            service.delete(media());
+            TransactionSynchronization cleanup = synchronizations().getFirst();
+
+            cleanup.beforeCompletion();
+            cleanup.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK);
+
+            verifyNoInteractions(objectStorage);
+        }
+
+        @Test
+        void deletesTheKeyTheMediaHadWhenDeleted() {
+            Media media = media();
+            service.delete(media);
+            media.setStorageKey("avatar/changed-later");
+
+            synchronizations().getFirst().afterCommit();
+
+            verify(objectStorage).delete(KEY);
+        }
+
+        @Test
+        void failingObjectDeletionAfterCommitIsSwallowed() {
+            service.delete(media());
+            doThrow(new StorageUnavailableException(new RuntimeException("down"))).when(objectStorage).delete(KEY);
+
+            synchronizations().getFirst().afterCommit();
+
+            verify(objectStorage).delete(KEY);
+        }
+
+        @Test
+        void failingRowDeletionRegistersNoObjectDeletion() {
+            Media media = media();
+            RuntimeException failure = new RuntimeException("constraint");
+            doThrow(failure).when(mediaRepository).delete(media);
+
+            assertThatThrownBy(() -> service.delete(media)).isSameAs(failure);
+
+            assertThat(synchronizations()).isEmpty();
         }
     }
 
