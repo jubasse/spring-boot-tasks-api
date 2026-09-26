@@ -62,7 +62,8 @@ public class UserRetentionQueries {
                             last_login_at = NULL,
                             last_active_at = NULL,
                             inactivity_warned_at = NULL,
-                            anonymized_at = :now
+                            anonymized_at = :now,
+                            updated_at = :now
                         WHERE u.deleted_at < :cutoff AND u.anonymized_at IS NULL
                         RETURNING u.id
                         """,
