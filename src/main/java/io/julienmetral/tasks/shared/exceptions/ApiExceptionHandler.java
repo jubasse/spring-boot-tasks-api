@@ -7,6 +7,10 @@ import io.julienmetral.tasks.identity.exceptions.InvalidPasswordResetTokenExcept
 import io.julienmetral.tasks.identity.exceptions.InvalidRefreshTokenException;
 import io.julienmetral.tasks.identity.exceptions.UserEmailAlreadyExistsException;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
+import io.julienmetral.tasks.media.exceptions.EmptyMediaException;
+import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
+import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
+import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
 import io.julienmetral.tasks.task.exceptions.AssigneeNotActiveException;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException;
@@ -16,6 +20,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.util.Map;
 
@@ -165,6 +170,45 @@ public class ApiExceptionHandler {
 
         problem.setTitle("Email already verified");
 
+        return problem;
+    }
+
+    @ExceptionHandler(EmptyMediaException.class)
+    public ProblemDetail handleEmptyMedia(EmptyMediaException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        problem.setTitle("Empty file");
+        return problem;
+    }
+
+    @ExceptionHandler(MediaTooLargeException.class)
+    public ProblemDetail handleMediaTooLarge(MediaTooLargeException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONTENT_TOO_LARGE, ex.getMessage());
+        problem.setTitle("File too large");
+        return problem;
+    }
+
+    // Raised by the multipart parser before the request reaches a controller (spring.servlet.multipart limits)
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ProblemDetail handleMaxUploadSizeExceeded(MaxUploadSizeExceededException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.CONTENT_TOO_LARGE,
+            "The request exceeds the maximum upload size"
+        );
+        problem.setTitle("File too large");
+        return problem;
+    }
+
+    @ExceptionHandler(UnsupportedMediaTypeException.class)
+    public ProblemDetail handleUnsupportedMediaType(UnsupportedMediaTypeException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNSUPPORTED_MEDIA_TYPE, ex.getMessage());
+        problem.setTitle("Unsupported file type");
+        return problem;
+    }
+
+    @ExceptionHandler(StorageUnavailableException.class)
+    public ProblemDetail handleStorageUnavailable(StorageUnavailableException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+        problem.setTitle("Storage unavailable");
         return problem;
     }
 
