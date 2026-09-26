@@ -9,7 +9,7 @@ Tasks API is the backend of a team task tracker, exposed as a REST API under `/a
 - **Files** are checked before they are stored: the type is detected from the content, the size is limited, and an antivirus scans every upload. Profile photos are cropped to a square and stripped of their metadata, GPS location included.
 - **Personal data retention**: a deleted account's personal data is erased after 30 days. An account unused for 2 years receives a warning email, and is deleted 30 days later unless its owner logs in.
 
-Only accounts that are enabled and have a verified email address can work on tasks.
+Only accounts that are enabled and have a verified email address can work on tasks. The endpoints anyone can call (login, sign-up, password reset, resending the verification email) accept a limited number of requests per client address and per account; over the limit, the API answers 429 with a `Retry-After` header giving the seconds to wait.
 
 ## Requirements
 
@@ -141,6 +141,8 @@ The API reads its configuration from `src/main/resources/application.yaml`, whic
 | `EMAIL_VERIFICATION_URL`, `PASSWORD_RESET_URL` | `http://localhost:3000/...` | Front-end pages that the emailed links open, with `?token=...` |
 | `STORAGE_DRIVER` | `rustfs` | `rustfs` for the local service, `aws-s3` for Amazon S3 (credentials from the standard AWS variables or an IAM role) |
 | `ANTIVIRUS_ENABLED` | `true` | `false` stores uploads without scanning them |
+| `RATE_LIMIT_ENABLED` | `true` | `false` turns off the request limits on the public endpoints |
+| `FORWARD_HEADERS_STRATEGY` | `none` | `native` behind a reverse proxy, so that limits apply to the client's address from `X-Forwarded-For` rather than the proxy's. Keep `none` without a proxy, or clients could send a fake address |
 | `MEDIA_CLEANUP_RETENTION` | `30d` | How long the files of deleted tasks and accounts are kept |
 | `SPRING_RABBITMQ_HOST`, `SPRING_RABBITMQ_USERNAME`, `SPRING_RABBITMQ_PASSWORD` | provided by Docker Compose | RabbitMQ connection outside local development |
 
@@ -213,6 +215,8 @@ A full run takes a few minutes and several GB of memory. Do not run two full run
 **The API cannot reach RabbitMQ, ClamAV or the object storage after you pull new changes.** When some services of `compose.yaml` already run, the API does not start the ones added since. Run `docker compose up -d` once.
 
 **An upload fails with 503 and "Antivirus unavailable".** The antivirus loads its signatures for a minute or two after it starts, and uploads are refused rather than stored unscanned until then. Wait and retry, or see [Run without the antivirus](#run-without-the-antivirus).
+
+**Login, sign-up or password reset answers 429.** Too many requests came from your address, or for that email, within the current window. Wait for the number of seconds in the `Retry-After` header. The limits are under `rate-limit` in `application.yaml`.
 
 **Task endpoints answer 403 for an account that can log in.** The account's email is not verified yet, or an admin disabled it. Only enabled, verified accounts can work on tasks.
 

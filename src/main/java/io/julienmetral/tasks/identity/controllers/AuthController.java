@@ -10,6 +10,8 @@ import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.identity.services.AuthService;
 import io.julienmetral.tasks.identity.services.EmailVerificationService;
 import io.julienmetral.tasks.identity.services.PasswordResetService;
+import io.julienmetral.tasks.ratelimit.services.RateLimiter;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -25,11 +27,15 @@ public class AuthController {
     private final EmailVerificationService emailVerificationService;
     private final PasswordResetService passwordResetService;
     private final CurrentUser currentUser;
+    private final RateLimiter rateLimiter;
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponseDto> login(
-            @Valid @RequestBody LoginRequestDto dto
+            @Valid @RequestBody LoginRequestDto dto,
+            HttpServletRequest request
     ) {
+        rateLimiter.login(request.getRemoteAddr(), dto.email());
+
         return ResponseEntity.ok(
                 authService.login(dto)
         );
@@ -72,6 +78,8 @@ public class AuthController {
                 .getId()
                 .orElseThrow(() -> new AccessDeniedException("Token has no user id"));
 
+        rateLimiter.verificationResend(userId);
+
         emailVerificationService.resend(userId);
 
         return ResponseEntity
@@ -82,8 +90,11 @@ public class AuthController {
     // Always 202, whether or not the email belongs to an account
     @PostMapping("/password-reset/request")
     public ResponseEntity<Void> requestPasswordReset(
-            @Valid @RequestBody PasswordResetRequestDto dto
+            @Valid @RequestBody PasswordResetRequestDto dto,
+            HttpServletRequest request
     ) {
+        rateLimiter.passwordResetRequest(request.getRemoteAddr(), dto.email());
+
         passwordResetService.request(dto.email());
 
         return ResponseEntity
@@ -93,8 +104,11 @@ public class AuthController {
 
     @PostMapping("/password-reset/confirm")
     public ResponseEntity<Void> confirmPasswordReset(
-            @Valid @RequestBody PasswordResetConfirmDto dto
+            @Valid @RequestBody PasswordResetConfirmDto dto,
+            HttpServletRequest request
     ) {
+        rateLimiter.passwordResetConfirm(request.getRemoteAddr());
+
         passwordResetService.confirm(dto.token(), dto.newPassword());
 
         return ResponseEntity
