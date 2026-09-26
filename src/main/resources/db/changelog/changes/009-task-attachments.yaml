@@ -1,0 +1,55 @@
+databaseChangeLog:
+- changeSet:
+    id: 009-create-task-attachments
+    author: julien-metral
+    comment: >
+      Files attached to a task. The file itself is a media row; a media belongs to one task at most.
+    changes:
+    - createTable:
+        tableName: task_attachments
+        columns:
+        - column:
+            name: id
+            type: UUID
+            defaultValueComputed: uuidv7()
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: task_attachmentsPK
+        - column:
+            name: task_id
+            type: UUID
+            constraints:
+              nullable: false
+        - column:
+            name: media_id
+            type: UUID
+            constraints:
+              nullable: false
+        - column:
+            name: created_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+            constraints:
+              nullable: false
+    - addUniqueConstraint:
+        tableName: task_attachments
+        columnNames: media_id
+        constraintName: task_attachments_media_idUQ
+    - addForeignKeyConstraint:
+        baseTableName: task_attachments
+        baseColumnNames: task_id
+        constraintName: task_attachments_taskFK
+        referencedTableName: tasks
+        referencedColumnNames: id
+    - addForeignKeyConstraint:
+        baseTableName: task_attachments
+        baseColumnNames: media_id
+        constraintName: task_attachments_mediaFK
+        referencedTableName: media
+        referencedColumnNames: id
+    - createIndex:
+        tableName: task_attachments
+        indexName: task_attachments_task_idIDX
+        columns:
+        - column:
+            name: task_id
