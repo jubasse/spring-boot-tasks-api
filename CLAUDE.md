@@ -257,11 +257,15 @@ Cut:
 ## Testing
 
 - **Unit tests** (`*Test`) cover services and security components in isolation, with JUnit 5, Mockito (`@ExtendWith(MockitoExtension.class)`) and AssertJ. They mirror the package of the class under test.
-- **Integration tests** (`*Tests`) use `@SpringBootTest` + `@AutoConfigureMockMvc` + `@Import(TestcontainersConfiguration.class)`. That configuration provides a `@ServiceConnection` `PostgreSQLContainer`, so Liquibase migrations run against a real Postgres.
+- **Integration tests** (`*Tests`) are annotated `@IntegrationTest` (`support`): `@SpringBootTest`, MockMvc, the containers of `TestcontainersConfiguration` (Postgres through `@ServiceConnection`, so Liquibase runs against a real database), `Mailpit` and the `TestClock`.
   - Most tests authenticate with the `jwt()` post-processor, a `uid` claim and a `ROLE_*` authority. The acting user must exist in the database, because `TaskEventService` loads it.
   - `AuthControllerTests` sends real `Authorization: Bearer` tokens obtained from the login endpoint.
-- The containers are shared across test classes that use the same Spring context. Use unique emails and references (random UUIDs) in every test.
-- Each cached Spring context runs its own set of containers. `src/test/resources/spring.properties` caps the context cache at 8, so an evicted context stops its containers. Warning: a full run needs several GB of memory; never run two full suites at once on the same machine.
+  - **Time:** `TestClock` is the application's `Clock`. It follows the system time until a test pins it (`set`) or moves it (`advance`), and it is reset after every test.
+- **Contexts:** Spring caches one context per distinct test configuration, and each context starts its own RabbitMQ (and all its containers when reuse is off). Warning: a property, a mock or an import added to a single class creates another context; use `@IntegrationTest` alone unless the test cannot work otherwise. The contexts that differ on purpose are `@DeadLetterIntegrationTest` (fast retries, SMTP mock, storage spy), `OutboxBrokerFailureTests` (template spy), `RateLimitTests` (limits on), and `MonitoringTests` with `PublicEndpointErrorTests` (a real server port).
+- **Shared data:** Postgres, Mailpit, RustFS and ClamAV are reusable containers: with reuse on (see the README), one of each serves every context and every run. Use unique emails and references (random UUIDs) in every test, and never assert on global counts.
+  - Warning: a background job enabled in a test context acts on the data of every other context. Tests keep the scheduled jobs off and call the services directly, and the outbox poller runs hourly (`messaging.outbox.poll-interval`), since it would publish another context's messages to its own broker.
+  - RabbitMQ is never reused: the dead-letter tests make the listeners' collaborators fail, and on a shared broker those listeners would consume the messages of every other context.
+- `src/test/resources/spring.properties` caps the context cache at 8, so an evicted context stops its containers. Warning: a full run needs several GB of memory; never run two full suites at once on the same machine.
 
 ## Git workflow and CI
 

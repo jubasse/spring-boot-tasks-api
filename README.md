@@ -232,11 +232,31 @@ Unit tests (`*Test`) run without Docker. Integration tests (`*Tests`) start the 
 
 A full run takes a few minutes and several GB of memory. Do not run two full runs at the same time on one machine.
 
+### Keep the test containers between runs
+
+Add this line to `~/.testcontainers.properties` (create the file if needed):
+
+```properties
+testcontainers.reuse.enable=true
+```
+
+PostgreSQL, Mailpit, RustFS and ClamAV then start once, serve every test class, and stay up after the run, so the next run skips their startup and a full run keeps one copy of each instead of one per group of tests. RabbitMQ still starts for each group of tests. The CI turns reuse on as well.
+
+The test database keeps its data from one run to the next. Remove the containers when you change a migration you already ran, when you switch to a branch with different migrations, or when you want `./mvnw spring-boot:test-run` to start on an empty database (it uses the same containers):
+
+```bash
+docker rm -f $(docker ps -aq --filter label=io.julienmetral.tasks.test-container)
+```
+
+The label matches only this project's test containers.
+
 ## Troubleshooting
 
 **The API stops at startup with an error about the JWT secret.** `JWT_SECRET` is missing from `.env` or too short. Generate one with `openssl rand -base64 32`, and start the API from the project root so that `.env` is found.
 
 **The API cannot reach RabbitMQ, ClamAV or the object storage after you pull new changes.** When some services of `compose.yaml` already run, the API does not start the ones added since. Run `docker compose up -d` once.
+
+**Tests fail at startup with a Liquibase checksum error.** The reused test database still holds an older version of a migration you changed. Remove the test containers (see [Keep the test containers between runs](#keep-the-test-containers-between-runs)) and run again. If the command finds no container although tests ran, your `docker` command talks to another Docker daemon than the tests do, for example Docker Desktop next to the native engine: add `--context default`, or the context `docker context ls` lists for the engine the tests use.
 
 **An upload fails with 503 and "Antivirus unavailable".** The antivirus loads its signatures for a minute or two after it starts, and uploads are refused rather than stored unscanned until then. Wait and retry, or see [Run without the antivirus](#run-without-the-antivirus).
 
