@@ -11,6 +11,7 @@ import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException
 import io.julienmetral.tasks.task.security.TaskAuthorization;
 import io.julienmetral.tasks.task.services.TaskService;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -22,6 +23,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -371,6 +373,16 @@ class TaskControllerWebMvcTests {
                     .andExpect(status().isOk());
 
             verifyNoInteractions(taskAuthorization);
+        }
+
+        @Test
+        @Disabled("bug: no handler maps ObjectOptimisticLockingFailureException, so a lost @Version race answers 500")
+        void updateLosingAConcurrentModificationReturnsConflict() throws Exception {
+            when(taskService.update(eq(taskId), any()))
+                    .thenThrow(new ObjectOptimisticLockingFailureException(Task.class, taskId));
+
+            mockMvc.perform(json(patch(TASKS + "/" + taskId), "{\"title\": \"x\"}").with(admin(UUID.randomUUID())))
+                    .andExpect(status().isConflict());
         }
 
         private void expectRejected(MockHttpServletRequestBuilder request, String body) throws Exception {
