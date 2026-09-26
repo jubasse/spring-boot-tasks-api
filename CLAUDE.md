@@ -136,7 +136,7 @@ Keep:
 - **A measured failure**: what went wrong and what it cost. For example, "Native on purpose: in JPQL, `t.user.id` joins users, which `@SoftDelete` filters, so nothing would be revoked once the user is deleted" on `RefreshTokenRepository.revokeAllForUser`. These lines stop a defect from being reintroduced.
 - **A constraint not visible locally**: framework or library behaviour the code depends on. Examples: why `NotificationSettings.defaults` leaves the id null (`@MapsId`, and Spring Data's `merge` instead of `persist`), or why `AuthService.refresh` needs `noRollbackFor`.
 - **A decision and its reason** when the code shows only the outcome. For example, why opaque tokens use SHA-256 rather than Argon2.
-- **A trap**, marked `⚠`, where the obvious change is the wrong one. For example: `⚠ read-only association: writing the user through it would erase a soft-deleted assignee`.
+- **A trap**, starting with `Warning:`, where the obvious change is the wrong one. For example, the warning on `UserSummary` against mapping associations to `User` with `@NotFound(IGNORE)`.
 
 Cut:
 - Anything that restates the code: `// save the user` above `userRepository.save(user)`.
@@ -145,11 +145,13 @@ Cut:
 - Explanations of a well-named method. Naming it well is the comment.
 - A second copy of something already written in this file, an ADR or a PR description. Link to it instead.
 
+**No symbols or emojis.** Comments, Javadoc and documentation use plain words only: no warning signs, light bulbs, check marks or any other emoji or pictograph. Mark a trap with `Warning:` and a side remark with `Note:`.
+
 **Tests document themselves through their names.** Examples are `deletingUserRevokesRefreshTokens` and `signUpWithEmailOfSoftDeletedUserReturnsConflict`. A comment in a test explains only a non-obvious setup, such as waiting for the asynchronous mail dispatch.
 
 **Rough ceiling, a smell rather than a limit:** if comments exceed about a quarter of a file, ask whether the code itself is unclear.
 
-⚠ **This is not a licence to delete reasons.** The failure this rule addresses is verbosity. The failure it could create is losing the one paragraph that stopped someone from reintroducing a defect. When a comment is long because it records something expensive, shorten the prose and keep the fact. When in doubt, keep it and make it tighter.
+**Warning: this is not a licence to delete reasons.** The failure this rule addresses is verbosity. The failure it could create is losing the one paragraph that stopped someone from reintroducing a defect. When a comment is long because it records something expensive, shorten the prose and keep the fact. When in doubt, keep it and make it tighter.
 
 **Apply it opportunistically.** Any file you read or modify is one you may trim, while its context is loaded. This is the only way a convention reaches code written before it.
 
@@ -165,5 +167,6 @@ Cut:
 
 - **Branches:** `features/<name>` → PR to `develop` → `release/<version>`, tagged `v<version>` → merged to `main` → merged back to `develop`.
 - **Commits:** keep them small, and never mix production code and its tests in one commit. Use Conventional Commits prefixes (`feat`, `fix`, `test`, `build`, `ci`, `docs`, `chore`) in English.
+- **Pull requests:** plain text only in titles and descriptions, like commit messages: no emojis or symbols. Size the description to the change: for a small or routine change, one or two sentences of context and a bullet list of what was done are enough. Add sections such as a test plan or design notes only when the change needs them.
 - **CI:** `.github/workflows/ci.yml` runs `./mvnw verify` (tests + JaCoCo report artifact) and a gitleaks secret scan. It runs on pushes to those branches, on `v*` tags, and on PRs to `develop`/`main`. Actions are pinned to commit SHAs.
 - **Secret scanning:** run `gitleaks git . --redact` locally before pushing (gitleaks is installed through mise).
