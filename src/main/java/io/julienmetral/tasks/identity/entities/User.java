@@ -28,6 +28,10 @@ import java.util.UUID;
                 @UniqueConstraint(
                         name = "users_avatar_media_idUQ",
                         columnNames = "avatar_media_id"
+                ),
+                @UniqueConstraint(
+                        name = "users_pending_avatar_media_idUQ",
+                        columnNames = "pending_avatar_media_id"
                 )
         }
 )
@@ -77,4 +81,12 @@ public class User extends AuditableEntity implements Serializable {
             foreignKey = @ForeignKey(name = "users_avatar_mediaFK")
     )
     private Media avatar;
+
+    // The uploaded photo waiting for the worker (see AvatarService.process); null once processed
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "pending_avatar_media_id",
+            foreignKey = @ForeignKey(name = "users_pending_avatar_mediaFK")
+    )
+    private Media pendingAvatar;
 }
