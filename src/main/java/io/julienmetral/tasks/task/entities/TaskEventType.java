@@ -8,5 +8,7 @@ public enum TaskEventType {
     STATUS_CHANGED,
     CANCELLED,
     ARCHIVED,
-    UNARCHIVED
+    UNARCHIVED,
+    ATTACHMENT_ADDED,
+    ATTACHMENT_REMOVED
 }

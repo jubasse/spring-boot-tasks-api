@@ -5,6 +5,7 @@ import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.task.entities.Task;
+import io.julienmetral.tasks.task.entities.TaskAttachment;
 import io.julienmetral.tasks.task.entities.TaskEvent;
 import io.julienmetral.tasks.task.entities.TaskEventType;
 import io.julienmetral.tasks.task.entities.TaskStatus;
@@ -136,6 +137,24 @@ public class TaskEventService {
                 );
     }
 
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void attachmentAdded(Task task, TaskAttachment attachment) {
+        record(
+                task,
+                TaskEventType.ATTACHMENT_ADDED,
+                new AttachmentPayload(attachment.getId(), attachment.getMedia().getOriginalFilename())
+        );
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void attachmentRemoved(Task task, TaskAttachment attachment) {
+        record(
+                task,
+                TaskEventType.ATTACHMENT_REMOVED,
+                new AttachmentPayload(attachment.getId(), attachment.getMedia().getOriginalFilename())
+        );
+    }
+
     private void record(
             Task task,
             TaskEventType type,
@@ -180,6 +199,12 @@ public class TaskEventService {
                 new TypeReference<>() {
                 }
         );
+    }
+
+    private record AttachmentPayload(
+            UUID attachmentId,
+            String filename
+    ) {
     }
 
     private record StatusChangedPayload(
