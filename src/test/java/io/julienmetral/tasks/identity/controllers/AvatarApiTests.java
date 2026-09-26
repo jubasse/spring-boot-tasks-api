@@ -6,13 +6,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.http.MediaType;
+import tools.jackson.databind.JsonNode;
 
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.zip.CRC32;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
@@ -27,25 +26,25 @@ class AvatarApiTests extends AbstractAvatarApiTests {
 
     private static final int AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 
-    private static final byte[] PNG_SIGNATURE = {(byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
-
     @Test
     void userUploadsOwnAvatar() throws Exception {
         User user = createUser(UserRole.USER);
 
-        String body = uploadAvatar(user, asUser(user), "me.png", opaquePng())
-                .andExpect(status().isOk())
+        uploadAvatar(user, asUser(user), "me.png", opaquePng())
+                .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.id").value(user.getId().toString()))
                 .andExpect(jsonPath("$.email").value(user.getEmail()))
-                .andExpect(jsonPath("$.avatarUrl").isNotEmpty())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+                .andExpect(jsonPath("$.avatarPending").value(true))
+                .andExpect(jsonPath("$.avatarUrl").value(nullValue()));
+
+        awaitProcessed(user);
 
         String key = avatarStorageKey(user);
+        JsonNode body = userJson(user);
 
         assertThat(key).matches("avatar/[0-9a-f-]{36}");
-        assertThat(json(body).get("avatarUrl").asString()).contains(key);
+        assertThat(body.get("avatarUrl").asString()).contains(key);
+        assertThat(body.get("avatarPending").asBoolean()).isFalse();
         assertThat(headObject(key).contentType()).isEqualTo("image/jpeg");
         assertThat(mediaCountUploadedBy(user)).isOne();
     }
@@ -56,14 +55,17 @@ class AvatarApiTests extends AbstractAvatarApiTests {
         User user = createUser(UserRole.USER);
 
         uploadAvatar(user, asAdmin(admin), "photo.png", opaquePng())
-                .andExpect(status().isOk())
+                .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.id").value(user.getId().toString()))
-                .andExpect(jsonPath("$.avatarUrl").isNotEmpty());
+                .andExpect(jsonPath("$.avatarPending").value(true));
+
+        awaitProcessed(user);
 
         String key = avatarStorageKey(user);
 
         assertThat(key).isNotNull();
         assertThat(mediaCountUploadedBy(admin)).isOne();
+        assertThat(avatarUploadCountUploadedBy(admin)).isZero();
         assertThat(avatarStorageKey(admin)).isNull();
     }
 
@@ -124,6 +126,7 @@ class AvatarApiTests extends AbstractAvatarApiTests {
                 .andExpect(jsonPath("$.title").value("Unsupported file type"));
 
         assertThat(avatarStorageKey(user)).isNull();
+        assertThat(pendingAvatarStorageKey(user)).isNull();
         assertThat(mediaCountUploadedBy(user)).isZero();
     }
 
@@ -162,6 +165,7 @@ class AvatarApiTests extends AbstractAvatarApiTests {
                 .andExpect(jsonPath("$.title").value("Invalid image"));
 
         assertThat(avatarStorageKey(user)).isNull();
+        assertThat(pendingAvatarStorageKey(user)).isNull();
         assertThat(mediaCountUploadedBy(user)).isZero();
     }
 
@@ -182,6 +186,7 @@ class AvatarApiTests extends AbstractAvatarApiTests {
                 .andExpect(jsonPath("$.title").value("Invalid image"));
 
         assertThat(mediaCountUploadedBy(user)).isZero();
+        assertThat(pendingAvatarStorageKey(user)).isNull();
     }
 
     @Test
@@ -213,6 +218,7 @@ class AvatarApiTests extends AbstractAvatarApiTests {
                 .andExpect(status().isUnprocessableContent());
 
         assertThat(avatarStorageKey(user)).isEqualTo(key);
+        assertThat(pendingAvatarStorageKey(user)).isNull();
         assertThat(headObject(key).contentLength()).isPositive();
     }
 
@@ -324,7 +330,7 @@ class AvatarApiTests extends AbstractAvatarApiTests {
         User admin = createUser(UserRole.ADMIN);
         User assignee = createUser(UserRole.USER);
 
-        uploadAvatar(admin, asAdmin(admin), "admin.png", opaquePng()).andExpect(status().isOk());
+        uploadAndAwaitAvatar(admin, asAdmin(admin), "admin.png", opaquePng());
         uploadOwnAvatar(assignee, opaquePng());
         String adminKey = avatarStorageKey(admin);
         String assigneeKey = avatarStorageKey(assignee);
@@ -385,44 +391,5 @@ class AvatarApiTests extends AbstractAvatarApiTests {
                 .getContentAsString();
 
         return UUID.fromString(json(body).get("id").asString());
-    }
-
-    /** A valid PNG signature and IHDR chunk declaring the given size, with no pixel data at all. */
-    private static byte[] pngHeaderOnly(int width, int height) {
-        ByteBuffer ihdr = ByteBuffer.allocate(13)
-                .putInt(width)
-                .putInt(height)
-                .put((byte) 8)
-                .put((byte) 2)
-                .put((byte) 0)
-                .put((byte) 0)
-                .put((byte) 0);
-
-        return concat(PNG_SIGNATURE, chunk("IHDR", ihdr.array()), chunk("IEND", new byte[0]));
-    }
-
-    private static byte[] chunk(String type, byte[] data) {
-        byte[] typeBytes = type.getBytes(StandardCharsets.US_ASCII);
-        CRC32 crc = new CRC32();
-        crc.update(typeBytes);
-        crc.update(data);
-
-        return ByteBuffer.allocate(12 + data.length)
-                .putInt(data.length)
-                .put(typeBytes)
-                .put(data)
-                .putInt((int) crc.getValue())
-                .array();
-    }
-
-    private static byte[] concat(byte[]... parts) {
-        int length = Arrays.stream(parts).mapToInt(part -> part.length).sum();
-        ByteBuffer buffer = ByteBuffer.allocate(length);
-
-        for (byte[] part : parts) {
-            buffer.put(part);
-        }
-
-        return buffer.array();
     }
 }

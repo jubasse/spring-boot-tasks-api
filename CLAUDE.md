@@ -131,10 +131,11 @@ In development, SMTP goes to the Mailpit service of `compose.yaml` (web UI on ht
   - An infected file is rejected with 422 and never stored.
   - If clamd cannot be reached, the upload fails with 503 instead of being stored unscanned (fail closed).
   - `antivirus.enabled=false` (`ANTIVIRUS_ENABLED`) swaps in a scanner that accepts everything and logs a warning at startup. It is meant for development machines that cannot spare ClamAV's memory (about 1 GB).
-  - Tests start a ClamAV container with freshclam disabled, since the signatures are baked into the image, and use the EICAR test string as the infected file.
+  - Tests start a ClamAV container that loads only an EICAR signature (`TestcontainersConfiguration`), about 14 MB instead of about 1 GB for the full database, with freshclam disabled. The EICAR test string is the infected file, reported as `TestcontainersConfiguration.EICAR_THREAT`.
 - **Profile photos:** `PUT /api/v1/users/{id}/avatar` (multipart field `file`) and `DELETE /api/v1/users/{id}/avatar`, for the user or an admin, handled by `AvatarService`.
   - **Upload (synchronous):** the request stores the file as uploaded (`MediaUsage.AVATAR_UPLOAD`, which checks size, type and viruses), rejects images above 10000 px or 40 MP from their header alone (422), and keeps it in `users.pending_avatar_media_id`. It answers 202 with `avatarPending: true`; a newer upload replaces a pending one.
   - **Processing (worker):** after commit, `AvatarUploadPublisher` queues the upload on `avatar.process`, and `AvatarProcessingListener` calls `AvatarService.process`. It applies the EXIF orientation, crops to a centred square and scales down to 256 px, then re-encodes to JPEG, or to PNG when the original has transparency; re-encoding drops all metadata, GPS included. The result replaces the current photo and the upload is deleted. A stale message (upload replaced or removed since) does nothing; an image that cannot be decoded is dropped with a warning; other failures are retried, then dead-lettered to `avatar.process.dead-letter`.
+  - **Concurrency:** the upload request and the worker both lock the user row first (`UserRepository.findByIdForUpdate`); without that common lock they deadlocked. `User` is `@DynamicUpdate`, so an update writes only the columns it changed: the worker once rewrote the whole row and re-enabled an account an admin had disabled meanwhile.
   - The previous photo is deleted with `MediaService.delete`: the row goes with the change, and the object once the transaction commits.
   - `users.avatar_media_id` and `users.pending_avatar_media_id` have explicit unique constraints (`users_avatar_media_idUQ`, `users_pending_avatar_media_idUQ`). The associations are `@ManyToOne`, because a `@OneToOne` makes Hibernate add an implicit unique constraint with a generated name, which `liquibase:diff` then reports.
 - **URLs in responses:** `UserResponseDto` and every `UserPreviewResponseDto` carry an `avatarUrl`, a presigned URL computed by `MediaUrls`. Controllers pass `MediaUrls` to the DTO constructors.
@@ -219,7 +220,8 @@ Cut:
 - **Integration tests** (`*Tests`) use `@SpringBootTest` + `@AutoConfigureMockMvc` + `@Import(TestcontainersConfiguration.class)`. That configuration provides a `@ServiceConnection` `PostgreSQLContainer`, so Liquibase migrations run against a real Postgres.
   - Most tests authenticate with the `jwt()` post-processor, a `uid` claim and a `ROLE_*` authority. The acting user must exist in the database, because `TaskEventService` loads it.
   - `AuthControllerTests` sends real `Authorization: Bearer` tokens obtained from the login endpoint.
-- The containers are shared across test classes. Use unique emails and references (random UUIDs) in every test.
+- The containers are shared across test classes that use the same Spring context. Use unique emails and references (random UUIDs) in every test.
+- Each cached Spring context runs its own set of containers. `src/test/resources/spring.properties` caps the context cache at 8, so an evicted context stops its containers. Warning: a full run needs several GB of memory; never run two full suites at once on the same machine.
 
 ## Git workflow and CI
 

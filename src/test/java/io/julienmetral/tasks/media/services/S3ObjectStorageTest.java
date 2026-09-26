@@ -13,14 +13,19 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.ContentDisposition;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.http.AbortableInputStream;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.S3Object;
@@ -72,6 +77,9 @@ class S3ObjectStorageTest {
 
     @Captor
     private ArgumentCaptor<ListObjectsV2Request> listRequests;
+
+    @Captor
+    private ArgumentCaptor<Consumer<GetObjectRequest.Builder>> getRequest;
 
     private S3Presigner presigner;
 
@@ -126,6 +134,50 @@ class S3ObjectStorageTest {
         assertThatThrownBy(() -> storage.put("key", InputStream.nullInputStream(), 0, "text/plain"))
                 .isInstanceOf(StorageUnavailableException.class)
                 .hasMessage("File storage is temporarily unavailable")
+                .hasCause(failure);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void openStreamsTheObjectFromTheBucket() throws IOException {
+        byte[] content = "photo".getBytes(UTF_8);
+        when(s3Client.getObject(any(Consumer.class))).thenReturn(new ResponseInputStream<>(
+                GetObjectResponse.builder().build(),
+                AbortableInputStream.create(new ByteArrayInputStream(content))
+        ));
+
+        try (InputStream stream = storage.open("avatar-upload/key")) {
+            assertThat(stream.readAllBytes()).isEqualTo(content);
+        }
+
+        verify(s3Client).getObject(getRequest.capture());
+        GetObjectRequest.Builder builder = GetObjectRequest.builder();
+        getRequest.getValue().accept(builder);
+        GetObjectRequest request = builder.build();
+        assertThat(request.bucket()).isEqualTo(BUCKET);
+        assertThat(request.key()).isEqualTo("avatar-upload/key");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void failingOpenIsReportedAsStorageUnavailable() {
+        SdkClientException failure = SdkClientException.create("Unable to connect");
+        when(s3Client.getObject(any(Consumer.class))).thenThrow(failure);
+
+        assertThatThrownBy(() -> storage.open("key"))
+                .isInstanceOf(StorageUnavailableException.class)
+                .hasMessage("File storage is temporarily unavailable")
+                .hasCause(failure);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void openingAMissingObjectIsReportedAsStorageUnavailable() {
+        NoSuchKeyException failure = NoSuchKeyException.builder().statusCode(404).message("Not found").build();
+        when(s3Client.getObject(any(Consumer.class))).thenThrow(failure);
+
+        assertThatThrownBy(() -> storage.open("avatar-upload/gone"))
+                .isInstanceOf(StorageUnavailableException.class)
                 .hasCause(failure);
     }
 
