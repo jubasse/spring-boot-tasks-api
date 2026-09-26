@@ -107,6 +107,10 @@
     {
       "key": "unverifiedToken",
       "value": ""
+    },
+    {
+      "key": "avatarUrl",
+      "value": ""
     }
   ],
   "item": [
@@ -1305,6 +1309,142 @@
               }
             }
           ]
+        },
+        {
+          "name": "Upload my profile photo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "const body = pm.response.json();",
+                  "pm.test('avatarUrl is set', () => pm.expect(body.avatarUrl).to.be.a('string'));",
+                  "pm.collectionVariables.set('avatarUrl', body.avatarUrl);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "description": "ADMIN or the user themselves. Multipart field `file`: JPEG, PNG or WebP up to 5 MB, detected from the bytes and scanned by the antivirus. Stored as a 256x256 square, re-encoded without metadata. In the Postman app, pick the file again if the relative path does not resolve (newman resolves it from the repository root).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "postman/fixtures/profile-photo.png"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/avatar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{userId}}",
+                "avatar"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Download my profile photo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.test('served as an image', () => pm.expect(pm.response.headers.get('Content-Type')).to.match(/^image\\//));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "The presigned URL is served by the object storage directly, without the API token; it expires after 10 minutes.",
+            "url": {
+              "raw": "{{avatarUrl}}",
+              "host": [
+                "{{avatarUrl}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Upload a PDF as profile photo (415)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [415]', () => pm.expect(pm.response.code).to.be.oneOf([415]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "description": "Only JPEG, PNG and WebP are accepted, whatever the file name or the Content-Type sent.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "postman/fixtures/not-an-image.pdf"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/avatar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{userId}}",
+                "avatar"
+              ]
+            }
+          }
         },
         {
           "name": "Disable user (admin)",
@@ -3011,6 +3151,48 @@
       "name": "Cleanup",
       "description": "Soft deletes. Run last.",
       "item": [
+        {
+          "name": "Remove my profile photo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [204]', () => pm.expect(pm.response.code).to.be.oneOf([204]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "description": "ADMIN or the user themselves. The stored file is deleted.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/avatar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{userId}}",
+                "avatar"
+              ]
+            }
+          }
+        },
         {
           "name": "Logout — admin",
           "request": {
