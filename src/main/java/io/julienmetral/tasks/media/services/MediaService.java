@@ -3,6 +3,7 @@ package io.julienmetral.tasks.media.services;
 import io.julienmetral.tasks.config.MediaProperties;
 import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
 import io.julienmetral.tasks.media.exceptions.EmptyMediaException;
+import io.julienmetral.tasks.media.exceptions.InfectedMediaException;
 import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
 import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
 import io.julienmetral.tasks.media.model.Media;
@@ -40,6 +41,7 @@ public class MediaService {
     private final UserSummaryRepository userSummaryRepository;
     private final ObjectStorage objectStorage;
     private final ContentTypeDetector contentTypeDetector;
+    private final VirusScanner virusScanner;
     private final MediaProperties properties;
 
     /**
@@ -49,6 +51,7 @@ public class MediaService {
      * @throws EmptyMediaException           when the file has no content
      * @throws MediaTooLargeException        when the file exceeds the usage's size limit
      * @throws UnsupportedMediaTypeException when the detected type is not allowed for the usage
+     * @throws InfectedMediaException        when the antivirus finds a threat; nothing is stored
      */
     @Transactional
     public Media store(MultipartFile file, MediaUsage usage, UUID uploadedById) {
@@ -68,6 +71,8 @@ public class MediaService {
         if (!usage.allows(contentType)) {
             throw new UnsupportedMediaTypeException(contentType, usage);
         }
+
+        rejectIfInfected(file);
 
         String storageKey = usage.storagePrefix() + "/" + UUID.randomUUID();
         String sha256 = upload(file, storageKey, contentType);
@@ -119,6 +124,16 @@ public class MediaService {
     private String detectContentType(MultipartFile file, String filename) {
         try (InputStream content = file.getInputStream()) {
             return contentTypeDetector.detect(content, filename);
+        } catch (IOException exception) {
+            throw new UncheckedIOException(exception);
+        }
+    }
+
+    private void rejectIfInfected(MultipartFile file) {
+        try (InputStream content = file.getInputStream()) {
+            virusScanner.findThreat(content).ifPresent(threat -> {
+                throw new InfectedMediaException(threat);
+            });
         } catch (IOException exception) {
             throw new UncheckedIOException(exception);
         }
