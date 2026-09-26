@@ -17,9 +17,12 @@ import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
 import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
 import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.task.exceptions.AssigneeNotActiveException;
+import io.julienmetral.tasks.task.exceptions.InvalidMentionException;
 import io.julienmetral.tasks.task.exceptions.TaskAttachmentNotFoundException;
+import io.julienmetral.tasks.task.exceptions.TaskCommentNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException;
+import io.julienmetral.tasks.task.exceptions.TooManyCommentAttachmentsException;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -64,6 +67,43 @@ class ApiExceptionHandlerTest {
         assertThat(problem.getStatus()).isEqualTo(404);
         assertThat(problem.getTitle()).isEqualTo("Attachment not found");
         assertThat(problem.getDetail()).isEqualTo("Attachment not found with id: " + ID);
+    }
+
+    @Test
+    void taskCommentNotFoundMapsTo404() {
+        ProblemDetail problem = handler.handleTaskCommentNotFound(new TaskCommentNotFoundException(ID));
+
+        assertThat(problem.getStatus()).isEqualTo(404);
+        assertThat(problem.getTitle()).isEqualTo("Comment not found");
+        assertThat(problem.getDetail()).isEqualTo("Comment not found with id: " + ID);
+    }
+
+    @Test
+    void mentionOfUnknownUserMapsTo422() {
+        ProblemDetail problem = handler.handleInvalidMention(InvalidMentionException.unknownUser(ID));
+
+        assertThat(problem.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT.value()).isEqualTo(422);
+        assertThat(problem.getTitle()).isEqualTo("User cannot be mentioned");
+        assertThat(problem.getDetail()).isEqualTo("User " + ID + " cannot be mentioned: no such user");
+    }
+
+    @Test
+    void mentionOfInactiveUserMapsTo422WithTheStatus() {
+        ProblemDetail problem = handler.handleInvalidMention(
+                InvalidMentionException.inactiveUser(ID, UserStatus.UNVERIFIED));
+
+        assertThat(problem.getStatus()).isEqualTo(422);
+        assertThat(problem.getTitle()).isEqualTo("User cannot be mentioned");
+        assertThat(problem.getDetail()).isEqualTo("User " + ID + " cannot be mentioned: account is UNVERIFIED");
+    }
+
+    @Test
+    void tooManyCommentAttachmentsMapsTo400WithTheLimit() {
+        ProblemDetail problem = handler.handleTooManyCommentAttachments(new TooManyCommentAttachmentsException(5));
+
+        assertThat(problem.getStatus()).isEqualTo(400);
+        assertThat(problem.getTitle()).isEqualTo("Too many files");
+        assertThat(problem.getDetail()).isEqualTo("A comment can have at most 5 files");
     }
 
     @Test
