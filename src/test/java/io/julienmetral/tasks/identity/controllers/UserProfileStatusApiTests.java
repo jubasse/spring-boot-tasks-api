@@ -4,7 +4,6 @@ import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.identity.services.EmailVerificationService;
 import io.julienmetral.tasks.identity.services.UserService;
 import io.julienmetral.tasks.support.Mailpit;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -187,30 +186,41 @@ class UserProfileStatusApiTests {
     }
 
     @Test
-    @Disabled("bug: User.syncProfileStatus writes a status computed from the transaction's own snapshot of the "
-            + "account, without a lock: a verification that loaded the account before an admin disabled it commits "
-            + "ACTIVE over DISABLED, so the profile shows an active user (photo visible, mentionable) whose account "
-            + "is disabled")
-    void verificationRacingADisableLeavesTheProfileStatusMatchingTheAccount() throws Exception {
+    void disableRacingAVerificationWaitsForItAndLeavesTheProfileDisabled() throws Exception {
         String email = uniqueEmail();
         UUID id = signUp(email, "Racing");
         String token = mailpit.latestVerificationTokenFor(email);
         CountDownLatch verificationLoaded = new CountDownLatch(1);
-        CountDownLatch disableCommitted = new CountDownLatch(1);
+        CountDownLatch disableStarting = new CountDownLatch(1);
 
-        // The verification runs in an outer transaction held open until the disable has committed
+        // The verification holds its transaction, and so the account's row lock, while the disable starts
         CompletableFuture<Void> verification = CompletableFuture.runAsync(() ->
                 transactionTemplate.executeWithoutResult(status -> {
                     emailVerificationService.verify(token);
                     verificationLoaded.countDown();
-                    await(disableCommitted);
+                    await(disableStarting);
+                    pause();
                 }));
         assertThat(verificationLoaded.await(10, TimeUnit.SECONDS)).isTrue();
-        userService.disable(id);
-        disableCommitted.countDown();
+        CompletableFuture<Void> disable = CompletableFuture.runAsync(() -> {
+            disableStarting.countDown();
+            userService.disable(id);
+        });
         verification.get(10, TimeUnit.SECONDS);
+        disable.get(10, TimeUnit.SECONDS);
 
         assertProfileStatusMatchesAccount(id);
+        assertThat(profileStatus(id)).isEqualTo("DISABLED");
+    }
+
+    // Leaves the disable time to reach the row lock before the verification commits
+    private static void pause() {
+        try {
+            Thread.sleep(300);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(exception);
+        }
     }
 
     private static void await(CountDownLatch latch) {

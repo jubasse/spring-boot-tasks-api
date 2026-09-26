@@ -9,7 +9,6 @@ import liquibase.database.jvm.JdbcConnection;
 import liquibase.resource.ClassLoaderResourceAccessor;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -134,11 +133,6 @@ class UserProfilesMigrationTests {
     }
 
     @Test
-    @Disabled("bug: 016-user-profiles.yaml copies avatar_media_id and pending_avatar_media_id of users already "
-            + "anonymized, then deletes their users row. MediaCleanupQueries only purges photos of profiles joined to "
-            + "a users row, and a media row still referenced is no orphan, so a photo the media cleanup had not yet "
-            + "purged before the migration is kept forever; the erasure now clears these columns, the migration "
-            + "does not")
     void alreadyAnonymizedUserKeepsNoPhotoReference() throws Exception {
         UUID avatar = insertMedia();
         UUID pendingAvatar = insertMedia();
