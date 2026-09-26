@@ -10,7 +10,7 @@ Spring Boot 4.1 REST API (Java 25, Maven wrapper) backed by PostgreSQL 18, with 
 
 ```bash
 ./mvnw compile                                  # build (runs Lombok + MapStruct + config annotation processors)
-./mvnw spring-boot:run                          # run; spring-boot-docker-compose starts compose.yaml (postgres, mailpit, rustfs)
+./mvnw spring-boot:run                          # run; spring-boot-docker-compose starts compose.yaml (postgres, mailpit, rustfs, clamav)
 ./mvnw spring-boot:test-run                     # run with a Testcontainers postgres (TestTasksApplication)
 ./mvnw test                                     # all tests (needs Docker, Testcontainers)
 ./mvnw test -Dtest=TasksApplicationTests#contextLoads   # a single test
@@ -100,6 +100,11 @@ In development, SMTP goes to the Mailpit service of `compose.yaml` (web UI on ht
 ### Media storage
 
 - **Uploads:** they go through the API as multipart requests. `MediaService.store` rejects empty files (400) and files above the usage's size limit (413, `media.*-max-size`). It detects the real type from the bytes with Apache Tika, and the client's `Content-Type` and file extension never decide it; a type outside `MediaUsage`'s list gets 415. It then streams the file to object storage under `<usage>/<uuid>` (never the client's file name) and saves a `media` row with the SHA-256. If the caller's transaction rolls back, the object is deleted again.
+- **Antivirus:** after the type check and before storage, `MediaService` streams the file to ClamAV through `VirusScanner`. `ClamAvScanner` speaks clamd's INSTREAM protocol over TCP, without a client library.
+  - An infected file is rejected with 422 and never stored.
+  - If clamd cannot be reached, the upload fails with 503 instead of being stored unscanned (fail closed).
+  - `antivirus.enabled=false` (`ANTIVIRUS_ENABLED`) swaps in a scanner that accepts everything and logs a warning at startup. It is meant for development machines that cannot spare ClamAV's memory (about 1 GB).
+  - Tests start a ClamAV container with freshclam disabled, since the signatures are baked into the image, and use the EICAR test string as the infected file.
 - **Downloads:** they never go through the application. `MediaService.downloadUrl` returns a presigned URL, valid `storage.presigned-url-ttl`, whose signed response headers force an attachment download under the original file name.
 - **Drivers:** the code depends on the `ObjectStorage` interface; `storage.driver` picks its configuration.
   - `rustfs` (`RustFsStorageConfiguration`): explicit endpoint, static keys, path-style URLs, and the bucket is created on startup. It is used in development (RustFS service of `compose.yaml`, console on http://localhost:9001) and in tests (RustFS container in `TestcontainersConfiguration`).
