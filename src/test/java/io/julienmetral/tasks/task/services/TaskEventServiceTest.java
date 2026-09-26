@@ -5,7 +5,9 @@ import io.julienmetral.tasks.identity.entities.UserSummary;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
+import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.task.entities.Task;
+import io.julienmetral.tasks.task.entities.TaskAttachment;
 import io.julienmetral.tasks.task.entities.TaskEvent;
 import io.julienmetral.tasks.task.entities.TaskEventType;
 import io.julienmetral.tasks.task.entities.TaskStatus;
@@ -176,6 +178,41 @@ class TaskEventServiceTest {
                 .containsEntry("from", "IN_REVIEW")
                 .containsEntry("to", "CANCELLED")
                 .containsEntry("reason", "duplicate");
+    }
+
+    private static TaskAttachment attachment(UUID id, String filename) {
+        Media media = new Media();
+        media.setOriginalFilename(filename);
+        TaskAttachment attachment = new TaskAttachment();
+        attachment.setId(id);
+        attachment.setMedia(media);
+        return attachment;
+    }
+
+    @Test
+    void attachmentAddedRecordsAttachmentIdAndFilename() {
+        UUID attachmentId = UUID.randomUUID();
+
+        TaskEvent event = recordedEvent(s -> s.attachmentAdded(task, attachment(attachmentId, "specs.pdf")));
+
+        assertThat(event.getType()).isEqualTo(TaskEventType.ATTACHMENT_ADDED);
+        assertThat(event.getPayload())
+                .containsOnlyKeys("attachmentId", "filename")
+                .containsEntry("attachmentId", attachmentId.toString())
+                .containsEntry("filename", "specs.pdf");
+    }
+
+    @Test
+    void attachmentRemovedRecordsAttachmentIdAndFilename() {
+        UUID attachmentId = UUID.randomUUID();
+
+        TaskEvent event = recordedEvent(s -> s.attachmentRemoved(task, attachment(attachmentId, "old.png")));
+
+        assertThat(event.getType()).isEqualTo(TaskEventType.ATTACHMENT_REMOVED);
+        assertThat(event.getPayload())
+                .containsOnlyKeys("attachmentId", "filename")
+                .containsEntry("attachmentId", attachmentId.toString())
+                .containsEntry("filename", "old.png");
     }
 
     @Test
