@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.identity.security;
 
 import io.julienmetral.tasks.identity.services.DatabaseUserDetailsService;
+import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -121,6 +122,11 @@ public class SecurityConfiguration {
                 )
                 .authorizeHttpRequests(auth ->
                         auth
+                                // Errors are rendered by an internal dispatch to /error, after the request itself was
+                                // authorized. Securing that dispatch turned every 400 of a public endpoint (malformed
+                                // JSON on login or sign-up, an invalid identicon id) into a 401.
+                                .dispatcherTypeMatchers(DispatcherType.ERROR)
+                                .permitAll()
                                 .requestMatchers(
                                         HttpMethod.POST,
                                         "/api/v1/users"
