@@ -21,11 +21,15 @@ class MediaCleanupConfigurationTest {
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withUserConfiguration(SchedulingConfiguration.class, ClockConfiguration.class, MediaCleanupJob.class)
             .withBean(MediaCleanupService.class, () -> mock(MediaCleanupService.class))
-            // SchedulingConfiguration also validates the reminder properties
+            // SchedulingConfiguration also validates the reminder and user retention properties
             .withPropertyValues(
                     "task.reminders.cron=" + YEARLY_CRON,
                     "task.reminders.due-soon-lead-time=24h",
-                    "task.reminders.overdue-lookback=7d"
+                    "task.reminders.overdue-lookback=7d",
+                    "identity.retention.cron=" + YEARLY_CRON,
+                    "identity.retention.anonymize-after=30d",
+                    "identity.retention.inactivity-period=730d",
+                    "identity.retention.deletion-notice=30d"
             );
 
     private final ApplicationContextRunner configured = runner.withPropertyValues(
