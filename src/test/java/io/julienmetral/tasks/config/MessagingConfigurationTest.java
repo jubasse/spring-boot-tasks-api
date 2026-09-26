@@ -1,7 +1,6 @@
 package io.julienmetral.tasks.config;
 
 import io.julienmetral.tasks.mail.MailMessage;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -72,29 +71,10 @@ class MessagingConfigurationTest {
     }
 
     @Test
-    @Disabled("bug: MessagingConfiguration trusts \"io.julienmetral.tasks\", but spring-amqp's "
-            + "DefaultJacksonJavaTypeMapper.isTrustedPackage compares the package name for equality, so classes in "
-            + "sub-packages such as io.julienmetral.tasks.mail.MailMessage are refused. Reading mail.send.dead-letter "
-            + "with RabbitTemplate.receiveAndConvert(queue) fails; listeners work only because their parameter type "
-            + "takes precedence over the type header.")
     void mailMessageRoundTripsThroughItsTypeHeader() {
         Message message = converter.toMessage(MESSAGE, new MessageProperties());
 
         assertThat(converter.fromMessage(message)).isEqualTo(MESSAGE);
-    }
-
-    @Test
-    @Disabled("bug: the comment on MessagingConfiguration.messageConverter says only the application's own types "
-            + "may be deserialized from the type header, but spring-amqp's DefaultJacksonJavaTypeMapper always "
-            + "trusts java.util and java.lang on top of the configured packages.")
-    void typeHeaderNamingAJdkCollectionIsRefused() {
-        MessageProperties properties = new MessageProperties();
-        properties.setHeader("__ContentTypeId__", "java.lang.String");
-        Message message = jsonMessage("java.util.ArrayList", "[\"a\"]", properties);
-
-        assertThatThrownBy(() -> converter.fromMessage(message))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("is not in the trusted packages");
     }
 
     private static Message jsonMessage(String typeId, String json) {

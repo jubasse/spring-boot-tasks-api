@@ -2,7 +2,6 @@ package io.julienmetral.tasks.mail;
 
 import io.julienmetral.tasks.TestcontainersConfiguration;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.core.Message;
@@ -127,10 +126,6 @@ class MailQueueDeadLetterTests {
     }
 
     @Test
-    @Disabled("bug: MailQueueListener throws AmqpRejectAndDontRequeueException to dead-letter an unparsable email at "
-            + "once, but the retry policy Spring Boot builds from spring.rabbitmq.listener.simple.retry retries every "
-            + "exception, so the message is still attempted 1 + max-retries times (5 attempts over about 1.5 minutes "
-            + "with the production settings) before RejectAndDontRequeueRecoverer dead-letters it.")
     void unparsableEmailIsDeadLetteredAfterASingleAttempt() {
         doThrow(new MailParseException("Invalid address")).when(mailSender).send(any(SimpleMailMessage.class));
 
