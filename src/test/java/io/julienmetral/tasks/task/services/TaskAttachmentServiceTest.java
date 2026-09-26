@@ -7,6 +7,7 @@ import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.media.services.MediaService;
 import io.julienmetral.tasks.task.entities.Task;
 import io.julienmetral.tasks.task.entities.TaskAttachment;
+import io.julienmetral.tasks.task.entities.TaskComment;
 import io.julienmetral.tasks.task.exceptions.TaskAttachmentNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.repositories.TaskAttachmentRepository;
@@ -89,12 +90,33 @@ class TaskAttachmentServiceTest {
         TaskAttachment toSave = captor.getValue();
         assertThat(toSave.getTask()).isSameAs(task);
         assertThat(toSave.getMedia()).isSameAs(media);
+        assertThat(toSave.getComment()).isNull();
         assertThat(toSave.getCreatedAt()).isBetween(before, Instant.now());
 
         InOrder order = inOrder(mediaService, attachmentRepository, taskEventService);
         order.verify(mediaService).store(file, MediaUsage.TASK_ATTACHMENT, userId);
         order.verify(attachmentRepository).save(toSave);
         order.verify(taskEventService).attachmentAdded(task, saved);
+    }
+
+    @Test
+    void addWithCommentLinksTheAttachmentToTheCommentWithoutLookingUpTheTask() {
+        TaskComment comment = new TaskComment();
+        TaskAttachment saved = attachment();
+        when(currentUser.getId()).thenReturn(Optional.of(userId));
+        when(mediaService.store(file, MediaUsage.TASK_ATTACHMENT, userId)).thenReturn(media);
+        when(attachmentRepository.save(any(TaskAttachment.class))).thenReturn(saved);
+
+        TaskAttachment result = service.add(task, comment, file);
+
+        assertThat(result).isSameAs(saved);
+        ArgumentCaptor<TaskAttachment> captor = ArgumentCaptor.forClass(TaskAttachment.class);
+        verify(attachmentRepository).save(captor.capture());
+        assertThat(captor.getValue().getTask()).isSameAs(task);
+        assertThat(captor.getValue().getComment()).isSameAs(comment);
+        assertThat(captor.getValue().getMedia()).isSameAs(media);
+        verify(taskEventService).attachmentAdded(task, saved);
+        verifyNoInteractions(taskRepository);
     }
 
     @Test
@@ -187,6 +209,20 @@ class TaskAttachmentServiceTest {
         order.verify(taskEventService).attachmentRemoved(task, attachment);
         order.verify(attachmentRepository).delete(attachment);
         order.verify(mediaService).delete(media);
+    }
+
+    @Test
+    void removeGivenTaskAndAttachmentRecordsDeletesAndDropsTheMediaWithoutLookups() {
+        TaskAttachment attachment = attachment();
+
+        service.remove(task, attachment);
+
+        InOrder order = inOrder(taskEventService, attachmentRepository, mediaService);
+        order.verify(taskEventService).attachmentRemoved(task, attachment);
+        order.verify(attachmentRepository).delete(attachment);
+        order.verify(mediaService).delete(media);
+        verify(attachmentRepository, never()).findByIdAndTaskId(any(), any());
+        verifyNoInteractions(taskRepository);
     }
 
     @Test
