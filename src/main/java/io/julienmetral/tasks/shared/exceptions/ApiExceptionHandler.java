@@ -287,7 +287,7 @@ public class ApiExceptionHandler {
 
         return ResponseEntity
             .status(HttpStatus.TOO_MANY_REQUESTS)
-            .header(HttpHeaders.RETRY_AFTER, String.valueOf(Math.max(1, ex.getRetryAfter().toSeconds())))
+            .header(HttpHeaders.RETRY_AFTER, String.valueOf(ex.retryAfterSeconds()))
             .body(problem);
     }
 
