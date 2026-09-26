@@ -1,0 +1,21 @@
+databaseChangeLog:
+- changeSet:
+    id: 013-add-users-retention-columns
+    author: julien-metral
+    comment: >
+      Inactivity is measured from last_active_at (login or token refresh), falling back to last_login_at then
+      created_at for rows written before this column. inactivity_warned_at is set when the deletion warning is sent,
+      anonymized_at when a deleted user's personal data is erased.
+    changes:
+    - addColumn:
+        tableName: users
+        columns:
+        - column:
+            name: last_active_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            name: inactivity_warned_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            name: anonymized_at
+            type: TIMESTAMP(6) WITH TIME ZONE

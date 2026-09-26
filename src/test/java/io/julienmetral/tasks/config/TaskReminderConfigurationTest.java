@@ -27,12 +27,17 @@ class TaskReminderConfigurationTest {
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withUserConfiguration(SchedulingConfiguration.class, TaskReminderJob.class)
             .withBean(TaskReminderService.class, () -> mock(TaskReminderService.class))
-            // SchedulingConfiguration also validates the media cleanup properties
+            // SchedulingConfiguration also validates the media cleanup and user retention properties
             .withPropertyValues(
                     "media.cleanup.enabled=false",
                     "media.cleanup.cron=" + YEARLY_CRON,
                     "media.cleanup.retention=30d",
-                    "media.cleanup.orphan-grace-period=1d"
+                    "media.cleanup.orphan-grace-period=1d",
+                    "identity.retention.enabled=false",
+                    "identity.retention.cron=" + YEARLY_CRON,
+                    "identity.retention.anonymize-after=30d",
+                    "identity.retention.inactivity-period=730d",
+                    "identity.retention.deletion-notice=30d"
             );
 
     private final ApplicationContextRunner configured = runner.withPropertyValues(

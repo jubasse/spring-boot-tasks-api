@@ -14,6 +14,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.Instant;
 
 @Service
@@ -23,12 +24,14 @@ public class AuthService {
     private final UserRepository userRepository;
     private final JwtService jwtService;
     private final RefreshTokenService refreshTokenService;
+    private final Clock clock;
 
     public AuthService(
             AuthenticationManager authenticationManager,
             UserRepository userRepository,
             JwtService jwtService,
-            RefreshTokenService refreshTokenService
+            RefreshTokenService refreshTokenService,
+            Clock clock
     ) {
         this.authenticationManager =
                 authenticationManager;
@@ -41,6 +44,9 @@ public class AuthService {
 
         this.refreshTokenService =
                 refreshTokenService;
+
+        this.clock =
+                clock;
     }
 
     @Transactional
@@ -68,9 +74,10 @@ public class AuthService {
                 )
                 .orElseThrow();
 
-        user.setLastLoginAt(
-                Instant.now()
-        );
+        Instant now = clock.instant();
+
+        user.setLastLoginAt(now);
+        user.markActive(now);
 
         return tokens(
                 user,
@@ -90,6 +97,9 @@ public class AuthService {
         var rotated = refreshTokenService.rotate(
                 refreshToken
         );
+
+        // A client that keeps refreshing is in use even if its user never types the password again
+        rotated.user().markActive(clock.instant());
 
         return tokens(
                 rotated.user(),

@@ -59,6 +59,17 @@ public class User extends AuditableEntity implements Serializable {
     @Column(name = "last_login_at")
     private Instant lastLoginAt;
 
+    // Login or token refresh: what the inactivity retention measures (see UserRetentionService)
+    @Column(name = "last_active_at")
+    private Instant lastActiveAt;
+
+    @Column(name = "inactivity_warned_at")
+    private Instant inactivityWarnedAt;
+
+    // Set on soft-deleted rows only, which JPA never loads: written by UserRetentionQueries
+    @Column(name = "anonymized_at")
+    private Instant anonymizedAt;
+
     @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;
 
@@ -93,4 +104,10 @@ public class User extends AuditableEntity implements Serializable {
             foreignKey = @ForeignKey(name = "users_pending_avatar_mediaFK")
     )
     private Media pendingAvatar;
+
+    /** Any activity cancels a pending inactivity deletion. */
+    public void markActive(Instant now) {
+        lastActiveAt = now;
+        inactivityWarnedAt = null;
+    }
 }

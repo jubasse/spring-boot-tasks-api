@@ -14,6 +14,13 @@ identity:
     ttl: 1h
     # Front-end page that reads ?token=..., asks for a new password and calls POST /api/v1/auth/password-reset/confirm
     reset-url: ${PASSWORD_RESET_URL:http://localhost:3000/reset-password}
+  # GDPR retention: erases the personal data of deleted users, and deletes accounts left inactive after a warning
+  retention:
+    enabled: ${USER_RETENTION_ENABLED:true}
+    cron: ${USER_RETENTION_CRON:0 0 4 * * *}
+    anonymize-after: 30d
+    inactivity-period: 730d
+    deletion-notice: 30d
 mail:
   from: ${MAIL_FROM:no-reply@tasks.local}
 # Media file storage. storage.driver picks the implementation: rustfs (defaults match compose.yaml) or aws-s3.

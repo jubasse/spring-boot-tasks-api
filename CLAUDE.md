@@ -75,6 +75,11 @@ Controllers are under `/api/v1/...`. Services own transactions and return entiti
 
 Refresh, verification and reset tokens are 256-bit random values (`OpaqueTokens`). Only their SHA-256 hash is stored.
 
+7. **GDPR retention** (`UserRetentionService`, run daily at 04:00 by `UserRetentionJob`, settings under `identity.retention`):
+   - users soft-deleted for 30 days are anonymized in native SQL (`UserRetentionQueries`): email `deleted-<id>@anonymized.invalid`, name "Deleted user", unusable password, settings and tokens deleted. The row stays for tasks and history, and the original email becomes free for a new sign-up. Their media go through the media cleanup, which uses the same 30 days.
+   - accounts without activity for 2 years get a warning email, then are deleted 30 days later if still inactive, and anonymized by a later run. Activity is `last_active_at`, set by login and by token refresh (`User.markActive`, which also clears the warning); older rows fall back to `last_login_at`, then `created_at`.
+   - admins are never warned or deleted for inactivity, so the last admin cannot disappear.
+
 Public endpoints: `POST /api/v1/users` (sign-up), and `POST /api/v1/auth/login`, `/refresh`, `/logout`, `/verify-email`, `/password-reset/request` and `/password-reset/confirm`.
 
 ### Task access rules
