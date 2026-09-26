@@ -1,0 +1,29 @@
+databaseChangeLog:
+- changeSet:
+    id: 015-create-rate-limit-counters
+    author: julien-metral
+    comment: >
+      Requests counted per key (for example the client IP or the email of a login) and fixed time window.
+    changes:
+    - createTable:
+        tableName: rate_limit_counters
+        columns:
+        - column:
+            name: bucket_key
+            type: VARCHAR(400)
+            constraints:
+              nullable: false
+        - column:
+            name: window_start
+            type: TIMESTAMP(6) WITH TIME ZONE
+            constraints:
+              nullable: false
+        - column:
+            name: count
+            type: INTEGER
+            constraints:
+              nullable: false
+    - addPrimaryKey:
+        tableName: rate_limit_counters
+        columnNames: bucket_key, window_start
+        constraintName: rate_limit_countersPK
