@@ -157,7 +157,7 @@ Health checks and metrics are served on a separate port, 8081 by default, withou
 |---|---|
 | http://localhost:8081/actuator/health | Overall status and each dependency: database, RabbitMQ, mail server, object storage, antivirus, disk space |
 | http://localhost:8081/actuator/health/liveness | Whether the process should be restarted |
-| http://localhost:8081/actuator/health/readiness | Whether the API can take traffic: database, RabbitMQ and object storage are up. An unreachable antivirus only blocks uploads, so it does not make the API unready |
+| http://localhost:8081/actuator/health/readiness | Whether the API can take traffic, which only needs the database. RabbitMQ, the object storage or the antivirus being down delays emails or blocks files, and shows in the overall health, but does not take the API out of traffic |
 | http://localhost:8081/actuator/prometheus | Metrics in Prometheus format |
 | http://localhost:8081/actuator/info | Deployed version |
 
