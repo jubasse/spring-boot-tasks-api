@@ -138,6 +138,7 @@ Warning: Hibernate refuses a `LAZY` to-one association towards an entity with `@
 - **Proxies** set with `getReferenceById` (a new task's creator, a new comment's author) are loaded with `ProfilesForDisplay.load` before a service returns them.
 - Associations to users and media are LAZY; only those to `Task`, which carries `@SoftDelete`, stay EAGER.
 - Measured on a page of 20 tasks: 3 queries, whatever the number of distinct users (8 before, growing with them).
+- `TaskQueryCountTests` and `UserQueryCountTests` lock these counts: each read must run as many statements for a long list as for a short one. `support.SqlStatementCounter`, a Hibernate `StatementInspector` registered in the test `application.yaml`, records only the test thread, since the outbox relay and the listeners query the database on their own threads.
 
 ### Mail
 
