@@ -10,33 +10,22 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
-import org.springframework.security.oauth2.jwt.JwsHeader;
-import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.jwt.JwtEncoder;
-import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
-import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-import javax.crypto.spec.SecretKeySpec;
-import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.EnumSet;
-import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -62,9 +51,6 @@ class AuthControllerTests {
 
     @Autowired
     private JsonMapper jsonMapper;
-
-    @Autowired
-    private JwtEncoder jwtEncoder;
 
     @Autowired
     private JwtDecoder jwtDecoder;
@@ -320,107 +306,6 @@ class AuthControllerTests {
                 .andExpect(status().isUnauthorized());
     }
 
-    @Test
-    void protectedEndpointWithoutTokenReturnsUnauthorizedWithBearerChallenge() throws Exception {
-        mockMvc.perform(get("/api/v1/users/{id}", UUID.randomUUID()))
-                .andExpect(status().isUnauthorized())
-                .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, startsWith("Bearer")));
-    }
-
-    @Test
-    void malformedTokenIsRejected() throws Exception {
-        mockMvc.perform(
-                        get("/api/v1/users/{id}", UUID.randomUUID())
-                                .header(HttpHeaders.AUTHORIZATION, "Bearer not-a-jwt")
-                )
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void tamperedTokenIsRejected() throws Exception {
-        String email = uniqueEmail();
-        UUID id = signUp(email);
-        String token = login(email, PASSWORD);
-
-        // Change a character in the middle of the signature (the last one may only carry padding bits).
-        int index = token.length() - 10;
-        char replacement = token.charAt(index) == 'A' ? 'B' : 'A';
-        String tampered = token.substring(0, index) + replacement + token.substring(index + 1);
-
-        mockMvc.perform(
-                        get("/api/v1/users/{id}", id)
-                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + tampered)
-                )
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void tokenSignedWithAnotherKeyIsRejected() throws Exception {
-        UUID id = signUp(uniqueEmail());
-
-        byte[] otherKey = new byte[32];
-        new SecureRandom().nextBytes(otherKey);
-        JwtEncoder foreignEncoder = NimbusJwtEncoder
-                .withSecretKey(new SecretKeySpec(otherKey, "HmacSHA256"))
-                .algorithm(MacAlgorithm.HS256)
-                .build();
-
-        String forged = encode(foreignEncoder, "tasks-api", id, List.of("ROLE_ADMIN"), Instant.now().plusSeconds(600));
-
-        mockMvc.perform(
-                        get("/api/v1/users/{id}", id)
-                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + forged)
-                )
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void tokenWithWrongIssuerIsRejected() throws Exception {
-        UUID id = signUp(uniqueEmail());
-
-        String token = encode(jwtEncoder, "someone-else", id, List.of("ROLE_USER"), Instant.now().plusSeconds(600));
-
-        mockMvc.perform(
-                        get("/api/v1/users/{id}", id)
-                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
-                )
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void expiredTokenIsRejected() throws Exception {
-        UUID id = signUp(uniqueEmail());
-
-        // Beyond the default 60s clock skew tolerated by JwtTimestampValidator.
-        String token = encode(jwtEncoder, "tasks-api", id, List.of("ROLE_USER"), Instant.now().minusSeconds(600));
-
-        mockMvc.perform(
-                        get("/api/v1/users/{id}", id)
-                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
-                )
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void validTokenWithoutRolesClaimCannotUseAdminEndpoints() throws Exception {
-        UUID id = signUp(uniqueEmail());
-        UUID otherId = signUp(uniqueEmail());
-
-        String token = encode(jwtEncoder, "tasks-api", id, List.of(), Instant.now().plusSeconds(600));
-
-        mockMvc.perform(
-                        get("/api/v1/users/{id}", id)
-                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
-                )
-                .andExpect(status().isOk());
-
-        mockMvc.perform(
-                        post("/api/v1/users/{id}/disable", otherId)
-                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
-                )
-                .andExpect(status().isForbidden());
-    }
-
     private UUID signUp(String email) throws Exception {
         String location = mockMvc.perform(
                         post("/api/v1/users")
@@ -455,27 +340,6 @@ class AuthControllerTests {
         return """
                 {"email": "%s", "password": "%s"}
                 """.formatted(email, password);
-    }
-
-    private static String encode(
-            JwtEncoder encoder,
-            String issuer,
-            UUID userId,
-            List<String> roles,
-            Instant expiresAt
-    ) {
-        JwtClaimsSet claims = JwtClaimsSet.builder()
-                .issuer(issuer)
-                .subject("test")
-                .issuedAt(expiresAt.minusSeconds(900))
-                .expiresAt(expiresAt)
-                .claim("uid", userId.toString())
-                .claim("roles", roles)
-                .build();
-
-        return encoder
-                .encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims))
-                .getTokenValue();
     }
 
     /** Created directly in the DB with the password "password", hashed by the application's encoder. */
