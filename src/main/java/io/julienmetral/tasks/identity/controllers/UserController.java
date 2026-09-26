@@ -6,6 +6,7 @@ import io.julienmetral.tasks.identity.dtos.UserResponseDto;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.services.UserService;
+import io.julienmetral.tasks.media.services.MediaUrls;
 import io.julienmetral.tasks.shared.security.AdminOnly;
 import io.julienmetral.tasks.shared.security.AllowedRolesOrSelfOnly;
 import jakarta.validation.Valid;
@@ -22,6 +23,7 @@ import java.util.UUID;
 public class UserController {
 
     private final UserService userService;
+    private final MediaUrls mediaUrls;
 
     @PostMapping
     public ResponseEntity<UserResponseDto> create(
@@ -40,7 +42,7 @@ public class UserController {
                         )
                 )
                 .body(
-                        new UserResponseDto(user)
+                        response(user)
                 );
     }
 
@@ -50,7 +52,7 @@ public class UserController {
             @PathVariable UUID id
     ) {
         return ResponseEntity.ok(
-                new UserResponseDto(
+                response(
                         userService.findById(id)
                 )
         );
@@ -68,7 +70,7 @@ public class UserController {
         );
 
         return ResponseEntity.ok(
-                new UserResponseDto(user)
+                response(user)
         );
     }
 
@@ -106,5 +108,9 @@ public class UserController {
         return ResponseEntity
                 .noContent()
                 .build();
+    }
+
+    private UserResponseDto response(User entity) {
+        return new UserResponseDto(entity, mediaUrls);
     }
 }

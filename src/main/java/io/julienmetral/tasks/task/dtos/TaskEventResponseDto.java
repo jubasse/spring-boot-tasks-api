@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.task.dtos;
 
 import io.julienmetral.tasks.identity.dtos.UserPreviewResponseDto;
+import io.julienmetral.tasks.media.services.MediaUrls;
 import io.julienmetral.tasks.task.entities.TaskEvent;
 import io.julienmetral.tasks.task.entities.TaskEventType;
 
@@ -16,11 +17,11 @@ public record TaskEventResponseDto(
         Map<String, Object> payload
 ) {
 
-    public TaskEventResponseDto(TaskEvent event) {
+    public TaskEventResponseDto(TaskEvent event, MediaUrls mediaUrls) {
         this(
                 event.getId(),
                 event.getType(),
-                UserPreviewResponseDto.of(event.getActor()),
+                UserPreviewResponseDto.of(event.getActor(), mediaUrls),
                 event.getOccurredAt(),
                 event.getPayload()
         );
