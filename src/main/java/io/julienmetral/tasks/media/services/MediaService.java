@@ -1,7 +1,7 @@
 package io.julienmetral.tasks.media.services;
 
 import io.julienmetral.tasks.config.MediaProperties;
-import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
 import io.julienmetral.tasks.media.exceptions.EmptyMediaException;
 import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
 import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
@@ -37,6 +37,7 @@ public class MediaService {
     private static final String FALLBACK_FILENAME = "file";
 
     private final MediaRepository mediaRepository;
+    private final UserSummaryRepository userSummaryRepository;
     private final ObjectStorage objectStorage;
     private final ContentTypeDetector contentTypeDetector;
     private final MediaProperties properties;
@@ -50,7 +51,7 @@ public class MediaService {
      * @throws UnsupportedMediaTypeException when the detected type is not allowed for the usage
      */
     @Transactional
-    public Media store(MultipartFile file, MediaUsage usage, User uploadedBy) {
+    public Media store(MultipartFile file, MediaUsage usage, UUID uploadedById) {
         if (file.isEmpty()) {
             throw new EmptyMediaException();
         }
@@ -81,7 +82,7 @@ public class MediaService {
         media.setContentType(contentType);
         media.setSizeBytes(file.getSize());
         media.setSha256(sha256);
-        media.setUploadedBy(uploadedBy);
+        media.setUploadedBy(uploadedById == null ? null : userSummaryRepository.getReferenceById(uploadedById));
         media.setCreatedAt(Instant.now());
 
         return mediaRepository.save(media);

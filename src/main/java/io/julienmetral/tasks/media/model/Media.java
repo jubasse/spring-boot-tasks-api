@@ -1,15 +1,12 @@
 package io.julienmetral.tasks.media.model;
 
-import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserSummary;
 import jakarta.persistence.*;
-import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
-import org.hibernate.annotations.NotFound;
-import org.hibernate.annotations.NotFoundAction;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -54,26 +51,14 @@ public class Media {
     @Column(name = "sha256", nullable = false, updatable = false, length = 64)
     private String sha256;
 
-    // ⚠ Read-only association with a writable id column: the uploader can be soft-deleted (see Task.assignedTo)
-    @ManyToOne(fetch = FetchType.EAGER)
-    @NotFound(action = NotFoundAction.IGNORE)
+    // UserSummary, not User: the uploader may later be soft-deleted
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "uploaded_by_id",
-            insertable = false,
-            updatable = false,
             foreignKey = @ForeignKey(name = "media_uploaded_byFK")
     )
-    private User uploadedBy;
-
-    @Setter(AccessLevel.NONE)
-    @Column(name = "uploaded_by_id")
-    private UUID uploadedById;
+    private UserSummary uploadedBy;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
-
-    public void setUploadedBy(User user) {
-        this.uploadedBy = user;
-        this.uploadedById = user == null ? null : user.getId();
-    }
 }
