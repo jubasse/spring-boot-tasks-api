@@ -18,7 +18,8 @@ public record UserResponseDto(
         Set<UserRole> roles,
         Instant createdAt,
         Instant updatedAt,
-        String avatarUrl
+        String avatarUrl,
+        boolean avatarPending
 ) {
 
     public UserResponseDto(User user, MediaUrls mediaUrls) {
@@ -32,7 +33,8 @@ public record UserResponseDto(
                 Set.copyOf(user.getRoles()),
                 user.getCreatedAt(),
                 user.getUpdatedAt(),
-                mediaUrls.of(user.getAvatar())
+                mediaUrls.of(user.getAvatar()),
+                user.getPendingAvatar() != null
         );
     }
 }

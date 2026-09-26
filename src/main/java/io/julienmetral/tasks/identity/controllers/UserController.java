@@ -120,9 +120,9 @@ public class UserController {
             @PathVariable UUID id,
             @RequestPart("file") MultipartFile file
     ) {
-        return ResponseEntity.ok(
-                response(avatarService.update(id, file))
-        );
+        return ResponseEntity
+                .accepted()
+                .body(response(avatarService.update(id, file)));
     }
 
     @DeleteMapping("/{id}/avatar")
