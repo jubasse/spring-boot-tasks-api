@@ -212,7 +212,12 @@ Every task mutation in `TaskService` must call the matching `TaskEventService` m
 
 ### Errors
 
-Domain exceptions live in each feature's `exceptions` package and are mapped to HTTP responses in `shared/exceptions/ApiExceptionHandler`. A new exception type needs a handler there, or it surfaces as a 500.
+Every error is an RFC 9457 problem (`application/problem+json`), documented for clients in `docs/problems.md`. Domain exceptions live in each feature's `exceptions` package and are mapped in `shared/exceptions/ApiExceptionHandler`. A new exception type needs a handler there, or it surfaces as a 500.
+- **Typed or not:** a domain rule the client can act on gets a `ProblemType` (a type URI into `docs/problems.md`, a constant title) and a section in that document. A generic HTTP condition (not found, unauthorized, too large, rate limited, unavailable) stays `about:blank`: leave `title` unset, and Spring fills in the status phrase, as the RFC asks. Warning: a type URI and its title are a contract with clients; renaming one is a breaking change.
+- **Invalid input** (Bean Validation, a value of the wrong type in the body or a parameter, a missing parameter or part) is a `validation-error` whose `errors` list `{detail, pointer}` for the JSON body and `{detail, parameter}` otherwise (`InvalidValue`). Parser and Java type names never reach the client.
+- The handler extends `ResponseEntityExceptionHandler` for the Spring MVC exceptions; their details are reworded in `messages.properties` (`problemDetail.<exception class>`). Warning: an `@ExceptionHandler` for an exception that `ResponseEntityExceptionHandler` already handles (such as `MaxUploadSizeExceededException`) makes the mapping ambiguous and fails startup: override its method instead.
+- Bean Validation messages follow the request's `Accept-Language`. Tests assert on `pointer` and `parameter`, or pin the language.
+- The 401 and 403 of the security filters come from Spring Security, without a problem body.
 
 ## Comments and Javadoc: the why and the failure, never the what
 
@@ -263,7 +268,6 @@ Cut:
   - **Time:** `TestClock` is the application's `Clock`. It follows the system time until a test pins it (`set`) or moves it (`advance`), and it is reset after every test.
 - **Web tests** (`*WebMvcTests`) are annotated `@WebLayerTest` (`support`): every controller and `ApiExceptionHandler` behind the real `SecurityConfiguration`, JWT decoding and method security, without Docker. Services, repositories and the ownership beans that query the database are mocks. They cover request validation, 401, role-only 403, the ids the SpEL passes to ownership beans, and exception mapping; everything that depends on stored data stays in `@IntegrationTest`.
   - Callers come from `WebCallers` (`user`, `admin`, `withoutUid`); task endpoints need `WebCallers.everyAccountIsActive(userRepository)`, because `ActiveUserAuthorizationManager` reloads the account. `verifyNoInteractions(service)` proves a request was refused before the service ran.
-  - Validation 400s have no body under MockMvc: Spring Boot's error page renders them only on a real server (see `PublicEndpointErrorTests`).
 - **SQL and repository tests** run in slices on the same reused Postgres, migrated by Liquibase, and roll back after each test: `@JdbcSliceTest` (`JdbcTemplate` and every `*Queries` class) and `@RepositoryTest` (JPA, the repositories, `TestEntityManager` and auditing). `@AutoConfigureTestDatabase(replace = NONE)` is not needed: the default keeps a `@ServiceConnection` data source.
   - A test that must commit (locks seen from another connection, concurrency, Liquibase on its own connection) uses `Transactions.inNewTransaction` or `@Transactional(propagation = NOT_SUPPORTED)`, and cleans up after itself. Fixtures of queries that sweep a whole table are dated in 2000, so the cutoffs reach only the class's own rows.
   - Warning: Postgres is declared once, in `PostgresTestcontainersConfiguration`. Testcontainers reuses a container only when its whole definition matches, so a second definition starts a second database.
