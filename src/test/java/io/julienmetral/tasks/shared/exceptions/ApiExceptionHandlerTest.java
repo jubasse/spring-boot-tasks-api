@@ -8,6 +8,11 @@ import io.julienmetral.tasks.identity.exceptions.InvalidRefreshTokenException;
 import io.julienmetral.tasks.identity.exceptions.UserEmailAlreadyExistsException;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
 import io.julienmetral.tasks.identity.entities.UserStatus;
+import io.julienmetral.tasks.media.exceptions.EmptyMediaException;
+import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
+import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
+import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
+import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.task.exceptions.AssigneeNotActiveException;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException;
@@ -16,6 +21,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.unit.DataSize;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.util.Map;
 import java.util.UUID;
@@ -150,5 +157,56 @@ class ApiExceptionHandlerTest {
         assertThat(problem.getStatus()).isEqualTo(400);
         assertThat(problem.getTitle()).isEqualTo("Invalid password reset token");
         assertThat(problem.getDetail()).isEqualTo("The password reset token is invalid, expired or already used");
+    }
+
+    @Test
+    void emptyMediaMapsTo400() {
+        ProblemDetail problem = handler.handleEmptyMedia(new EmptyMediaException());
+
+        assertThat(problem.getStatus()).isEqualTo(400);
+        assertThat(problem.getTitle()).isEqualTo("Empty file");
+        assertThat(problem.getDetail()).isEqualTo("The file is empty");
+    }
+
+    @Test
+    void mediaTooLargeMapsTo413WithTheLimit() {
+        ProblemDetail problem = handler.handleMediaTooLarge(new MediaTooLargeException(DataSize.ofMegabytes(5)));
+
+        assertThat(problem.getStatus()).isEqualTo(413);
+        assertThat(problem.getTitle()).isEqualTo("File too large");
+        assertThat(problem.getDetail()).isEqualTo("The file exceeds the maximum size of 5 MB");
+    }
+
+    @Test
+    void maxUploadSizeExceededMapsTo413WithoutParserDetails() {
+        ProblemDetail problem = handler.handleMaxUploadSizeExceeded(
+                new MaxUploadSizeExceededException(26_214_400L, new IllegalStateException("tomcat internals")));
+
+        assertThat(problem.getStatus()).isEqualTo(413);
+        assertThat(problem.getTitle()).isEqualTo("File too large");
+        assertThat(problem.getDetail()).isEqualTo("The request exceeds the maximum upload size");
+    }
+
+    @Test
+    void unsupportedMediaTypeMapsTo415WithTheDetectedType() {
+        ProblemDetail problem = handler.handleUnsupportedMediaType(
+                new UnsupportedMediaTypeException("application/x-msdownload", MediaUsage.TASK_ATTACHMENT));
+
+        assertThat(problem.getStatus()).isEqualTo(415);
+        assertThat(problem.getTitle()).isEqualTo("Unsupported file type");
+        assertThat(problem.getDetail())
+                .isEqualTo("Files of type application/x-msdownload are not accepted for TASK_ATTACHMENT");
+    }
+
+    @Test
+    void storageUnavailableMapsTo503WithoutLeakingTheCause() {
+        ProblemDetail problem = handler.handleStorageUnavailable(
+                new StorageUnavailableException(new RuntimeException("Connection refused: rustfs:9000")));
+
+        assertThat(problem.getStatus()).isEqualTo(503);
+        assertThat(problem.getTitle()).isEqualTo("Storage unavailable");
+        assertThat(problem.getDetail())
+                .isEqualTo("File storage is temporarily unavailable")
+                .doesNotContain("rustfs");
     }
 }
