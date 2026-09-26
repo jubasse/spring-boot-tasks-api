@@ -126,7 +126,7 @@ In development, SMTP goes to the Mailpit service of `compose.yaml` (web UI on ht
   - An infected file is rejected with 422 and never stored.
   - If clamd cannot be reached, the upload fails with 503 instead of being stored unscanned (fail closed).
   - `antivirus.enabled=false` (`ANTIVIRUS_ENABLED`) swaps in a scanner that accepts everything and logs a warning at startup. It is meant for development machines that cannot spare ClamAV's memory (about 1 GB).
-  - Tests start a ClamAV container with freshclam disabled, since the signatures are baked into the image, and use the EICAR test string as the infected file.
+  - Tests start a ClamAV container that loads only an EICAR signature (`TestcontainersConfiguration`), about 14 MB instead of about 1 GB for the full database, with freshclam disabled. The EICAR test string is the infected file, reported as `TestcontainersConfiguration.EICAR_THREAT`.
 - **Profile photos:** `PUT /api/v1/users/{id}/avatar` (multipart field `file`) and `DELETE /api/v1/users/{id}/avatar`, for the user or an admin, handled by `AvatarService`.
   - The original upload goes through `MediaService.validate`, which checks size, type and viruses, before `AvatarImageProcessor` decodes it. The processor rejects images above 10000 px or 40 MP before decoding them (422), applies the EXIF orientation, crops to a centred square and scales down to 256 px. It then re-encodes to JPEG, or to PNG when the original has transparency, and re-encoding drops all metadata, GPS included.
   - The previous photo is deleted with `MediaService.delete`: the row goes with the change, and the object once the transaction commits.
@@ -213,7 +213,8 @@ Cut:
 - **Integration tests** (`*Tests`) use `@SpringBootTest` + `@AutoConfigureMockMvc` + `@Import(TestcontainersConfiguration.class)`. That configuration provides a `@ServiceConnection` `PostgreSQLContainer`, so Liquibase migrations run against a real Postgres.
   - Most tests authenticate with the `jwt()` post-processor, a `uid` claim and a `ROLE_*` authority. The acting user must exist in the database, because `TaskEventService` loads it.
   - `AuthControllerTests` sends real `Authorization: Bearer` tokens obtained from the login endpoint.
-- The containers are shared across test classes. Use unique emails and references (random UUIDs) in every test.
+- The containers are shared across test classes that use the same Spring context. Use unique emails and references (random UUIDs) in every test.
+- Each cached Spring context runs its own set of containers. `src/test/resources/spring.properties` caps the context cache at 8, so an evicted context stops its containers. Warning: a full run needs several GB of memory; never run two full suites at once on the same machine.
 
 ## Git workflow and CI
 
