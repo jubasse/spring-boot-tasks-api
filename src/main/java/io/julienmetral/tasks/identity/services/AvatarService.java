@@ -2,6 +2,7 @@ package io.julienmetral.tasks.identity.services;
 
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
+import io.julienmetral.tasks.identity.messaging.AvatarQueues;
 import io.julienmetral.tasks.identity.messaging.AvatarUploaded;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
@@ -12,9 +13,9 @@ import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.media.model.ProcessedImage;
 import io.julienmetral.tasks.media.services.AvatarImageProcessor;
 import io.julienmetral.tasks.media.services.MediaService;
+import io.julienmetral.tasks.messaging.services.Outbox;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -33,12 +34,12 @@ public class AvatarService {
     private final MediaService mediaService;
     private final AvatarImageProcessor imageProcessor;
     private final CurrentUser currentUser;
-    private final ApplicationEventPublisher eventPublisher;
+    private final Outbox outbox;
 
     /**
      * Checks the photo (size, type, antivirus, then dimensions from its header) and stores it as uploaded, as the
-     * user's pending photo. Publishes {@link AvatarUploaded}: the worker produces the square version after commit
-     * (see {@link #process}). A newer upload replaces a pending one; the current photo stays until then.
+     * user's pending photo. Writes {@link AvatarUploaded} to the outbox: the worker produces the square version after
+     * commit (see {@link #process}). A newer upload replaces a pending one; the current photo stays until then.
      */
     @Transactional
     public User update(UUID userId, MultipartFile file) {
@@ -51,7 +52,7 @@ public class AvatarService {
 
         replacePendingAvatar(user, upload);
 
-        eventPublisher.publishEvent(new AvatarUploaded(user.getId(), upload.getId()));
+        outbox.enqueue(AvatarQueues.PROCESS, new AvatarUploaded(user.getId(), upload.getId()));
 
         return user;
     }

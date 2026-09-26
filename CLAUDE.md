@@ -54,6 +54,7 @@ Package-by-feature under `io.julienmetral.tasks`, and each feature uses the same
 - `identity`: users, login, JWT and refresh tokens, email verification, user-level authorization.
 - `task`: tasks, their event log and their attachments (`/api/v1/tasks/{id}/attachments`: added by an admin or the assignee, listed by any active user, removed by an admin or the uploader; additions and removals are history events) and their comments (see Task comments below).
 - `mail`: the cross-cutting mail service (see Mail below).
+- `messaging`: the outbox through which every RabbitMQ message is published (see Outbox below).
 - `media`: stored files and their metadata (see Media storage below). Its sub-packages are `model` (entities, enums and value records), `services`, `repositories`, `controllers` and `exceptions`.
 - `config`: application-wide technical configuration, such as the storage drivers.
 - `notification`: task email notifications and their per-user settings.
@@ -119,7 +120,7 @@ Warning: Hibernate refuses a `LAZY` to-one association towards an entity with `@
 ### Mail
 
 `io.julienmetral.tasks.mail` is the cross-cutting mail service. Features call `MailService.send(MailMessage)`, usually from an event listener that writes the content (for example `identity.mail.VerificationEmailSender`). The sender address is `mail.from`.
-- **Queueing:** after the surrounding transaction commits, `MailDispatcher` publishes the message to the durable RabbitMQ queue `mail.send`, on an `@Async` virtual thread. If the broker stays unreachable past the template retries, the email is lost and logged; the business operation is never failed.
+- **Queueing:** `MailService.send` writes the message to the outbox (see Outbox below) for the durable RabbitMQ queue `mail.send`, in the caller's transaction. A rolled-back change sends nothing, and a broker outage only delays the email.
 - **Sending:** `MailQueueListener` consumes the queue and sends through SMTP. A failure is retried in the consumer with backoff (`spring.rabbitmq.listener.simple.retry`, about 1.5 minutes), then the message goes to `mail.send.dead-letter`, where it stays for inspection or a manual move from the RabbitMQ management UI (http://localhost:15672 in development). A message that can never be built is dead-lettered at once. Delivery is at least once.
 
 In development, SMTP goes to the Mailpit service of `compose.yaml` (web UI on http://localhost:8025). Tests start RabbitMQ and Mailpit containers (`TestcontainersConfiguration`) and read the received emails with `support.Mailpit`. Sending is asynchronous, so use its waiting methods (`latestTextTo`, `latestVerificationTokenFor`).
@@ -134,7 +135,7 @@ In development, SMTP goes to the Mailpit service of `compose.yaml` (web UI on ht
   - Tests start a ClamAV container that loads only an EICAR signature (`TestcontainersConfiguration`), about 14 MB instead of about 1 GB for the full database, with freshclam disabled. The EICAR test string is the infected file, reported as `TestcontainersConfiguration.EICAR_THREAT`.
 - **Profile photos:** `PUT /api/v1/users/{id}/avatar` (multipart field `file`) and `DELETE /api/v1/users/{id}/avatar`, for the user or an admin, handled by `AvatarService`.
   - **Upload (synchronous):** the request stores the file as uploaded (`MediaUsage.AVATAR_UPLOAD`, which checks size, type and viruses), rejects images above 10000 px or 40 MP from their header alone (422), and keeps it in `users.pending_avatar_media_id`. It answers 202 with `avatarPending: true`; a newer upload replaces a pending one.
-  - **Processing (worker):** after commit, `AvatarUploadPublisher` queues the upload on `avatar.process`, and `AvatarProcessingListener` calls `AvatarService.process`. It applies the EXIF orientation, crops to a centred square and scales down to 256 px, then re-encodes to JPEG, or to PNG when the original has transparency; re-encoding drops all metadata, GPS included. The result replaces the current photo and the upload is deleted. A stale message (upload replaced or removed since) does nothing; an image that cannot be decoded is dropped with a warning; other failures are retried, then dead-lettered to `avatar.process.dead-letter`.
+  - **Processing (worker):** the upload is written to the outbox for `avatar.process` in the same transaction, and `AvatarProcessingListener` calls `AvatarService.process`. It applies the EXIF orientation, crops to a centred square and scales down to 256 px, then re-encodes to JPEG, or to PNG when the original has transparency; re-encoding drops all metadata, GPS included. The result replaces the current photo and the upload is deleted. A stale message (upload replaced or removed since) does nothing; an image that cannot be decoded is dropped with a warning; other failures are retried, then dead-lettered to `avatar.process.dead-letter`.
   - **Concurrency:** the upload request and the worker both lock the user row first (`UserRepository.findByIdForUpdate`); without that common lock they deadlocked. `User` is `@DynamicUpdate`, so an update writes only the columns it changed: the worker once rewrote the whole row and re-enabled an account an admin had disabled meanwhile.
   - The previous photo is deleted with `MediaService.delete`: the row goes with the change, and the object once the transaction commits.
   - `users.avatar_media_id` and `users.pending_avatar_media_id` have explicit unique constraints (`users_avatar_media_idUQ`, `users_pending_avatar_media_idUQ`). The associations are `@ManyToOne`, because a `@OneToOne` makes Hibernate add an implicit unique constraint with a generated name, which `liquibase:diff` then reports.
@@ -152,6 +153,14 @@ In development, SMTP goes to the Mailpit service of `compose.yaml` (web UI on ht
 
   Both use `S3ObjectStorage`; a non-S3 driver would only need another `ObjectStorage` implementation. S3 failures surface as `StorageUnavailableException` (503).
 - **Server:** MinIO no longer publishes Docker images, which is why development and tests use RustFS, an S3-compatible server.
+
+### Outbox
+
+Every message for RabbitMQ goes through `messaging.services.Outbox.enqueue`, never through `RabbitTemplate` directly. It writes an `outbox_messages` row in the caller's transaction (`Propagation.MANDATORY`), so the message exists if and only if the business change commits.
+- `OutboxRelay.publishNow` publishes it right after the commit, on an `@Async` thread, and waits for the broker's confirm (`spring.rabbitmq.publisher-confirm-type: correlated`) and checks it was not returned as unroutable (the message is mandatory) before setting `published_at`: RabbitMQ also confirms a message for a missing queue.
+- A failed publish records `attempts`, `last_error` and `next_attempt_at` (5 s, doubling, capped at `messaging.outbox.max-retry-delay`). `OutboxRelayJob` retries due messages every `messaging.outbox.poll-interval` and deletes published ones after `messaging.outbox.retention`.
+- Rows are locked with `FOR UPDATE SKIP LOCKED`, so the immediate publish, the poller and other instances never send the same message twice at once. A crash between the confirm and the commit publishes it again: delivery is at least once, and consumers must tolerate a duplicate.
+- The message carries its class name in the `__TypeId__` header; the class's package must be trusted by the converter in `MessagingConfiguration`.
 
 ### Method-security annotations
 

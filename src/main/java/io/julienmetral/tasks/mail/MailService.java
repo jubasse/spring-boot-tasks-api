@@ -1,26 +1,25 @@
 package io.julienmetral.tasks.mail;
 
+import io.julienmetral.tasks.messaging.services.Outbox;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Entry point for sending emails from any feature.
  * <p>
- * Called inside a transaction, the email is queued only after it commits, so nothing goes out for work that was
- * rolled back. It is then sent by a RabbitMQ consumer ({@link MailDispatcher}, {@link MailQueueListener}), so
- * requests never wait for SMTP and a failed delivery is retried.
+ * The email is written to the outbox in the caller's transaction (a transaction of its own when there is none):
+ * nothing goes out for work that was rolled back, and a RabbitMQ outage only delays it. {@link MailQueueListener}
+ * then sends it, so requests never wait for SMTP and a failed delivery is retried.
  */
 @Service
 @RequiredArgsConstructor
 public class MailService {
 
-    private final ApplicationEventPublisher eventPublisher;
+    private final Outbox outbox;
 
+    @Transactional
     public void send(MailMessage message) {
-        eventPublisher.publishEvent(new MailRequested(message));
-    }
-
-    record MailRequested(MailMessage message) {
+        outbox.enqueue(MailQueues.SEND, message);
     }
 }
