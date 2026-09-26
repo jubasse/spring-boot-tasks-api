@@ -8,6 +8,7 @@ import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
 import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.model.MediaDownload;
+import io.julienmetral.tasks.media.model.MediaSource;
 import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.media.repositories.MediaRepository;
 import lombok.RequiredArgsConstructor;
@@ -44,38 +45,22 @@ public class MediaService {
     private final VirusScanner virusScanner;
     private final MediaProperties properties;
 
-    /**
-     * Validates the file against the usage's size and type rules, uploads it and saves its metadata. Must run in the
-     * caller's transaction: if it rolls back, the uploaded object is deleted again.
-     *
-     * @throws EmptyMediaException           when the file has no content
-     * @throws MediaTooLargeException        when the file exceeds the usage's size limit
-     * @throws UnsupportedMediaTypeException when the detected type is not allowed for the usage
-     * @throws InfectedMediaException        when the antivirus finds a threat; nothing is stored
-     */
     @Transactional
     public Media store(MultipartFile file, MediaUsage usage, UUID uploadedById) {
-        if (file.isEmpty()) {
-            throw new EmptyMediaException();
-        }
+        return store(MediaSource.of(file), usage, uploadedById);
+    }
 
-        DataSize maxSize = maxSize(usage);
-
-        if (file.getSize() > maxSize.toBytes()) {
-            throw new MediaTooLargeException(maxSize);
-        }
-
-        String filename = originalFilename(file);
-        String contentType = detectContentType(file, filename);
-
-        if (!usage.allows(contentType)) {
-            throw new UnsupportedMediaTypeException(contentType, usage);
-        }
-
-        rejectIfInfected(file);
+    /**
+     * Validates the content (see {@link #validate}), uploads it and saves its metadata. Must run in the caller's
+     * transaction: if it rolls back, the uploaded object is deleted again.
+     */
+    @Transactional
+    public Media store(MediaSource source, MediaUsage usage, UUID uploadedById) {
+        String contentType = validate(source, usage);
+        String filename = originalFilename(source.filename());
 
         String storageKey = usage.storagePrefix() + "/" + UUID.randomUUID();
-        String sha256 = upload(file, storageKey, contentType);
+        String sha256 = upload(source, storageKey, contentType);
 
         deleteObjectIfRolledBack(storageKey);
 
@@ -85,12 +70,63 @@ public class MediaService {
         media.setUsage(usage);
         media.setOriginalFilename(filename);
         media.setContentType(contentType);
-        media.setSizeBytes(file.getSize());
+        media.setSizeBytes(source.size());
         media.setSha256(sha256);
         media.setUploadedBy(uploadedById == null ? null : userSummaryRepository.getReferenceById(uploadedById));
         media.setCreatedAt(Instant.now());
 
         return mediaRepository.save(media);
+    }
+
+    /**
+     * Checks the content against the usage's rules without storing it, for callers that transform the file first
+     * (a profile photo is validated as uploaded, then re-encoded).
+     *
+     * @return the content type detected from the bytes
+     * @throws EmptyMediaException           when the content is empty
+     * @throws MediaTooLargeException        when it exceeds the usage's size limit
+     * @throws UnsupportedMediaTypeException when the detected type is not allowed for the usage
+     * @throws InfectedMediaException        when the antivirus finds a threat
+     */
+    public String validate(MediaSource source, MediaUsage usage) {
+        if (source.size() == 0) {
+            throw new EmptyMediaException();
+        }
+
+        DataSize maxSize = maxSize(usage);
+
+        if (source.size() > maxSize.toBytes()) {
+            throw new MediaTooLargeException(maxSize);
+        }
+
+        String contentType = detectContentType(source, originalFilename(source.filename()));
+
+        if (!usage.allows(contentType)) {
+            throw new UnsupportedMediaTypeException(contentType, usage);
+        }
+
+        rejectIfInfected(source);
+
+        return contentType;
+    }
+
+    /** Deletes the row now and the stored object once the transaction commits (kept if it rolls back). */
+    @Transactional
+    public void delete(Media media) {
+        mediaRepository.delete(media);
+
+        String storageKey = media.getStorageKey();
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    objectStorage.delete(storageKey);
+                } catch (RuntimeException exception) {
+                    log.warn("Could not delete object {} of a deleted media", storageKey, exception);
+                }
+            }
+        });
     }
 
     public MediaDownload downloadUrl(Media media) {
@@ -109,9 +145,9 @@ public class MediaService {
     }
 
     // Path segments are dropped: some clients send "C:\\Users\\...\\report.pdf"
-    private static String originalFilename(MultipartFile file) {
+    private static String originalFilename(String sent) {
         String name = StringUtils.getFilename(StringUtils.cleanPath(
-                String.valueOf(file.getOriginalFilename()).replace('\\', '/')
+                String.valueOf(sent).replace('\\', '/')
         ));
 
         if (!StringUtils.hasText(name) || "null".equals(name)) {
@@ -121,16 +157,16 @@ public class MediaService {
         return name.length() > 255 ? name.substring(name.length() - 255) : name;
     }
 
-    private String detectContentType(MultipartFile file, String filename) {
-        try (InputStream content = file.getInputStream()) {
+    private String detectContentType(MediaSource source, String filename) {
+        try (InputStream content = source.open()) {
             return contentTypeDetector.detect(content, filename);
         } catch (IOException exception) {
             throw new UncheckedIOException(exception);
         }
     }
 
-    private void rejectIfInfected(MultipartFile file) {
-        try (InputStream content = file.getInputStream()) {
+    private void rejectIfInfected(MediaSource source) {
+        try (InputStream content = source.open()) {
             virusScanner.findThreat(content).ifPresent(threat -> {
                 throw new InfectedMediaException(threat);
             });
@@ -140,11 +176,11 @@ public class MediaService {
     }
 
     /** Streams the file to storage and returns its SHA-256, computed on the way. */
-    private String upload(MultipartFile file, String storageKey, String contentType) {
+    private String upload(MediaSource source, String storageKey, String contentType) {
         MessageDigest digest = sha256();
 
-        try (InputStream content = new DigestInputStream(file.getInputStream(), digest)) {
-            objectStorage.put(storageKey, content, file.getSize(), contentType);
+        try (InputStream content = new DigestInputStream(source.open(), digest)) {
+            objectStorage.put(storageKey, content, source.size(), contentType);
         } catch (IOException exception) {
             throw new UncheckedIOException(exception);
         }

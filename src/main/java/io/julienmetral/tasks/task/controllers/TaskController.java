@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.task.controllers;
 
 import io.julienmetral.tasks.identity.entities.UserRole;
+import io.julienmetral.tasks.media.services.MediaUrls;
 import io.julienmetral.tasks.shared.security.AdminOnly;
 import io.julienmetral.tasks.task.dtos.*;
 import io.julienmetral.tasks.task.entities.Task;
@@ -26,6 +27,7 @@ import java.util.UUID;
 public class TaskController {
 
     private final TaskService taskService;
+    private final MediaUrls mediaUrls;
 
     // Any authenticated user can create a task; only an admin can assign it on creation
     @PostMapping
@@ -37,7 +39,7 @@ public class TaskController {
 
         return ResponseEntity
             .created(URI.create("/api/v1/tasks/" + task.getId()))
-            .body(new TaskResponseDto(task));
+            .body(response(task));
     }
 
     @GetMapping
@@ -49,7 +51,7 @@ public class TaskController {
     ) {
         return taskService
                 .findAll(status, assigneeId, archived, pageable)
-                .map(TaskResponseDto::new);
+                .map(this::response);
     }
 
     @GetMapping("/{id}")
@@ -57,7 +59,7 @@ public class TaskController {
             @PathVariable UUID id
     ) {
         return ResponseEntity.ok(
-            new TaskResponseDto(taskService.findById(id))
+            response(taskService.findById(id))
         );
     }
 
@@ -68,7 +70,7 @@ public class TaskController {
             @Valid @RequestBody UpdateTaskDto dto
     ) {
         return ResponseEntity.ok(
-            new TaskResponseDto(taskService.update(id, dto))
+            response(taskService.update(id, dto))
         );
     }
 
@@ -79,7 +81,7 @@ public class TaskController {
             @Valid @RequestBody ChangeTaskStatusDto dto
     ) {
         return ResponseEntity.ok(
-            new TaskResponseDto(
+            response(
                 taskService.changeStatus(id, dto.status())
             )
         );
@@ -92,7 +94,7 @@ public class TaskController {
             @Valid @RequestBody AssignTaskDto dto
     ) {
         return ResponseEntity.ok(
-            new TaskResponseDto(
+            response(
                 taskService.assign(id, dto.userId())
             )
         );
@@ -104,7 +106,7 @@ public class TaskController {
             @PathVariable UUID id
     ) {
         return ResponseEntity.ok(
-            new TaskResponseDto(taskService.archive(id))
+            response(taskService.archive(id))
         );
     }
 
@@ -114,7 +116,7 @@ public class TaskController {
             @PathVariable UUID id
     ) {
         return ResponseEntity.ok(
-            new TaskResponseDto(taskService.unarchive(id))
+            response(taskService.unarchive(id))
         );
     }
 
@@ -125,7 +127,7 @@ public class TaskController {
             @Valid @RequestBody CancelTaskDto dto
     ) {
         return ResponseEntity.ok(
-            new TaskResponseDto(
+            response(
                 taskService.cancel(id, dto.reason())
             )
         );
@@ -139,5 +141,9 @@ public class TaskController {
         taskService.delete(id);
 
         return ResponseEntity.noContent().build();
+    }
+
+    private TaskResponseDto response(Task entity) {
+        return new TaskResponseDto(entity, mediaUrls);
     }
 }

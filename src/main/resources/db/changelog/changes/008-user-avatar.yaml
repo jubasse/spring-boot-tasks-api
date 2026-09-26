@@ -1,0 +1,23 @@
+databaseChangeLog:
+- changeSet:
+    id: 008-add-user-avatar
+    author: julien-metral
+    comment: >
+      Profile photo of a user, stored as a media file (square, re-encoded, without metadata).
+    changes:
+    - addColumn:
+        tableName: users
+        columns:
+        - column:
+            name: avatar_media_id
+            type: UUID
+    - addUniqueConstraint:
+        tableName: users
+        columnNames: avatar_media_id
+        constraintName: users_avatar_media_idUQ
+    - addForeignKeyConstraint:
+        baseTableName: users
+        baseColumnNames: avatar_media_id
+        constraintName: users_avatar_mediaFK
+        referencedTableName: media
+        referencedColumnNames: id

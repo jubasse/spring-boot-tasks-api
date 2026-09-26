@@ -10,6 +10,7 @@ import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
 import io.julienmetral.tasks.media.exceptions.AntivirusUnavailableException;
 import io.julienmetral.tasks.media.exceptions.EmptyMediaException;
 import io.julienmetral.tasks.media.exceptions.InfectedMediaException;
+import io.julienmetral.tasks.media.exceptions.InvalidImageException;
 import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
 import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
@@ -204,6 +205,13 @@ public class ApiExceptionHandler {
     public ProblemDetail handleUnsupportedMediaType(UnsupportedMediaTypeException ex) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNSUPPORTED_MEDIA_TYPE, ex.getMessage());
         problem.setTitle("Unsupported file type");
+        return problem;
+    }
+
+    @ExceptionHandler(InvalidImageException.class)
+    public ProblemDetail handleInvalidImage(InvalidImageException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_CONTENT, ex.getMessage());
+        problem.setTitle("Invalid image");
         return problem;
     }
 

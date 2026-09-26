@@ -5,13 +5,17 @@ import io.julienmetral.tasks.identity.dtos.UpdateUserDto;
 import io.julienmetral.tasks.identity.dtos.UserResponseDto;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
+import io.julienmetral.tasks.identity.services.AvatarService;
 import io.julienmetral.tasks.identity.services.UserService;
+import io.julienmetral.tasks.media.services.MediaUrls;
 import io.julienmetral.tasks.shared.security.AdminOnly;
 import io.julienmetral.tasks.shared.security.AllowedRolesOrSelfOnly;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.net.URI;
 import java.util.UUID;
@@ -22,6 +26,8 @@ import java.util.UUID;
 public class UserController {
 
     private final UserService userService;
+    private final AvatarService avatarService;
+    private final MediaUrls mediaUrls;
 
     @PostMapping
     public ResponseEntity<UserResponseDto> create(
@@ -40,7 +46,7 @@ public class UserController {
                         )
                 )
                 .body(
-                        new UserResponseDto(user)
+                        response(user)
                 );
     }
 
@@ -50,7 +56,7 @@ public class UserController {
             @PathVariable UUID id
     ) {
         return ResponseEntity.ok(
-                new UserResponseDto(
+                response(
                         userService.findById(id)
                 )
         );
@@ -68,7 +74,7 @@ public class UserController {
         );
 
         return ResponseEntity.ok(
-                new UserResponseDto(user)
+                response(user)
         );
     }
 
@@ -106,5 +112,32 @@ public class UserController {
         return ResponseEntity
                 .noContent()
                 .build();
+    }
+
+    @PutMapping(path = "/{id}/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @AllowedRolesOrSelfOnly(UserRole.ADMIN)
+    public ResponseEntity<UserResponseDto> updateAvatar(
+            @PathVariable UUID id,
+            @RequestPart("file") MultipartFile file
+    ) {
+        return ResponseEntity.ok(
+                response(avatarService.update(id, file))
+        );
+    }
+
+    @DeleteMapping("/{id}/avatar")
+    @AllowedRolesOrSelfOnly(UserRole.ADMIN)
+    public ResponseEntity<Void> removeAvatar(
+            @PathVariable UUID id
+    ) {
+        avatarService.remove(id);
+
+        return ResponseEntity
+                .noContent()
+                .build();
+    }
+
+    private UserResponseDto response(User entity) {
+        return new UserResponseDto(entity, mediaUrls);
     }
 }
