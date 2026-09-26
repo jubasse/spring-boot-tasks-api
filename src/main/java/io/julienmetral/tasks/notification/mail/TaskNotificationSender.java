@@ -79,13 +79,21 @@ public class TaskNotificationSender {
 
     @EventListener
     public void onCommentAdded(TaskCommentAdded event) {
-        // A mentioned assignee gets the mention email instead. The null check comes first: Set.of(...).contains(null)
-        // throws, and this listener runs inside the comment's transaction.
-        if (event.assigneeId() == null || event.mentionedUserIds().contains(event.assigneeId())) {
+        UUID assigneeId = event.assigneeId();
+
+        // The null check comes first: Set.of(...).contains(null) throws, and this listener runs inside the comment's
+        // transaction
+        if (assigneeId == null) {
             return;
         }
 
-        notify(TaskNotificationType.COMMENTED, event.assigneeId(), event.authorId(),
+        // A mentioned assignee gets the mention email instead, unless they turned mentions off
+        if (event.mentionedUserIds().contains(assigneeId)
+                && settingsService.isEnabled(assigneeId, TaskNotificationType.MENTIONED)) {
+            return;
+        }
+
+        notify(TaskNotificationType.COMMENTED, assigneeId, event.authorId(),
                 "New comment on task %s".formatted(event.reference()),
                 "%s commented on the task %s: \"%s\".\n\n%s".formatted(
                         actorName(event.authorId()), event.reference(), event.title(), excerpt(event.body())));
