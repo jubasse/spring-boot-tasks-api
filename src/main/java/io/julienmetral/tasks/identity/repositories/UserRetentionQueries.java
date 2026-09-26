@@ -30,7 +30,8 @@ public class UserRetentionQueries {
     public record InactiveUser(
             UUID id,
             String email,
-            String displayName
+            String displayName,
+            boolean enabled
     ) {
     }
 
@@ -103,7 +104,7 @@ public class UserRetentionQueries {
                           AND u.inactivity_warned_at IS NULL
                           AND %s < :cutoff
                           AND %s
-                        RETURNING u.id, u.email, u.display_name
+                        RETURNING u.id, u.email, u.display_name, u.enabled
                         """.formatted(ACTIVITY, NOT_ADMIN),
                 new MapSqlParameterSource()
                         .addValue("cutoff", Timestamp.from(cutoff))
@@ -111,7 +112,8 @@ public class UserRetentionQueries {
                 (row, index) -> new InactiveUser(
                         row.getObject("id", UUID.class),
                         row.getString("email"),
-                        row.getString("display_name")
+                        row.getString("display_name"),
+                        row.getBoolean("enabled")
                 )
         );
     }

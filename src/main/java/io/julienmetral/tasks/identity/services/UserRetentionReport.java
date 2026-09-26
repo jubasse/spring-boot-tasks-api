@@ -3,7 +3,7 @@ package io.julienmetral.tasks.identity.services;
 /**
  * @param skipped    another instance held the retention lock, so nothing was done
  * @param anonymized deleted users whose personal data was erased
- * @param warned     inactive accounts that were sent the deletion warning
+ * @param warned     inactive accounts marked for deletion; only the enabled ones are emailed
  * @param deleted    warned accounts deleted because they stayed inactive
  */
 public record UserRetentionReport(

@@ -26,7 +26,7 @@ public class UserRetentionService {
 
     /**
      * Anonymizes users deleted for longer than {@code anonymize-after}, warns accounts inactive for
-     * {@code inactivity-period} (email after commit), and deletes the warned accounts still inactive after
+     * {@code inactivity-period} (email after commit, enabled accounts only), and deletes the warned accounts still inactive after
      * {@code deletion-notice}, which revokes their sessions. Deleted accounts are anonymized by a later run.
      */
     @Transactional
@@ -47,9 +47,12 @@ public class UserRetentionService {
         List<InactiveUser> warned = queries.warnUsersInactiveSince(now.minus(properties.inactivityPeriod()), now);
         Instant deletionAt = now.plus(properties.deletionNotice());
 
-        warned.forEach(user -> eventPublisher.publishEvent(
-                new InactiveAccountWarned(user.email(), user.displayName(), deletionAt)
-        ));
+        // A disabled account cannot log in to keep itself: it is deleted after the same notice, without an email
+        warned.stream()
+                .filter(InactiveUser::enabled)
+                .forEach(user -> eventPublisher.publishEvent(
+                        new InactiveAccountWarned(user.email(), user.displayName(), deletionAt)
+                ));
 
         return new UserRetentionReport(false, anonymized.size(), warned.size(), expired.size());
     }
