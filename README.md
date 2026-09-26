@@ -228,7 +228,7 @@ Scheduled jobs run inside the API. Each job takes a PostgreSQL lock first, so on
 
 ## Tests
 
-Unit tests (`*Test`) run without Docker. Integration tests (`*Tests`) start the API against real services in containers, so `./mvnw test` needs Docker running.
+Unit tests (`*Test`) and web tests (`*WebMvcTests`, the controllers and security with mocked services) run without Docker. SQL and repository tests start PostgreSQL in a container, and integration tests (the other `*Tests`) start the API against every service in containers, so `./mvnw test` needs Docker running.
 
 A full run takes a few minutes and several GB of memory. Do not run two full runs at the same time on one machine.
 
