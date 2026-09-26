@@ -129,6 +129,15 @@ public class MediaService {
         });
     }
 
+    /** Reads the whole stored file; meant for small files processed in memory, such as profile photos. */
+    public byte[] read(Media media) {
+        try (InputStream content = objectStorage.open(media.getStorageKey())) {
+            return content.readAllBytes();
+        } catch (IOException exception) {
+            throw new UncheckedIOException(exception);
+        }
+    }
+
     public MediaDownload downloadUrl(Media media) {
         return objectStorage.presignDownload(
                 media.getStorageKey(),
@@ -139,7 +148,7 @@ public class MediaService {
 
     private DataSize maxSize(MediaUsage usage) {
         return switch (usage) {
-            case AVATAR -> properties.avatarMaxSize();
+            case AVATAR, AVATAR_UPLOAD -> properties.avatarMaxSize();
             case TASK_ATTACHMENT -> properties.attachmentMaxSize();
         };
     }

@@ -21,6 +21,18 @@ class MediaUsageTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"image/jpeg", "image/png", "image/webp"})
+    void avatarUploadAllowsTheSamePhotoFormatsAsAvatar(String contentType) {
+        assertThat(MediaUsage.AVATAR_UPLOAD.allows(contentType)).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"image/gif", "image/svg+xml", "application/pdf", "application/zip", "text/html"})
+    void avatarUploadRejectsEverythingElse(String contentType) {
+        assertThat(MediaUsage.AVATAR_UPLOAD.allows(contentType)).isFalse();
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {
             "image/jpeg",
             "image/png",
@@ -65,6 +77,7 @@ class MediaUsageTest {
     @Test
     void storagePrefixIsTheKebabCaseName() {
         assertThat(MediaUsage.AVATAR.storagePrefix()).isEqualTo("avatar");
+        assertThat(MediaUsage.AVATAR_UPLOAD.storagePrefix()).isEqualTo("avatar-upload");
         assertThat(MediaUsage.TASK_ATTACHMENT.storagePrefix()).isEqualTo("task-attachment");
     }
 }

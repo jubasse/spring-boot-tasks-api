@@ -42,6 +42,15 @@ public class S3ObjectStorage implements ObjectStorage {
     }
 
     @Override
+    public InputStream open(String key) {
+        try {
+            return s3Client.getObject(request -> request.bucket(bucket).key(key));
+        } catch (SdkException exception) {
+            throw new StorageUnavailableException(exception);
+        }
+    }
+
+    @Override
     public void delete(String key) {
         try {
             s3Client.deleteObject(request -> request.bucket(bucket).key(key));

@@ -8,7 +8,6 @@ import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import org.junit.jupiter.api.Test;
 
-import javax.imageio.ImageIO;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
@@ -98,11 +97,7 @@ class AvatarImageProcessingApiTests extends AbstractAvatarApiTests {
         assertThat(originalMetadata.getFirstDirectoryOfType(GpsDirectory.class)
                 .getString(GpsDirectory.TAG_LATITUDE_REF)).isEqualTo("N");
 
-        String body = uploadAvatar(user, asUser(user), "IMG_0001.JPG", original)
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        byte[] stored = downloadAvatar(json(body).get("avatarUrl").asString());
+        byte[] stored = downloadAvatar(uploadAndAwaitAvatar(user, asUser(user), "IMG_0001.JPG", original));
 
         assertThat(isJpeg(stored)).isTrue();
 
@@ -124,11 +119,7 @@ class AvatarImageProcessingApiTests extends AbstractAvatarApiTests {
     void webpIsAccepted() throws Exception {
         User user = createUser(UserRole.USER);
 
-        String body = uploadAvatar(user, asUser(user), "photo.webp", WEBP)
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        BufferedImage avatar = decode(downloadAvatar(json(body).get("avatarUrl").asString()));
+        BufferedImage avatar = decode(downloadAvatar(uploadAndAwaitAvatar(user, asUser(user), "photo.webp", WEBP)));
 
         assertThat(avatar.getWidth()).isEqualTo(AVATAR_SIDE);
         assertThat(avatar.getHeight()).isEqualTo(AVATAR_SIDE);
@@ -190,14 +181,6 @@ class AvatarImageProcessingApiTests extends AbstractAvatarApiTests {
         output.write(jpeg, insertAt, jpeg.length - insertAt);
 
         return output.toByteArray();
-    }
-
-    private static BufferedImage decode(byte[] image) throws IOException {
-        BufferedImage decoded = ImageIO.read(new ByteArrayInputStream(image));
-
-        assertThat(decoded).isNotNull();
-
-        return decoded;
     }
 
     private static boolean isJpeg(byte[] bytes) {

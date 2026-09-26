@@ -1338,10 +1338,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
-                  "const body = pm.response.json();",
-                  "pm.test('avatarUrl is set', () => pm.expect(body.avatarUrl).to.be.a('string'));",
-                  "pm.collectionVariables.set('avatarUrl', body.avatarUrl);"
+                  "pm.test('status is one of [202]', () => pm.expect(pm.response.code).to.be.oneOf([202]));",
+                  "pm.test('the photo waits for the worker', () => pm.expect(pm.response.json().avatarPending).to.be.true);"
                 ]
               }
             }
@@ -1349,7 +1347,7 @@
           "request": {
             "method": "PUT",
             "header": [],
-            "description": "ADMIN or the user themselves. Multipart field `file`: JPEG, PNG or WebP up to 5 MB, detected from the bytes and scanned by the antivirus. Stored as a 256x256 square, re-encoded without metadata. In the Postman app, pick the file again if the relative path does not resolve (newman resolves it from the repository root).",
+            "description": "ADMIN or the user themselves. Multipart field `file`: JPEG, PNG or WebP up to 5 MB, detected from the bytes, scanned by the antivirus and checked for oversized dimensions. Answers 202: a worker then stores a 256x256 square, re-encoded without metadata, and replaces the current photo (`avatarPending` is true until then). In the Postman app, pick the file again if the relative path does not resolve (newman resolves it from the repository root).",
             "auth": {
               "type": "bearer",
               "bearer": [
@@ -1384,6 +1382,61 @@
               ]
             }
           }
+        },
+        {
+          "name": "Get me — profile photo processed",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{userId}}"
+              ]
+            },
+            "description": "The worker has replaced the photo: `avatarPending` is false and `avatarUrl` points to the square version.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// The photo is processed asynchronously by a queue consumer: give it a moment",
+                  "setTimeout(() => {}, 3000);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "const body = pm.response.json();",
+                  "pm.test('processed', () => pm.expect(body.avatarPending).to.be.false);",
+                  "pm.test('avatarUrl is set', () => pm.expect(body.avatarUrl).to.be.a('string'));",
+                  "pm.collectionVariables.set('avatarUrl', body.avatarUrl);"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Download my profile photo",

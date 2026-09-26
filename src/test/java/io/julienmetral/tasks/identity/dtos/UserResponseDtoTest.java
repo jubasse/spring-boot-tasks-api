@@ -58,5 +58,40 @@ class UserResponseDtoTest {
         UserResponseDto dto = new UserResponseDto(user(), mediaUrls);
 
         assertThat(dto.avatarUrl()).isNull();
+        assertThat(dto.avatarPending()).isFalse();
+    }
+
+    @Test
+    void userWithPendingUploadIsMarkedPendingAndKeepsItsCurrentAvatarUrl() {
+        User user = user();
+        Media avatar = new Media();
+        Media upload = new Media();
+        user.setAvatar(avatar);
+        user.setPendingAvatar(upload);
+        when(mediaUrls.of(avatar)).thenReturn(AVATAR_URL);
+
+        UserResponseDto dto = new UserResponseDto(user, mediaUrls);
+
+        assertThat(dto.avatarPending()).isTrue();
+        assertThat(dto.avatarUrl()).isEqualTo(AVATAR_URL);
+    }
+
+    @Test
+    void firstPendingUploadHasNoAvatarUrlYet() {
+        User user = user();
+        user.setPendingAvatar(new Media());
+
+        UserResponseDto dto = new UserResponseDto(user, mediaUrls);
+
+        assertThat(dto.avatarPending()).isTrue();
+        assertThat(dto.avatarUrl()).isNull();
+    }
+
+    @Test
+    void processedAvatarIsNotPending() {
+        User user = user();
+        user.setAvatar(new Media());
+
+        assertThat(new UserResponseDto(user, mediaUrls).avatarPending()).isFalse();
     }
 }

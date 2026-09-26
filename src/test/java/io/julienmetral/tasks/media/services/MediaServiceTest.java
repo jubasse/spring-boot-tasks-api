@@ -187,6 +187,17 @@ class MediaServiceTest {
         }
 
         @Test
+        void storesAvatarUploadUnderItsOwnPrefix() throws IOException {
+            detects("image/png");
+            savesWhatItIsGiven();
+
+            Media media = service.store(file("me.png", "png-bytes".getBytes(UTF_8)), MediaUsage.AVATAR_UPLOAD, null);
+
+            assertThat(uploadedKey()).startsWith("avatar-upload/");
+            assertThat(media.getUsage()).isEqualTo(MediaUsage.AVATAR_UPLOAD);
+        }
+
+        @Test
         void storageKeysAreUniquePerUpload() throws IOException {
             detects("application/pdf");
             savesWhatItIsGiven();
@@ -250,6 +261,28 @@ class MediaServiceTest {
                     .isInstanceOf(MediaTooLargeException.class);
 
             verifyNoInteractions(contentTypeDetector, virusScanner, objectStorage, mediaRepository);
+        }
+
+        @Test
+        void avatarUploadAboveTheAvatarLimitIsRejectedWithoutReadingTheContent() {
+            byte[] content = new byte[(int) AVATAR_MAX.toBytes() + 1];
+
+            assertThatThrownBy(() -> service.store(file("me.png", content), MediaUsage.AVATAR_UPLOAD, UPLOADER_ID))
+                    .isInstanceOf(MediaTooLargeException.class);
+
+            verifyNoInteractions(contentTypeDetector, virusScanner, objectStorage, mediaRepository);
+        }
+
+        @Test
+        void pdfIsNotAcceptedAsAvatarUpload() throws IOException {
+            detects("application/pdf");
+
+            assertThatThrownBy(() -> service.store(file("cv.pdf", "%PDF-1.4".getBytes(UTF_8)),
+                    MediaUsage.AVATAR_UPLOAD, UPLOADER_ID))
+                    .isInstanceOf(UnsupportedMediaTypeException.class)
+                    .hasMessage("Files of type application/pdf are not accepted for AVATAR_UPLOAD");
+
+            verifyNoInteractions(virusScanner, objectStorage, mediaRepository);
         }
 
         @Test
@@ -824,6 +857,73 @@ class MediaServiceTest {
 
             assertThatThrownBy(() -> service.delete(media)).isSameAs(failure);
 
+            assertThat(synchronizations()).isEmpty();
+        }
+    }
+
+    @Nested
+    class Read {
+
+        private static final String KEY = "avatar-upload/key";
+
+        private Media media() {
+            Media media = new Media();
+            media.setStorageKey(KEY);
+            return media;
+        }
+
+        @Test
+        void returnsTheWholeStoredFile() {
+            when(objectStorage.open(KEY)).thenReturn(new ByteArrayInputStream(CONTENT));
+
+            assertThat(service.read(media())).isEqualTo(CONTENT);
+        }
+
+        @Test
+        void closesTheStoredStream() {
+            AtomicBoolean closed = new AtomicBoolean();
+            when(objectStorage.open(KEY)).thenReturn(new ByteArrayInputStream(PHOTO) {
+                @Override
+                public void close() {
+                    closed.set(true);
+                }
+            });
+
+            service.read(media());
+
+            assertThat(closed).isTrue();
+        }
+
+        @Test
+        void failureWhileReadingIsRethrownUnchecked() {
+            IOException failure = new IOException("connection reset");
+            when(objectStorage.open(KEY)).thenReturn(new InputStream() {
+                @Override
+                public int read() throws IOException {
+                    throw failure;
+                }
+            });
+
+            assertThatThrownBy(() -> service.read(media()))
+                    .isInstanceOf(UncheckedIOException.class)
+                    .hasCause(failure);
+        }
+
+        @Test
+        void unavailableStoragePropagates() {
+            StorageUnavailableException failure = new StorageUnavailableException(new RuntimeException("down"));
+            when(objectStorage.open(KEY)).thenThrow(failure);
+
+            assertThatThrownBy(() -> service.read(media())).isSameAs(failure);
+        }
+
+        @Test
+        void neitherTouchesTheRowNorRegistersAnyCleanup() {
+            when(objectStorage.open(KEY)).thenReturn(new ByteArrayInputStream(CONTENT));
+
+            service.read(media());
+
+            verifyNoInteractions(mediaRepository);
             assertThat(synchronizations()).isEmpty();
         }
     }

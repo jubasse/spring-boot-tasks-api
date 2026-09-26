@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.Generated;
 
 import java.io.Serializable;
@@ -15,7 +16,10 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
+// Updates write only the changed columns. Otherwise every update rewrites the whole row from the loaded state, and
+// the profile photo worker re-enabled an account that an admin disabled while the photo was being processed.
 @Entity
+@DynamicUpdate
 @Table(
         name = "users",
         uniqueConstraints = {
@@ -28,6 +32,10 @@ import java.util.UUID;
                 @UniqueConstraint(
                         name = "users_avatar_media_idUQ",
                         columnNames = "avatar_media_id"
+                ),
+                @UniqueConstraint(
+                        name = "users_pending_avatar_media_idUQ",
+                        columnNames = "pending_avatar_media_id"
                 )
         }
 )
@@ -77,4 +85,12 @@ public class User extends AuditableEntity implements Serializable {
             foreignKey = @ForeignKey(name = "users_avatar_mediaFK")
     )
     private Media avatar;
+
+    // The uploaded photo waiting for the worker (see AvatarService.process); null once processed
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "pending_avatar_media_id",
+            foreignKey = @ForeignKey(name = "users_pending_avatar_mediaFK")
+    )
+    private Media pendingAvatar;
 }

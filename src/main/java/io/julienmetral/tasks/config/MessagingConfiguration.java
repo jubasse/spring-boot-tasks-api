@@ -23,7 +23,8 @@ public class MessagingConfiguration {
     MessageConverter messageConverter(JsonMapper jsonMapper) {
         return new JacksonJsonMessageConverter(
                 jsonMapper,
-                "io.julienmetral.tasks.mail"
+                "io.julienmetral.tasks.mail",
+                "io.julienmetral.tasks.identity.messaging"
         );
     }
 

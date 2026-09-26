@@ -60,7 +60,13 @@ public class AvatarImageProcessor {
                 : new ProcessedImage(encode(opaque(image), "jpeg", JPEG_QUALITY), "image/jpeg", "jpg");
     }
 
-    private static void checkDimensions(byte[] original) {
+    /**
+     * Reads only the image header, so it is cheap enough to run on upload: an oversized image is rejected at once
+     * instead of by the worker.
+     *
+     * @throws InvalidImageException when the image cannot be read or is larger than the limits
+     */
+    public void checkDimensions(byte[] original) {
         try (ImageInputStream input = ImageIO.createImageInputStream(new ByteArrayInputStream(original))) {
             Iterator<ImageReader> readers = ImageIO.getImageReaders(input);
 

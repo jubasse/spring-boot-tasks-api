@@ -152,6 +152,65 @@ class MediaCleanupTests extends AbstractMediaCleanupTests {
     }
 
     @Test
+    void oldPendingUploadOfLiveUserIsNotPurgedAsUnreferenced() {
+        User user = createUser();
+        Media upload = pendingUploadOf(user);
+        backdateMedia(upload, BEYOND_GRACE_PERIOD);
+
+        cleanupService.cleanUp();
+
+        assertKeptAsPendingUpload(user, upload);
+    }
+
+    @Test
+    void pendingUploadOfUserDeletedWithinRetentionIsKept() {
+        User user = createUser();
+        Media upload = pendingUploadOf(user);
+        backdateMedia(upload, BEYOND_RETENTION);
+        softDeleteUser(user, WITHIN_RETENTION);
+
+        cleanupService.cleanUp();
+
+        assertKeptAsPendingUpload(user, upload);
+    }
+
+    @Test
+    void userDeletedBeyondRetentionLosesBothThePhotoAndThePendingUpload() {
+        User user = createUser();
+        Media avatar = avatarOf(user);
+        Media upload = pendingUploadOf(user);
+        backdateMedia(avatar, BEYOND_RETENTION);
+        backdateMedia(upload, BEYOND_RETENTION);
+        softDeleteUser(user, BEYOND_RETENTION);
+
+        MediaCleanupReport report = cleanupService.cleanUp();
+
+        assertThat(report.detachedAvatars()).isGreaterThanOrEqualTo(2);
+        assertThat(report.deletedMedia()).isGreaterThanOrEqualTo(2);
+        assertThat(avatarMediaIdOf(user)).isNull();
+        assertThat(pendingAvatarMediaIdOf(user)).isNull();
+        for (Media media : new Media[]{avatar, upload}) {
+            assertThat(mediaExists(media)).isFalse();
+            assertThat(objectExists(media.getStorageKey())).isFalse();
+        }
+    }
+
+    @Test
+    void userDeletedBeyondRetentionWithOnlyAPendingUploadLosesIt() {
+        User user = createUser();
+        Media upload = pendingUploadOf(user);
+        backdateMedia(upload, BEYOND_RETENTION);
+        softDeleteUser(user, BEYOND_RETENTION);
+
+        MediaCleanupReport report = cleanupService.cleanUp();
+
+        assertThat(report.detachedAvatars()).isGreaterThanOrEqualTo(1);
+        assertThat(pendingAvatarMediaIdOf(user)).isNull();
+        assertThat(mediaExists(upload)).isFalse();
+        assertThat(objectExists(upload.getStorageKey())).isFalse();
+    }
+
+    @Test
     void unreferencedMediaOlderThanGracePeriodIsDeletedWithItsObject() {
         User user = createUser();
         Media attachment = storeAttachment(user);
@@ -322,6 +381,12 @@ class MediaCleanupTests extends AbstractMediaCleanupTests {
         assertThat(avatarMediaIdOf(user)).isEqualTo(avatar.getId());
         assertThat(mediaExists(avatar)).isTrue();
         assertThat(objectExists(avatar.getStorageKey())).isTrue();
+    }
+
+    private void assertKeptAsPendingUpload(User user, Media upload) {
+        assertThat(pendingAvatarMediaIdOf(user)).isEqualTo(upload.getId());
+        assertThat(mediaExists(upload)).isTrue();
+        assertThat(objectExists(upload.getStorageKey())).isTrue();
     }
 
     private static boolean tryLock(Connection connection) throws SQLException {

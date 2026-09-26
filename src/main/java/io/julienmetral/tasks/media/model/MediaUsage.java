@@ -11,6 +11,13 @@ public enum MediaUsage {
             "image/webp"
     )),
 
+    // A profile photo as uploaded, kept until the worker has produced the AVATAR version
+    AVATAR_UPLOAD(Set.of(
+            "image/jpeg",
+            "image/png",
+            "image/webp"
+    )),
+
     TASK_ATTACHMENT(Set.of(
             "image/jpeg",
             "image/png",

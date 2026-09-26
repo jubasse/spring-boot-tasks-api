@@ -16,6 +16,8 @@ public interface ObjectStorage {
 
     void put(String key, InputStream content, long length, String contentType);
 
+    InputStream open(String key);
+
     void delete(String key);
 
     /** Keys of the objects last modified before {@code cutoff}, for the orphan sweep of the media cleanup. */
