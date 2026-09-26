@@ -68,9 +68,10 @@ public class AuthService {
                 )
                 .orElseThrow();
 
-        user.setLastLoginAt(
-                Instant.now()
-        );
+        Instant now = Instant.now();
+
+        user.setLastLoginAt(now);
+        user.markActive(now);
 
         return tokens(
                 user,
@@ -90,6 +91,9 @@ public class AuthService {
         var rotated = refreshTokenService.rotate(
                 refreshToken
         );
+
+        // A client that keeps refreshing is in use even if its user never types the password again
+        rotated.user().markActive(Instant.now());
 
         return tokens(
                 rotated.user(),
