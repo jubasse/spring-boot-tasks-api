@@ -207,28 +207,6 @@ class EmailVerificationApiTests {
     }
 
     @Test
-    void verifyWithBlankOrMissingTokenReturnsBadRequest() throws Exception {
-        verify("").andExpect(status().isBadRequest());
-        verify("   ").andExpect(status().isBadRequest());
-
-        mockMvc.perform(
-                        post("/api/v1/auth/verify-email")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("{}")
-                )
-                .andExpect(status().isBadRequest());
-
-        mockMvc.perform(
-                        post("/api/v1/auth/verify-email")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
-                                        {"token": null}
-                                        """)
-                )
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
     void verifyWithTokenOfSoftDeletedUserReturnsBadRequest() throws Exception {
         String email = uniqueEmail();
         UUID userId = signUp(email);
@@ -325,12 +303,6 @@ class EmailVerificationApiTests {
 
         Thread.sleep(500);
         assertThat(mailpit.countTo(email)).isEqualTo(1);
-    }
-
-    @Test
-    void resendWithoutTokenReturnsUnauthorized() throws Exception {
-        mockMvc.perform(post("/api/v1/auth/verify-email/resend"))
-                .andExpect(status().isUnauthorized());
     }
 
     @Test

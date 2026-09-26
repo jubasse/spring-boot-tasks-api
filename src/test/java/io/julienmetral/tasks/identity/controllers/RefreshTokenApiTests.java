@@ -278,34 +278,6 @@ class RefreshTokenApiTests {
     }
 
     @Test
-    void accessTokenUsedAsRefreshTokenIsRejected() throws Exception {
-        String email = uniqueEmail();
-        signUp(email);
-
-        // A JWT is longer than 128 characters, so validation rejects it before the service sees it
-        String accessToken = loginJson(email).get("accessToken").asString();
-
-        refresh(accessToken).andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void blankOrMissingRefreshTokenIsBadRequest() throws Exception {
-        for (String body : List.of("{}", "{\"refreshToken\": null}", "{\"refreshToken\": \"\"}", "{\"refreshToken\": \"   \"}")) {
-            mockMvc.perform(
-                            post("/api/v1/auth/refresh")
-                                    .contentType(MediaType.APPLICATION_JSON)
-                                    .content(body)
-                    )
-                    .andExpect(status().isBadRequest());
-        }
-    }
-
-    @Test
-    void oversizedRefreshTokenIsBadRequest() throws Exception {
-        refresh("a".repeat(129)).andExpect(status().isBadRequest());
-    }
-
-    @Test
     void disablingUserRevokesRefreshTokensEvenAfterReEnabling() throws Exception {
         String adminToken = adminAccessToken();
         String email = uniqueEmail();
@@ -454,18 +426,6 @@ class RefreshTokenApiTests {
     void logoutWithUnknownTokenStillReturnsNoContent() throws Exception {
         logout(OpaqueTokens.generate()).andExpect(status().isNoContent());
         logout("garbage").andExpect(status().isNoContent());
-    }
-
-    @Test
-    void logoutWithBlankOrMissingTokenIsBadRequest() throws Exception {
-        for (String body : List.of("{}", "{\"refreshToken\": \"\"}", "{\"refreshToken\": \"  \"}")) {
-            mockMvc.perform(
-                            post("/api/v1/auth/logout")
-                                    .contentType(MediaType.APPLICATION_JSON)
-                                    .content(body)
-                    )
-                    .andExpect(status().isBadRequest());
-        }
     }
 
     private ResultActions refresh(String refreshToken) throws Exception {

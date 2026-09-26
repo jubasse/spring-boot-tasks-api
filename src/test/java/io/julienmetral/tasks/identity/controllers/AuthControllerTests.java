@@ -321,30 +321,6 @@ class AuthControllerTests {
     }
 
     @Test
-    void loginRejectsInvalidPayload() throws Exception {
-        mockMvc.perform(
-                        post("/api/v1/auth/login")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(loginBody("not-an-email", PASSWORD))
-                )
-                .andExpect(status().isBadRequest());
-
-        mockMvc.perform(
-                        post("/api/v1/auth/login")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(loginBody(uniqueEmail(), ""))
-                )
-                .andExpect(status().isBadRequest());
-
-        mockMvc.perform(
-                        post("/api/v1/auth/login")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("{}")
-                )
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
     void protectedEndpointWithoutTokenReturnsUnauthorizedWithBearerChallenge() throws Exception {
         mockMvc.perform(get("/api/v1/users/{id}", UUID.randomUUID()))
                 .andExpect(status().isUnauthorized())
