@@ -4,3 +4,7 @@ security:
   jwt:
     # Random key used only by tests, never by a running application
     secret: ZTtrL2V2nGPBOyiISTm31nCcKgVbBYhGHG0VZF61VjA= # gitleaks:allow
+task:
+  reminders:
+    # Tests call TaskReminderService directly: a scheduled run could email tasks of other tests mid-assertion
+    enabled: false

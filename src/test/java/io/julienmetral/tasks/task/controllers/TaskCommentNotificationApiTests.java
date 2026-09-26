@@ -306,7 +306,8 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"taskAssigned": true, "taskUnassigned": true, "taskCancelled": true,
-                                 "taskDeleted": true, "taskCommented": %s, "taskMentioned": %s}
+                                 "taskDeleted": true, "taskCommented": %s, "taskMentioned": %s,
+                                 "taskDueSoon": true, "taskOverdue": true}
                                 """.formatted(taskCommented, taskMentioned)))
                 .andExpect(status().isOk());
     }

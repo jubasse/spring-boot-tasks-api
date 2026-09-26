@@ -7,5 +7,7 @@ public enum TaskNotificationType {
     CANCELLED,
     DELETED,
     COMMENTED,
-    MENTIONED
+    MENTIONED,
+    DUE_SOON,
+    OVERDUE
 }

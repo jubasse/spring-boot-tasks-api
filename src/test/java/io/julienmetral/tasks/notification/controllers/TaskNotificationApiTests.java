@@ -644,7 +644,8 @@ class TaskNotificationApiTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"taskAssigned": %s, "taskUnassigned": %s, "taskCancelled": %s, "taskDeleted": %s,
-                                 "taskCommented": true, "taskMentioned": true}
+                                 "taskCommented": true, "taskMentioned": true,
+                                 "taskDueSoon": true, "taskOverdue": true}
                                 """.formatted(assigned, unassigned, cancelled, deleted)))
                 .andExpect(status().isOk());
     }

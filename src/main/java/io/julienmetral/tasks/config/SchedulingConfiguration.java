@@ -6,6 +6,6 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 @Configuration
 @EnableScheduling
-@EnableConfigurationProperties(MediaCleanupProperties.class)
+@EnableConfigurationProperties({MediaCleanupProperties.class, TaskReminderProperties.class})
 public class SchedulingConfiguration {
 }

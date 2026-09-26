@@ -11,9 +11,13 @@ import io.julienmetral.tasks.task.events.TaskAssigned;
 import io.julienmetral.tasks.task.events.TaskCancelled;
 import io.julienmetral.tasks.task.events.TaskCommentAdded;
 import io.julienmetral.tasks.task.events.TaskDeleted;
+import io.julienmetral.tasks.task.events.TaskDueSoon;
+import io.julienmetral.tasks.task.events.TaskOverdue;
 import io.julienmetral.tasks.task.events.TaskUnassigned;
 import io.julienmetral.tasks.task.events.UsersMentionedInComment;
 import io.julienmetral.tasks.task.services.CommentMentions;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,15 +32,18 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TimeZone;
 import java.util.UUID;
 
 import static io.julienmetral.tasks.support.UserSummaries.active;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.params.provider.EnumSource.Mode.EXCLUDE;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -47,6 +54,7 @@ class TaskNotificationSenderTest {
     private static final UUID ACTOR_ID = UUID.fromString("00000000-0000-0000-0000-000000000002");
     private static final UUID OTHER_ID = UUID.fromString("00000000-0000-0000-0000-000000000003");
     private static final UUID COMMENT_ID = UUID.fromString("00000000-0000-0000-0000-0000000000c1");
+    private static final Instant DUE_AT = Instant.parse("2026-10-01T09:05:00Z");
     private static final String FOOTER = "\n\nYou can turn these emails off in your notification settings.\n";
 
     @Mock
@@ -99,6 +107,9 @@ class TaskNotificationSenderTest {
             case COMMENTED -> sender.onCommentAdded(commentAdded("Body", recipientId, actorId));
             case MENTIONED -> sender.onMentioned(new UsersMentionedInComment(TASK_ID, "TASK-1", "Title", COMMENT_ID,
                     "Body", actorId, recipientId == null ? Set.of() : Set.of(recipientId)));
+            // Reminders come from the job and have no actor
+            case DUE_SOON -> sender.onDueSoon(new TaskDueSoon(TASK_ID, "TASK-1", "Title", DUE_AT, recipientId));
+            case OVERDUE -> sender.onOverdue(new TaskOverdue(TASK_ID, "TASK-1", "Title", DUE_AT, recipientId));
         }
     }
 
@@ -184,7 +195,7 @@ class TaskNotificationSenderTest {
     }
 
     @ParameterizedTest
-    @EnumSource(TaskNotificationType.class)
+    @EnumSource(value = TaskNotificationType.class, mode = EXCLUDE, names = {"DUE_SOON", "OVERDUE"})
     void unknownActorIsNamedSomeone(TaskNotificationType type) {
         stubActiveRecipient(type);
 
@@ -195,7 +206,7 @@ class TaskNotificationSenderTest {
     }
 
     @ParameterizedTest
-    @EnumSource(TaskNotificationType.class)
+    @EnumSource(value = TaskNotificationType.class, mode = EXCLUDE, names = {"DUE_SOON", "OVERDUE"})
     void actorWhoCannotBeLoadedIsNamedSomeone(TaskNotificationType type) {
         stubActiveRecipient(type);
         when(userRepository.findById(ACTOR_ID)).thenReturn(Optional.empty());
@@ -214,7 +225,7 @@ class TaskNotificationSenderTest {
     }
 
     @ParameterizedTest
-    @EnumSource(TaskNotificationType.class)
+    @EnumSource(value = TaskNotificationType.class, mode = EXCLUDE, names = {"DUE_SOON", "OVERDUE"})
     void nobodyIsEmailedAboutTheirOwnAction(TaskNotificationType type) {
         stubActor();
 
@@ -556,6 +567,104 @@ class TaskNotificationSenderTest {
             sender.onMentioned(mentioned(body, ACTOR_ID, RECIPIENT_ID));
 
             assertThat(sentMessage().text()).endsWith("\n\n" + "y".repeat(1_000) + "..." + FOOTER);
+        }
+    }
+
+    @Nested
+    class DueReminders {
+
+        // In Pacific/Kiritimati (UTC+14), 23:30 UTC is already the next day: a formatter using the JVM zone would show it
+        private static final Instant LATE_EVENING_UTC = Instant.parse("2026-10-01T23:30:00Z");
+
+        private TimeZone originalTimeZone;
+
+        @BeforeEach
+        void runInAZoneFarFromUtc() {
+            originalTimeZone = TimeZone.getDefault();
+            TimeZone.setDefault(TimeZone.getTimeZone("Pacific/Kiritimati"));
+        }
+
+        @AfterEach
+        void restoreTheTimeZone() {
+            TimeZone.setDefault(originalTimeZone);
+        }
+
+        @Test
+        void dueSoonEmailsTheAssigneeWithTheDueDateInUtc() {
+            stubActiveRecipient(TaskNotificationType.DUE_SOON);
+
+            sender.onDueSoon(new TaskDueSoon(TASK_ID, "TASK-1", "Write tests", LATE_EVENING_UTC, RECIPIENT_ID));
+
+            assertThat(sentMessage()).isEqualTo(new MailMessage(
+                    "alice@example.com",
+                    "Task TASK-1 is due soon",
+                    "Hello Alice,\n\nThe task TASK-1: \"Write tests\" is due on 2026-10-01 23:30 UTC." + FOOTER
+            ));
+        }
+
+        @Test
+        void overdueEmailsTheAssigneeWithTheDueDateInUtc() {
+            stubActiveRecipient(TaskNotificationType.OVERDUE);
+
+            sender.onOverdue(new TaskOverdue(TASK_ID, "TASK-1", "Write tests", LATE_EVENING_UTC, RECIPIENT_ID));
+
+            assertThat(sentMessage()).isEqualTo(new MailMessage(
+                    "alice@example.com",
+                    "Task TASK-1 is overdue",
+                    "Hello Alice,\n\nThe task TASK-1: \"Write tests\" was due on 2026-10-01 23:30 UTC and is not done yet."
+                            + FOOTER
+            ));
+        }
+
+        @Test
+        void dueDatePadsSingleDigitFieldsAndDropsSeconds() {
+            stubActiveRecipient(TaskNotificationType.DUE_SOON);
+
+            sender.onDueSoon(new TaskDueSoon(TASK_ID, "TASK-1", "Write tests",
+                    Instant.parse("2026-03-04T05:06:59.999Z"), RECIPIENT_ID));
+
+            assertThat(sentMessage().text()).contains("is due on 2026-03-04 05:06 UTC.");
+        }
+
+        @ParameterizedTest
+        @EnumSource(value = TaskNotificationType.class, names = {"DUE_SOON", "OVERDUE"})
+        void looksUpOnlyTheAssignee(TaskNotificationType type) {
+            stubActiveRecipient(type);
+
+            dispatch(type, RECIPIENT_ID, null);
+
+            verify(userRepository).findById(RECIPIENT_ID);
+            verifyNoMoreInteractions(userRepository);
+            verifyNoInteractions(userSummaryRepository);
+        }
+
+        @Test
+        void dueSoonIsNotEmailedWhenTheTaskHasNoAssignee() {
+            sender.onDueSoon(new TaskDueSoon(TASK_ID, "TASK-1", "Write tests", DUE_AT, null));
+
+            verifyNoInteractions(userRepository, settingsService, mailService);
+        }
+
+        @Test
+        void overdueIsNotEmailedToAnAssigneeWhoTurnedOnlyOverdueOff() {
+            when(userRepository.findById(RECIPIENT_ID))
+                    .thenReturn(Optional.of(activeUser(RECIPIENT_ID, "Alice", "alice@example.com")));
+            when(settingsService.isEnabled(RECIPIENT_ID, TaskNotificationType.OVERDUE)).thenReturn(false);
+
+            sender.onOverdue(new TaskOverdue(TASK_ID, "TASK-1", "Write tests", DUE_AT, RECIPIENT_ID));
+
+            verify(settingsService, never()).isEnabled(RECIPIENT_ID, TaskNotificationType.DUE_SOON);
+            verifyNoInteractions(mailService);
+        }
+
+        @Test
+        void dueSoonIsNotEmailedToADeletedAssignee() {
+            // UserRepository skips soft-deleted users
+            when(userRepository.findById(RECIPIENT_ID)).thenReturn(Optional.empty());
+
+            sender.onDueSoon(new TaskDueSoon(TASK_ID, "TASK-1", "Write tests", DUE_AT, RECIPIENT_ID));
+
+            verifyNoInteractions(settingsService, mailService);
         }
     }
 }

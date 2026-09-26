@@ -1626,7 +1626,7 @@
             "description": "ADMIN or the user themselves. Every field is required.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"taskAssigned\": true,\n  \"taskUnassigned\": true,\n  \"taskCancelled\": false,\n  \"taskDeleted\": true,\n  \"taskCommented\": true,\n  \"taskMentioned\": true\n}",
+              "raw": "{\n  \"taskAssigned\": true,\n  \"taskUnassigned\": true,\n  \"taskCancelled\": false,\n  \"taskDeleted\": true,\n  \"taskCommented\": true,\n  \"taskMentioned\": true,\n  \"taskDueSoon\": true,\n  \"taskOverdue\": true\n}",
               "options": {
                 "raw": {
                   "language": "json"

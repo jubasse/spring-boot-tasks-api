@@ -57,8 +57,8 @@ Package-by-feature under `io.julienmetral.tasks`, and each feature uses the same
 - `media`: stored files and their metadata (see Media storage below). Its sub-packages are `model` (entities, enums and value records), `services`, `repositories`, `controllers` and `exceptions`.
 - `config`: application-wide technical configuration, such as the storage drivers.
 - `notification`: task email notifications and their per-user settings.
-  - **Settings:** `GET`/`PUT /api/v1/users/{id}/notification-settings`, for the user or an admin. There is one switch per task event (plus `taskCommented` and `taskMentioned`), and a user without a stored row gets `NotificationSettings.defaults` (everything enabled).
-  - **Emails:** `TaskService` and `TaskCommentService` publish domain events (`task.events.TaskAssigned`, `TaskUnassigned`, `TaskCancelled`, `TaskDeleted`, `TaskCommentAdded`, `UsersMentionedInComment`), and `notification.mail.TaskNotificationSender` turns them into emails. Only the concerned assignee (or mentioned user) receives one, never about their own action, only while their account is active, and only if the matching switch is on. The `task` package never depends on `notification`.
+  - **Settings:** `GET`/`PUT /api/v1/users/{id}/notification-settings`, for the user or an admin. There is one switch per task event (plus `taskCommented`, `taskMentioned`, `taskDueSoon` and `taskOverdue`), and a user without a stored row gets `NotificationSettings.defaults` (everything enabled).
+  - **Emails:** `TaskService` and `TaskCommentService` publish domain events (`task.events.TaskAssigned`, `TaskUnassigned`, `TaskCancelled`, `TaskDeleted`, `TaskCommentAdded`, `UsersMentionedInComment`), `TaskReminderService` publishes `TaskDueSoon` and `TaskOverdue`, and `notification.mail.TaskNotificationSender` turns them into emails. Only the concerned assignee (or mentioned user) receives one, never about their own action, only while their account is active, and only if the matching switch is on. The `task` package never depends on `notification`.
 - `shared`: the auditable base entity, the global `ApiExceptionHandler` (`@RestControllerAdvice` returning `ProblemDetail`), and the reusable security annotations.
 
 Controllers are under `/api/v1/...`. Services own transactions and return entities, and controllers wrap them in response DTOs.
@@ -92,6 +92,13 @@ Only **active** users can work on tasks. Active means enabled, not deleted, and 
 - **Mentions** are `<@user-id>` tokens in the body (`CommentMentions`), stored in `task_comment_mentions` and returned as `mentions`. A new mention must name an active user (`InvalidMentionException`, 422); an edit validates and notifies only the users it mentions for the first time.
 - **Emails:** mentioned users get a mention email; the assignee gets a comment email unless they are mentioned too and kept mention emails on.
 - Posting, editing and deleting are history events (`COMMENT_ADDED`, `COMMENT_EDITED`, `COMMENT_DELETED`); each file also records `ATTACHMENT_ADDED`/`ATTACHMENT_REMOVED`.
+
+### Due-date reminders
+
+`TaskReminderJob` runs `TaskReminderService.sendDueReminders` on `task.reminders.cron` (every 15 minutes). It emails the assignee of each open task (not done, cancelled or archived) once when the due date is within `task.reminders.due-soon-lead-time` (24 h), and once when it has passed, within `task.reminders.overdue-lookback` (7 days).
+- `task_reminders` records what was sent, one row per task, kind, due date and recipient, through an `INSERT ... ON CONFLICT DO NOTHING` (`TaskReminderQueries`). Moving the due date or reassigning the task makes a new reminder due.
+- A Postgres advisory lock keeps several instances from sending the same reminders, as for the media cleanup.
+- Tests disable the job (`task.reminders.enabled: false`) and call the service with a fixed `Clock`.
 
 ### Soft-deleted users in associations
 

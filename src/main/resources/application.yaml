@@ -44,6 +44,13 @@ media:
     cron: ${MEDIA_CLEANUP_CRON:0 30 3 * * *}
     retention: ${MEDIA_CLEANUP_RETENTION:30d}
     orphan-grace-period: 1d
+# Emails assignees when an open task is due soon and when it becomes overdue, once per due date
+task:
+  reminders:
+    enabled: ${TASK_REMINDERS_ENABLED:true}
+    cron: ${TASK_REMINDERS_CRON:0 */15 * * * *}
+    due-soon-lead-time: 24h
+    overdue-lookback: 7d
 spring:
   config:
     import: optional:file:.env[.properties]
