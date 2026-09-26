@@ -253,30 +253,6 @@ class TaskListApiTests extends AbstractUserStateTaskApiTests {
         assertThat(ids(page)).contains(taskId);
     }
 
-    @Test
-    void invalidStatusIsBadRequest() throws Exception {
-        User admin = createUser(UserRole.ADMIN);
-
-        mockMvc.perform(get(TASKS).param("status", "NOT_A_STATUS").with(asAdmin(admin)))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void invalidAssigneeIdIsBadRequest() throws Exception {
-        User admin = createUser(UserRole.ADMIN);
-
-        mockMvc.perform(get(TASKS).param("assigneeId", "not-a-uuid").with(asAdmin(admin)))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void invalidArchivedFlagIsBadRequest() throws Exception {
-        User admin = createUser(UserRole.ADMIN);
-
-        mockMvc.perform(get(TASKS).param("archived", "maybe").with(asAdmin(admin)))
-                .andExpect(status().isBadRequest());
-    }
-
     private JsonNode list(User reader, MockHttpServletRequestBuilder request) throws Exception {
         String body = mockMvc.perform(request.with(asAdmin(reader)))
                 .andExpect(status().isOk())

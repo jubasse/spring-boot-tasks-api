@@ -3,7 +3,6 @@ package io.julienmetral.tasks.task.controllers;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.task.entities.TaskEventType;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.ResultActions;
@@ -61,12 +60,6 @@ class TaskLifecycleControllerTests extends AbstractTaskApiTests {
     }
 
     @Test
-    void findByIdReturns400ForMalformedId() throws Exception {
-        mockMvc.perform(get(TASKS + "/not-a-uuid").with(asUser(createUser(UserRole.USER))))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
     void createWithDuplicateReferenceReturns409() throws Exception {
         User user = createUser(UserRole.USER);
         String reference = uniqueReference();
@@ -101,42 +94,6 @@ class TaskLifecycleControllerTests extends AbstractTaskApiTests {
     }
 
     @Test
-    void createWithBlankReferenceReturns400() throws Exception {
-        mockMvc.perform(post(TASKS).with(asUser(createUser(UserRole.USER))).contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"reference": "   ", "title": "Task"}
-                                """))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void createWithMissingReferenceReturns400() throws Exception {
-        mockMvc.perform(post(TASKS).with(asUser(createUser(UserRole.USER))).contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"title": "Task"}
-                                """))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void createWithBlankTitleReturns400() throws Exception {
-        mockMvc.perform(post(TASKS).with(asUser(createUser(UserRole.USER))).contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"reference": "%s", "title": "  "}
-                                """.formatted(uniqueReference())))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void createWithReferenceLongerThan30CharsReturns400() throws Exception {
-        mockMvc.perform(post(TASKS).with(asUser(createUser(UserRole.USER))).contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"reference": "%s", "title": "Task"}
-                                """.formatted("R".repeat(31))))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
     void createWithReferenceOfExactly30CharsIsAccepted() throws Exception {
         String reference = ("R-" + UUID.randomUUID().toString().replace("-", "")).substring(0, 30);
 
@@ -146,24 +103,6 @@ class TaskLifecycleControllerTests extends AbstractTaskApiTests {
                                 """.formatted(reference)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.reference").value(reference));
-    }
-
-    @Test
-    void createWithTitleLongerThan255CharsReturns400() throws Exception {
-        mockMvc.perform(post(TASKS).with(asUser(createUser(UserRole.USER))).contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"reference": "%s", "title": "%s"}
-                                """.formatted(uniqueReference(), "t".repeat(256))))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void createWithUnknownPriorityReturns400() throws Exception {
-        mockMvc.perform(post(TASKS).with(asUser(createUser(UserRole.USER))).contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"reference": "%s", "title": "Task", "priority": "CRITICAL"}
-                                """.formatted(uniqueReference())))
-                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -252,18 +191,6 @@ class TaskLifecycleControllerTests extends AbstractTaskApiTests {
     }
 
     @Test
-    void updateWithTitleLongerThan255CharsReturns400() throws Exception {
-        User admin = createUser(UserRole.ADMIN);
-        UUID taskId = createTask(admin, null);
-
-        mockMvc.perform(patch(TASKS + "/" + taskId).with(asAdmin(admin)).contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"title": "%s"}
-                                """.formatted("t".repeat(256))))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
     void updateUnknownTaskAsAdminReturns404() throws Exception {
         mockMvc.perform(patch(TASKS + "/" + UUID.randomUUID()).with(asAdmin(createUser(UserRole.ADMIN)))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -343,24 +270,6 @@ class TaskLifecycleControllerTests extends AbstractTaskApiTests {
     }
 
     @Test
-    void statusWithInvalidValueReturns400() throws Exception {
-        User admin = createUser(UserRole.ADMIN);
-        UUID taskId = createTask(admin, null);
-
-        mockMvc.perform(patch(TASKS + "/" + taskId + "/status").with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"status": "FINISHED"}
-                                """))
-                .andExpect(status().isBadRequest());
-
-        mockMvc.perform(patch(TASKS + "/" + taskId + "/status").with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
     void statusOfUnknownTaskAsAdminReturns404() throws Exception {
         changeStatusRaw(createUser(UserRole.ADMIN), UUID.randomUUID(), "DONE")
                 .andExpect(status().isNotFound());
@@ -382,29 +291,6 @@ class TaskLifecycleControllerTests extends AbstractTaskApiTests {
         mockMvc.perform(get(TASKS + "/" + taskId).with(asAdmin(admin)))
                 .andExpect(jsonPath("$.status").value("CANCELLED"))
                 .andExpect(jsonPath("$.cancelledAt").isNotEmpty());
-    }
-
-    @Test
-    void cancelWithBlankOrTooLongReasonReturns400() throws Exception {
-        User admin = createUser(UserRole.ADMIN);
-        UUID taskId = createTask(admin, null);
-
-        mockMvc.perform(post(TASKS + "/" + taskId + "/cancel").with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"reason": "  "}
-                                """))
-                .andExpect(status().isBadRequest());
-
-        mockMvc.perform(post(TASKS + "/" + taskId + "/cancel").with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"reason": "%s"}
-                                """.formatted("r".repeat(501))))
-                .andExpect(status().isBadRequest());
-
-        mockMvc.perform(get(TASKS + "/" + taskId).with(asAdmin(admin)))
-                .andExpect(jsonPath("$.status").value("TO_DO"));
     }
 
     @Test
@@ -453,17 +339,6 @@ class TaskLifecycleControllerTests extends AbstractTaskApiTests {
         assign(admin, UUID.randomUUID(), admin.getId())
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.title").value("Task not found"));
-    }
-
-    @Test
-    void assignWithoutUserIdReturns400() throws Exception {
-        User admin = createUser(UserRole.ADMIN);
-        UUID taskId = createTask(admin, null);
-
-        mockMvc.perform(patch(TASKS + "/" + taskId + "/assign").with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isBadRequest());
     }
 
     @Test

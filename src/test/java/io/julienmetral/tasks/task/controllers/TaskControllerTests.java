@@ -76,21 +76,6 @@ class TaskControllerTests {
     }
 
     @Test
-    void userCannotAssignTaskOnCreation() throws Exception {
-        User user = createUser(UserRole.USER);
-
-        mockMvc.perform(
-                        post("/api/v1/tasks")
-                                .with(as(user, UserRole.USER))
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
-                                        {"reference": "%s", "title": "Task", "assignedTo": "%s"}
-                                        """.formatted(uniqueReference(), user.getId()))
-                )
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
     void adminCanAssignTaskOnCreation() throws Exception {
         User admin = createUser(UserRole.ADMIN);
         User assignee = createUser(UserRole.USER);

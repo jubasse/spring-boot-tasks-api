@@ -73,14 +73,6 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
     }
 
     @Test
-    void tokenWithoutUidClaimIsForbiddenOnTasks() throws Exception {
-        RequestPostProcessor noUid = jwt()
-                .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"));
-
-        mockMvc.perform(get(TASKS).with(noUid)).andExpect(status().isForbidden());
-    }
-
-    @Test
     void assigneeWhoIsDisabledLosesAccessToTheirOwnTask() throws Exception {
         User admin = createUser(UserRole.ADMIN);
         User assignee = createUser(UserRole.USER);
@@ -95,18 +87,6 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\": \"IN_PROGRESS\"}"))
                 .andExpect(status().isForbidden());
-    }
-
-    @Test
-    void requestsWithoutTokenAreUnauthorized() throws Exception {
-        User admin = createUser(UserRole.ADMIN);
-        UUID taskId = createTask(admin, null);
-
-        mockMvc.perform(get(TASKS)).andExpect(status().isUnauthorized());
-        mockMvc.perform(get(TASKS + "/" + taskId)).andExpect(status().isUnauthorized());
-        mockMvc.perform(get(TASKS + "/" + taskId + "/events")).andExpect(status().isUnauthorized());
-        mockMvc.perform(post(TASKS).contentType(MediaType.APPLICATION_JSON).content(createBody(null)))
-                .andExpect(status().isUnauthorized());
     }
 
     @Test

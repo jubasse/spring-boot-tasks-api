@@ -7,14 +7,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.ResultActions;
-import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
-import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -22,7 +19,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Who may call which task endpoint: ADMIN, the assigned USER, another USER, and anonymous callers.
+ * The assignee rule against the stored assignment: ADMIN, the assigned USER and another USER. Anonymous callers and
+ * the admin-only endpoints, which need no data, are covered by {@link TaskControllerWebMvcTests}.
  */
 class TaskAuthorizationControllerTests extends AbstractTaskApiTests {
 
@@ -37,32 +35,6 @@ class TaskAuthorizationControllerTests extends AbstractTaskApiTests {
         assignee = createUser(UserRole.USER);
         otherUser = createUser(UserRole.USER);
         taskId = createTask(admin, assignee);
-    }
-
-    @Test
-    void everyEndpointRequiresAuthentication() throws Exception {
-        List<MockHttpServletRequestBuilder> requests = List.of(
-                get(TASKS + "/" + taskId),
-                post(TASKS).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"reference\": \"%s\", \"title\": \"x\"}".formatted(uniqueReference())),
-                patch(TASKS + "/" + taskId).contentType(MediaType.APPLICATION_JSON).content("{\"title\": \"x\"}"),
-                patch(TASKS + "/" + taskId + "/status").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\": \"DONE\"}"),
-                patch(TASKS + "/" + taskId + "/assign").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\": \"%s\"}".formatted(otherUser.getId())),
-                post(TASKS + "/" + taskId + "/archive"),
-                post(TASKS + "/" + taskId + "/unarchive"),
-                post(TASKS + "/" + taskId + "/cancel").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"reason\": \"x\"}"),
-                delete(TASKS + "/" + taskId),
-                get(TASKS + "/" + taskId + "/events")
-        );
-
-        for (MockHttpServletRequestBuilder request : requests) {
-            mockMvc.perform(request).andExpect(status().isUnauthorized());
-        }
-
-        assertThat(events(taskId)).extracting(e -> e.getType()).containsExactly(TaskEventType.CREATED);
     }
 
     @Test
@@ -165,64 +137,6 @@ class TaskAuthorizationControllerTests extends AbstractTaskApiTests {
         mockMvc.perform(patch(TASKS + "/" + UUID.randomUUID()).with(asUser(assignee))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"title\": \"x\"}"))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    void usersCannotAssignEvenTheAssignee() throws Exception {
-        for (User user : List.of(assignee, otherUser)) {
-            mockMvc.perform(patch(TASKS + "/" + taskId + "/assign").with(asUser(user))
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"userId\": \"%s\"}".formatted(user.getId())))
-                    .andExpect(status().isForbidden());
-        }
-
-        mockMvc.perform(get(TASKS + "/" + taskId).with(asAdmin(admin)))
-                .andExpect(jsonPath("$.assignedTo.id").value(assignee.getId().toString()));
-    }
-
-    @Test
-    void usersCannotArchiveEvenTheAssignee() throws Exception {
-        for (User user : List.of(assignee, otherUser)) {
-            mockMvc.perform(post(TASKS + "/" + taskId + "/archive").with(asUser(user)))
-                    .andExpect(status().isForbidden());
-        }
-
-        assertTaskUntouched();
-    }
-
-    @Test
-    void usersCannotUnarchiveEvenTheAssignee() throws Exception {
-        mockMvc.perform(post(TASKS + "/" + taskId + "/archive").with(asAdmin(admin)))
-                .andExpect(status().isOk());
-
-        for (User user : List.of(assignee, otherUser)) {
-            mockMvc.perform(post(TASKS + "/" + taskId + "/unarchive").with(asUser(user)))
-                    .andExpect(status().isForbidden());
-        }
-
-        mockMvc.perform(get(TASKS + "/" + taskId).with(asAdmin(admin)))
-                .andExpect(jsonPath("$.archivedAt").isNotEmpty());
-    }
-
-    @Test
-    void usersCannotDeleteEvenTheAssignee() throws Exception {
-        for (User user : List.of(assignee, otherUser)) {
-            mockMvc.perform(delete(TASKS + "/" + taskId).with(asUser(user)))
-                    .andExpect(status().isForbidden());
-        }
-
-        mockMvc.perform(get(TASKS + "/" + taskId).with(asAdmin(admin)))
-                .andExpect(status().isOk());
-    }
-
-    @Test
-    void adminOnlyEndpointsRejectUsersBeforeCheckingTheTaskExists() throws Exception {
-        UUID unknown = UUID.randomUUID();
-
-        mockMvc.perform(delete(TASKS + "/" + unknown).with(asUser(assignee)))
-                .andExpect(status().isForbidden());
-        mockMvc.perform(post(TASKS + "/" + unknown + "/archive").with(asUser(assignee)))
                 .andExpect(status().isForbidden());
     }
 
