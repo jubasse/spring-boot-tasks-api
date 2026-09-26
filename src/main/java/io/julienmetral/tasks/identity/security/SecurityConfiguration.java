@@ -144,6 +144,9 @@ public class SecurityConfiguration {
                                 // behind authentication, so every error there answered 401.
                                 .requestMatchers(onManagementPort(environment))
                                 .permitAll()
+                                // Identicons are images loaded by <img> tags, which send no token
+                                .requestMatchers(HttpMethod.GET, "/api/v1/identicons/*")
+                                .permitAll()
                                 // Tasks are reserved to enabled users with a verified email
                                 .requestMatchers("/api/v1/tasks/**")
                                 .access(activeUserAuthorizationManager)

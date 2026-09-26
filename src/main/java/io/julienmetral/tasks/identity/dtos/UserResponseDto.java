@@ -33,8 +33,8 @@ public record UserResponseDto(
                 Set.copyOf(user.getRoles()),
                 user.getCreatedAt(),
                 user.getUpdatedAt(),
-                mediaUrls.of(user.getAvatar()),
-                user.getPendingAvatar() != null
+                mediaUrls.avatarOf(user.getProfile()),
+                user.getProfile().getPendingAvatar() != null
         );
     }
 }
