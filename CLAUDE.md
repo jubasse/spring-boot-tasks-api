@@ -90,7 +90,7 @@ Only **active** users can work on tasks. Active means enabled, not deleted, and 
 `/api/v1/tasks/{id}/comments`: any active user posts (JSON `{"body"}`, or multipart with a `body` field and up to 5 `files`) and lists them (paginated, oldest first). Only the author edits, admins included; the author or an admin deletes.
 - **Files** posted with a comment are task attachments with `comment_id` set, so they also appear in the task's attachment list. Deleting the comment deletes them.
 - **Mentions** are `<@user-id>` tokens in the body (`CommentMentions`), stored in `task_comment_mentions` and returned as `mentions`. A new mention must name an active user (`InvalidMentionException`, 422); an edit validates and notifies only the users it mentions for the first time.
-- **Emails:** mentioned users get a mention email; the assignee gets a comment email unless they are mentioned too.
+- **Emails:** mentioned users get a mention email; the assignee gets a comment email unless they are mentioned too and kept mention emails on.
 - Posting, editing and deleting are history events (`COMMENT_ADDED`, `COMMENT_EDITED`, `COMMENT_DELETED`); each file also records `ATTACHMENT_ADDED`/`ATTACHMENT_REMOVED`.
 
 ### Soft-deleted users in associations
