@@ -201,7 +201,7 @@ class AvatarApiTests extends AbstractAvatarApiTests {
 
         assertThat(newKey).isNotEqualTo(previousKey);
         assertThat(newUrl).contains(newKey);
-        assertObjectMissing(previousKey);
+        awaitObjectMissing(previousKey);
         assertThat(mediaRowCount(previousKey)).isZero();
         assertThat(headObject(newKey).contentLength()).isPositive();
         assertThat(mediaCountUploadedBy(user)).isOne();
