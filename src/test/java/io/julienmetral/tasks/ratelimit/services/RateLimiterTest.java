@@ -53,17 +53,17 @@ class RateLimiterTest {
 
     private static final UUID USER_ID = UUID.fromString("00000000-0000-0000-0000-000000000042");
 
-    private static final String LOGIN_IP_KEY = "login:ip:" + ADDRESS;
+    private static final String LOGIN_IP_KEY = RateLimitKeys.address("login", ADDRESS);
 
-    private static final String LOGIN_EMAIL_KEY = "login:email:" + EMAIL;
+    private static final String LOGIN_EMAIL_KEY = RateLimitKeys.email("login", EMAIL);
 
-    private static final String SIGN_UP_IP_KEY = "sign-up:ip:" + ADDRESS;
+    private static final String SIGN_UP_IP_KEY = RateLimitKeys.address("sign-up", ADDRESS);
 
-    private static final String PASSWORD_RESET_IP_KEY = "password-reset:ip:" + ADDRESS;
+    private static final String PASSWORD_RESET_IP_KEY = RateLimitKeys.address("password-reset", ADDRESS);
 
-    private static final String PASSWORD_RESET_EMAIL_KEY = "password-reset:email:" + EMAIL;
+    private static final String PASSWORD_RESET_EMAIL_KEY = RateLimitKeys.email("password-reset", EMAIL);
 
-    private static final String VERIFICATION_RESEND_KEY = "verification-resend:user:" + USER_ID;
+    private static final String VERIFICATION_RESEND_KEY = RateLimitKeys.user("verification-resend", USER_ID);
 
     // Each limit differs from the others, so a key checked against another key's limit fails a test
     private static final int LOGIN_PER_IP = 30;
@@ -125,7 +125,7 @@ class RateLimiterTest {
         void ipv6AddressIsUsedAsGiven() {
             limiter().signUp("2001:db8::1");
 
-            verify(queries).increment("sign-up:ip:2001:db8::1", HOUR_START);
+            verify(queries).increment(RateLimitKeys.address("sign-up", "2001:db8::1"), HOUR_START);
         }
     }
 

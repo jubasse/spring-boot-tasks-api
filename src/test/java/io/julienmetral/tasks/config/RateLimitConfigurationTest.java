@@ -3,7 +3,6 @@ package io.julienmetral.tasks.config;
 import io.julienmetral.tasks.config.RateLimitProperties.Limit;
 import io.julienmetral.tasks.ratelimit.repositories.RateLimitQueries;
 import io.julienmetral.tasks.ratelimit.services.RateLimitCleanupJob;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -164,10 +163,6 @@ class RateLimitConfigurationTest {
                 .run(context -> assertThat(context).getFailure()
                         .hasStackTraceContaining("NotNull.rate-limit.verificationResendPerUser.window"));
     }
-
-    @Disabled("bug: a zero window passes validation (window is only @NotNull), then RateLimiter divides by "
-            + "window.toMillis() and every request to the limited endpoint answers 500 (ArithmeticException); a window "
-            + "under 1 ms does the same, and a negative one gives a window start after the current instant")
     @Test
     void zeroWindowFailsStartup() {
         configured.withPropertyValues("rate-limit.login-per-ip.window=0s")

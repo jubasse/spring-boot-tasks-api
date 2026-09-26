@@ -24,7 +24,6 @@ import io.julienmetral.tasks.task.exceptions.TaskCommentNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException;
 import io.julienmetral.tasks.task.exceptions.TooManyCommentAttachmentsException;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -202,9 +201,6 @@ class ApiExceptionHandlerTest {
 
         assertThat(response.getHeaders().getFirst(HttpHeaders.RETRY_AFTER)).isEqualTo("60");
     }
-
-    @Disabled("bug: Retry-After truncates the time left (Duration.toSeconds), so a client that waits the advertised "
-            + "1 s with 1.5 s left in the window is refused again; it should round up to the next whole second")
     @Test
     void retryAfterWithAFractionOfASecondIsRoundedUp() {
         ResponseEntity<ProblemDetail> response = handler.handleRateLimitExceeded(

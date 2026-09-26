@@ -1,12 +1,12 @@
 package io.julienmetral.tasks.ratelimit;
 
+import io.julienmetral.tasks.ratelimit.services.RateLimitKeys;
 import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.ratelimit.exceptions.RateLimitExceededException;
 import io.julienmetral.tasks.ratelimit.repositories.RateLimitQueries;
 import io.julienmetral.tasks.ratelimit.services.RateLimiter;
 import io.julienmetral.tasks.support.Mailpit;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -249,15 +249,11 @@ class RateLimitTests {
 
             expectTooManyRequests(login(address, email, PASSWORD), UNTIL_NEXT_QUARTER);
 
-            assertThat(counter("login:ip:" + address)).isZero();
+            assertThat(counter(RateLimitKeys.address("login", address))).isZero();
             for (int attempt = 0; attempt < LOGIN_PER_IP; attempt++) {
                 login(address, uniqueEmail(), PASSWORD).andExpect(status().isUnauthorized());
             }
         }
-
-        @Disabled("bug: RateLimiter.login puts the email in bucket_key, a VARCHAR(400) column. LoginRequestDto.email "
-                + "has no @Size, and @Email measures the domain after IDN conversion, which drops soft hyphens, so a "
-                + "longer email fails the upsert and the login answers 409 Data conflict")
         @Test
         void loginWithAnEmailLongerThanTheCounterKeyColumnIsAnsweredAsAnyUnknownEmail() throws Exception {
             // Nameprep drops soft hyphens (JSON escapes here), so @Email accepts this 500-character domain
@@ -322,7 +318,7 @@ class RateLimitTests {
             expectTooManyRequests(signUp(address, uniqueEmail()), UNTIL_NEXT_HOUR);
             expectTooManyRequests(signUp(address, uniqueEmail()), UNTIL_NEXT_HOUR);
 
-            assertThat(counter("sign-up:ip:" + address)).isEqualTo(SIGN_UP_PER_IP);
+            assertThat(counter(RateLimitKeys.address("sign-up", address))).isEqualTo(SIGN_UP_PER_IP);
         }
 
         @Test
@@ -337,7 +333,7 @@ class RateLimitTests {
                                     """.formatted(PASSWORD)))
                     .andExpect(status().isBadRequest());
 
-            assertThat(counter("sign-up:ip:" + address)).isZero();
+            assertThat(counter(RateLimitKeys.address("sign-up", address))).isZero();
         }
     }
 
@@ -415,10 +411,6 @@ class RateLimitTests {
                     "SELECT used_at FROM password_reset_tokens WHERE user_id = ?", Timestamp.class, userId)).isNull();
             login(uniqueAddress(), email, PASSWORD).andExpect(status().isOk());
         }
-
-        @Disabled("bug: RateLimiter.passwordResetRequest puts the lower-cased email in bucket_key, a VARCHAR(400) "
-                + "column. Lower-casing can double the length of a 320-character email, the upsert fails, and the "
-                + "endpoint that always answers 202 answers 409 Data conflict")
         @Test
         void passwordResetRequestForAnEmailThatOutgrowsTheCounterKeyColumnWhenLowerCasedIsAccepted()
                 throws Exception {
@@ -529,7 +521,7 @@ class RateLimitTests {
             List<Boolean> accepted = inParallel(() -> accepts(() -> rateLimiter.login(address, uniqueEmail())));
 
             assertThat(accepted).filteredOn(Boolean::booleanValue).hasSize(LOGIN_PER_IP);
-            assertThat(counter("login:ip:" + address)).isEqualTo(LOGIN_PER_IP);
+            assertThat(counter(RateLimitKeys.address("login", address))).isEqualTo(LOGIN_PER_IP);
         }
 
         @Test
@@ -540,7 +532,7 @@ class RateLimitTests {
                     () -> accepts(() -> rateLimiter.passwordResetRequest(uniqueAddress(), email)));
 
             assertThat(accepted).filteredOn(Boolean::booleanValue).hasSize(PASSWORD_RESET_PER_EMAIL);
-            assertThat(counter("password-reset:email:" + email)).isEqualTo(PASSWORD_RESET_PER_EMAIL);
+            assertThat(counter(RateLimitKeys.email("password-reset", email))).isEqualTo(PASSWORD_RESET_PER_EMAIL);
         }
 
         @Test
@@ -759,8 +751,8 @@ class RateLimitTests {
     private static String uniqueAddress() {
         ThreadLocalRandom random = ThreadLocalRandom.current();
 
-        return "2001:db8::%x:%x:%x:%x".formatted(
-                random.nextInt(0x10000), random.nextInt(0x10000), random.nextInt(0x10000), random.nextInt(0x10000));
+        // Varies the /64 prefix: addresses of one /64 share a counter
+        return "2001:db8:%x:%x::1".formatted(random.nextInt(0x10000), random.nextInt(0x10000));
     }
 
     private static String uniqueEmail() {
