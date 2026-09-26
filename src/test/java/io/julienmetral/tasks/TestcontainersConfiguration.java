@@ -16,6 +16,12 @@ public class TestcontainersConfiguration {
 
 	static final int MAILPIT_API_PORT = 8025;
 
+	static final int RUSTFS_S3_PORT = 9000;
+
+	static final String RUSTFS_ACCESS_KEY = "test-access-key";
+
+	static final String RUSTFS_SECRET_KEY = "test-secret-key";
+
 	@Bean
 	@ServiceConnection
 	PostgreSQLContainer postgresContainer() {
@@ -39,6 +45,31 @@ public class TestcontainersConfiguration {
 					mailpitContainer.getHost(),
 					mailpitContainer.getMappedPort(MAILPIT_API_PORT)
 			));
+		};
+	}
+
+	// S3-compatible storage for media files; the bucket is created on startup (storage.rustfs.create-bucket)
+	@Bean
+	GenericContainer<?> rustfsContainer() {
+		return new GenericContainer<>(DockerImageName.parse("rustfs/rustfs:1.0.0"))
+				.withEnv("RUSTFS_ACCESS_KEY", RUSTFS_ACCESS_KEY)
+				.withEnv("RUSTFS_SECRET_KEY", RUSTFS_SECRET_KEY)
+				.withExposedPorts(RUSTFS_S3_PORT)
+				.waitingFor(Wait.forHttp("/health").forPort(RUSTFS_S3_PORT));
+	}
+
+	@Bean
+	DynamicPropertyRegistrar rustfsProperties(GenericContainer<?> rustfsContainer) {
+		return registry -> {
+			registry.add("storage.rustfs.endpoint", () -> "http://%s:%d".formatted(
+					rustfsContainer.getHost(),
+					rustfsContainer.getMappedPort(RUSTFS_S3_PORT)
+			));
+			registry.add("storage.rustfs.access-key", () -> RUSTFS_ACCESS_KEY);
+			registry.add("storage.rustfs.secret-key", () -> RUSTFS_SECRET_KEY);
+			registry.add("storage.driver", () -> "rustfs");
+			registry.add("storage.bucket", () -> "tasks-media-test");
+			registry.add("storage.rustfs.create-bucket", () -> "true");
 		};
 	}
 

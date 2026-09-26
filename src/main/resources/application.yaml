@@ -16,11 +16,34 @@ identity:
     reset-url: ${PASSWORD_RESET_URL:http://localhost:3000/reset-password}
 mail:
   from: ${MAIL_FROM:no-reply@tasks.local}
+# Media file storage. storage.driver picks the implementation: rustfs (defaults match compose.yaml) or aws-s3.
+storage:
+  driver: ${STORAGE_DRIVER:rustfs}
+  bucket: ${S3_BUCKET:tasks-media}
+  presigned-url-ttl: 10m
+  rustfs:
+    endpoint: ${S3_ENDPOINT:http://localhost:9000}
+    public-endpoint: ${S3_PUBLIC_ENDPOINT:}
+    access-key: ${S3_ACCESS_KEY:tasks-dev}
+    secret-key: ${S3_SECRET_KEY:tasks-dev-secret}
+    create-bucket: ${S3_CREATE_BUCKET:true}
+  aws-s3:
+    # Credentials come from the AWS default chain (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, IAM role, ...)
+    region: ${AWS_REGION:eu-west-3}
+media:
+  avatar-max-size: 5MB
+  attachment-max-size: 25MB
 spring:
   config:
     import: optional:file:.env[.properties]
   application:
     name: tasks
+
+  # Must allow the largest media upload (media.attachment-max-size)
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 26MB
 
   # Virtual threads for request handling and @Async work (e.g. sending emails)
   threads:
