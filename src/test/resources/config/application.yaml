@@ -15,3 +15,8 @@ identity:
 rate-limit:
   # Most tests log in and sign up many times from the same address; RateLimitTests turns the limits on
   enabled: false
+spring:
+  jpa:
+    properties:
+      # Counts the statements of a request in the query-count tests; records nothing unless a test asks for it
+      hibernate.session_factory.statement_inspector: io.julienmetral.tasks.support.SqlStatementCounter
