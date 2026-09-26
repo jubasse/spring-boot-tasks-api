@@ -1,7 +1,9 @@
 package io.julienmetral.tasks.task.services;
 
 import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserSummary;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.task.entities.Task;
 import io.julienmetral.tasks.task.entities.TaskEvent;
@@ -28,6 +30,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
 
+import static io.julienmetral.tasks.support.UserSummaries.reference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -50,23 +53,34 @@ class TaskEventServiceTest {
     private UserRepository userRepository;
 
     @Mock
+    private UserSummaryRepository userSummaryRepository;
+
+    @Mock
     private CurrentUser currentUser;
 
     private TaskEventService service;
 
     private final Task task = new Task();
     private final User actor = new User();
+    private final UserSummary actorReference = reference(ACTOR_ID);
 
     @BeforeEach
     void setUp() {
         service = new TaskEventService(
-                taskRepository, taskEventRepository, userRepository, currentUser, JsonMapper.builder().build());
+                taskRepository,
+                taskEventRepository,
+                userRepository,
+                userSummaryRepository,
+                currentUser,
+                JsonMapper.builder().build()
+        );
         actor.setId(ACTOR_ID);
     }
 
     private void stubActor() {
         when(currentUser.getId()).thenReturn(Optional.of(ACTOR_ID));
         when(userRepository.findById(ACTOR_ID)).thenReturn(Optional.of(actor));
+        when(userSummaryRepository.getReferenceById(ACTOR_ID)).thenReturn(actorReference);
     }
 
     private TaskEvent recordedEvent(Consumer<TaskEventService> action) {
@@ -79,7 +93,7 @@ class TaskEventServiceTest {
         verify(taskEventRepository).save(captor.capture());
         TaskEvent event = captor.getValue();
         assertThat(event.getTask()).isSameAs(task);
-        assertThat(event.getActor()).isSameAs(actor);
+        assertThat(event.getActor()).isSameAs(actorReference);
         assertThat(event.getOccurredAt()).isBetween(before, Instant.now());
         return event;
     }
@@ -171,7 +185,7 @@ class TaskEventServiceTest {
         assertThatThrownBy(() -> service.created(task))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("No authenticated user");
-        verifyNoInteractions(taskEventRepository, userRepository);
+        verifyNoInteractions(taskEventRepository, userRepository, userSummaryRepository);
     }
 
     @Test
@@ -182,7 +196,7 @@ class TaskEventServiceTest {
         assertThatThrownBy(() -> service.updated(task))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Authenticated user not found");
-        verifyNoInteractions(taskEventRepository);
+        verifyNoInteractions(taskEventRepository, userSummaryRepository);
     }
 
     @Test
