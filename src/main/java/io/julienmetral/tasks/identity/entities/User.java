@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.Generated;
 
 import java.io.Serializable;
@@ -15,7 +16,10 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
+// Updates write only the changed columns. Otherwise every update rewrites the whole row from the loaded state, and
+// the profile photo worker re-enabled an account that an admin disabled while the photo was being processed.
 @Entity
+@DynamicUpdate
 @Table(
         name = "users",
         uniqueConstraints = {
