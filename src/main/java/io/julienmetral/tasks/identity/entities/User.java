@@ -1,5 +1,6 @@
 package io.julienmetral.tasks.identity.entities;
 
+import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.shared.entities.AuditableEntity;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -22,6 +23,11 @@ import java.util.UUID;
                 @UniqueConstraint(
                         name = "users_emailUQ",
                         columnNames = "email"
+                ),
+                // A media file is the avatar of one user at most
+                @UniqueConstraint(
+                        name = "users_avatar_media_idUQ",
+                        columnNames = "avatar_media_id"
                 )
         }
 )
@@ -64,9 +70,11 @@ public class User extends AuditableEntity implements Serializable {
     @Enumerated(EnumType.STRING)
     private Set<UserRole> roles = new HashSet<>();
 
-/*    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "avatar_media_id")
+    // ManyToOne rather than OneToOne: the uniqueness is the named constraint above, not an implicit generated one
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "avatar_media_id",
+            foreignKey = @ForeignKey(name = "users_avatar_mediaFK")
+    )
     private Media avatar;
-    Todo: when medias are ok
-    */
 }

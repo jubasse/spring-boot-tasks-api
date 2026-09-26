@@ -1,8 +1,13 @@
 package io.julienmetral.tasks.identity.entities;
 
+import io.julienmetral.tasks.media.model.Media;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ForeignKey;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import org.hibernate.annotations.Immutable;
@@ -39,4 +44,11 @@ public class UserSummary {
 
     @Column(name = "deleted_at")
     private Instant deletedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "avatar_media_id",
+            foreignKey = @ForeignKey(name = "users_avatar_mediaFK")
+    )
+    private Media avatar;
 }
