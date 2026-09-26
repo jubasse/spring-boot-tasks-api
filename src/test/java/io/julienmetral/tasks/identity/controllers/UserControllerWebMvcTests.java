@@ -82,7 +82,8 @@ class UserControllerWebMvcTests {
 
         @Test
         void signUpWithoutTokenIsAccepted() throws Exception {
-            when(userService.create("alice@example.com", "password123", "Alice")).thenReturn(account(UUID.randomUUID()));
+            when(userService.create("alice@example.com", "password123", "Alice"))
+                    .thenReturn(account(UUID.randomUUID()));
 
             signUp(signUpBody("alice@example.com", "password123", "Alice"))
                     .andExpect(status().isCreated());
@@ -441,7 +442,8 @@ class UserControllerWebMvcTests {
             expectUploadRejected(new InfectedMediaException("Eicar-Test-Signature"))
                     .andExpect(status().isUnprocessableContent())
                     .andExpect(jsonPath("$.title").value("File rejected by the antivirus"))
-                    .andExpect(jsonPath("$.detail").value("The file was rejected by the antivirus: Eicar-Test-Signature"));
+                    .andExpect(jsonPath("$.detail")
+                            .value("The file was rejected by the antivirus: Eicar-Test-Signature"));
         }
 
         @Test

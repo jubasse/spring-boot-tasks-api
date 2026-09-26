@@ -55,6 +55,8 @@ class TaskControllerWebMvcTests {
 
     private static final String TASKS = "/api/v1/tasks";
 
+    private static final String NEW_TASK = "{\"reference\": \"T-1\", \"title\": \"Task\"}";
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -165,7 +167,7 @@ class TaskControllerWebMvcTests {
         void userCannotAssignTaskOnCreation() throws Exception {
             UUID self = UUID.randomUUID();
 
-            create(user(self), "{\"reference\": \"T-1\", \"title\": \"Task\", \"assignedTo\": \"%s\"}".formatted(self))
+            create(user(self), newTaskAssignedTo(self))
                     .andExpect(status().isForbidden());
 
             verifyNoInteractions(taskService);
@@ -175,7 +177,7 @@ class TaskControllerWebMvcTests {
         void userCanCreateAnUnassignedTask() throws Exception {
             when(taskService.create(any())).thenReturn(task("T-1"));
 
-            create(user(UUID.randomUUID()), "{\"reference\": \"T-1\", \"title\": \"Task\"}")
+            create(user(UUID.randomUUID()), NEW_TASK)
                     .andExpect(status().isCreated())
                     .andExpect(jsonPath("$.reference").value("T-1"));
         }
@@ -184,8 +186,7 @@ class TaskControllerWebMvcTests {
         void adminPassesTheCheckToAssignOnCreation() throws Exception {
             when(taskService.create(any())).thenReturn(task("T-1"));
 
-            create(admin(UUID.randomUUID()),
-                    "{\"reference\": \"T-1\", \"title\": \"Task\", \"assignedTo\": \"%s\"}".formatted(UUID.randomUUID()))
+            create(admin(UUID.randomUUID()), newTaskAssignedTo(UUID.randomUUID()))
                     .andExpect(status().isCreated());
         }
 
@@ -193,7 +194,7 @@ class TaskControllerWebMvcTests {
         void takenReferenceReturnsConflictProblem() throws Exception {
             when(taskService.create(any())).thenThrow(new TaskReferenceAlreadyExistsException("T-1"));
 
-            create(user(UUID.randomUUID()), "{\"reference\": \"T-1\", \"title\": \"Task\"}")
+            create(user(UUID.randomUUID()), NEW_TASK)
                     .andExpect(status().isConflict())
                     .andExpect(jsonPath("$.status").value(409))
                     .andExpect(jsonPath("$.title").value("Task reference already exists"));
@@ -203,7 +204,7 @@ class TaskControllerWebMvcTests {
         void referenceTakenByAConcurrentCreationReturnsAGenericConflict() throws Exception {
             when(taskService.create(any())).thenThrow(new DataIntegrityViolationException("tasks_referenceUQ"));
 
-            create(user(UUID.randomUUID()), "{\"reference\": \"T-1\", \"title\": \"Task\"}")
+            create(user(UUID.randomUUID()), NEW_TASK)
                     .andExpect(status().isConflict())
                     .andExpect(jsonPath("$.title").value("Data conflict"))
                     .andExpect(jsonPath("$.detail").value("The request conflicts with existing data"));
@@ -214,8 +215,7 @@ class TaskControllerWebMvcTests {
             UUID unknown = UUID.randomUUID();
             when(taskService.create(any())).thenThrow(new UserNotFoundException(unknown));
 
-            create(admin(UUID.randomUUID()),
-                    "{\"reference\": \"T-1\", \"title\": \"Task\", \"assignedTo\": \"%s\"}".formatted(unknown))
+            create(admin(UUID.randomUUID()), newTaskAssignedTo(unknown))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.title").value("User not found"));
         }
@@ -225,8 +225,7 @@ class TaskControllerWebMvcTests {
             UUID disabled = UUID.randomUUID();
             when(taskService.create(any())).thenThrow(new AssigneeNotActiveException(disabled, UserStatus.DISABLED));
 
-            create(admin(UUID.randomUUID()),
-                    "{\"reference\": \"T-1\", \"title\": \"Task\", \"assignedTo\": \"%s\"}".formatted(disabled))
+            create(admin(UUID.randomUUID()), newTaskAssignedTo(disabled))
                     .andExpect(status().isUnprocessableContent())
                     .andExpect(jsonPath("$.status").value(422))
                     .andExpect(jsonPath("$.title").value("User cannot be assigned"))
@@ -241,6 +240,10 @@ class TaskControllerWebMvcTests {
 
         private ResultActions create(RequestPostProcessor caller, String body) throws Exception {
             return mockMvc.perform(json(post(TASKS), body).with(caller));
+        }
+
+        private static String newTaskAssignedTo(UUID assignee) {
+            return "{\"reference\": \"T-1\", \"title\": \"Task\", \"assignedTo\": \"%s\"}".formatted(assignee);
         }
     }
 

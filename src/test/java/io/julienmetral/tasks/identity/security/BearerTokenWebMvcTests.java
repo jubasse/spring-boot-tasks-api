@@ -125,7 +125,8 @@ class BearerTokenWebMvcTests {
     @Test
     void rolesClaimIsReadWithoutAddingAPrefix() throws Exception {
         UUID other = UUID.randomUUID();
-        String token = encode(jwtEncoder, ISSUER, UUID.randomUUID(), List.of("ROLE_ADMIN"), Instant.now().plusSeconds(600));
+        UUID admin = UUID.randomUUID();
+        String token = encode(jwtEncoder, ISSUER, admin, List.of("ROLE_ADMIN"), Instant.now().plusSeconds(600));
 
         mockMvc.perform(post("/api/v1/users/{id}/disable", other)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))

@@ -136,7 +136,9 @@ class AuthControllerWebMvcTests {
     class RefreshAndLogout {
 
         @ParameterizedTest
-        @ValueSource(strings = {"{}", "{\"refreshToken\": null}", "{\"refreshToken\": \"\"}", "{\"refreshToken\": \"   \"}"})
+        @ValueSource(strings = {
+                "{}", "{\"refreshToken\": null}", "{\"refreshToken\": \"\"}", "{\"refreshToken\": \"   \"}"
+        })
         void blankOrMissingRefreshTokenIsBadRequest(String body) throws Exception {
             postJson("/refresh", body).andExpect(status().isBadRequest());
 
@@ -344,7 +346,8 @@ class AuthControllerWebMvcTests {
 
         @Test
         void invalidResetTokenReturnsBadRequestProblem() throws Exception {
-            doThrow(new InvalidPasswordResetTokenException()).when(passwordResetService).confirm("used", VALID_PASSWORD);
+            doThrow(new InvalidPasswordResetTokenException())
+                    .when(passwordResetService).confirm("used", VALID_PASSWORD);
 
             confirm("used", VALID_PASSWORD)
                     .andExpect(status().isBadRequest())
