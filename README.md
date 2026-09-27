@@ -146,6 +146,7 @@ The API reads its configuration from `src/main/resources/application.yaml`, whic
 | `MEDIA_CLEANUP_RETENTION` | `30d` | How long the files of deleted tasks and accounts are kept |
 | `SPRING_RABBITMQ_HOST`, `SPRING_RABBITMQ_USERNAME`, `SPRING_RABBITMQ_PASSWORD` | provided by Docker Compose | RabbitMQ connection outside local development |
 | `MANAGEMENT_PORT` | `8081` | Port of the health and metrics endpoints |
+| `IDENTITY_STATUS_CACHE_TTL` | `30s` | How long an account's status is reused before it is read again, from 1 second to 1 minute. With several instances, it is also how long an account disabled on one instance can keep working through the others |
 
 `.env.example` lists the other options, and `application.yaml` holds the fixed settings, such as the upload size limits and the schedules of the background jobs.
 
@@ -170,6 +171,7 @@ Metrics worth alerting on:
 | `outbox_messages_pending`, `outbox_messages_oldest_pending_age_seconds` | They keep growing: emails and profile photos are waiting for RabbitMQ |
 | `rabbitmq_dead_letter_messages{queue=...}` | Above 0: a message failed all its retries |
 | `outbox_publish_failures_total` | It increases steadily |
+| `cache_gets_total{cache="userStatus",result=...}` | The share of `hit` falls: every task request reads the account from the database again |
 | `tasks_scheduled_execution_seconds_count{outcome="FAILURE"}` | A background job failed |
 
 ## Architecture

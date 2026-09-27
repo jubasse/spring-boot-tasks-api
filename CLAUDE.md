@@ -140,6 +140,16 @@ Warning: Hibernate refuses a `LAZY` to-one association towards an entity with `@
 - Measured on a page of 20 tasks: 3 queries, whatever the number of distinct users (8 before, growing with them).
 - `TaskQueryCountTests` and `UserQueryCountTests` lock these counts: each read must run as many statements for a long list as for a short one. `support.SqlStatementCounter`, a Hibernate `StatementInspector` registered in the test `application.yaml`, records only the test thread, since the outbox relay and the listeners query the database on their own threads.
 
+### Caching
+
+Two Caffeine caches run on Spring Boot's cache manager. `CacheConfiguration` sets them up, and `spring.cache.cache-names` lists them, so a mistyped name fails instead of creating a cache without limit or metrics.
+- **`userStatus`** (`UserStatusLookup`) holds the status that `ActiveUserAuthorizationManager` checks on every task request, read with a light query (`findAccountStateById`). Only ACTIVE is cached, for `identity.status-cache.ttl` (30 s, 1 s to 1 min) after it was written.
+  - Every change to an account publishes `AccountStateChanged`, and `UserStatusCacheEviction` evicts the status after the commit. Warning: a new way of changing an account, native SQL included, must publish it too, or a disabled account keeps access until the TTL. Spring Data's `@DomainEvents` would not fire, since entities change through dirty checking, without `save()`.
+  - Warning: never expire after access or refresh after write. A client calling in a loop would keep a stale ACTIVE alive, and a refresh serves the old value when the database fails.
+  - Other instances do not see an eviction: the TTL is their delay. Checks at write time (the assignee in `TaskService`) read the account, never the cache.
+- **`mediaDownloads`** (`MediaService.downloadUrl`) holds the presigned URL of each media, so browsers see the same URL and reuse the file. An entry lives at most half the URL's validity, less when temporary AWS credentials end the URL sooner (`CacheConfiguration.reuseWindow`), and the URL signs `Cache-Control: private, max-age=<validity>, immutable`. Warning: the `@Cacheable` is on `MediaService`, not on `MediaUrls`, whose `avatarOf` calls `of` on itself and would bypass the cache proxy.
+- Metrics: `cache.gets` (hit or miss), `cache.size` and `cache.evictions` per cache, on the management port.
+
 ### Mail
 
 `io.julienmetral.tasks.mail` is the cross-cutting mail service. Features call `MailService.send(MailMessage)`, usually from an event listener that writes the content (for example `identity.mail.VerificationEmailSender`). The sender address is `mail.from`.
