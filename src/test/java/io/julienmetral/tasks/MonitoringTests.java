@@ -21,6 +21,7 @@ import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.health.actuate.endpoint.HealthEndpointGroups;
 import org.springframework.boot.micrometer.metrics.test.autoconfigure.AutoConfigureMetrics;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalManagementPort;
@@ -74,6 +75,9 @@ class MonitoringTests {
 
     @Autowired
     private JsonMapper jsonMapper;
+
+    @Autowired
+    private HealthEndpointGroups healthGroups;
 
     @Autowired
     private MailService mailService;
@@ -269,6 +273,28 @@ class MonitoringTests {
         assertThat(probe.path("status").asString()).isEqualTo("UP");
         assertThat(probe.has("components")).isFalse();
         assertThat(probe.has("details")).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/livez", "/readyz"})
+    void probeOnTheApiPortIgnoresAnInvalidBearerToken(String path) {
+        ResponseEntity<String> response = exchange(HttpMethod.GET, apiPort, path,
+                headers -> headers.setBearerAuth("not-a-valid-token"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void probesOnTheApiPortCheckTheSameComponentsAsTheManagementPortProbes() {
+        List<String> components = List.of("db", "rabbit", "mail", "diskSpace", "storage", "antivirus",
+                "livenessState", "readinessState", "ping", "ssl");
+
+        assertThat(components).allSatisfy(component -> {
+            assertThat(healthGroups.get("livez").isMember(component))
+                    .isEqualTo(healthGroups.get("liveness").isMember(component));
+            assertThat(healthGroups.get("readyz").isMember(component))
+                    .isEqualTo(healthGroups.get("readiness").isMember(component));
+        });
     }
 
     @Test
