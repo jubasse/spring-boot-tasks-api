@@ -27,6 +27,7 @@ import org.springframework.context.MessageSource;
 import org.springframework.context.MessageSourceResolvable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.data.core.PropertyReferenceException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -122,6 +123,15 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(TooManyCommentAttachmentsException.class)
     public ProblemDetail handleTooManyCommentAttachments(TooManyCommentAttachmentsException ex) {
         return invalidRequest(List.of(InvalidValue.inParameter(ex.getMessage(), "files")));
+    }
+
+    // Spring Data raises it while building the query of a page whose sort names a property the entity does not have
+    @ExceptionHandler(PropertyReferenceException.class)
+    public ProblemDetail handleUnknownSortProperty(PropertyReferenceException ex) {
+        return invalidRequest(List.of(InvalidValue.inParameter(
+                "cannot sort by " + ex.getPropertyName(),
+                "sort"
+        )));
     }
 
     @ExceptionHandler(EmptyMediaException.class)
