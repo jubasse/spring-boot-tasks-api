@@ -7,6 +7,7 @@
 deployment:
   required-properties:
     - security.jwt.secret
+    - webhooks.encryption-key
     - spring.datasource.url
     - spring.datasource.username
     - spring.datasource.password
