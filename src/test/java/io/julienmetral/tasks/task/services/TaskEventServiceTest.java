@@ -286,7 +286,7 @@ class TaskEventServiceTest {
         Pageable pageable = PageRequest.of(0, 20);
         Page<TaskEvent> page = new PageImpl<>(List.of(new TaskEvent()));
         when(taskRepository.existsById(taskId)).thenReturn(true);
-        when(taskEventRepository.findAllByTaskIdOrderByOccurredAtDesc(taskId, pageable)).thenReturn(page);
+        when(taskEventRepository.findAllByTaskId(taskId, pageable)).thenReturn(page);
 
         assertThat(service.findAllByTaskId(taskId, pageable)).isSameAs(page);
     }
@@ -300,6 +300,6 @@ class TaskEventServiceTest {
                 .isInstanceOf(TaskNotFoundException.class)
                 .hasMessageContaining(taskId.toString());
         verify(taskEventRepository, org.mockito.Mockito.never())
-                .findAllByTaskIdOrderByOccurredAtDesc(any(), any());
+                .findAllByTaskId(any(), any());
     }
 }

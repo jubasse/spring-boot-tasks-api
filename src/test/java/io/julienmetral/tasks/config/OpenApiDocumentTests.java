@@ -5,7 +5,6 @@ import io.julienmetral.tasks.identity.security.PublicEndpoints;
 import io.julienmetral.tasks.shared.exceptions.ProblemType;
 import io.julienmetral.tasks.support.IntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -178,8 +177,6 @@ class OpenApiDocumentTests {
         assertThat(api.operation("getIdenticon").responses().has("404")).isFalse();
     }
 
-    @Disabled("bug: the @ApiResponse(401) on login and refreshTokens stops springdoc from adding their 200, so "
-            + "AuthResponseDto is documented nowhere")
     @Test
     void everyOperationDocumentsOneSuccessResponse() {
         assertThat(api.operations()).allSatisfy(operation ->
@@ -211,8 +208,6 @@ class OpenApiDocumentTests {
         });
     }
 
-    @Disabled("bug: both addComment handlers fill one operation, and OperationDocumentation.documentProblems lets the "
-            + "JSON handler's 422 replace the multipart one's, dropping infected-file")
     @Test
     void everyUploadShowsTheInfectedFileProblem() {
         assertThat(uploads()).isNotEmpty().allSatisfy(operation ->

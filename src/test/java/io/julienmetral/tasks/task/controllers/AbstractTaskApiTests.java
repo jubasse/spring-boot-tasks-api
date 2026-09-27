@@ -6,6 +6,7 @@ import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.task.entities.TaskEvent;
 import io.julienmetral.tasks.task.repositories.TaskEventRepository;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.hibernate.Hibernate;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -129,7 +130,7 @@ abstract class AbstractTaskApiTests {
     /** Events of a task, newest first, read straight from the repository. */
     protected List<TaskEvent> events(UUID taskId) {
         return taskEventRepository
-                .findAllByTaskIdOrderByOccurredAtDesc(taskId, Pageable.unpaged())
+                .findAllByTaskId(taskId, Pageable.unpaged(Sort.by(Sort.Direction.DESC, "occurredAt", "id")))
                 .getContent();
     }
 }

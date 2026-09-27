@@ -7,6 +7,7 @@ import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.task.entities.TaskEventType;
 import io.julienmetral.tasks.task.repositories.TaskEventRepository;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Pageable;
@@ -67,7 +68,7 @@ class TaskControllerTests {
         );
 
         var events = taskEventRepository
-                .findAllByTaskIdOrderByOccurredAtDesc(taskId, Pageable.unpaged())
+                .findAllByTaskId(taskId, Pageable.unpaged(Sort.by(Sort.Direction.DESC, "occurredAt", "id")))
                 .getContent();
 
         assertThat(events).hasSize(1);

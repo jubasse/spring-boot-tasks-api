@@ -7,7 +7,6 @@ import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.WebCallers;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -76,8 +75,6 @@ class OpenApiConformanceTests {
         });
     }
 
-    @Disabled("bug: TaskService.getAssignableUser throws UserNotFoundException for an unknown assignedTo, so "
-            + "createTask answers a 404 it does not document")
     @Test
     void creatingATaskForAnUnknownAssigneeAnswersADocumentedStatus() throws Exception {
         User admin = createActiveUser(UserRole.ADMIN);
@@ -96,8 +93,6 @@ class OpenApiConformanceTests {
                 .contains(String.valueOf(response.getStatus()));
     }
 
-    @Disabled("bug: TaskEventRepository.findAllByTaskIdOrderByOccurredAtDesc fixes the order, so the sort parameter "
-            + "listTaskHistory documents only breaks ties")
     @Test
     void taskHistoryFollowsTheDocumentedSortParameter() throws Exception {
         assertThat(api.operation("listTaskHistory").node().path("parameters").valueStream()
