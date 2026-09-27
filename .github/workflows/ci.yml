@@ -79,3 +79,40 @@ jobs:
         uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  api-contract:
+    name: API contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # Full history, to read the document of the pull request's base branch
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Lint the OpenAPI document
+        run: npx --yes @stoplight/spectral-cli@6.16.3 lint docs/openapi.json --fail-severity warn
+
+      # The base branch may not have a document yet (the pull request that adds it)
+      - name: Read the base branch's document
+        if: github.event_name == 'pull_request'
+        id: base
+        run: |
+          if git show "origin/${{ github.base_ref }}:docs/openapi.json" > base-openapi.json 2>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # fail-on defaults to never failing, and review to uploading both documents to oasdiff.com
+      - name: Detect breaking changes
+        if: steps.base.outputs.exists == 'true'
+        uses: oasdiff/oasdiff-action/breaking@5e81b5c380accc6b523f9d32a637ca630e33620b # v0.1.17
+        with:
+          base: base-openapi.json
+          revision: docs/openapi.json
+          fail-on: ERR
+          review: false
+          github-token: ""
