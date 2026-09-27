@@ -54,15 +54,16 @@ public class MediaCleanupQueries {
         return jdbc.queryForList(
                 """
                         WITH detached AS (
-                            SELECT id, avatar_media_id, pending_avatar_media_id
-                            FROM users
-                            WHERE deleted_at < :cutoff
-                              AND (avatar_media_id IS NOT NULL OR pending_avatar_media_id IS NOT NULL)
+                            SELECT p.id, p.avatar_media_id, p.pending_avatar_media_id
+                            FROM user_profiles p
+                            JOIN users u ON u.id = p.id
+                            WHERE u.deleted_at < :cutoff
+                              AND (p.avatar_media_id IS NOT NULL OR p.pending_avatar_media_id IS NOT NULL)
                         ), updated AS (
-                            UPDATE users u
+                            UPDATE user_profiles p
                             SET avatar_media_id = NULL, pending_avatar_media_id = NULL
                             FROM detached d
-                            WHERE u.id = d.id
+                            WHERE p.id = d.id
                             RETURNING d.avatar_media_id, d.pending_avatar_media_id
                         )
                         SELECT avatar_media_id FROM updated WHERE avatar_media_id IS NOT NULL
@@ -80,8 +81,8 @@ public class MediaCleanupQueries {
                 """
                         DELETE FROM media m
                         WHERE m.created_at < :cutoff
-                          AND NOT EXISTS (SELECT 1 FROM users u WHERE u.avatar_media_id = m.id)
-                          AND NOT EXISTS (SELECT 1 FROM users u WHERE u.pending_avatar_media_id = m.id)
+                          AND NOT EXISTS (SELECT 1 FROM user_profiles p WHERE p.avatar_media_id = m.id)
+                          AND NOT EXISTS (SELECT 1 FROM user_profiles p WHERE p.pending_avatar_media_id = m.id)
                           AND NOT EXISTS (SELECT 1 FROM task_attachments ta WHERE ta.media_id = m.id)
                         RETURNING m.storage_key
                         """,

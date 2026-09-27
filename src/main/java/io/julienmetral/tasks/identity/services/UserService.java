@@ -2,10 +2,12 @@ package io.julienmetral.tasks.identity.services;
 
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
+import io.julienmetral.tasks.identity.events.AccountStateChanged;
 import io.julienmetral.tasks.identity.exceptions.UserEmailAlreadyExistsException;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +27,7 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final EmailVerificationService emailVerificationService;
     private final RefreshTokenService refreshTokenService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public User create(
@@ -54,7 +57,7 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public User findById(UUID id) {
-        return userRepository.findById(id)
+        return userRepository.findWithProfileById(id)
                 .orElseThrow(() -> new UserNotFoundException(id));
     }
 
@@ -84,10 +87,11 @@ public class UserService {
 
     @Transactional
     public void verifyEmail(UUID id) {
-        User user = getUser(id);
+        User user = getUserForUpdate(id);
 
         if (user.getEmailVerifiedAt() == null) {
             user.setEmailVerifiedAt(Instant.now());
+            eventPublisher.publishEvent(new AccountStateChanged(id));
         }
     }
 
@@ -98,12 +102,14 @@ public class UserService {
 
     @Transactional
     public void enable(UUID id) {
-        getUser(id).setEnabled(true);
+        getUserForUpdate(id).setEnabled(true);
+        eventPublisher.publishEvent(new AccountStateChanged(id));
     }
 
     @Transactional
     public void disable(UUID id) {
-        getUser(id).setEnabled(false);
+        getUserForUpdate(id).setEnabled(false);
+        eventPublisher.publishEvent(new AccountStateChanged(id));
 
         // Access tokens expire on their own; refresh tokens must stop working now
         refreshTokenService.revokeAllForUser(id);
@@ -127,13 +133,24 @@ public class UserService {
 
     @Transactional
     public void delete(UUID id) {
-        userRepository.delete(getUser(id));
+        User user = getUserForUpdate(id);
+
+        user.markDeleted();
+        userRepository.delete(user);
+        eventPublisher.publishEvent(new AccountStateChanged(id));
 
         refreshTokenService.revokeAllForUser(id);
     }
 
+    // Every change of the account state locks the row first, so it is computed from the committed state: without
+    // it, a verification racing a disable left the profile ACTIVE on a disabled account
+    private User getUserForUpdate(UUID id) {
+        return userRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new UserNotFoundException(id));
+    }
+
     private User getUser(UUID id) {
-        return userRepository.findById(id)
+        return userRepository.findWithProfileById(id)
                 .orElseThrow(() -> new UserNotFoundException(id));
     }
 

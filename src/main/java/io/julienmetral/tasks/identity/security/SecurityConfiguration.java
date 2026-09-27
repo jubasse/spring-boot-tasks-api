@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.identity.security;
 
 import io.julienmetral.tasks.identity.services.DatabaseUserDetailsService;
+import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -19,14 +20,27 @@ import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 
+import java.util.Arrays;
 import java.util.Map;
+import java.util.stream.Stream;
 
 @Configuration
 @EnableMethodSecurity
 public class SecurityConfiguration {
+
+    // The probes of the orchestrator, which sends no token; the health details stay on the management port
+    private static final String[] PROBES = {"/livez", "/readyz"};
+
+    private static final String[] API_DOCUMENTATION = {
+            "/v3/api-docs", "/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**"
+    };
 
     @Bean
     static AnnotationTemplateExpressionDefaults templateExpressionDefaults() {
@@ -104,6 +118,23 @@ public class SecurityConfiguration {
         return authenticationConverter;
     }
 
+    // Public endpoints and probes ignore the Authorization header: a client that kept its expired access token got a
+    // 401 from login and refresh, the very endpoints that give it a new one, and a probe would fail the same way
+    @Bean
+    BearerTokenResolver bearerTokenResolver() {
+        DefaultBearerTokenResolver resolver = new DefaultBearerTokenResolver();
+        RequestMatcher withoutToken = new OrRequestMatcher(Stream.concat(
+                        PublicEndpoints.ALL.stream().map(endpoint -> matcher(endpoint.method(), endpoint.pattern())),
+                        Arrays.stream(PROBES).map(probe -> matcher(HttpMethod.GET, probe)))
+                .toList());
+
+        return request -> withoutToken.matches(request) ? null : resolver.resolve(request);
+    }
+
+    private static RequestMatcher matcher(HttpMethod method, String pattern) {
+        return PathPatternRequestMatcher.withDefaults().matcher(method, pattern);
+    }
+
     @Bean
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
@@ -119,38 +150,32 @@ public class SecurityConfiguration {
                                 SessionCreationPolicy.STATELESS
                         )
                 )
-                .authorizeHttpRequests(auth ->
-                        auth
-                                .requestMatchers(
-                                        HttpMethod.POST,
-                                        "/api/v1/users"
-                                )
-                                .permitAll()
+                .authorizeHttpRequests(auth -> {
+                    // Errors are rendered by an internal dispatch to /error, after the request itself was authorized.
+                    // Securing that dispatch turned every 400 of a public endpoint (malformed JSON on login or
+                    // sign-up, an invalid identicon id) into a 401.
+                    auth.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
 
-                                // Login, token refresh and logout carry their own credentials;
-                                // email verification carries the token received by email
-                                .requestMatchers(
-                                        HttpMethod.POST,
-                                        "/api/v1/auth/login",
-                                        "/api/v1/auth/refresh",
-                                        "/api/v1/auth/logout",
-                                        "/api/v1/auth/verify-email",
-                                        "/api/v1/auth/password-reset/request",
-                                        "/api/v1/auth/password-reset/confirm"
-                                )
-                                .permitAll()
-                                // Everything on the management port is public, that port being private by
-                                // deployment. Matching the endpoints only left its error page (404, 406, 500)
-                                // behind authentication, so every error there answered 401.
-                                .requestMatchers(onManagementPort(environment))
-                                .permitAll()
-                                // Tasks are reserved to enabled users with a verified email
-                                .requestMatchers("/api/v1/tasks/**")
-                                .access(activeUserAuthorizationManager)
+                    PublicEndpoints.ALL.forEach(endpoint ->
+                            auth.requestMatchers(endpoint.method(), endpoint.pattern()).permitAll());
 
-                                .anyRequest()
-                                .authenticated()
-                )
+                    auth
+                            // Everything on the management port is public, that port being private by deployment.
+                            // Matching the endpoints only left its error page (404, 406, 500) behind
+                            // authentication, so every error there answered 401.
+                            .requestMatchers(onManagementPort(environment))
+                            .permitAll()
+                            // The documentation of a public API; API_DOCS_ENABLED and SWAGGER_UI_ENABLED turn it off
+                            .requestMatchers(HttpMethod.GET, API_DOCUMENTATION)
+                            .permitAll()
+                            .requestMatchers(HttpMethod.GET, PROBES)
+                            .permitAll()
+                            // Tasks are reserved to enabled users with a verified email
+                            .requestMatchers("/api/v1/tasks/**")
+                            .access(activeUserAuthorizationManager)
+                            .anyRequest()
+                            .authenticated();
+                })
                 .oauth2ResourceServer(oauth ->
                         oauth.jwt(jwt ->
                                 jwt.jwtAuthenticationConverter(

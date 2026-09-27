@@ -1,5 +1,6 @@
 package io.julienmetral.tasks.task.security;
 
+import io.julienmetral.tasks.shared.security.AccessDescription;
 import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.lang.annotation.ElementType;
@@ -16,6 +17,7 @@ import java.lang.annotation.Target;
         ElementType.TYPE
 })
 @Retention(RetentionPolicy.RUNTIME)
+@AccessDescription("Only the comment's author.")
 @PreAuthorize("@taskCommentAuthorization.currentUserWrote(#commentId, authentication)")
 public @interface CommentAuthorOnly {
 }

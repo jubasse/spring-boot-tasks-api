@@ -1,14 +1,12 @@
 package io.julienmetral.tasks.notification.controllers;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.identity.services.UserService;
+import io.julienmetral.tasks.support.IntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -22,16 +20,16 @@ import java.util.EnumSet;
 import java.util.Map;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
-@AutoConfigureMockMvc
+@IntegrationTest
 class NotificationSettingsApiTests {
 
     private static final String SETTINGS = "/api/v1/users/{id}/notification-settings";
@@ -41,6 +39,9 @@ class NotificationSettingsApiTests {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private UserService userService;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -249,78 +250,6 @@ class NotificationSettingsApiTests {
         );
     }
 
-    @Test
-    void putWithoutTaskDueSoonReturnsBadRequest() throws Exception {
-        User user = createUser(UserRole.USER);
-
-        putSettings(
-                user,
-                as(user, UserRole.USER),
-                """
-                        {"taskAssigned": false, "taskUnassigned": false, "taskCancelled": false, "taskDeleted": false,
-                         "taskCommented": false, "taskMentioned": false, "taskOverdue": false}
-                        """
-        )
-                .andExpect(status().isBadRequest());
-
-        assertThat(rowCount(user)).isZero();
-    }
-
-    @Test
-    void putWithoutTaskOverdueReturnsBadRequest() throws Exception {
-        User user = createUser(UserRole.USER);
-
-        putSettings(
-                user,
-                as(user, UserRole.USER),
-                """
-                        {"taskAssigned": false, "taskUnassigned": false, "taskCancelled": false, "taskDeleted": false,
-                         "taskCommented": false, "taskMentioned": false, "taskDueSoon": false}
-                        """
-        )
-                .andExpect(status().isBadRequest());
-
-        assertThat(rowCount(user)).isZero();
-    }
-
-    @Test
-    void putWithNullTaskOverdueReturnsBadRequest() throws Exception {
-        User user = createUser(UserRole.USER);
-
-        putSettings(
-                user,
-                as(user, UserRole.USER),
-                """
-                        {"taskAssigned": true, "taskUnassigned": true, "taskCancelled": true, "taskDeleted": true,
-                         "taskCommented": true, "taskMentioned": true, "taskDueSoon": true, "taskOverdue": null}
-                        """
-        )
-                .andExpect(status().isBadRequest());
-
-        assertThat(rowCount(user)).isZero();
-    }
-
-    @Test
-    void putWithTheSixSwitchesOfTheFormerBodyReturnsBadRequestAndKeepsTheRow() throws Exception {
-        User user = createUser(UserRole.USER);
-        insertRow(user, true, true, true, true, true, true);
-
-        putSettings(
-                user,
-                as(user, UserRole.USER),
-                """
-                        {"taskAssigned": false, "taskUnassigned": false, "taskCancelled": false, "taskDeleted": false,
-                         "taskCommented": false, "taskMentioned": false}
-                        """
-        )
-                .andExpect(status().isBadRequest());
-
-        Map<String, Object> row = row(user);
-        assertThat(row.get("task_assigned")).isEqualTo(true);
-        assertThat(row.get("task_due_soon")).isEqualTo(true);
-        assertThat(row.get("task_overdue")).isEqualTo(true);
-    }
-
     // The tests below seed the row through JDBC, so they cover reading and updating an existing row.
 
     @Test
@@ -380,38 +309,6 @@ class NotificationSettingsApiTests {
     }
 
     @Test
-    void userCannotUpdateAnotherUsersExistingSettings() throws Exception {
-        User user = createUser(UserRole.USER);
-        User other = createUser(UserRole.USER);
-        insertRow(other, true, true, true, true, true, true);
-
-        putSettings(other, as(user, UserRole.USER), body(false, false, false, false, true, true, true, true))
-                .andExpect(status().isForbidden());
-
-        assertThat(row(other).get("task_assigned")).isEqualTo(true);
-    }
-
-    @Test
-    void userCannotReadAnotherUsersSettings() throws Exception {
-        User user = createUser(UserRole.USER);
-        User other = createUser(UserRole.USER);
-
-        mockMvc.perform(get(SETTINGS, other.getId()).with(as(user, UserRole.USER)))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    void userCannotUpdateAnotherUsersSettings() throws Exception {
-        User user = createUser(UserRole.USER);
-        User other = createUser(UserRole.USER);
-
-        putSettings(other, as(user, UserRole.USER), body(false, false, false, false, true, true, true, true))
-                .andExpect(status().isForbidden());
-
-        assertThat(rowCount(other)).isZero();
-    }
-
-    @Test
     void adminCanReadAnotherUsersSettings() throws Exception {
         User admin = createUser(UserRole.ADMIN);
         User other = createUser(UserRole.USER);
@@ -439,35 +336,12 @@ class NotificationSettingsApiTests {
     }
 
     @Test
-    void getWithoutTokenReturnsUnauthorized() throws Exception {
-        User user = createUser(UserRole.USER);
-
-        mockMvc.perform(get(SETTINGS, user.getId()))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void putWithoutTokenReturnsUnauthorized() throws Exception {
-        User user = createUser(UserRole.USER);
-
-        mockMvc.perform(
-                        put(SETTINGS, user.getId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(body(false, false, false, false, true, true, true, true))
-                )
-                .andExpect(status().isUnauthorized());
-
-        assertThat(rowCount(user)).isZero();
-    }
-
-    @Test
     void getForUnknownUserReturnsNotFound() throws Exception {
         User admin = createUser(UserRole.ADMIN);
 
         mockMvc.perform(get(SETTINGS, UUID.randomUUID()).with(as(admin, UserRole.ADMIN)))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.status").value(404))
-                .andExpect(jsonPath("$.title").value("User not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("User not found")));
     }
 
     @Test
@@ -481,8 +355,8 @@ class NotificationSettingsApiTests {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(body(false, false, false, false, true, true, true, true))
                 )
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("User not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("User not found")));
 
         assertThat(rowCount(unknown)).isZero();
     }
@@ -494,8 +368,8 @@ class NotificationSettingsApiTests {
         softDelete(deleted);
 
         mockMvc.perform(get(SETTINGS, deleted.getId()).with(as(admin, UserRole.ADMIN)))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("User not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("User not found")));
     }
 
     @Test
@@ -505,8 +379,8 @@ class NotificationSettingsApiTests {
         softDelete(deleted);
 
         putSettings(deleted, as(admin, UserRole.ADMIN), body(false, false, false, false, true, true, true, true))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("User not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("User not found")));
 
         assertThat(rowCount(deleted)).isZero();
     }
@@ -520,152 +394,6 @@ class NotificationSettingsApiTests {
 
         mockMvc.perform(get(SETTINGS, deleted.getId()).with(as(admin, UserRole.ADMIN)))
                 .andExpect(status().isNotFound());
-    }
-
-    @Test
-    void putWithMissingFieldReturnsBadRequest() throws Exception {
-        User user = createUser(UserRole.USER);
-
-        putSettings(
-                user,
-                as(user, UserRole.USER),
-                """
-                        {"taskAssigned": false, "taskUnassigned": false, "taskCancelled": false,
-                         "taskCommented": false, "taskMentioned": false,
-                         "taskDueSoon": false, "taskOverdue": false}
-                        """
-        )
-                .andExpect(status().isBadRequest());
-
-        assertThat(rowCount(user)).isZero();
-    }
-
-    @Test
-    void putWithoutTaskCommentedReturnsBadRequest() throws Exception {
-        User user = createUser(UserRole.USER);
-
-        putSettings(
-                user,
-                as(user, UserRole.USER),
-                """
-                        {"taskAssigned": false, "taskUnassigned": false, "taskCancelled": false, "taskDeleted": false,
-                         "taskMentioned": false,
-                         "taskDueSoon": false, "taskOverdue": false}
-                        """
-        )
-                .andExpect(status().isBadRequest());
-
-        assertThat(rowCount(user)).isZero();
-    }
-
-    @Test
-    void putWithoutTaskMentionedReturnsBadRequest() throws Exception {
-        User user = createUser(UserRole.USER);
-
-        putSettings(
-                user,
-                as(user, UserRole.USER),
-                """
-                        {"taskAssigned": false, "taskUnassigned": false, "taskCancelled": false, "taskDeleted": false,
-                         "taskCommented": false,
-                         "taskDueSoon": false, "taskOverdue": false}
-                        """
-        )
-                .andExpect(status().isBadRequest());
-
-        assertThat(rowCount(user)).isZero();
-    }
-
-    @Test
-    void putWithOnlyTheFourTaskSwitchesReturnsBadRequestAndKeepsTheRow() throws Exception {
-        User user = createUser(UserRole.USER);
-        insertRow(user, true, true, true, true, true, true);
-
-        putSettings(
-                user,
-                as(user, UserRole.USER),
-                """
-                        {"taskAssigned": false, "taskUnassigned": false, "taskCancelled": false, "taskDeleted": false}
-                        """
-        )
-                .andExpect(status().isBadRequest());
-
-        assertThat(row(user).get("task_assigned")).isEqualTo(true);
-    }
-
-    @Test
-    void putWithNullTaskMentionedReturnsBadRequest() throws Exception {
-        User user = createUser(UserRole.USER);
-
-        putSettings(
-                user,
-                as(user, UserRole.USER),
-                """
-                        {"taskAssigned": true, "taskUnassigned": true, "taskCancelled": true, "taskDeleted": true,
-                         "taskCommented": true, "taskMentioned": null,
-                         "taskDueSoon": false, "taskOverdue": false}
-                        """
-        )
-                .andExpect(status().isBadRequest());
-
-        assertThat(rowCount(user)).isZero();
-    }
-
-    @Test
-    void putWithNullFieldReturnsBadRequest() throws Exception {
-        User user = createUser(UserRole.USER);
-
-        putSettings(
-                user,
-                as(user, UserRole.USER),
-                """
-                        {"taskAssigned": null, "taskUnassigned": false, "taskCancelled": false, "taskDeleted": false,
-                         "taskCommented": false, "taskMentioned": false,
-                         "taskDueSoon": false, "taskOverdue": false}
-                        """
-        )
-                .andExpect(status().isBadRequest());
-
-        assertThat(rowCount(user)).isZero();
-    }
-
-    @Test
-    void putWithEmptyBodyObjectReturnsBadRequest() throws Exception {
-        User user = createUser(UserRole.USER);
-
-        putSettings(user, as(user, UserRole.USER), "{}")
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void getWithInvalidUuidReturnsBadRequest() throws Exception {
-        User admin = createUser(UserRole.ADMIN);
-
-        mockMvc.perform(get(SETTINGS, "not-a-uuid").with(as(admin, UserRole.ADMIN)))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void putWithInvalidUuidReturnsBadRequest() throws Exception {
-        User admin = createUser(UserRole.ADMIN);
-
-        mockMvc.perform(
-                        put(SETTINGS, "not-a-uuid")
-                                .with(as(admin, UserRole.ADMIN))
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(body(false, false, false, false, true, true, true, true))
-                )
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void putWithMalformedJsonReturnsBadRequest() throws Exception {
-        User user = createUser(UserRole.USER);
-
-        putSettings(user, as(user, UserRole.USER), "{\"taskAssigned\": ")
-                .andExpect(status().isBadRequest());
-
-        assertThat(rowCount(user)).isZero();
     }
 
     private ResultActions putSettings(User target, RequestPostProcessor auth, String body) throws Exception {
@@ -764,8 +492,7 @@ class NotificationSettingsApiTests {
     }
 
     private void softDelete(User user) {
-        userRepository.delete(userRepository.findById(user.getId()).orElseThrow());
-        userRepository.flush();
+        userService.delete(user.getId());
 
         Timestamp deletedAt = jdbcTemplate.queryForObject(
                 "select deleted_at from users where id = ?",

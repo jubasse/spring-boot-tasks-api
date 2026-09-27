@@ -10,7 +10,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -40,9 +39,6 @@ class TaskReminderTests extends AbstractTaskReminderTests {
 
     @Autowired
     private DataSource dataSource;
-
-    @Autowired
-    private TransactionTemplate transactionTemplate;
 
     @Test
     void taskDueWithinTheLeadTimeIsRemindedDueSoonOnce() throws Exception {

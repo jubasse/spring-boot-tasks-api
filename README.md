@@ -5,9 +5,9 @@ Tasks API is the backend of a team task tracker, exposed as a REST API under `/a
 - **Tasks** have a reference, a status, a priority and a due date. They can be assigned, archived, cancelled and deleted, and every change is recorded in the task's history.
 - **Collaboration**: tasks take comments, with attached files and mentions of other users (written `<@user-id>` in the comment), and files can be attached to a task directly.
 - **Email notifications** tell the assignee when a task is assigned, cancelled, deleted or commented, tell mentioned people about the mention, and remind the assignee before and after the due date. Each user chooses which of these emails they receive.
-- **Accounts**: sign-up, email verification, password reset, and a profile photo. Admins can disable, re-enable and delete accounts.
+- **Accounts**: sign-up, email verification, password reset, and a profile photo. Every user has an image: their photo, or a generated geometric figure when they have none, or when their account is disabled or deleted. Admins can disable, re-enable and delete accounts.
 - **Files** are checked before they are stored: the type is detected from the content, the size is limited, and an antivirus scans every upload. Profile photos are cropped to a square and stripped of their metadata, GPS location included.
-- **Personal data retention**: a deleted account's personal data is erased after 30 days. An account unused for 2 years receives a warning email, and is deleted 30 days later unless its owner logs in.
+- **Personal data retention**: a deleted account is erased after 30 days; tasks, comments and history then show a "Deleted user". An account unused for 2 years receives a warning email, and is deleted 30 days later unless its owner logs in.
 
 Only accounts that are enabled and have a verified email address can work on tasks. The endpoints anyone can call (login, sign-up, password reset, resending the verification email) accept a limited number of requests per client address and per account; over the limit, the API answers 429 with a `Retry-After` header giving the seconds to wait.
 
@@ -95,6 +95,12 @@ docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
 
 The role is part of the access token, so log in again afterwards.
 
+### Explore the API in the browser
+
+Open http://localhost:8080/swagger-ui.html. Every endpoint is listed with its parameters, responses and errors, and you can call it from the page: sign in with `POST /api/v1/auth/login`, copy the `accessToken`, then paste it in **Authorize**.
+
+The OpenAPI document behind the page is at http://localhost:8080/v3/api-docs, and a copy is kept in [docs/openapi.json](docs/openapi.json), so a change to the API shows in the diff of its pull request. To generate a client, use that file.
+
 ### Explore every endpoint with Postman
 
 `postman/tasks-api.postman_collection.json` covers every endpoint, with test scripts. Import it into Postman, or run it with newman:
@@ -124,14 +130,17 @@ Add `ANTIVIRUS_ENABLED=false` to `.env`. Uploads are then stored without being s
 | `./mvnw compile` | Builds the project |
 | `./mvnw test` | Runs all the unit and integration tests, and writes a coverage report to `target/site/jacoco/index.html` |
 | `./mvnw test -Dtest=AuthControllerTests` | Runs one test class (`-Dtest=Class#method` for one test) |
+| `./mvnw test -Dtest=OpenApiSpecTests -Dopenapi.update=true` | Regenerates `docs/openapi.json` after a change to the API |
 | `./mvnw verify` | Runs what the CI runs: the tests and the coverage report |
+| `docker build -t tasks-api .` | Builds the production image (see [Build the image](#build-the-image)) |
+| `docker compose -p tasks-prod -f compose.yaml -f compose.production.yaml up -d --build` | Runs the production image locally (see [Run the production image locally](#run-the-production-image-locally)) |
 | `gitleaks git . --redact` | Scans the Git history for secrets, as the CI does |
 
 The database migrations are Liquibase changesets in `src/main/resources/db/changelog/changes/`. [CLAUDE.md](CLAUDE.md) explains how to generate a new one from the entities with `./mvnw liquibase:diff`.
 
 ## Configuration
 
-The API reads its configuration from `src/main/resources/application.yaml`, which imports `.env`. The variables you are most likely to change:
+The API reads its configuration from `src/main/resources/application.yaml`, which imports `.env`. The defaults below suit local development; a deployed API runs the `prod` profile instead (see [Deploy the API](#deploy-the-api)). The variables you are most likely to change:
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -146,12 +155,107 @@ The API reads its configuration from `src/main/resources/application.yaml`, whic
 | `MEDIA_CLEANUP_RETENTION` | `30d` | How long the files of deleted tasks and accounts are kept |
 | `SPRING_RABBITMQ_HOST`, `SPRING_RABBITMQ_USERNAME`, `SPRING_RABBITMQ_PASSWORD` | provided by Docker Compose | RabbitMQ connection outside local development |
 | `MANAGEMENT_PORT` | `8081` | Port of the health and metrics endpoints |
+| `API_DOCS_ENABLED`, `SWAGGER_UI_ENABLED` | `true`, and `false` under the `prod` profile | `false` stops serving the OpenAPI document and Swagger UI |
+| `IDENTITY_STATUS_CACHE_TTL` | `30s` | How long an account's status is reused before it is read again, from 1 second to 1 minute. With several instances, it is also how long an account disabled on one instance can keep working through the others |
 
 `.env.example` lists the other options, and `application.yaml` holds the fixed settings, such as the upload size limits and the schedules of the background jobs.
 
+## Deploy the API
+
+Every deployed environment, staging and production alike, runs the `prod` profile: set `SPRING_PROFILES_ACTIVE=prod` in its environment. Environments differ only by their variables.
+
+Under the `prod` profile, the API:
+- refuses to start while a required variable is missing or empty, and names every missing one in a single error;
+- writes its logs to standard output as one JSON object per line, in Elastic Common Schema (ECS) format, with `DEPLOYMENT_ENVIRONMENT` (default `production`) as `service.environment`;
+- serves neither Swagger UI nor the OpenAPI document; `API_DOCS_ENABLED=true` and `SWAGGER_UI_ENABLED=true` turn them back on, on a staging environment for example;
+- stores files in Amazon S3 and expects the bucket to exist;
+- sends email through SMTP on port 587, with authentication and STARTTLS required;
+- gives requests in progress 20 seconds to finish when it stops.
+
+Required variables:
+
+| Variable | Meaning | Example |
+|---|---|---|
+| `JWT_SECRET` | Base64 key of at least 32 bytes that signs the access tokens: `openssl rand -base64 32` | |
+| `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` | PostgreSQL 18 database | `jdbc:postgresql://db.internal:5432/tasks` |
+| `SPRING_RABBITMQ_HOST` | RabbitMQ host. Set `SPRING_RABBITMQ_USERNAME` and `SPRING_RABBITMQ_PASSWORD` too: the default account, `guest`, only connects from the broker's own machine | `rabbitmq.internal` |
+| `MAIL_HOST` | SMTP server. `SPRING_MAIL_USERNAME` and `SPRING_MAIL_PASSWORD` hold its credentials | `smtp.example.com` |
+| `MAIL_FROM` | Sender address of every email | `no-reply@example.com` |
+| `EMAIL_VERIFICATION_URL`, `PASSWORD_RESET_URL` | Front-end pages that the emailed links open | `https://app.example.com/verify-email` |
+| `S3_BUCKET` | Bucket of the uploaded files. `AWS_REGION` (default `eu-west-3`) and the standard AWS credentials, variables or IAM role, give access to it | `tasks-media` |
+| `CLAMAV_HOST` | Host of the ClamAV daemon, on `CLAMAV_PORT` (default `3310`) | `clamav.internal` |
+
+Other variables, when the defaults do not fit:
+- `MAIL_PORT`, `MAIL_SMTP_AUTH`, `MAIL_STARTTLS`: `587`, `true` and `true` by default; set the last two to `false` for a relay that needs neither.
+- `STORAGE_DRIVER=rustfs`, with `S3_ENDPOINT`, `S3_ACCESS_KEY` and `S3_SECRET_KEY`, for an S3-compatible server other than Amazon S3.
+- The variables of [Configuration](#configuration) keep their meaning, `FORWARD_HEADERS_STRATEGY` behind a reverse proxy in particular.
+
+> Warning: set `SPRING_PROFILES_ACTIVE` only in the environment of a deployment. Exported in your shell or your IDE, it also applies to `./mvnw test` and `./mvnw spring-boot:run`, which then stop and ask for the production variables.
+
+### Build the image
+
+```bash
+docker build -t tasks-api .
+```
+
+The build compiles the API inside Docker, so it needs neither Java nor Maven on your machine. At the end, it starts the API once, without reaching any service, to record which classes it loads. The container then starts about a third faster.
+
+The image:
+- listens on 8080 for the API and on 8081 for health checks and metrics (see [Monitor the API](#monitor-the-api));
+- runs as a non-root user and writes only to `/tmp`, where uploads wait while they are checked, so it works with a read-only file system;
+- runs the `prod` profile and takes the variables of the tables above.
+
+Give the container at least 1 GB of memory: the JVM takes up to 75% of the container's limit for its heap. The JVM options live in `JAVA_TOOL_OPTIONS` (`-XX:+UseG1GC -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError`). To change one, set the whole variable again with the others kept.
+
+Note: the first lines of output are plain text from the JVM, such as `Picked up JAVA_TOOL_OPTIONS`; the JSON log lines follow.
+
+### Use a released image
+
+Every release is published to GitHub Container Registry, tagged with its version (`0.4.0`), its minor version (`0.4`) and `latest`:
+
+```bash
+docker pull ghcr.io/jubasse/spring-boot-tasks-api:0.4.0
+```
+
+Each image carries a signed record of the workflow run that built it. Check it with the GitHub CLI before you deploy:
+
+```bash
+gh attestation verify oci://ghcr.io/jubasse/spring-boot-tasks-api:0.4.0 -R jubasse/spring-boot-tasks-api
+```
+
+### Run the production image locally
+
+`compose.production.yaml` runs the image as a production platform would: `prod` profile, read-only file system, no Linux capabilities, 1 GB of memory and 2 CPUs. It starts its own copy of the services of `compose.yaml`, with its own data, next to your development services. It reads `JWT_SECRET` and the other values from your `.env`.
+
+```bash
+docker compose -p tasks-prod -f compose.yaml -f compose.production.yaml up -d --build
+```
+
+| URL | What you get |
+|---|---|
+| http://localhost:18080 | The API, with an empty database |
+| http://localhost:18081/actuator/health | Health of the API and of each service |
+| http://localhost:18025 | Mailpit, with the emails the API sent |
+
+Swagger UI is off, as in production. To make an account an admin, run the command of [Make an account an admin](#make-an-account-an-admin) with `-p tasks-prod` after `docker compose`.
+
+> Warning: pass `-p tasks-prod` to every command on this stack, `down` included. Without it, the command acts on your development services, and `down -v` deletes their data.
+
+To stop the stack and delete its data:
+
+```bash
+docker compose -p tasks-prod -f compose.yaml -f compose.production.yaml down -v
+```
+
 ## Monitor the API
 
-Health checks and metrics are served on a separate port, 8081 by default, without authentication.
+Two probes are served on the API port, 8080, without authentication or details, for the orchestrator or the load balancer:
+- `/livez` fails when the process should be restarted;
+- `/readyz` fails when the API should not receive traffic.
+
+Point your probes at these rather than at the port 8081 ones: they also fail when the API port stops answering.
+
+Health details and metrics are served on a separate port, 8081 by default, without authentication.
 
 > Warning: make port 8081 reachable only from your monitoring systems, never from the internet.
 
@@ -162,6 +266,7 @@ Health checks and metrics are served on a separate port, 8081 by default, withou
 | http://localhost:8081/actuator/health/readiness | Whether the API can take traffic, which only needs the database. RabbitMQ, the object storage or the antivirus being down delays emails or blocks files, and shows in the overall health, but does not take the API out of traffic |
 | http://localhost:8081/actuator/prometheus | Metrics in Prometheus format |
 | http://localhost:8081/actuator/info | Deployed version |
+| http://localhost:8081/actuator/sbom/application | Libraries in the deployed jar and their versions, in CycloneDX format, to check a vulnerability announcement against |
 
 Metrics worth alerting on:
 
@@ -170,6 +275,7 @@ Metrics worth alerting on:
 | `outbox_messages_pending`, `outbox_messages_oldest_pending_age_seconds` | They keep growing: emails and profile photos are waiting for RabbitMQ |
 | `rabbitmq_dead_letter_messages{queue=...}` | Above 0: a message failed all its retries |
 | `outbox_publish_failures_total` | It increases steadily |
+| `cache_gets_total{cache="userStatus",result=...}` | The share of `hit` falls: every task request reads the account from the database again |
 | `tasks_scheduled_execution_seconds_count{outcome="FAILURE"}` | A background job failed |
 
 ## Architecture
@@ -189,7 +295,7 @@ The code lives under `src/main/java/io/julienmetral/tasks`, organized by feature
 
 ### Requests
 
-Controllers validate the request and delegate to a service, which owns the database transaction and returns entities; the controller turns them into response DTOs. Errors come back as `application/problem+json` responses (RFC 9457). Authentication is stateless: every request carries a signed JWT, and authorization rules are declared on the controller methods.
+Controllers validate the request and delegate to a service, which owns the database transaction and returns entities; the controller turns them into response DTOs. Errors come back as `application/problem+json` responses (RFC 9457); [docs/problems.md](docs/problems.md) lists them and what a client should do about each. Authentication is stateless: every request carries a signed JWT, and authorization rules are declared on the controller methods.
 
 ### Data
 
@@ -228,15 +334,37 @@ Scheduled jobs run inside the API. Each job takes a PostgreSQL lock first, so on
 
 ## Tests
 
-Unit tests (`*Test`) run without Docker. Integration tests (`*Tests`) start the API against real services in containers, so `./mvnw test` needs Docker running.
+Unit tests (`*Test`) and web tests (`*WebMvcTests`, the controllers and security with mocked services) run without Docker. SQL and repository tests start PostgreSQL in a container, and integration tests (the other `*Tests`) start the API against every service in containers, so `./mvnw test` needs Docker running.
 
 A full run takes a few minutes and several GB of memory. Do not run two full runs at the same time on one machine.
+
+### Keep the test containers between runs
+
+Add this line to `~/.testcontainers.properties` (create the file if needed):
+
+```properties
+testcontainers.reuse.enable=true
+```
+
+PostgreSQL, Mailpit, RustFS and ClamAV then start once, serve every test class, and stay up after the run, so the next run skips their startup and a full run keeps one copy of each instead of one per group of tests. RabbitMQ still starts for each group of tests. The CI turns reuse on as well.
+
+The test database keeps its data from one run to the next. Remove the containers when you change a migration you already ran, when you switch to a branch with different migrations, or when you want `./mvnw spring-boot:test-run` to start on an empty database (it uses the same containers):
+
+```bash
+docker rm -f $(docker ps -aq --filter label=io.julienmetral.tasks.test-container)
+```
+
+The label matches only this project's test containers.
 
 ## Troubleshooting
 
 **The API stops at startup with an error about the JWT secret.** `JWT_SECRET` is missing from `.env` or too short. Generate one with `openssl rand -base64 32`, and start the API from the project root so that `.env` is found.
 
+**The API stops at startup with "Required settings without a value".** It runs the `prod` profile and the settings named in the error have no value. Set their variables (see [Deploy the API](#deploy-the-api)). If this happens on your machine, `SPRING_PROFILES_ACTIVE=prod` is exported in your shell or IDE: remove it.
+
 **The API cannot reach RabbitMQ, ClamAV or the object storage after you pull new changes.** When some services of `compose.yaml` already run, the API does not start the ones added since. Run `docker compose up -d` once.
+
+**Tests fail at startup with a Liquibase checksum error.** The reused test database still holds an older version of a migration you changed. Remove the test containers (see [Keep the test containers between runs](#keep-the-test-containers-between-runs)) and run again. If the command finds no container although tests ran, your `docker` command talks to another Docker daemon than the tests do, for example Docker Desktop next to the native engine: add `--context default`, or the context `docker context ls` lists for the engine the tests use.
 
 **An upload fails with 503 and "Antivirus unavailable".** The antivirus loads its signatures for a minute or two after it starts, and uploads are refused rather than stored unscanned until then. Wait and retry, or see [Run without the antivirus](#run-without-the-antivirus).
 

@@ -45,28 +45,26 @@ public class UserRetentionQueries {
     }
 
     /**
-     * Erases the personal data of users deleted before {@code cutoff}, and the rows that only held it (settings,
-     * tokens). The row itself stays, so tasks, comments and history keep pointing to a "Deleted user". The email
-     * becomes free for a new sign-up.
+     * Erases users deleted before {@code cutoff}: their profile becomes a "Deleted user" without photo, which tasks,
+     * comments and history keep pointing to, and the account itself is deleted with every row that only held its
+     * data (roles, settings, tokens). The email becomes free for a new sign-up. The photos' files go with the next
+     * media cleanup, once nothing references them.
      *
-     * @return the anonymized user ids
+     * @return the ids of the erased users
      */
     public List<UUID> anonymizeUsersDeletedBefore(Instant cutoff, Instant now) {
         List<UUID> ids = jdbc.queryForList(
                 """
-                        UPDATE users u
-                        SET email = 'deleted-' || u.id || '@anonymized.invalid',
-                            display_name = 'Deleted user',
-                            password_hash = '!',
-                            enabled = false,
-                            email_verified_at = NULL,
-                            last_login_at = NULL,
-                            last_active_at = NULL,
-                            inactivity_warned_at = NULL,
+                        UPDATE user_profiles p
+                        SET display_name = 'Deleted user',
+                            status = 'DELETED',
+                            avatar_media_id = NULL,
+                            pending_avatar_media_id = NULL,
                             anonymized_at = :now,
                             updated_at = :now
-                        WHERE u.deleted_at < :cutoff AND u.anonymized_at IS NULL
-                        RETURNING u.id
+                        FROM users u
+                        WHERE u.id = p.id AND u.deleted_at < :cutoff
+                        RETURNING p.id
                         """,
                 new MapSqlParameterSource()
                         .addValue("cutoff", Timestamp.from(cutoff))
@@ -81,10 +79,13 @@ public class UserRetentionQueries {
                     "notification_settings",
                     "refresh_tokens",
                     "email_verification_tokens",
-                    "password_reset_tokens"
+                    "password_reset_tokens",
+                    "user_roles"
             )) {
                 jdbc.update("DELETE FROM " + table + " WHERE user_id IN (:ids)", users);
             }
+
+            jdbc.update("DELETE FROM users WHERE id IN (:ids)", users);
         }
 
         return ids;
@@ -100,11 +101,13 @@ public class UserRetentionQueries {
                 """
                         UPDATE users u
                         SET inactivity_warned_at = :now
-                        WHERE u.deleted_at IS NULL
+                        FROM user_profiles p
+                        WHERE p.id = u.id
+                          AND u.deleted_at IS NULL
                           AND u.inactivity_warned_at IS NULL
                           AND %s < :cutoff
                           AND %s
-                        RETURNING u.id, u.email, u.display_name, u.enabled
+                        RETURNING u.id, u.email, p.display_name, u.enabled
                         """.formatted(ACTIVITY, NOT_ADMIN),
                 new MapSqlParameterSource()
                         .addValue("cutoff", Timestamp.from(cutoff))

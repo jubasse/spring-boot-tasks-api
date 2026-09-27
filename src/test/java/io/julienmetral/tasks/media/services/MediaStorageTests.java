@@ -1,11 +1,11 @@
 package io.julienmetral.tasks.media.services;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.config.StorageProperties;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.identity.services.UserService;
 import io.julienmetral.tasks.media.exceptions.EmptyMediaException;
 import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
 import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
@@ -13,10 +13,9 @@ import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.model.MediaDownload;
 import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.media.repositories.MediaRepository;
+import io.julienmetral.tasks.support.IntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.ContentDisposition;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
@@ -50,10 +49,10 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static io.julienmetral.tasks.support.Presigning.waitForTheNextSecond;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
+@IntegrationTest
 class MediaStorageTests {
 
     private static final long AVATAR_MAX_BYTES = 5L * 1024 * 1024;
@@ -68,6 +67,9 @@ class MediaStorageTests {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private UserService userService;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -161,6 +163,59 @@ class MediaStorageTests {
                     assertThat(disposition.isAttachment()).isTrue();
                     assertThat(disposition.getFilename()).isEqualTo("Été rapport.pdf");
                 });
+    }
+
+    @Test
+    void downloadIsServedWithTheCacheControlSignedIntoItsUrl() throws Exception {
+        Media stored = mediaService.store(
+                new MockMultipartFile("file", "notes.pdf", "application/pdf", uniquePdf()),
+                MediaUsage.TASK_ATTACHMENT,
+                createUser().getId()
+        );
+
+        HttpResponse<byte[]> download = download(mediaService.downloadUrl(stored));
+
+        assertThat(download.statusCode()).isEqualTo(200);
+        assertThat(download.headers().firstValue("Cache-Control"))
+                .hasValue("private, max-age=" + storageProperties.presignedUrlTtl().toSeconds() + ", immutable");
+    }
+
+    @Test
+    void downloadUrlOfAMediaIsHandedOutAgainAfterItWasSigned() throws Exception {
+        Media stored = mediaService.store(
+                new MockMultipartFile("file", "notes.pdf", "application/pdf", uniquePdf()),
+                MediaUsage.TASK_ATTACHMENT,
+                createUser().getId()
+        );
+
+        MediaDownload first = mediaService.downloadUrl(stored);
+        waitForTheNextSecond();
+        MediaDownload second = mediaService.downloadUrl(reload(stored.getId()));
+
+        assertThat(second.url().toString()).isEqualTo(first.url().toString());
+        assertThat(second.expiresAt()).isEqualTo(first.expiresAt());
+    }
+
+    @Test
+    void twoMediaGetDistinctDownloadUrls() {
+        User uploader = createUser();
+        byte[] pdf = uniquePdf();
+        Media first = mediaService.store(
+                new MockMultipartFile("file", "same.pdf", "application/pdf", pdf),
+                MediaUsage.TASK_ATTACHMENT,
+                uploader.getId()
+        );
+        Media second = mediaService.store(
+                new MockMultipartFile("file", "same.pdf", "application/pdf", pdf),
+                MediaUsage.TASK_ATTACHMENT,
+                uploader.getId()
+        );
+
+        String firstUrl = mediaService.downloadUrl(first).url().toString();
+        String secondUrl = mediaService.downloadUrl(second).url().toString();
+
+        assertThat(firstUrl).contains(first.getStorageKey());
+        assertThat(secondUrl).contains(second.getStorageKey()).isNotEqualTo(firstUrl);
     }
 
     @Test
@@ -293,14 +348,14 @@ class MediaStorageTests {
                 uploader.getId()
         );
 
-        userRepository.delete(userRepository.findById(uploader.getId()).orElseThrow());
+        userService.delete(uploader.getId());
 
         Media reloaded = reload(stored.getId());
 
         assertThat(reloaded.getUploadedBy()).isNotNull();
         assertThat(reloaded.getUploadedBy().getId()).isEqualTo(uploader.getId());
         assertThat(reloaded.getUploadedBy().getDisplayName()).isEqualTo(uploader.getDisplayName());
-        assertThat(UserStatus.of(reloaded.getUploadedBy())).isEqualTo(UserStatus.DELETED);
+        assertThat(reloaded.getUploadedBy().getStatus()).isEqualTo(UserStatus.DELETED);
     }
 
     @Test

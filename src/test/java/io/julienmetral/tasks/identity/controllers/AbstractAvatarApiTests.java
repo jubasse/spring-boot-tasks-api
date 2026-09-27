@@ -1,19 +1,16 @@
 package io.julienmetral.tasks.identity.controllers;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.config.StorageProperties;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.messaging.AvatarQueues;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.media.model.MediaUsage;
+import io.julienmetral.tasks.support.IntegrationTest;
 import org.springframework.amqp.rabbit.listener.AbstractMessageListenerContainer;
 import org.springframework.amqp.core.MessageListenerContainer;
 import org.springframework.amqp.rabbit.listener.RabbitListenerEndpointRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
@@ -67,9 +64,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Shared fixtures for the profile photo API tests: active users created in the database, uploads through the API
  * processed by the RabbitMQ worker, and direct access to the stored objects and their {@code media} rows.
  */
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
-@AutoConfigureMockMvc
+@IntegrationTest
 abstract class AbstractAvatarApiTests {
 
     static final String USERS = "/api/v1/users";
@@ -209,10 +204,15 @@ abstract class AbstractAvatarApiTests {
         return jsonMapper.readTree(body);
     }
 
+    /** The identicon URL as MockMvc requests see it: their default host is {@code http://localhost}. */
+    protected static String identiconUrl(User user) {
+        return "http://localhost/api/v1/identicons/" + user.getId();
+    }
+
     /** Storage key of the user's current avatar, or null without one. */
     protected String avatarStorageKey(User user) {
         List<String> keys = jdbcTemplate.queryForList(
-                "select m.storage_key from users u join media m on m.id = u.avatar_media_id where u.id = ?",
+                "select m.storage_key from user_profiles p join media m on m.id = p.avatar_media_id where p.id = ?",
                 String.class,
                 user.getId()
         );
@@ -223,7 +223,11 @@ abstract class AbstractAvatarApiTests {
     /** Storage key of the upload waiting for the worker, or null without one. */
     protected String pendingAvatarStorageKey(User user) {
         List<String> keys = jdbcTemplate.queryForList(
-                "select m.storage_key from users u join media m on m.id = u.pending_avatar_media_id where u.id = ?",
+                """
+                        select m.storage_key
+                        from user_profiles p join media m on m.id = p.pending_avatar_media_id
+                        where p.id = ?
+                        """,
                 String.class,
                 user.getId()
         );

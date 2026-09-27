@@ -15,3 +15,21 @@ identity:
 rate-limit:
   # Most tests log in and sign up many times from the same address; RateLimitTests turns the limits on
   enabled: false
+media:
+  cleanup:
+    # Tests call MediaCleanupService directly
+    enabled: false
+messaging:
+  outbox:
+    # Reused containers share one database between test contexts: a poller running every few seconds would publish
+    # the rows of another context to its own broker. Messages still go out right after their commit; tests that
+    # exercise the retries call OutboxRelay.publishDue themselves.
+    poll-interval: PT1H
+spring:
+  testcontainers:
+    beans:
+      startup: parallel
+  jpa:
+    properties:
+      # Counts the statements of a request in the query-count tests; records nothing unless a test asks for it
+      hibernate.session_factory.statement_inspector: io.julienmetral.tasks.support.SqlStatementCounter

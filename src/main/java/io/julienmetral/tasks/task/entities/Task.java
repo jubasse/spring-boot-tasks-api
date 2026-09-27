@@ -1,6 +1,6 @@
 package io.julienmetral.tasks.task.entities;
 
-import io.julienmetral.tasks.identity.entities.UserSummary;
+import io.julienmetral.tasks.identity.entities.UserProfile;
 import io.julienmetral.tasks.shared.entities.AuditableEntity;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -85,20 +85,20 @@ public class Task extends AuditableEntity {
     @Column(nullable = false)
     private long version;
 
-    // UserSummary, not User: soft-deleted users must still load (see UserSummary)
+    // UserProfile, not User: soft-deleted users must still load (see UserProfile)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "created_by_id",
             foreignKey = @ForeignKey(name = "tasks_created_byFK")
     )
-    private UserSummary createdBy;
+    private UserProfile createdBy;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "assigned_to_id",
             foreignKey = @ForeignKey(name = "tasks_assigned_toFK")
     )
-    private UserSummary assignedTo;
+    private UserProfile assignedTo;
 
     public UUID currentAssigneeId() {
         return assignedTo == null ? null : assignedTo.getId();

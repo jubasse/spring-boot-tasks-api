@@ -1,17 +1,14 @@
 package io.julienmetral.tasks.media.services;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.model.MediaCleanupReport;
+import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.TestClock;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
+import org.springframework.beans.factory.annotation.Autowired;
 
-import java.time.Clock;
 import java.time.Duration;
 import java.util.UUID;
 
@@ -19,21 +16,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * RustFS cannot backdate an object, so this class moves the clock forward instead: every object and media row
- * created here is already past the orphan grace period. It runs in its own context, with its own containers, so the
- * other test classes keep a real clock.
+ * created here is already past the orphan grace period.
  */
-@Import({TestcontainersConfiguration.class, MediaCleanupOrphanObjectTests.FutureClock.class})
-@SpringBootTest
+@IntegrationTest
 class MediaCleanupOrphanObjectTests extends AbstractMediaCleanupTests {
 
-    @TestConfiguration(proxyBeanMethods = false)
-    static class FutureClock {
+    @Autowired
+    private TestClock clock;
 
-        @Bean
-        @Primary
-        Clock futureClock() {
-            return Clock.offset(Clock.systemUTC(), Duration.ofDays(3));
-        }
+    @BeforeEach
+    void moveTheClockPastTheGracePeriod() {
+        clock.advance(Duration.ofDays(3));
     }
 
     @Test

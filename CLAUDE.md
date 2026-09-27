@@ -77,11 +77,11 @@ Controllers are under `/api/v1/...`. Services own transactions and return entiti
 Refresh, verification and reset tokens are 256-bit random values (`OpaqueTokens`). Only their SHA-256 hash is stored.
 
 7. **GDPR retention** (`UserRetentionService`, run daily at 04:00 by `UserRetentionJob`, settings under `identity.retention`):
-   - users soft-deleted for 30 days are anonymized in native SQL (`UserRetentionQueries`): email `deleted-<id>@anonymized.invalid`, name "Deleted user", unusable password, settings and tokens deleted. The row stays for tasks and history, and the original email becomes free for a new sign-up. Their media go through the media cleanup, which uses the same 30 days.
+   - users soft-deleted for 30 days are erased in native SQL (`UserRetentionQueries`): their profile becomes "Deleted user" without photo, and their `users` row is deleted with its roles, settings and tokens. Tasks and history keep pointing to the profile, and the original email becomes free for a new sign-up. The photo files go with the media cleanup, which uses the same 30 days.
    - accounts without activity for 2 years get a warning email, then are deleted 30 days later if still inactive, and anonymized by a later run. Activity is `last_active_at`, set by login and by token refresh (`User.markActive`, which also clears the warning); older rows fall back to `last_login_at`, then `created_at`.
    - admins are never warned or deleted for inactivity, so the last admin cannot disappear.
 
-Public endpoints: `POST /api/v1/users` (sign-up), and `POST /api/v1/auth/login`, `/refresh`, `/logout`, `/verify-email`, `/password-reset/request` and `/password-reset/confirm`.
+Public endpoints: `POST /api/v1/users` (sign-up), and `POST /api/v1/auth/login`, `/refresh`, `/logout`, `/verify-email`, `/password-reset/request` and `/password-reset/confirm`, plus the identicons. `identity.security.PublicEndpoints` lists them once: `SecurityConfiguration` permits them, and the API documentation marks them public. They ignore the `Authorization` header: a client that kept its expired access token got a 401 from login and refresh.
 
 ### Rate limiting
 
@@ -98,8 +98,9 @@ Public endpoints: `POST /api/v1/users` (sign-up), and `POST /api/v1/auth/login`,
 Only **active** users can work on tasks. Active means enabled, not deleted, and with a verified email (`UserStatus.ACTIVE`).
 - **Callers:** `ActiveUserAuthorizationManager` guards `/api/v1/tasks/**` in `SecurityConfiguration`. It reloads the user on every request, so a disabled, deleted or unverified user gets 403 even with a still-valid access token. User and auth endpoints are not restricted.
 - **Assignees:** `TaskService` refuses to assign a task to a user who is not active and throws `AssigneeNotActiveException` (422).
-- **Responses:** task responses and task history expose referenced users as `UserPreviewResponseDto(id, displayName, status)`, with `status` one of `ACTIVE`, `UNVERIFIED`, `DISABLED` or `DELETED`.
+- **Responses:** task responses and task history expose referenced users as `UserProfileResponseDto(id, displayName, status, avatarUrl)`, with `status` one of `ACTIVE`, `UNVERIFIED`, `DISABLED` or `DELETED`.
 - **Listing:** `GET /api/v1/tasks` is paginated and filters on `status`, `assigneeId` and `archived`, which defaults to false.
+- **Pages:** every paginated list returns Spring Data's `PagedModel` (`{content, page: {size, number, totalElements, totalPages}}`), never a `Page`: the JSON of a `Page` has no stable structure. `spring.data.web.pageable.max-page-size` clamps a page to 100 items.
 
 ### Task comments
 
@@ -116,16 +117,40 @@ Only **active** users can work on tasks. Active means enabled, not deleted, and 
 - A Postgres advisory lock keeps several instances from sending the same reminders, as for the media cleanup.
 - Tests disable the job (`task.reminders.enabled: false`) and call the service with a fixed `Clock`.
 
-### Soft-deleted users in associations
+### Users and their profile
 
-Entities never point to `User`, which carries `@SoftDelete`: they point to **`UserSummary`**. That is a read-only (`@Immutable`) view of the same `users` table, without `@SoftDelete`.
-- **Loading:** a soft-deleted user still loads through it, so a task, its history or a token referencing that user never fails to load. Responses show that user with status `DELETED` and their name.
-- **Writing:** services set an association with `userSummaryRepository.getReferenceById(user.getId())`, a proxy that does not query the database.
-- **Checking:** to know whether the referenced account can still act, load the full `User` with `userRepository.findById(summary.getId())`, which skips soft-deleted users.
+A user is two rows sharing one UUID: **`users`** (`User`) holds the account (email, password, roles, verification, activation, activity) and carries `@SoftDelete`; **`user_profiles`** (`UserProfile`) holds what others see (display name, photo, a copy of the status) and has no soft delete.
+- **References:** every entity that points to a user (tasks, history, comments, mentions, reminders, media, tokens) points to `UserProfile`, never to `User`. Services set it with `userProfileRepository.getReferenceById(id)`, a proxy that does not query the database. The profile outlives the account: a deleted user still loads, with status `DELETED`, and an anonymized one stays as "Deleted user" after its `users` row is gone.
+- **Direction of the key:** `users.id` is the foreign key to `user_profiles.id` (`@MapsId`), never the other way, so deleting the account leaves the profile. Creating a `User` creates its profile (cascade), and `user.getDisplayName()` reads the profile.
+- **Status:** `user_profiles.status` is a copy of the account state, for display. `User` writes it on every transition (`setEnabled`, `setEmailVerifiedAt`, `markDeleted`), and native SQL that changes an account must update it too. Checks that grant access (`ActiveUserAuthorizationManager`, assignees) read the account itself.
+- **Photo:** `UserProfile.visibleAvatar()` hides the photo of a disabled account (the file is kept) and of a deleted one. Without a visible photo, `avatarUrl` points to the identicon (see Media storage).
+- The name avoids Spring Security's `UserDetails` interface.
 
-Warning: do not map an association to `User` with `@NotFound(IGNORE)` to tolerate deleted users. Hibernate then drops the foreign key from its model, and `liquibase:diff` proposes dropping the real constraints. That is how 7 foreign keys went missing from the model before `UserSummary`.
+Warning: do not map an association to `User` with `@NotFound(IGNORE)` to tolerate deleted users. Hibernate then drops the foreign key from its model, and `liquibase:diff` proposes dropping the real constraints. That is how 7 foreign keys went missing from the model once.
 
-Warning: Hibernate refuses a `LAZY` to-one association towards an entity with `@SoftDelete` (`Task`, `User`) and fails when building the session factory, which only shows at startup. Map such associations `EAGER` (as `TaskAttachment.task` and `TaskEvent.task` are), or point to a view without `@SoftDelete` (as `UserSummary` does for users).
+Warning: Hibernate refuses a `LAZY` to-one association towards an entity with `@SoftDelete` (`Task`, `User`) and fails when building the session factory, which only shows at startup. Map such associations `EAGER` (as `TaskAttachment.task` and `TaskEvent.task` are), or point to an entity without `@SoftDelete` (as references to users point to `UserProfile`).
+
+### Loading data
+
+`spring.jpa.open-in-view` is off: the persistence context closes with the service's transaction, before the controller writes the response. A response that reads an association nobody loaded fails with `LazyInitializationException` in tests, instead of silently running one query per row.
+- **To-one associations** are loaded by `@EntityGraph` on the repository methods that feed responses (tasks with their users and photos, events with their actor, comments with their author, attachments with their media and uploader, `UserRepository.findWithProfileById`).
+- Warning: every graph is `type = EntityGraphType.LOAD`. The default, FETCH, turns every attribute it does not list into LAZY, EAGER mappings included, which dropped the account's roles.
+- **Collections and nested photos** (comment mentions and files) are touched by the service before it returns (`TaskCommentService.withDetailsLoaded`); `hibernate.default_batch_fetch_size: 50` then loads them for a whole page with a few `IN` queries.
+- **Proxies** set with `getReferenceById` (a new task's creator, a new comment's author) are loaded with `ProfilesForDisplay.load` before a service returns them.
+- Associations to users and media are LAZY; only those to `Task`, which carries `@SoftDelete`, stay EAGER.
+- Measured on a page of 20 tasks: 3 queries, whatever the number of distinct users (8 before, growing with them).
+- `TaskQueryCountTests` and `UserQueryCountTests` lock these counts: each read must run as many statements for a long list as for a short one. `support.SqlStatementCounter`, a Hibernate `StatementInspector` registered in the test `application.yaml`, records only the test thread, since the outbox relay and the listeners query the database on their own threads.
+
+### Caching
+
+Two Caffeine caches run on Spring Boot's cache manager. `CacheConfiguration` sets them up, and `spring.cache.cache-names` lists them, so a mistyped name fails instead of creating a cache without limit or metrics.
+- **`userStatus`** (`UserStatusLookup`) holds the status that `ActiveUserAuthorizationManager` checks on every task request, read with a light query (`findAccountStateById`), for `identity.status-cache.ttl` (30 s, 1 s to 1 min) after it was written.
+  - The lookup is `@Cacheable(sync = true)`: Caffeine loads under the key's lock, so an eviction that arrives during a load waits for it and removes what it stored. Without it, a request that read ACTIVE just before a disable committed stored it after the eviction, and the account kept access until the TTL. Spring forbids `unless` with `sync`, so every status is cached, refused ones included.
+  - Every change to an account publishes `AccountStateChanged`, and `UserStatusCacheEviction` evicts the status after the commit. Warning: a new way of changing an account, native SQL included, must publish it too, or a disabled account keeps access until the TTL. Spring Data's `@DomainEvents` would not fire, since entities change through dirty checking, without `save()`.
+  - Warning: never expire after access or refresh after write. A client calling in a loop would keep a stale ACTIVE alive, and a refresh serves the old value when the database fails.
+  - Other instances do not see an eviction: the TTL is their delay. Checks at write time (the assignee in `TaskService`) read the account, never the cache.
+- **`mediaDownloads`** (`MediaService.downloadUrl`) holds the presigned URL of each media, so browsers see the same URL and reuse the file. An entry lives at most half the URL's validity, less when temporary AWS credentials end the URL sooner (`CacheConfiguration.reuseWindow`), and the URL signs `Cache-Control: private, max-age=<validity>, immutable`. Warning: the `@Cacheable` is on `MediaService`, not on `MediaUrls`, whose `avatarOf` calls `of` on itself and would bypass the cache proxy.
+- Metrics: `cache.gets` (hit or miss), `cache.size` and `cache.evictions` per cache, on the management port.
 
 ### Mail
 
@@ -144,12 +169,13 @@ In development, SMTP goes to the Mailpit service of `compose.yaml` (web UI on ht
   - `antivirus.enabled=false` (`ANTIVIRUS_ENABLED`) swaps in a scanner that accepts everything and logs a warning at startup. It is meant for development machines that cannot spare ClamAV's memory (about 1 GB).
   - Tests start a ClamAV container that loads only an EICAR signature (`TestcontainersConfiguration`), about 14 MB instead of about 1 GB for the full database, with freshclam disabled. The EICAR test string is the infected file, reported as `TestcontainersConfiguration.EICAR_THREAT`.
 - **Profile photos:** `PUT /api/v1/users/{id}/avatar` (multipart field `file`) and `DELETE /api/v1/users/{id}/avatar`, for the user or an admin, handled by `AvatarService`.
-  - **Upload (synchronous):** the request stores the file as uploaded (`MediaUsage.AVATAR_UPLOAD`, which checks size, type and viruses), rejects images above 10000 px or 40 MP from their header alone (422), and keeps it in `users.pending_avatar_media_id`. It answers 202 with `avatarPending: true`; a newer upload replaces a pending one.
+  - **Upload (synchronous):** the request stores the file as uploaded (`MediaUsage.AVATAR_UPLOAD`, which checks size, type and viruses), rejects images above 10000 px or 40 MP from their header alone (422), and keeps it in `user_profiles.pending_avatar_media_id`. It answers 202 with `avatarPending: true`; a newer upload replaces a pending one.
   - **Processing (worker):** the upload is written to the outbox for `avatar.process` in the same transaction, and `AvatarProcessingListener` calls `AvatarService.process`. It applies the EXIF orientation, crops to a centred square and scales down to 256 px, then re-encodes to JPEG, or to PNG when the original has transparency; re-encoding drops all metadata, GPS included. The result replaces the current photo and the upload is deleted. A stale message (upload replaced or removed since) does nothing; an image that cannot be decoded is dropped with a warning; other failures are retried, then dead-lettered to `avatar.process.dead-letter`.
-  - **Concurrency:** the upload request and the worker both lock the user row first (`UserRepository.findByIdForUpdate`); without that common lock they deadlocked. `User` is `@DynamicUpdate`, so an update writes only the columns it changed: the worker once rewrote the whole row and re-enabled an account an admin had disabled meanwhile.
+  - **Concurrency:** the upload request and the worker both lock the user row first (`UserRepository.findByIdForUpdate`); without that common lock they deadlocked. `User` and `UserProfile` are `@DynamicUpdate`, so an update writes only the columns it changed: the worker once rewrote the whole row and re-enabled an account an admin had disabled meanwhile.
   - The previous photo is deleted with `MediaService.delete`: the row goes with the change, and the object once the transaction commits.
-  - `users.avatar_media_id` and `users.pending_avatar_media_id` have explicit unique constraints (`users_avatar_media_idUQ`, `users_pending_avatar_media_idUQ`). The associations are `@ManyToOne`, because a `@OneToOne` makes Hibernate add an implicit unique constraint with a generated name, which `liquibase:diff` then reports.
-- **URLs in responses:** `UserResponseDto` and every `UserPreviewResponseDto` carry an `avatarUrl`, a presigned URL computed by `MediaUrls`. Controllers pass `MediaUrls` to the DTO constructors.
+  - `user_profiles.avatar_media_id` and `user_profiles.pending_avatar_media_id` have explicit unique constraints (`user_profiles_avatar_media_idUQ`, `user_profiles_pending_avatar_media_idUQ`). The associations are `@ManyToOne`, because a `@OneToOne` makes Hibernate add an implicit unique constraint with a generated name, which `liquibase:diff` then reports.
+- **URLs in responses:** `UserResponseDto` and every `UserProfileResponseDto` carry an `avatarUrl`, computed by `MediaUrls.avatarOf`: a presigned URL of the visible photo, otherwise the profile's identicon. Controllers pass `MediaUrls` to the DTO constructors.
+- **Identicons:** `GET /api/v1/identicons/{id}` (public, since `<img>` tags send no token) returns an SVG figure whose colours derive from the id alone (`IdenticonGenerator`): no database read, so it reveals nothing, and it is cached a year (`Cache-Control: immutable`, `ETag`).
 - **Cleanup:** `MediaCleanupJob` runs `MediaCleanupService` on `media.cleanup.cron`, daily at 03:30 by default.
   - It purges the attachments of tasks, and the profile photos of users, soft-deleted for longer than `media.cleanup.retention` (30 days).
   - It also purges media rows that nothing references and stored objects without a media row, once they are older than `media.cleanup.orphan-grace-period` (1 day), so uploads in progress are left alone.
@@ -174,10 +200,19 @@ Every message for RabbitMQ goes through `messaging.services.Outbox.enqueue`, nev
 
 ### Monitoring
 
-Actuator runs on its own port, `management.server.port` (`MANAGEMENT_PORT`, 8081), with `health`, `info`, `metrics` and `prometheus` exposed and no authentication. Warning: that port must stay reachable only from the monitoring network. On the API port, `/actuator/**` does not exist; `SecurityConfiguration` permits every request that arrived on the management port (`local.management.port`), error page included: matching the endpoints only once made every error there answer 401.
+Actuator runs on its own port, `management.server.port` (`MANAGEMENT_PORT`, 8081), with `health`, `info`, `metrics`, `prometheus` and `sbom` exposed and no authentication. Warning: that port must stay reachable only from the monitoring network. On the API port, `/actuator/**` does not exist, but `/livez` and `/readyz` serve the `livez` and `readyz` health groups without details, with the members of `liveness` and `readiness` (permitted in `SecurityConfiguration`, and the bearer token is ignored): a probe on the management port alone could pass while the API port is down. Warning: not `add-additional-paths`, which reuses the probe groups, whose settings apply to all their paths: hiding details on 8080 hid them on 8081. `SecurityConfiguration` also permits every request that arrived on the management port (`local.management.port`), error page included: matching the endpoints only once made every error there answer 401.
 - **Health:** Spring Boot's indicators (`db`, `rabbit`, `mail`, `diskSpace`) plus `storage` (`StorageHealthIndicator`, a `headBucket`) and `antivirus` (`AntivirusHealthIndicator`, clamd `PING` with a 5-second cap; up with `scanning: disabled` when the antivirus is off). Readiness (`/actuator/health/readiness`) includes only `db`: RabbitMQ down only delays messages (the outbox keeps them), and storage or antivirus down only blocks files, so they must not take the whole API out of the load balancer.
 - **Metrics:** `outbox.messages.pending` and `outbox.messages.oldest.pending.age` (`OutboxMetrics`), `outbox.messages.published` and `outbox.publish.failures` per queue (`OutboxRelay`), `rabbitmq.dead.letter.messages` per dead-letter queue (`DeadLetterQueueMetrics`, NaN while the broker is unreachable). Spring records every `@Scheduled` run as `tasks.scheduled.execution`.
-- **Info:** `spring-boot-maven-plugin` writes `build-info`, so `/actuator/info` shows the version.
+- **Info:** `spring-boot-maven-plugin` writes `build-info`, so `/actuator/info` shows the version, and `cyclonedx-maven-plugin` (configured by the Boot parent) writes the SBOM that `/actuator/sbom/application` serves.
+
+### Deployment profile and image
+
+The default configuration serves development and tests. `application-prod.yaml` is the only other profile, used by every deployed environment, staging included; environments differ by their variables alone (README, Deploy the API). Do not add a profile per environment.
+- **A setting with no safe production default** gets an empty default there (`${MAIL_HOST:}`) and an entry in `deployment.required-properties`. `RequiredPropertiesCheck` then stops the startup before any bean is created and names every missing setting. A localhost default would let a deployment start against nothing.
+- Warning: never set `spring.profiles.active` in a file of the jar, and never export `SPRING_PROFILES_ACTIVE` in a shell or an IDE: the tests would load the `prod` profile over `src/test/resources/config/application.yaml` and stop on the missing settings.
+- **Image** (`Dockerfile`): Maven builds the jar in a JDK stage, `jarmode=tools extract --layers` splits it, and it runs on the Temurin 25 JRE as uid 10001, with the `prod` profile set after the AOT training. Base images are pinned by digest. `.dockerignore` is an allowlist: a file the build needs must be added there.
+- **AOT cache:** a training run during the build (`-XX:AOTCacheOutput`, `-Dspring.context.exit=onRefresh`) records the classes loaded up to the context refresh; the start then takes about a third less time (median of five alternating starts: 8.1 s instead of 12.8 s). The training reaches no service: Liquibase and Hibernate's JDBC metadata access are off, with an explicit dialect. Warning: a bean that connects to a service while the context refreshes, rather than in an `ApplicationRunner` or a lifecycle `start`, fails the image build.
+- **`compose.production.yaml`** runs the image hardened, on its own copy of the services, as the project `tasks-prod` (README, Run the production image locally).
 
 ### Method-security annotations
 
@@ -187,6 +222,8 @@ Authorization is declared with custom meta-annotations wrapping `@PreAuthorize`,
 - `@SelfOnly`, `@AllowedRolesOrSelfOnly(...)`: delegate to the `userAuthorization` bean (`UserAuthorization`).
 - `@AllowedRolesOrAssignedToOnly(...)` (in `task.security`): delegates to the `taskAuthorization` bean (`TaskAuthorization`).
 - `@AllowedRolesOrUploaderOnly(...)`, `@CommentAuthorOnly`, `@AllowedRolesOrCommentAuthorOnly(...)` (in `task.security`): delegate to `taskAttachmentAuthorization` and `taskCommentAuthorization`, and read `#attachmentId` or `#commentId` instead.
+- `@AllowedRolesOrWithoutAssigneeOnly(...)` (in `task.security`): anyone may create an unassigned task; assigning it on creation needs a role. It reads `#dto`.
+- Every one of them carries `@AccessDescription`, the sentence the API documentation shows for the rule. Warning: a rule without it, or a `@PreAuthorize` written directly on a controller method, fails `AccessDescriptionTest`.
 
 The SpEL in the other annotations references the method parameter **`#id`**, so the annotated controller methods must name their path variable `id`. New ownership rules follow the same pattern: add a `@Component("name")` bean with a boolean method, plus a meta-annotation.
 
@@ -196,9 +233,24 @@ Every task mutation in `TaskService` must call the matching `TaskEventService` m
 
 `Task` uses optimistic locking (`@Version`). Mutations rely on JPA dirty checking inside the transaction and don't call `save()` explicitly.
 
+### API documentation
+
+springdoc serves the OpenAPI 3.1 document at `/v3/api-docs` and Swagger UI at `/swagger-ui.html` (`API_DOCS_ENABLED`, `SWAGGER_UI_ENABLED`, both off under the `prod` profile). `docs/openapi.json` is a committed copy: `OpenApiSpecTests` fails when it differs from what the application serves, and `./mvnw test -Dtest=OpenApiSpecTests -Dopenapi.update=true` rewrites it. In CI, Spectral lints it and oasdiff fails a pull request that breaks it.
+- **A new endpoint** needs: the controller's `@Tag`; an `@Operation(summary)`; a method name unique across controllers, since it is the operationId (`createTask`, `listTasks`); `@ResponseStatus` for 201, 202 or 204 (a 201 also gets a Location header); `@DocumentedProblems` for the typed problems it can answer; `@RateLimited` if it calls `RateLimiter`; and, if it is public, an entry in `PublicEndpoints`.
+- **Added automatically** (`config.OperationDocumentation`, `config.PathDocumentation`): the bearer requirement or its absence, 401, the 403 of an access rule and of task operations, 400 on input, 404 on a path naming a resource, the problems of an upload, 429, a default response, the page size limit.
+- Warning: an `@ApiResponse` on a method without `@ResponseStatus` makes springdoc drop its success response; declare the success response too (see `AuthController.login`).
+- Warning: the `Problem` schema is written by hand (`config.ProblemDocumentation`): the one springdoc derives from `ProblemDetail` describes a `properties` object that the JSON flattens. `springdoc.override-with-generic-response` stays false, or every handler of `ApiExceptionHandler` becomes a response of every operation.
+- `springdoc.allowed-locales` stays `en`: before springdoc 3.1.1, varying `Accept-Language` exhausted the memory with one cached document per language.
+
 ### Errors
 
-Domain exceptions live in each feature's `exceptions` package and are mapped to HTTP responses in `shared/exceptions/ApiExceptionHandler`. A new exception type needs a handler there, or it surfaces as a 500.
+Every error is an RFC 9457 problem (`application/problem+json`), documented for clients in `docs/problems.md`. Domain exceptions live in each feature's `exceptions` package and are mapped in `shared/exceptions/ApiExceptionHandler`. A new exception type needs a handler there, or it surfaces as a 500.
+- **Typed or not:** a domain rule the client can act on gets a `ProblemType` (a type URI into `docs/problems.md`, a constant title) and a section in that document. A generic HTTP condition (not found, unauthorized, too large, rate limited, unavailable) stays `about:blank`: leave `title` unset, and Spring fills in the status phrase, as the RFC asks. Warning: a type URI and its title are a contract with clients; renaming one is a breaking change.
+- **Invalid input** (Bean Validation, a value of the wrong type in the body or a parameter, a missing parameter or part) is a `validation-error` whose `errors` list `{detail, pointer}` for the JSON body and `{detail, parameter}` otherwise (`InvalidValue`). Parser and Java type names never reach the client.
+- The handler extends `ResponseEntityExceptionHandler` for the Spring MVC exceptions; their details are reworded in `messages.properties` (`problemDetail.<exception class>`). Warning: an `@ExceptionHandler` for an exception that `ResponseEntityExceptionHandler` already handles (such as `MaxUploadSizeExceededException`) makes the mapping ambiguous and fails startup: override its method instead.
+- Bean Validation messages follow the request's `Accept-Language`. Tests assert on `pointer` and `parameter`, or pin the language.
+- An unexpected exception is logged and answered as a bare 500 problem (`handleUnexpected`), whose detail never carries its message. Warning: method security throws `AccessDeniedException` from inside the controller call, so that handler rethrows it; catching it would turn every 403 into a 500.
+- The 401 and 403 of the security filters come from Spring Security, without a problem body.
 
 ## Comments and Javadoc: the why and the failure, never the what
 
@@ -221,7 +273,7 @@ Keep:
 - **A measured failure**: what went wrong and what it cost. For example, "Native on purpose: in JPQL, `t.user.id` joins users, which `@SoftDelete` filters, so nothing would be revoked once the user is deleted" on `RefreshTokenRepository.revokeAllForUser`. These lines stop a defect from being reintroduced.
 - **A constraint not visible locally**: framework or library behaviour the code depends on. Examples: why `NotificationSettings.defaults` leaves the id null (`@MapsId`, and Spring Data's `merge` instead of `persist`), or why `AuthService.refresh` needs `noRollbackFor`.
 - **A decision and its reason** when the code shows only the outcome. For example, why opaque tokens use SHA-256 rather than Argon2.
-- **A trap**, starting with `Warning:`, where the obvious change is the wrong one. For example, the warning on `UserSummary` against mapping associations to `User` with `@NotFound(IGNORE)`.
+- **A trap**, starting with `Warning:`, where the obvious change is the wrong one. For example, the warning on `User.profile` about the direction of the foreign key.
 
 Cut:
 - Anything that restates the code: `// save the user` above `userRepository.save(user)`.
@@ -243,16 +295,28 @@ Cut:
 ## Testing
 
 - **Unit tests** (`*Test`) cover services and security components in isolation, with JUnit 5, Mockito (`@ExtendWith(MockitoExtension.class)`) and AssertJ. They mirror the package of the class under test.
-- **Integration tests** (`*Tests`) use `@SpringBootTest` + `@AutoConfigureMockMvc` + `@Import(TestcontainersConfiguration.class)`. That configuration provides a `@ServiceConnection` `PostgreSQLContainer`, so Liquibase migrations run against a real Postgres.
+- **Integration tests** (`*Tests`) are annotated `@IntegrationTest` (`support`): `@SpringBootTest`, MockMvc, the containers of `TestcontainersConfiguration` (Postgres through `@ServiceConnection`, so Liquibase runs against a real database), `Mailpit` and the `TestClock`.
   - Most tests authenticate with the `jwt()` post-processor, a `uid` claim and a `ROLE_*` authority. The acting user must exist in the database, because `TaskEventService` loads it.
   - `AuthControllerTests` sends real `Authorization: Bearer` tokens obtained from the login endpoint.
-- The containers are shared across test classes that use the same Spring context. Use unique emails and references (random UUIDs) in every test.
-- Each cached Spring context runs its own set of containers. `src/test/resources/spring.properties` caps the context cache at 8, so an evicted context stops its containers. Warning: a full run needs several GB of memory; never run two full suites at once on the same machine.
+  - **Time:** `TestClock` is the application's `Clock`. It follows the system time until a test pins it (`set`) or moves it (`advance`), and it is reset after every test.
+- **Web tests** (`*WebMvcTests`) are annotated `@WebLayerTest` (`support`): every controller and `ApiExceptionHandler` behind the real `SecurityConfiguration`, JWT decoding and method security, without Docker. Services, repositories and the ownership beans that query the database are mocks. They cover request validation, 401, role-only 403, the ids the SpEL passes to ownership beans, and exception mapping; everything that depends on stored data stays in `@IntegrationTest`.
+  - Callers come from `WebCallers` (`user`, `admin`, `withoutUid`); task endpoints need `WebCallers.everyAccountIsActive(userRepository)`, because `ActiveUserAuthorizationManager` reads the account's status (`findAccountStateById`) through `UserStatusLookup`. `verifyNoInteractions(service)` proves a request was refused before the service ran.
+- **SQL and repository tests** run in slices on the same reused Postgres, migrated by Liquibase, and roll back after each test: `@JdbcSliceTest` (`JdbcTemplate` and every `*Queries` class) and `@RepositoryTest` (JPA, the repositories, `TestEntityManager` and auditing). `@AutoConfigureTestDatabase(replace = NONE)` is not needed: the default keeps a `@ServiceConnection` data source.
+  - A test that must commit (locks seen from another connection, concurrency, Liquibase on its own connection) uses `Transactions.inNewTransaction` or `@Transactional(propagation = NOT_SUPPORTED)`, and cleans up after itself. Fixtures of queries that sweep a whole table are dated in 2000, so the cutoffs reach only the class's own rows.
+  - Warning: Postgres is declared once, in `PostgresTestcontainersConfiguration`. Testcontainers reuses a container only when its whole definition matches, so a second definition starts a second database.
+- **Contexts:** Spring caches one context per distinct test configuration, and each integration context starts its own RabbitMQ (and all its containers when reuse is off). Warning: a property, a mock or an import added to a single class creates another context; use the annotations above alone unless the test cannot work otherwise. The integration contexts that differ on purpose are `@DeadLetterIntegrationTest` (fast retries, SMTP mock, storage spy), `OutboxBrokerFailureTests` (template spy), `RateLimitTests` (limits on), and `MonitoringTests` with `PublicEndpointErrorTests` (a real server port). The slices add three light contexts: web, JDBC and JPA.
+- **Shared data:** Postgres, Mailpit, RustFS and ClamAV are reusable containers: with reuse on (see the README), one of each serves every context and every run. Use unique emails and references (random UUIDs) in every test, and never assert on global counts.
+  - Warning: a background job enabled in a test context acts on the data of every other context. Tests keep the scheduled jobs off and call the services directly, and the outbox poller runs hourly (`messaging.outbox.poll-interval`), since it would publish another context's messages to its own broker.
+  - RabbitMQ is never reused: the dead-letter tests make the listeners' collaborators fail, and on a shared broker those listeners would consume the messages of every other context.
+- `src/test/resources/spring.properties` caps the context cache at 12; an evicted context stops its containers and restarts them when a later class needs it. Warning: a full run needs several GB of memory; never run two full suites at once on the same machine.
 
 ## Git workflow and CI
 
 - **Branches:** `features/<name>` → PR to `develop` → `release/<version>`, tagged `v<version>` → merged to `main` → merged back to `develop`.
 - **Commits:** keep them small, and never mix production code and its tests in one commit. Use Conventional Commits prefixes (`feat`, `fix`, `test`, `build`, `ci`, `docs`, `chore`) in English.
 - **Pull requests:** plain text only in titles and descriptions, like commit messages: no emojis or symbols. Size the description to the change: for a small or routine change, one or two sentences of context and a bullet list of what was done are enough. Add sections such as a test plan or design notes only when the change needs them.
-- **CI:** `.github/workflows/ci.yml` runs `./mvnw verify` (tests + JaCoCo report artifact) and a gitleaks secret scan. It runs on pushes to those branches, on `v*` tags, and on PRs to `develop`/`main`. Actions are pinned to commit SHAs.
+- **CI:** `.github/workflows/ci.yml` runs `./mvnw verify` (tests + JaCoCo report artifact), a gitleaks secret scan, the API contract checks, and builds and scans the image with Grype. It runs on pushes to those branches, on `v*` tags, and on PRs to `develop`/`main`. Actions are pinned to commit SHAs.
+  - **Image scan:** a high or critical vulnerability with a fix fails the job, and the findings go to the Security tab. A fix Spring Boot does not ship yet is a version property override in `pom.xml`, with the reason and when to remove it.
+  - **Release:** on a `v*` tag, once the tests and the scan pass, `publish` pushes the image to `ghcr.io` with BuildKit provenance and SBOM, plus a signed attestation (`actions/attest`).
+  - **Dependabot** (`.github/dependabot.yml`) opens weekly pull requests to `develop` for Maven, the Dockerfile, `compose.yaml` and the actions.
 - **Secret scanning:** run `gitleaks git . --redact` locally before pushing (gitleaks is installed through mise).

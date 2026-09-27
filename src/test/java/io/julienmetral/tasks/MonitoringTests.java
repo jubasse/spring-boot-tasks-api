@@ -1,9 +1,16 @@
 package io.julienmetral.tasks;
 
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.messaging.AvatarQueues;
+import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.identity.security.UserStatusLookup;
 import io.julienmetral.tasks.mail.MailMessage;
 import io.julienmetral.tasks.mail.MailQueues;
 import io.julienmetral.tasks.mail.MailService;
+import io.julienmetral.tasks.media.model.Media;
+import io.julienmetral.tasks.media.model.MediaUsage;
+import io.julienmetral.tasks.media.services.MediaService;
 import io.julienmetral.tasks.messaging.entities.OutboxMessage;
 import io.julienmetral.tasks.messaging.repositories.OutboxMessageRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -14,14 +21,18 @@ import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.health.actuate.endpoint.HealthEndpointGroups;
 import org.springframework.boot.micrometer.metrics.test.autoconfigure.AutoConfigureMetrics;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalManagementPort;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -31,11 +42,13 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalDouble;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -64,6 +77,9 @@ class MonitoringTests {
     private JsonMapper jsonMapper;
 
     @Autowired
+    private HealthEndpointGroups healthGroups;
+
+    @Autowired
     private MailService mailService;
 
     @Autowired
@@ -74,6 +90,18 @@ class MonitoringTests {
 
     @Autowired
     private OutboxMessageRepository outboxRepository;
+
+    @Autowired
+    private UserStatusLookup userStatusLookup;
+
+    @Autowired
+    private MediaService mediaService;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     private final List<UUID> insertedOutboxRows = new ArrayList<>();
 
@@ -122,6 +150,16 @@ class MonitoringTests {
         JsonNode liveness = managementJson("/actuator/health/liveness");
 
         assertThat(liveness.path("status").asString()).isEqualTo("UP");
+    }
+
+    @Test
+    void sbomListsTheDependenciesWithTheirVersions() {
+        JsonNode sbom = managementJson("/actuator/sbom/application");
+
+        assertThat(sbom.path("bomFormat").asString()).isEqualTo("CycloneDX");
+        assertThat(sbom.path("components").valueStream()
+                .map(component -> component.path("name").asString() + ":" + component.path("version").asString()))
+                .anyMatch(component -> component.startsWith("tomcat-embed-core:11."));
     }
 
     @Test
@@ -196,17 +234,87 @@ class MonitoringTests {
     }
 
     @Test
+    void statusLookupsAreCountedAsCacheMissesThenHits() {
+        UUID userId = createActiveUser();
+        double misses = cacheGets(UserStatusLookup.CACHE, "miss");
+        double hits = cacheGets(UserStatusLookup.CACHE, "hit");
+
+        userStatusLookup.statusOf(userId);
+        userStatusLookup.statusOf(userId);
+
+        assertThat(cacheGets(UserStatusLookup.CACHE, "miss")).isEqualTo(misses + 1);
+        assertThat(cacheGets(UserStatusLookup.CACHE, "hit")).isEqualTo(hits + 1);
+    }
+
+    @Test
+    void downloadUrlsAreCountedAsCacheMissesThenHits() {
+        Media media = unsavedMedia();
+        double misses = cacheGets(MediaService.DOWNLOAD_URLS, "miss");
+        double hits = cacheGets(MediaService.DOWNLOAD_URLS, "hit");
+
+        mediaService.downloadUrl(media);
+        mediaService.downloadUrl(media);
+
+        assertThat(cacheGets(MediaService.DOWNLOAD_URLS, "miss")).isEqualTo(misses + 1);
+        assertThat(cacheGets(MediaService.DOWNLOAD_URLS, "hit")).isEqualTo(hits + 1);
+    }
+
+    @Test
     void managementPortServesHealthWithoutAuthentication() {
         assertThat(get(managementPort, "/actuator/health").getStatusCode()).isEqualTo(HttpStatus.OK);
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/actuator/health", "/actuator/info", "/actuator/prometheus", "/actuator/metrics"})
+    @ValueSource(strings = {
+            "/actuator/health", "/actuator/info", "/actuator/prometheus", "/actuator/metrics", "/actuator/sbom/application"
+    })
     void apiPortDoesNotServeTheActuatorEndpoints(String path) {
         ResponseEntity<String> response = get(apiPort, path);
 
         assertThat(response.getStatusCode().value()).isIn(401, 404);
         assertThat(Objects.toString(response.getBody(), "")).doesNotContain("UP", "outbox_messages_pending");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/livez", "/readyz"})
+    void probeOnTheApiPortIsUpWithoutATokenAndShowsNoDetails(String path) {
+        ResponseEntity<String> response = get(apiPort, path);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode probe = jsonMapper.readTree(response.getBody());
+        assertThat(probe.path("status").asString()).isEqualTo("UP");
+        assertThat(probe.has("components")).isFalse();
+        assertThat(probe.has("details")).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/livez", "/readyz"})
+    void probeOnTheApiPortIgnoresAnInvalidBearerToken(String path) {
+        ResponseEntity<String> response = exchange(HttpMethod.GET, apiPort, path,
+                headers -> headers.setBearerAuth("not-a-valid-token"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void probesOnTheApiPortCheckTheSameComponentsAsTheManagementPortProbes() {
+        List<String> components = List.of("db", "rabbit", "mail", "diskSpace", "storage", "antivirus",
+                "livenessState", "readinessState", "ping", "ssl");
+
+        assertThat(components).allSatisfy(component -> {
+            assertThat(healthGroups.get("livez").isMember(component))
+                    .isEqualTo(healthGroups.get("liveness").isMember(component));
+            assertThat(healthGroups.get("readyz").isMember(component))
+                    .isEqualTo(healthGroups.get("readiness").isMember(component));
+        });
+    }
+
+    @Test
+    void postToAProbeOnTheApiPortIsUnauthorized() {
+        ResponseEntity<String> response = exchange(HttpMethod.POST, apiPort, "/livez", headers -> {
+        });
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 
     @Test
@@ -228,6 +336,37 @@ class MonitoringTests {
         return jsonMapper.readTree(response.getBody());
     }
 
+    private double cacheGets(String cache, String result) {
+        JsonNode metric = managementJson("/actuator/metrics/cache.gets?tag=cache:" + cache + "&tag=result:" + result);
+
+        return metric.path("measurements").path(0).path("value").asDouble();
+    }
+
+    private UUID createActiveUser() {
+        User user = new User();
+
+        user.setEmail(uniqueEmail());
+        user.setPasswordHash(passwordEncoder.encode("password"));
+        user.setEmailVerifiedAt(Instant.now());
+        user.setDisplayName("Monitoring");
+        user.setRoles(EnumSet.of(UserRole.USER));
+
+        return userRepository.saveAndFlush(user).getId();
+    }
+
+    // Presigning is local: the media needs neither a row nor a stored object
+    private static Media unsavedMedia() {
+        Media media = new Media();
+
+        media.setId(UUID.randomUUID());
+        media.setStorageKey(MediaUsage.AVATAR.storagePrefix() + "/" + UUID.randomUUID());
+        media.setUsage(MediaUsage.AVATAR);
+        media.setOriginalFilename("photo.jpg");
+        media.setContentType("image/jpeg");
+
+        return media;
+    }
+
     private String scrape() {
         ResponseEntity<String> response = get(managementPort, "/actuator/prometheus", MediaType.TEXT_PLAIN);
 
@@ -240,10 +379,16 @@ class MonitoringTests {
     }
 
     private static ResponseEntity<String> get(int port, String path, MediaType accept) {
+        return exchange(HttpMethod.GET, port, path, headers -> headers.setAccept(List.of(accept)));
+    }
+
+    private static ResponseEntity<String> exchange(
+            HttpMethod method, int port, String path, Consumer<HttpHeaders> headers
+    ) {
         return RestClient.create("http://localhost:" + port)
-                .get()
+                .method(method)
                 .uri(path)
-                .accept(accept)
+                .headers(headers)
                 .retrieve()
                 .onStatus(status -> true, (request, response) -> {
                 })

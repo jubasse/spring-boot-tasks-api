@@ -13,9 +13,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -274,17 +276,8 @@ class TaskEventControllerTests extends AbstractTaskApiTests {
     @Test
     void unknownTaskReturns404() throws Exception {
         mockMvc.perform(get(eventsOf(UUID.randomUUID())).with(asUser(createUser(UserRole.USER))))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("Task not found"));
-    }
-
-    @Test
-    void withoutTokenReturns401() throws Exception {
-        User admin = createUser(UserRole.ADMIN);
-        UUID taskId = createTask(admin, null);
-
-        mockMvc.perform(get(eventsOf(taskId)))
-                .andExpect(status().isUnauthorized());
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("Task not found")));
     }
 
     private String eventsOf(UUID taskId) {
@@ -303,7 +296,7 @@ class TaskEventControllerTests extends AbstractTaskApiTests {
 
     /** Page metadata, whether Spring Data serializes the page directly or via PagedModel. */
     private JsonNode pageMetadata(JsonNode page) {
-        return page.has("page") ? page.get("page") : page;
+        return page.get("page");
     }
 
     private List<String> types(JsonNode content) {

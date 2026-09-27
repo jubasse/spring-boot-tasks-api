@@ -1,11 +1,10 @@
 package io.julienmetral.tasks.task.entities;
 
-import io.julienmetral.tasks.identity.entities.UserSummary;
+import io.julienmetral.tasks.identity.entities.UserProfile;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
 
@@ -44,19 +43,18 @@ public class TaskComment {
     )
     private Task task;
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(
             name = "author_id",
             nullable = false,
             updatable = false,
             foreignKey = @ForeignKey(name = "task_comments_authorFK")
     )
-    private UserSummary author;
+    private UserProfile author;
 
     @Column(name = "body", nullable = false, columnDefinition = "TEXT")
     private String body;
 
-    @BatchSize(size = 50)
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
             name = "task_comment_mentions",
@@ -69,9 +67,8 @@ public class TaskComment {
                     foreignKey = @ForeignKey(name = "task_comment_mentions_userFK")
             )
     )
-    private Set<UserSummary> mentions = new HashSet<>();
+    private Set<UserProfile> mentions = new HashSet<>();
 
-    @BatchSize(size = 50)
     @OneToMany(mappedBy = "comment")
     @OrderBy("createdAt ASC")
     private List<TaskAttachment> attachments = new ArrayList<>();

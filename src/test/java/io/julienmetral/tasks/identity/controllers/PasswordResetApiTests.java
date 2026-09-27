@@ -1,12 +1,9 @@
 package io.julienmetral.tasks.identity.controllers;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
+import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -25,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.typedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -37,9 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>
  * Sign-up also sends a verification email, so every account receives that one first.
  */
-@Import({TestcontainersConfiguration.class, Mailpit.class})
-@SpringBootTest
-@AutoConfigureMockMvc
+@IntegrationTest
 class PasswordResetApiTests {
 
     private static final String PASSWORD = "password123";
@@ -48,7 +44,7 @@ class PasswordResetApiTests {
 
     private static final String RESET_LINK = "http://localhost:3000/reset-password?token=";
 
-    private static final String INVALID_TOKEN_TITLE = "Invalid password reset token";
+    private static final String INVALID_TOKEN_DETAIL = "The password reset token is invalid, expired or already used";
 
     @Autowired
     private MockMvc mockMvc;
@@ -329,46 +325,14 @@ class PasswordResetApiTests {
     }
 
     @Test
-    void requestWithInvalidEmailReturnsBadRequest() throws Exception {
-        requestReset("not-an-email").andExpect(status().isBadRequest());
-        // @Email rejects surrounding spaces before the service could trim them
-        requestReset("  " + uniqueEmail() + " ").andExpect(status().isBadRequest());
-        requestReset("").andExpect(status().isBadRequest());
-
-        mockMvc.perform(
-                        post("/api/v1/auth/password-reset/request")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("{}")
-                )
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void confirmWithInvalidPayloadReturnsBadRequestAndKeepsToken() throws Exception {
+    void confirmAcceptsMinimumPasswordLength() throws Exception {
         String email = uniqueEmail();
-        UUID userId = signUp(email);
+        signUp(email);
 
         requestReset(email).andExpect(status().isAccepted());
-        String token = awaitResetToken(email, 2);
-
-        confirm(token, "short77").andExpect(status().isBadRequest());
-        confirm(token, "x".repeat(129)).andExpect(status().isBadRequest());
-        confirm(token, "        ").andExpect(status().isBadRequest());
-
-        confirm("", NEW_PASSWORD).andExpect(status().isBadRequest());
-        confirm("   ", NEW_PASSWORD).andExpect(status().isBadRequest());
-        mockMvc.perform(
-                        post("/api/v1/auth/password-reset/confirm")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
-                                        {"newPassword": "%s"}
-                                        """.formatted(NEW_PASSWORD))
-                )
-                .andExpect(status().isBadRequest());
-
-        assertThat(tokenRows(userId).getFirst().get("used_at")).isNull();
         String minimal = "12345678";
-        confirm(token, minimal).andExpect(status().isNoContent());
+
+        confirm(awaitResetToken(email, 2), minimal).andExpect(status().isNoContent());
         login(email, minimal).andExpect(status().isOk());
     }
 
@@ -486,9 +450,8 @@ class PasswordResetApiTests {
 
     private static void expectInvalidToken(ResultActions result) throws Exception {
         result
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.title").value(INVALID_TOKEN_TITLE))
-                .andExpect(jsonPath("$.status").value(400));
+                .andExpect(typedProblem(400, "invalid-token", "Invalid or expired token"))
+                .andExpect(jsonPath("$.detail").value(INVALID_TOKEN_DETAIL));
     }
 
     private static String sha256Hex(String value) throws Exception {

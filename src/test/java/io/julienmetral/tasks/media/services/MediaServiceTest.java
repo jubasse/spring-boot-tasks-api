@@ -1,8 +1,8 @@
 package io.julienmetral.tasks.media.services;
 
 import io.julienmetral.tasks.config.MediaProperties;
-import io.julienmetral.tasks.identity.entities.UserSummary;
-import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
+import io.julienmetral.tasks.identity.entities.UserProfile;
+import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.media.exceptions.AntivirusUnavailableException;
 import io.julienmetral.tasks.media.exceptions.EmptyMediaException;
 import io.julienmetral.tasks.media.exceptions.InfectedMediaException;
@@ -47,7 +47,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static io.julienmetral.tasks.support.UserSummaries.reference;
+import static io.julienmetral.tasks.support.UserProfiles.reference;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -84,7 +84,7 @@ class MediaServiceTest {
     private MediaRepository mediaRepository;
 
     @Mock
-    private UserSummaryRepository userSummaryRepository;
+    private UserProfileRepository userProfileRepository;
 
     @Mock
     private ObjectStorage objectStorage;
@@ -102,7 +102,7 @@ class MediaServiceTest {
     void setUp() {
         service = new MediaService(
                 mediaRepository,
-                userSummaryRepository,
+                userProfileRepository,
                 objectStorage,
                 contentTypeDetector,
                 virusScanner,
@@ -145,8 +145,8 @@ class MediaServiceTest {
         void storesAttachmentUnderUsagePrefixWithDetectedTypeAndChecksum() throws IOException {
             detects("application/pdf");
             savesWhatItIsGiven();
-            UserSummary uploader = reference(UPLOADER_ID);
-            when(userSummaryRepository.getReferenceById(UPLOADER_ID)).thenReturn(uploader);
+            UserProfile uploader = reference(UPLOADER_ID);
+            when(userProfileRepository.getReferenceById(UPLOADER_ID)).thenReturn(uploader);
             byte[][] uploaded = new byte[1][];
             doAnswer(invocation -> {
                 uploaded[0] = invocation.<InputStream>getArgument(1).readAllBytes();
@@ -238,7 +238,7 @@ class MediaServiceTest {
             Media media = service.store(file("report.pdf", CONTENT), MediaUsage.TASK_ATTACHMENT, null);
 
             assertThat(media.getUploadedBy()).isNull();
-            verifyNoInteractions(userSummaryRepository);
+            verifyNoInteractions(userProfileRepository);
         }
 
         @Test
@@ -249,7 +249,7 @@ class MediaServiceTest {
                     .hasMessage("The file is empty");
 
             verifyNoInteractions(contentTypeDetector, virusScanner, objectStorage, mediaRepository,
-                    userSummaryRepository);
+                    userProfileRepository);
             assertThat(synchronizations()).isEmpty();
         }
 
@@ -328,7 +328,7 @@ class MediaServiceTest {
                     .isInstanceOf(UnsupportedMediaTypeException.class)
                     .hasMessage("Files of type application/pdf are not accepted for AVATAR");
 
-            verifyNoInteractions(virusScanner, objectStorage, mediaRepository, userSummaryRepository);
+            verifyNoInteractions(virusScanner, objectStorage, mediaRepository, userProfileRepository);
             assertThat(synchronizations()).isEmpty();
         }
 
@@ -436,7 +436,7 @@ class MediaServiceTest {
                     .isInstanceOf(InfectedMediaException.class)
                     .hasMessage("The file was rejected by the antivirus: Eicar-Test-Signature");
 
-            verifyNoInteractions(objectStorage, mediaRepository, userSummaryRepository);
+            verifyNoInteractions(objectStorage, mediaRepository, userProfileRepository);
             assertThat(synchronizations()).isEmpty();
         }
 
@@ -449,7 +449,7 @@ class MediaServiceTest {
             assertThatThrownBy(() -> service.store(file("a.pdf", CONTENT), MediaUsage.TASK_ATTACHMENT, UPLOADER_ID))
                     .isSameAs(failure);
 
-            verifyNoInteractions(objectStorage, mediaRepository, userSummaryRepository);
+            verifyNoInteractions(objectStorage, mediaRepository, userProfileRepository);
             assertThat(synchronizations()).isEmpty();
         }
 
@@ -679,7 +679,7 @@ class MediaServiceTest {
 
             service.validate(MediaSource.of(PHOTO, "me.png"), MediaUsage.AVATAR);
 
-            verifyNoInteractions(objectStorage, mediaRepository, userSummaryRepository);
+            verifyNoInteractions(objectStorage, mediaRepository, userProfileRepository);
             assertThat(synchronizations()).isEmpty();
         }
 

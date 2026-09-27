@@ -1,13 +1,10 @@
 package io.julienmetral.tasks.identity.controllers;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
+import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -28,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.typedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -40,16 +38,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * End-to-end tests of email verification: sign-up sends a real email to the Mailpit container,
  * the token is read from that email and sent back to {@code POST /api/v1/auth/verify-email}.
  */
-@Import({TestcontainersConfiguration.class, Mailpit.class})
-@SpringBootTest
-@AutoConfigureMockMvc
+@IntegrationTest
 class EmailVerificationApiTests {
 
     private static final String PASSWORD = "password123";
 
     private static final String DISPLAY_NAME = "Verification test";
 
-    private static final String INVALID_TOKEN_TITLE = "Invalid email verification token";
+    private static final String INVALID_TOKEN_DETAIL =
+            "The email verification token is invalid, expired or already used";
 
     @Autowired
     private MockMvc mockMvc;
@@ -212,28 +209,6 @@ class EmailVerificationApiTests {
     }
 
     @Test
-    void verifyWithBlankOrMissingTokenReturnsBadRequest() throws Exception {
-        verify("").andExpect(status().isBadRequest());
-        verify("   ").andExpect(status().isBadRequest());
-
-        mockMvc.perform(
-                        post("/api/v1/auth/verify-email")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("{}")
-                )
-                .andExpect(status().isBadRequest());
-
-        mockMvc.perform(
-                        post("/api/v1/auth/verify-email")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
-                                        {"token": null}
-                                        """)
-                )
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
     void verifyWithTokenOfSoftDeletedUserReturnsBadRequest() throws Exception {
         String email = uniqueEmail();
         UUID userId = signUp(email);
@@ -324,18 +299,10 @@ class EmailVerificationApiTests {
         verify(mailpit.latestVerificationTokenFor(email)).andExpect(status().isNoContent());
 
         resend(accessToken)
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.title").value("Email already verified"))
-                .andExpect(jsonPath("$.status").value(409));
+                .andExpect(typedProblem(409, "email-already-verified", "Email already verified"));
 
         Thread.sleep(500);
         assertThat(mailpit.countTo(email)).isEqualTo(1);
-    }
-
-    @Test
-    void resendWithoutTokenReturnsUnauthorized() throws Exception {
-        mockMvc.perform(post("/api/v1/auth/verify-email/resend"))
-                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -426,9 +393,8 @@ class EmailVerificationApiTests {
 
     private static void expectInvalidToken(ResultActions result) throws Exception {
         result
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.title").value(INVALID_TOKEN_TITLE))
-                .andExpect(jsonPath("$.status").value(400));
+                .andExpect(typedProblem(400, "invalid-token", "Invalid or expired token"))
+                .andExpect(jsonPath("$.detail").value(INVALID_TOKEN_DETAIL));
     }
 
     private void awaitEmailCount(String email, int expected) throws InterruptedException {

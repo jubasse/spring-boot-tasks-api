@@ -1,0 +1,6 @@
+# Lints docs/openapi.json in CI (the "API contract" job of .github/workflows/ci.yml)
+extends:
+  - spectral:oas
+rules:
+  # Every operation has a summary; a description is added where there is more to say, such as an access rule
+  operation-description: off

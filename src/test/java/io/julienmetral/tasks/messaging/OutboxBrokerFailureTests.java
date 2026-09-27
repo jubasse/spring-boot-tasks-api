@@ -1,12 +1,13 @@
 package io.julienmetral.tasks.messaging;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.mail.MailMessage;
 import io.julienmetral.tasks.mail.MailService;
 import io.julienmetral.tasks.messaging.entities.OutboxMessage;
 import io.julienmetral.tasks.messaging.repositories.OutboxMessageRepository;
 import io.julienmetral.tasks.messaging.services.OutboxRelay;
+import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
+import io.julienmetral.tasks.support.TestClock;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.AmqpConnectException;
@@ -14,22 +15,14 @@ import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.net.ConnectException;
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
@@ -47,8 +40,7 @@ import static org.mockito.Mockito.doAnswer;
  * demand, and the clock is settable so that retries become due without waiting. The poller runs once at startup,
  * then not before an hour, so each test drives {@link OutboxRelay#publishDue} itself.
  */
-@Import({TestcontainersConfiguration.class, Mailpit.class, OutboxBrokerFailureTests.SettableClockConfiguration.class})
-@SpringBootTest(properties = "messaging.outbox.poll-interval=PT1H")
+@IntegrationTest
 class OutboxBrokerFailureTests {
 
     // Delivery is asynchronous: "sent only once" can only be checked after a grace period
@@ -56,49 +48,11 @@ class OutboxBrokerFailureTests {
 
     private static final Duration PUBLISH_TIMEOUT = Duration.ofSeconds(10);
 
-    @TestConfiguration(proxyBeanMethods = false)
-    static class SettableClockConfiguration {
-
-        @Bean
-        @Primary
-        SettableClock settableClock() {
-            return new SettableClock(Instant.now().truncatedTo(ChronoUnit.SECONDS));
-        }
-    }
-
-    static final class SettableClock extends Clock {
-
-        private volatile Instant instant;
-
-        SettableClock(Instant instant) {
-            this.instant = instant;
-        }
-
-        void advance(Duration duration) {
-            instant = instant.plus(duration);
-        }
-
-        @Override
-        public Instant instant() {
-            return instant;
-        }
-
-        @Override
-        public ZoneId getZone() {
-            return ZoneOffset.UTC;
-        }
-
-        @Override
-        public Clock withZone(ZoneId zone) {
-            throw new UnsupportedOperationException();
-        }
-    }
-
     @MockitoSpyBean
     private RabbitTemplate rabbitTemplate;
 
     @Autowired
-    private SettableClock clock;
+    private TestClock clock;
 
     @Autowired
     private MailService mailService;
@@ -122,6 +76,8 @@ class OutboxBrokerFailureTests {
 
     @BeforeEach
     void refusePublishingWhileTheBrokerIsDown() {
+        clock.set(Instant.now().truncatedTo(ChronoUnit.SECONDS));
+
         doAnswer(invocation -> {
             if (brokerDown.get()) {
                 throw new AmqpConnectException(new ConnectException("Connection refused"));

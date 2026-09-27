@@ -4,6 +4,8 @@ import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.notification.dtos.NotificationSettingsDto;
 import io.julienmetral.tasks.notification.services.NotificationSettingsService;
 import io.julienmetral.tasks.shared.security.AllowedRolesOrSelfOnly;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -14,13 +16,15 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/users/{id}/notification-settings")
 @RequiredArgsConstructor
+@Tag(name = "Notification settings", description = "Which task emails an account receives.")
 public class NotificationSettingsController {
 
     private final NotificationSettingsService settingsService;
 
+    @Operation(summary = "Get the notification settings")
     @GetMapping
     @AllowedRolesOrSelfOnly(UserRole.ADMIN)
-    public ResponseEntity<NotificationSettingsDto> get(
+    public ResponseEntity<NotificationSettingsDto> getNotificationSettings(
             @PathVariable UUID id
     ) {
         return ResponseEntity.ok(
@@ -28,9 +32,10 @@ public class NotificationSettingsController {
         );
     }
 
+    @Operation(summary = "Replace the notification settings")
     @PutMapping
     @AllowedRolesOrSelfOnly(UserRole.ADMIN)
-    public ResponseEntity<NotificationSettingsDto> update(
+    public ResponseEntity<NotificationSettingsDto> updateNotificationSettings(
             @PathVariable UUID id,
             @Valid @RequestBody NotificationSettingsDto dto
     ) {

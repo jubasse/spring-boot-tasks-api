@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.EntityGraph.EntityGraphType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -19,24 +20,32 @@ import java.util.UUID;
 
 public interface TaskRepository extends JpaRepository<Task, UUID>, JpaSpecificationExecutor<Task> {
 
-    // Fetch the users in the same query instead of one query per task
-    @EntityGraph(attributePaths = {
+    // Fetch the users and their photos in the same query instead of one query per task. Warning: every graph here is
+    // LOAD, not the default FETCH, which turns every attribute it does not list into LAZY, EAGER mappings included:
+    // the account's roles and the tasks of events and comments were no longer loaded.
+    @EntityGraph(type = EntityGraphType.LOAD, attributePaths = {
             "assignedTo",
-            "createdBy"
+            "assignedTo.avatar",
+            "createdBy",
+            "createdBy.avatar"
     })
     @NullMarked
     Page<Task> findAll(Specification<Task> specification, Pageable pageable);
 
-    @EntityGraph(attributePaths = {
+    @EntityGraph(type = EntityGraphType.LOAD, attributePaths = {
             "assignedTo",
-            "createdBy"
+            "assignedTo.avatar",
+            "createdBy",
+            "createdBy.avatar"
     })
     @NullMarked
     Optional<Task> findById(UUID id);
 
-    @EntityGraph(attributePaths = {
+    @EntityGraph(type = EntityGraphType.LOAD, attributePaths = {
             "assignedTo",
-            "createdBy"
+            "assignedTo.avatar",
+            "createdBy",
+            "createdBy.avatar"
     })
     @NullMarked
     List<Task> findAll();

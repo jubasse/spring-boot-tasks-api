@@ -2,6 +2,9 @@ package io.julienmetral.tasks.task.controllers;
 
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
+import io.julienmetral.tasks.identity.events.AccountStateChanged;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.ResultActions;
 
@@ -19,16 +22,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 abstract class AbstractUserStateTaskApiTests extends AbstractTaskApiTests {
 
+    @Autowired
+    protected ApplicationEventPublisher eventPublisher;
+
     protected User createUnverifiedUser(UserRole role) {
-        User user = createUser(role);
-        user.setEmailVerifiedAt(null);
-        return userRepository.saveAndFlush(user);
+        return updateUser(createUser(role), user -> user.setEmailVerifiedAt(null));
     }
 
     protected User createDisabledUser(UserRole role) {
-        User user = createUser(role);
-        user.setEnabled(false);
-        return userRepository.saveAndFlush(user);
+        return updateUser(createUser(role), user -> user.setEnabled(false));
     }
 
     /** Creates an ACTIVE user, then soft-deletes it through the API. */
@@ -52,11 +54,16 @@ abstract class AbstractUserStateTaskApiTests extends AbstractTaskApiTests {
                 .andExpect(status().isNoContent());
     }
 
-    /** Clears the verification date of an existing user, as if it had never verified its email. */
+    /**
+     * Clears the verification date of an existing user, as if it had never verified its email. Publishes
+     * {@code AccountStateChanged} like every change to an account: without it, a status cached by the user's earlier
+     * task requests would keep granting access.
+     */
     protected void unverify(User user) {
-        User reloaded = userRepository.findById(user.getId()).orElseThrow();
-        reloaded.setEmailVerifiedAt(null);
-        userRepository.saveAndFlush(reloaded);
+        updateUser(user, reloaded -> {
+            reloaded.setEmailVerifiedAt(null);
+            eventPublisher.publishEvent(new AccountStateChanged(reloaded.getId()));
+        });
     }
 
     protected ResultActions getTask(User reader, UUID taskId) throws Exception {

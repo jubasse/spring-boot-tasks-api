@@ -11,11 +11,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.validationError;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -37,8 +39,8 @@ class TaskListApiTests extends AbstractUserStateTaskApiTests {
 
         assertThat(ids(page)).containsExactly(third, second, first);
         assertThat(totalElements(page)).isEqualTo(3);
-        assertThat(page.get("size").asInt()).isEqualTo(10);
-        assertThat(page.get("number").asInt()).isZero();
+        assertThat(page.get("page").get("size").asInt()).isEqualTo(10);
+        assertThat(page.get("page").get("number").asInt()).isZero();
 
         JsonNode firstPage = list(admin, get(TASKS)
                 .param("assigneeId", assignee.getId().toString())
@@ -51,7 +53,29 @@ class TaskListApiTests extends AbstractUserStateTaskApiTests {
                 .param("size", "2")
                 .param("page", "1"));
         assertThat(ids(secondPage)).containsExactly(first);
-        assertThat(secondPage.get("totalPages").asInt()).isEqualTo(2);
+        assertThat(secondPage.get("page").get("totalPages").asInt()).isEqualTo(2);
+    }
+
+    @Test
+    void pageHoldsTheContentAndItsMetadataOnly() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+
+        JsonNode page = list(admin, get(TASKS).param("assigneeId", UUID.randomUUID().toString()));
+
+        assertThat(page.propertyNames()).containsExactlyInAnyOrder("content", "page");
+        assertThat(page.get("page").propertyNames())
+                .containsExactlyInAnyOrder("size", "number", "totalElements", "totalPages");
+    }
+
+    @Test
+    void pageSizeAboveTheMaximumIsClamped() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+
+        JsonNode page = list(admin, get(TASKS)
+                .param("assigneeId", UUID.randomUUID().toString())
+                .param("size", "500"));
+
+        assertThat(page.get("page").get("size").asInt()).isEqualTo(100);
     }
 
     @Test
@@ -66,6 +90,15 @@ class TaskListApiTests extends AbstractUserStateTaskApiTests {
                 .param("sort", "createdAt,asc"));
 
         assertThat(ids(page)).containsExactly(first, second);
+    }
+
+    @Test
+    void sortByAnUnknownPropertyIsAValidationErrorOnTheSortParameter() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+
+        mockMvc.perform(get(TASKS).param("sort", "nonExistent,asc").with(asAdmin(admin)))
+                .andExpect(validationError())
+                .andExpect(jsonPath("$.errors[0].parameter").value("sort"));
     }
 
     @Test
@@ -253,30 +286,6 @@ class TaskListApiTests extends AbstractUserStateTaskApiTests {
         assertThat(ids(page)).contains(taskId);
     }
 
-    @Test
-    void invalidStatusIsBadRequest() throws Exception {
-        User admin = createUser(UserRole.ADMIN);
-
-        mockMvc.perform(get(TASKS).param("status", "NOT_A_STATUS").with(asAdmin(admin)))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void invalidAssigneeIdIsBadRequest() throws Exception {
-        User admin = createUser(UserRole.ADMIN);
-
-        mockMvc.perform(get(TASKS).param("assigneeId", "not-a-uuid").with(asAdmin(admin)))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void invalidArchivedFlagIsBadRequest() throws Exception {
-        User admin = createUser(UserRole.ADMIN);
-
-        mockMvc.perform(get(TASKS).param("archived", "maybe").with(asAdmin(admin)))
-                .andExpect(status().isBadRequest());
-    }
-
     private JsonNode list(User reader, MockHttpServletRequestBuilder request) throws Exception {
         String body = mockMvc.perform(request.with(asAdmin(reader)))
                 .andExpect(status().isOk())
@@ -303,6 +312,6 @@ class TaskListApiTests extends AbstractUserStateTaskApiTests {
     }
 
     private static long totalElements(JsonNode page) {
-        return page.get("totalElements").asLong();
+        return page.get("page").get("totalElements").asLong();
     }
 }

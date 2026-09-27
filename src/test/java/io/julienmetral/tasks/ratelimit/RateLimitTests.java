@@ -1,36 +1,29 @@
 package io.julienmetral.tasks.ratelimit;
 
 import io.julienmetral.tasks.ratelimit.services.RateLimitKeys;
-import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.ratelimit.exceptions.RateLimitExceededException;
 import io.julienmetral.tasks.ratelimit.repositories.RateLimitQueries;
 import io.julienmetral.tasks.ratelimit.services.RateLimiter;
+import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
-import org.junit.jupiter.api.AfterEach;
+import io.julienmetral.tasks.support.TestClock;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.sql.Timestamp;
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -43,11 +36,11 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -57,8 +50,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * falls in the same window and {@code Retry-After} is exact. Counters are shared by every test of this context: each
  * test uses its own client addresses and emails.
  */
-@Import({TestcontainersConfiguration.class, Mailpit.class, RateLimitTests.PinnedClockConfiguration.class})
-@SpringBootTest(properties = {
+@IntegrationTest
+@TestPropertySource(properties = {
         "rate-limit.enabled=true",
         // Never fires while the tests run, so no window disappears under an assertion
         "rate-limit.purge-cron=0 0 0 1 1 *",
@@ -75,7 +68,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "rate-limit.verification-resend-per-user.requests=" + RateLimitTests.VERIFICATION_RESEND_PER_USER,
         "rate-limit.verification-resend-per-user.window=PT1H"
 })
-@AutoConfigureMockMvc
 class RateLimitTests {
 
     static final int LOGIN_PER_IP = 5;
@@ -99,44 +91,6 @@ class RateLimitTests {
 
     private static final int PARALLEL_REQUESTS = 20;
 
-    @TestConfiguration(proxyBeanMethods = false)
-    static class PinnedClockConfiguration {
-
-        @Bean
-        @Primary
-        SettableClock settableClock() {
-            return new SettableClock(NOW);
-        }
-    }
-
-    static final class SettableClock extends Clock {
-
-        private volatile Instant instant;
-
-        SettableClock(Instant instant) {
-            this.instant = instant;
-        }
-
-        void set(Instant instant) {
-            this.instant = instant;
-        }
-
-        @Override
-        public Instant instant() {
-            return instant;
-        }
-
-        @Override
-        public ZoneId getZone() {
-            return ZoneOffset.UTC;
-        }
-
-        @Override
-        public Clock withZone(ZoneId zone) {
-            return Clock.fixed(instant, zone);
-        }
-    }
-
     @Autowired
     private MockMvc mockMvc;
 
@@ -153,11 +107,14 @@ class RateLimitTests {
     private RateLimitQueries queries;
 
     @Autowired
-    private SettableClock clock;
+    private TestClock clock;
 
-    @AfterEach
-    void pinTheClockAgain() {
+    // The reused test database keeps the counters of earlier runs, whose windows are the same since the clock is
+    // pinned: a test with a fixed email or address would start over its limit. Only this class turns the limits on.
+    @BeforeEach
+    void pinTheClockAndForgetEarlierCounters() {
         clock.set(NOW);
+        jdbcTemplate.update("DELETE FROM rate_limit_counters");
     }
 
     @Nested
@@ -230,11 +187,8 @@ class RateLimitTests {
             }
 
             login(address, uniqueEmail(), PASSWORD)
-                    .andExpect(status().isTooManyRequests())
+                    .andExpect(untypedProblem(429, "Too Many Requests"))
                     .andExpect(header().string(HttpHeaders.RETRY_AFTER, UNTIL_NEXT_MINUTE))
-                    .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-                    .andExpect(jsonPath("$.status").value(429))
-                    .andExpect(jsonPath("$.title").value("Too many requests"))
                     .andExpect(jsonPath("$.detail").value(
                             "Too many requests, try again in " + UNTIL_NEXT_MINUTE + " seconds"));
         }
@@ -474,8 +428,8 @@ class RateLimitTests {
 
         @Test
         void countersOfDifferentAddressesAreIndependent() throws Exception {
-            String limitedAddress = "198.51.100.10";
-            String otherAddress = "198.51.100.11";
+            String limitedAddress = uniqueAddress();
+            String otherAddress = uniqueAddress();
             for (int attempt = 0; attempt < LOGIN_PER_IP; attempt++) {
                 login(limitedAddress, uniqueEmail(), PASSWORD).andExpect(status().isUnauthorized());
             }
@@ -711,10 +665,8 @@ class RateLimitTests {
     private static MockHttpServletResponse expectTooManyRequests(ResultActions result, String retryAfter)
             throws Exception {
         return result
-                .andExpect(status().isTooManyRequests())
+                .andExpect(untypedProblem(429, "Too Many Requests"))
                 .andExpect(header().string(HttpHeaders.RETRY_AFTER, retryAfter))
-                .andExpect(jsonPath("$.title").value("Too many requests"))
-                .andExpect(jsonPath("$.status").value(429))
                 .andReturn()
                 .getResponse();
     }

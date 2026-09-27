@@ -13,6 +13,7 @@ import java.lang.annotation.Target;
         ElementType.TYPE
 })
 @Retention(RetentionPolicy.RUNTIME)
+@AccessDescription("Requires the {value} role.")
 @PreAuthorize("hasAnyRole({value})")
 public @interface AllowedRoles {
 

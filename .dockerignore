@@ -1,0 +1,7 @@
+# An allowlist: the build needs only the Maven wrapper, the pom and the main sources. Everything else stays out of
+# the build context, .env and its secrets first.
+*
+!mvnw
+!.mvn/wrapper/maven-wrapper.properties
+!pom.xml
+!src/main/

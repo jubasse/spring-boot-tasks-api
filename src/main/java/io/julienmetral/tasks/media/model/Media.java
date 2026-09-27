@@ -1,6 +1,6 @@
 package io.julienmetral.tasks.media.model;
 
-import io.julienmetral.tasks.identity.entities.UserSummary;
+import io.julienmetral.tasks.identity.entities.UserProfile;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -51,13 +51,13 @@ public class Media {
     @Column(name = "sha256", nullable = false, updatable = false, length = 64)
     private String sha256;
 
-    // UserSummary, not User: the uploader may later be soft-deleted
+    // UserProfile, not User: the uploader may later be soft-deleted
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "uploaded_by_id",
             foreignKey = @ForeignKey(name = "media_uploaded_byFK")
     )
-    private UserSummary uploadedBy;
+    private UserProfile uploadedBy;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

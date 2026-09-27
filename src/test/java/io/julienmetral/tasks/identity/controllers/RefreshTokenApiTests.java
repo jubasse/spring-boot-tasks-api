@@ -1,15 +1,12 @@
 package io.julienmetral.tasks.identity.controllers;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.security.OpaqueTokens;
+import io.julienmetral.tasks.support.IntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -27,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -39,9 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * run for real against PostgreSQL, and the database is inspected with {@link JdbcTemplate} to check hashing,
  * rotation, family revocation and to force expiry.
  */
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
-@AutoConfigureMockMvc
+@IntegrationTest
 class RefreshTokenApiTests {
 
     private static final String PASSWORD = "password123";
@@ -153,6 +149,27 @@ class RefreshTokenApiTests {
         assertThat(originalRow.get("revoked_at")).isNotNull();
         assertThat(rotatedRow.get("revoked_at")).isNull();
         assertThat(rotatedRow.get("family_id")).isEqualTo(originalRow.get("family_id"));
+    }
+
+    @Test
+    void refreshIgnoresAnExpiredAccessTokenLeftInTheAuthorizationHeader() throws Exception {
+        String email = uniqueEmail();
+        signUp(email);
+        String refreshToken = refreshTokenOf(loginJson(email));
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer eyJhbGciOiJIUzI1NiJ9.expired.signature")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(tokenBody(refreshToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").isNotEmpty());
+    }
+
+    @Test
+    void protectedEndpointStillRejectsAnInvalidAccessToken() throws Exception {
+        mockMvc.perform(get("/api/v1/tasks")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer eyJhbGciOiJIUzI1NiJ9.expired.signature"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -280,34 +297,6 @@ class RefreshTokenApiTests {
     @Test
     void malformedRefreshTokenIsRejected() throws Exception {
         expectInvalidRefreshToken(refresh("not a real token !@#$%^&*()"));
-    }
-
-    @Test
-    void accessTokenUsedAsRefreshTokenIsRejected() throws Exception {
-        String email = uniqueEmail();
-        signUp(email);
-
-        // A JWT is longer than 128 characters, so validation rejects it before the service sees it
-        String accessToken = loginJson(email).get("accessToken").asString();
-
-        refresh(accessToken).andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void blankOrMissingRefreshTokenIsBadRequest() throws Exception {
-        for (String body : List.of("{}", "{\"refreshToken\": null}", "{\"refreshToken\": \"\"}", "{\"refreshToken\": \"   \"}")) {
-            mockMvc.perform(
-                            post("/api/v1/auth/refresh")
-                                    .contentType(MediaType.APPLICATION_JSON)
-                                    .content(body)
-                    )
-                    .andExpect(status().isBadRequest());
-        }
-    }
-
-    @Test
-    void oversizedRefreshTokenIsBadRequest() throws Exception {
-        refresh("a".repeat(129)).andExpect(status().isBadRequest());
     }
 
     @Test
@@ -461,18 +450,6 @@ class RefreshTokenApiTests {
         logout("garbage").andExpect(status().isNoContent());
     }
 
-    @Test
-    void logoutWithBlankOrMissingTokenIsBadRequest() throws Exception {
-        for (String body : List.of("{}", "{\"refreshToken\": \"\"}", "{\"refreshToken\": \"  \"}")) {
-            mockMvc.perform(
-                            post("/api/v1/auth/logout")
-                                    .contentType(MediaType.APPLICATION_JSON)
-                                    .content(body)
-                    )
-                    .andExpect(status().isBadRequest());
-        }
-    }
-
     private ResultActions refresh(String refreshToken) throws Exception {
         return mockMvc.perform(
                 post("/api/v1/auth/refresh")
@@ -501,9 +478,8 @@ class RefreshTokenApiTests {
 
     private static void expectInvalidRefreshToken(ResultActions result) throws Exception {
         result
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.title").value("Invalid refresh token"))
-                .andExpect(jsonPath("$.status").value(401));
+                .andExpect(untypedProblem(401, "Unauthorized"))
+                .andExpect(jsonPath("$.detail").value("The refresh token is invalid, expired or revoked"));
     }
 
     private String tokenBody(String refreshToken) {

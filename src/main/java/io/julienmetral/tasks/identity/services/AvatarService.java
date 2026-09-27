@@ -54,6 +54,9 @@ public class AvatarService {
 
         outbox.enqueue(AvatarQueues.PROCESS, new AvatarUploaded(user.getId(), upload.getId()));
 
+        // The response shows the current photo, which stays until the worker replaces it
+        ProfilesForDisplay.load(user.getProfile());
+
         return user;
     }
 
@@ -68,12 +71,12 @@ public class AvatarService {
         User user = userRepository.findByIdForUpdate(userId).orElse(null);
 
         if (user == null
-                || user.getPendingAvatar() == null
-                || !Objects.equals(user.getPendingAvatar().getId(), uploadId)) {
+                || user.getProfile().getPendingAvatar() == null
+                || !Objects.equals(user.getProfile().getPendingAvatar().getId(), uploadId)) {
             return;
         }
 
-        Media upload = user.getPendingAvatar();
+        Media upload = user.getProfile().getPendingAvatar();
 
         replacePendingAvatar(user, null);
 
@@ -107,9 +110,9 @@ public class AvatarService {
     }
 
     private void replaceAvatar(User user, Media avatar) {
-        Media previous = user.getAvatar();
+        Media previous = user.getProfile().getAvatar();
 
-        user.setAvatar(avatar);
+        user.getProfile().setAvatar(avatar);
 
         if (previous != null) {
             mediaService.delete(previous);
@@ -117,9 +120,9 @@ public class AvatarService {
     }
 
     private void replacePendingAvatar(User user, Media upload) {
-        Media previous = user.getPendingAvatar();
+        Media previous = user.getProfile().getPendingAvatar();
 
-        user.setPendingAvatar(upload);
+        user.getProfile().setPendingAvatar(upload);
 
         if (previous != null) {
             mediaService.delete(previous);

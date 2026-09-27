@@ -1,6 +1,6 @@
 package io.julienmetral.tasks.task.entities;
 
-import io.julienmetral.tasks.identity.entities.UserSummary;
+import io.julienmetral.tasks.identity.entities.UserProfile;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -35,12 +35,12 @@ public class TaskEvent {
     )
     private Task task;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "actor_id",
             foreignKey = @ForeignKey(name = "task_events_actorFK")
     )
-    private UserSummary actor;
+    private UserProfile actor;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)

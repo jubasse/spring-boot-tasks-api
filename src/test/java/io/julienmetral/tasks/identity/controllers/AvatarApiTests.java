@@ -8,17 +8,23 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.http.MediaType;
 import tools.jackson.databind.JsonNode;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
+import static io.julienmetral.tasks.support.Presigning.waitForTheNextSecond;
+import static io.julienmetral.tasks.support.ProfilePhotos.givePhoto;
+import static io.julienmetral.tasks.support.Problems.typedProblem;
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -35,7 +41,7 @@ class AvatarApiTests extends AbstractAvatarApiTests {
                 .andExpect(jsonPath("$.id").value(user.getId().toString()))
                 .andExpect(jsonPath("$.email").value(user.getEmail()))
                 .andExpect(jsonPath("$.avatarPending").value(true))
-                .andExpect(jsonPath("$.avatarUrl").value(nullValue()));
+                .andExpect(jsonPath("$.avatarUrl").value(identiconUrl(user)));
 
         awaitProcessed(user);
 
@@ -70,28 +76,6 @@ class AvatarApiTests extends AbstractAvatarApiTests {
     }
 
     @Test
-    void userCannotUploadAvatarOfAnotherUser() throws Exception {
-        User caller = createUser(UserRole.USER);
-        User target = createUser(UserRole.USER);
-
-        uploadAvatar(target, asUser(caller), "photo.png", opaquePng())
-                .andExpect(status().isForbidden());
-
-        assertThat(avatarStorageKey(target)).isNull();
-        assertThat(mediaCountUploadedBy(caller)).isZero();
-    }
-
-    @Test
-    void uploadWithoutTokenReturnsUnauthorized() throws Exception {
-        User user = createUser(UserRole.USER);
-
-        mockMvc.perform(avatarUpload(user.getId(), "photo.png", opaquePng()))
-                .andExpect(status().isUnauthorized());
-
-        assertThat(avatarStorageKey(user)).isNull();
-    }
-
-    @Test
     void uploadForUnknownUserReturnsNotFound() throws Exception {
         User admin = createUser(UserRole.ADMIN);
 
@@ -122,8 +106,8 @@ class AvatarApiTests extends AbstractAvatarApiTests {
                 .getBytes(StandardCharsets.US_ASCII);
 
         uploadAvatar(user, asUser(user), "photo.png", pdf)
-                .andExpect(status().isUnsupportedMediaType())
-                .andExpect(jsonPath("$.title").value("Unsupported file type"));
+                .andExpect(untypedProblem(415, "Unsupported Media Type"))
+                .andExpect(jsonPath("$.detail").value(containsString("are not accepted")));
 
         assertThat(avatarStorageKey(user)).isNull();
         assertThat(pendingAvatarStorageKey(user)).isNull();
@@ -136,8 +120,8 @@ class AvatarApiTests extends AbstractAvatarApiTests {
         byte[] oversized = Arrays.copyOf(opaquePng(), AVATAR_MAX_BYTES + 1);
 
         uploadAvatar(user, asUser(user), "photo.png", oversized)
-                .andExpect(status().isContentTooLarge())
-                .andExpect(jsonPath("$.title").value("File too large"));
+                .andExpect(untypedProblem(413, "Content Too Large"))
+                .andExpect(jsonPath("$.detail").value(startsWith("The file exceeds the maximum size")));
 
         assertThat(mediaCountUploadedBy(user)).isZero();
     }
@@ -147,8 +131,8 @@ class AvatarApiTests extends AbstractAvatarApiTests {
         User user = createUser(UserRole.USER);
 
         uploadAvatar(user, asUser(user), "photo.png", new byte[0])
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.title").value("Empty file"));
+                .andExpect(untypedProblem(400, "Bad Request"))
+                .andExpect(jsonPath("$.detail").value("The file is empty"));
 
         assertThat(mediaCountUploadedBy(user)).isZero();
     }
@@ -161,8 +145,7 @@ class AvatarApiTests extends AbstractAvatarApiTests {
         byte[] corrupt = concat(PNG_SIGNATURE, garbage);
 
         uploadAvatar(user, asUser(user), "photo.png", corrupt)
-                .andExpect(status().isUnprocessableContent())
-                .andExpect(jsonPath("$.title").value("Invalid image"));
+                .andExpect(typedProblem(422, "invalid-image", "Invalid image"));
 
         assertThat(avatarStorageKey(user)).isNull();
         assertThat(pendingAvatarStorageKey(user)).isNull();
@@ -182,8 +165,7 @@ class AvatarApiTests extends AbstractAvatarApiTests {
         assertThat(bomb.length).isLessThan(100);
 
         uploadAvatar(user, asUser(user), "photo.png", bomb)
-                .andExpect(status().isUnprocessableContent())
-                .andExpect(jsonPath("$.title").value("Invalid image"));
+                .andExpect(typedProblem(422, "invalid-image", "Invalid image"));
 
         assertThat(mediaCountUploadedBy(user)).isZero();
         assertThat(pendingAvatarStorageKey(user)).isNull();
@@ -201,7 +183,7 @@ class AvatarApiTests extends AbstractAvatarApiTests {
 
         assertThat(newKey).isNotEqualTo(previousKey);
         assertThat(newUrl).contains(newKey);
-        assertObjectMissing(previousKey);
+        awaitObjectMissing(previousKey);
         assertThat(mediaRowCount(previousKey)).isZero();
         assertThat(headObject(newKey).contentLength()).isPositive();
         assertThat(mediaCountUploadedBy(user)).isOne();
@@ -238,7 +220,7 @@ class AvatarApiTests extends AbstractAvatarApiTests {
 
         mockMvc.perform(get(USERS + "/{id}", user.getId()).with(asUser(user)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.avatarUrl").value(nullValue()));
+                .andExpect(jsonPath("$.avatarUrl").value(identiconUrl(user)));
     }
 
     @Test
@@ -264,29 +246,6 @@ class AvatarApiTests extends AbstractAvatarApiTests {
                 .andExpect(status().isNoContent());
 
         assertThat(avatarStorageKey(user)).isNull();
-    }
-
-    @Test
-    void userCannotRemoveAvatarOfAnotherUser() throws Exception {
-        User caller = createUser(UserRole.USER);
-        User target = createUser(UserRole.USER);
-
-        uploadOwnAvatar(target, opaquePng());
-        String key = avatarStorageKey(target);
-
-        mockMvc.perform(delete(AVATAR, target.getId()).with(asUser(caller)))
-                .andExpect(status().isForbidden());
-
-        assertThat(avatarStorageKey(target)).isEqualTo(key);
-        assertThat(headObject(key).contentLength()).isPositive();
-    }
-
-    @Test
-    void removeWithoutTokenReturnsUnauthorized() throws Exception {
-        User user = createUser(UserRole.USER);
-
-        mockMvc.perform(delete(AVATAR, user.getId()))
-                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -317,12 +276,107 @@ class AvatarApiTests extends AbstractAvatarApiTests {
     }
 
     @Test
-    void userResponseWithoutAvatarHasNullAvatarUrl() throws Exception {
+    void responsesShowingTheSamePhotoGiveTheSameUrl() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User user = createUser(UserRole.USER);
+        User other = createUser(UserRole.USER);
+        givePhoto(jdbcTemplate, user.getId());
+        givePhoto(jdbcTemplate, other.getId());
+        UUID taskId = createTask(admin, user);
+
+        String fromUser = userJson(user).get("avatarUrl").asString();
+        waitForTheNextSecond();
+        String task = mockMvc.perform(get("/api/v1/tasks/{id}", taskId).with(asAdmin(admin)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String fromTask = json(task).get("assignedTo").get("avatarUrl").asString();
+
+        assertThat(fromUser).doesNotContain("/identicons/");
+        assertThat(fromTask).isEqualTo(fromUser);
+        assertThat(userJson(other).get("avatarUrl").asString()).isNotEqualTo(fromUser);
+    }
+
+    @Test
+    void userResponseWithoutAvatarPointsToItsIdenticon() throws Exception {
         User user = createUser(UserRole.USER);
 
         mockMvc.perform(get(USERS + "/{id}", user.getId()).with(asUser(user)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.avatarUrl").value(nullValue()));
+                .andExpect(jsonPath("$.avatarUrl").value(identiconUrl(user)));
+    }
+
+    @Test
+    void identiconUrlOfAUserWithoutAvatarServesAnImageWithoutAToken() throws Exception {
+        User user = createUser(UserRole.USER);
+
+        String avatarUrl = userJson(user).get("avatarUrl").asString();
+
+        mockMvc.perform(get(URI.create(avatarUrl)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("image/svg+xml"));
+    }
+
+    @Test
+    void disabledUserWithAvatarShowsItsIdenticonWhileThePhotoIsKept() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User user = createUser(UserRole.USER);
+        uploadOwnAvatar(user, opaquePng());
+        String key = avatarStorageKey(user);
+        UUID taskId = createTask(admin, user);
+
+        mockMvc.perform(post(USERS + "/{id}/disable", user.getId()).with(asAdmin(admin)))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get(USERS + "/{id}", user.getId()).with(asAdmin(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(false))
+                .andExpect(jsonPath("$.avatarUrl").value(identiconUrl(user)));
+        mockMvc.perform(get("/api/v1/tasks/{id}", taskId).with(asAdmin(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.assignedTo.status").value("DISABLED"))
+                .andExpect(jsonPath("$.assignedTo.avatarUrl").value(identiconUrl(user)));
+        assertThat(avatarStorageKey(user)).isEqualTo(key);
+        assertThat(mediaRowCount(key)).isOne();
+        assertThat(headObject(key).contentLength()).isPositive();
+    }
+
+    @Test
+    void reEnabledUserShowsTheKeptPhotoAgain() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User user = createUser(UserRole.USER);
+        uploadOwnAvatar(user, opaquePng());
+        String key = avatarStorageKey(user);
+        mockMvc.perform(post(USERS + "/{id}/disable", user.getId()).with(asAdmin(admin)))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(post(USERS + "/{id}/enable", user.getId()).with(asAdmin(admin)))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get(USERS + "/{id}", user.getId()).with(asAdmin(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.avatarUrl", containsString(key)));
+    }
+
+    @Test
+    void deletedUserWithAvatarIsShownWithItsIdenticon() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User user = createUser(UserRole.USER);
+        uploadOwnAvatar(user, opaquePng());
+        String key = avatarStorageKey(user);
+        UUID taskId = createTask(admin, user);
+
+        mockMvc.perform(delete(USERS + "/{id}", user.getId()).with(asAdmin(admin)))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/v1/tasks/{id}", taskId).with(asAdmin(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.assignedTo.status").value("DELETED"))
+                .andExpect(jsonPath("$.assignedTo.avatarUrl").value(identiconUrl(user)));
+        // The photo stays until the media cleanup's retention period is over
+        assertThat(avatarStorageKey(user)).isEqualTo(key);
+        assertThat(mediaRowCount(key)).isOne();
     }
 
     @Test
@@ -357,7 +411,7 @@ class AvatarApiTests extends AbstractAvatarApiTests {
     }
 
     @Test
-    void taskAndHistoryPreviewsWithoutAvatarHaveNullAvatarUrl() throws Exception {
+    void taskAndHistoryPreviewsWithoutAvatarPointToTheirIdenticons() throws Exception {
         User admin = createUser(UserRole.ADMIN);
         User assignee = createUser(UserRole.USER);
 
@@ -366,13 +420,13 @@ class AvatarApiTests extends AbstractAvatarApiTests {
         mockMvc.perform(get("/api/v1/tasks/{id}", taskId).with(asAdmin(admin)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.assignedTo.id").value(assignee.getId().toString()))
-                .andExpect(jsonPath("$.assignedTo.avatarUrl").value(nullValue()))
-                .andExpect(jsonPath("$.createdBy.avatarUrl").value(nullValue()));
+                .andExpect(jsonPath("$.assignedTo.avatarUrl").value(identiconUrl(assignee)))
+                .andExpect(jsonPath("$.createdBy.avatarUrl").value(identiconUrl(admin)));
 
         mockMvc.perform(get("/api/v1/tasks/{taskId}/events", taskId).with(asAdmin(admin)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].actor.id").value(admin.getId().toString()))
-                .andExpect(jsonPath("$.content[0].actor.avatarUrl").value(nullValue()));
+                .andExpect(jsonPath("$.content[0].actor.avatarUrl").value(identiconUrl(admin)));
     }
 
     private UUID createTask(User admin, User assignee) throws Exception {

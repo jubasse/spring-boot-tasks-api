@@ -2,20 +2,27 @@ package io.julienmetral.tasks.task.controllers;
 
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.media.services.MediaUrls;
+import io.julienmetral.tasks.shared.exceptions.ProblemType;
+import io.julienmetral.tasks.shared.openapi.DocumentedProblems;
 import io.julienmetral.tasks.shared.security.AdminOnly;
 import io.julienmetral.tasks.task.dtos.*;
 import io.julienmetral.tasks.task.entities.Task;
 import io.julienmetral.tasks.task.entities.TaskStatus;
 import io.julienmetral.tasks.task.security.AllowedRolesOrAssignedToOnly;
+import io.julienmetral.tasks.task.security.AllowedRolesOrWithoutAssigneeOnly;
 import io.julienmetral.tasks.task.services.TaskService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.data.web.PagedModel;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
@@ -24,15 +31,20 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/tasks")
 @RequiredArgsConstructor
+@Tag(name = "Tasks", description = "Tasks, their status, assignee and archive.")
 public class TaskController {
 
     private final TaskService taskService;
     private final MediaUrls mediaUrls;
 
-    // Any authenticated user can create a task; only an admin can assign it on creation
+    @Operation(summary = "Create a task")
+    @ResponseStatus(HttpStatus.CREATED)
+    @DocumentedProblems({ProblemType.REFERENCE_TAKEN, ProblemType.ASSIGNEE_NOT_ACTIVE})
+    // The assignee named in the body does not exist; the path names no resource, so no rule adds this 404
+    @ApiResponse(responseCode = "404", ref = "#/components/responses/NotFound")
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN') or #dto.assignedTo() == null")
-    public ResponseEntity<TaskResponseDto> create(
+    @AllowedRolesOrWithoutAssigneeOnly(UserRole.ADMIN)
+    public ResponseEntity<TaskResponseDto> createTask(
             @Valid @RequestBody CreateTaskDto dto
     ) {
         Task task = taskService.create(dto);
@@ -42,20 +54,22 @@ public class TaskController {
             .body(response(task));
     }
 
+    @Operation(summary = "List tasks, newest first by default")
     @GetMapping
-    public Page<TaskResponseDto> findAll(
+    public PagedModel<TaskResponseDto> listTasks(
             @RequestParam(required = false) TaskStatus status,
             @RequestParam(required = false) UUID assigneeId,
             @RequestParam(defaultValue = "false") boolean archived,
-            @PageableDefault(sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
+            @ParameterObject @PageableDefault(sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
     ) {
-        return taskService
-                .findAll(status, assigneeId, archived, pageable)
-                .map(this::response);
+        return new PagedModel<>(
+                taskService.findAll(status, assigneeId, archived, pageable).map(this::response)
+        );
     }
 
+    @Operation(summary = "Get a task")
     @GetMapping("/{id}")
-    public ResponseEntity<TaskResponseDto> findById(
+    public ResponseEntity<TaskResponseDto> getTask(
             @PathVariable UUID id
     ) {
         return ResponseEntity.ok(
@@ -63,9 +77,11 @@ public class TaskController {
         );
     }
 
+    @Operation(summary = "Update a task")
+    @DocumentedProblems(ProblemType.VERSION_CONFLICT)
     @PatchMapping("/{id}")
     @AllowedRolesOrAssignedToOnly(UserRole.ADMIN)
-    public ResponseEntity<TaskResponseDto> update(
+    public ResponseEntity<TaskResponseDto> updateTask(
             @PathVariable UUID id,
             @Valid @RequestBody UpdateTaskDto dto
     ) {
@@ -74,9 +90,11 @@ public class TaskController {
         );
     }
 
+    @Operation(summary = "Change the status of a task")
+    @DocumentedProblems(ProblemType.VERSION_CONFLICT)
     @PatchMapping("/{id}/status")
     @AllowedRolesOrAssignedToOnly(UserRole.ADMIN)
-    public ResponseEntity<TaskResponseDto> changeStatus(
+    public ResponseEntity<TaskResponseDto> changeTaskStatus(
             @PathVariable UUID id,
             @Valid @RequestBody ChangeTaskStatusDto dto
     ) {
@@ -87,9 +105,11 @@ public class TaskController {
         );
     }
 
+    @Operation(summary = "Assign a task")
+    @DocumentedProblems({ProblemType.ASSIGNEE_NOT_ACTIVE, ProblemType.VERSION_CONFLICT})
     @PatchMapping("/{id}/assign")
     @AdminOnly
-    public ResponseEntity<TaskResponseDto> assign(
+    public ResponseEntity<TaskResponseDto> assignTask(
             @PathVariable UUID id,
             @Valid @RequestBody AssignTaskDto dto
     ) {
@@ -100,9 +120,11 @@ public class TaskController {
         );
     }
 
+    @Operation(summary = "Archive a task")
+    @DocumentedProblems(ProblemType.VERSION_CONFLICT)
     @PostMapping("/{id}/archive")
     @AdminOnly
-    public ResponseEntity<TaskResponseDto> archive(
+    public ResponseEntity<TaskResponseDto> archiveTask(
             @PathVariable UUID id
     ) {
         return ResponseEntity.ok(
@@ -110,9 +132,11 @@ public class TaskController {
         );
     }
 
+    @Operation(summary = "Unarchive a task")
+    @DocumentedProblems(ProblemType.VERSION_CONFLICT)
     @PostMapping("/{id}/unarchive")
     @AdminOnly
-    public ResponseEntity<TaskResponseDto> unarchive(
+    public ResponseEntity<TaskResponseDto> unarchiveTask(
             @PathVariable UUID id
     ) {
         return ResponseEntity.ok(
@@ -120,9 +144,11 @@ public class TaskController {
         );
     }
 
+    @Operation(summary = "Cancel a task")
+    @DocumentedProblems(ProblemType.VERSION_CONFLICT)
     @PostMapping("/{id}/cancel")
     @AllowedRolesOrAssignedToOnly(UserRole.ADMIN)
-    public ResponseEntity<TaskResponseDto> cancel(
+    public ResponseEntity<TaskResponseDto> cancelTask(
             @PathVariable UUID id,
             @Valid @RequestBody CancelTaskDto dto
     ) {
@@ -133,9 +159,12 @@ public class TaskController {
         );
     }
 
+    @Operation(summary = "Delete a task")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @DocumentedProblems(ProblemType.VERSION_CONFLICT)
     @DeleteMapping("/{id}")
     @AdminOnly
-    public ResponseEntity<Void> delete(
+    public ResponseEntity<Void> deleteTask(
             @PathVariable UUID id
     ) {
         taskService.delete(id);

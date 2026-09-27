@@ -1,39 +1,33 @@
 package io.julienmetral.tasks.task.services;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.config.TaskReminderProperties;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
+import io.julienmetral.tasks.support.TestClock;
 import io.julienmetral.tasks.task.entities.TaskReminderKind;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -48,52 +42,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * another test class, whose due dates are near the present, can fall inside the due-soon or overdue windows. Tests
  * therefore assert on their own tasks and users only, never on global counts.
  */
-@Import({TestcontainersConfiguration.class, Mailpit.class, AbstractTaskReminderTests.ReminderClock.class})
-@SpringBootTest
-@AutoConfigureMockMvc
+@IntegrationTest
 abstract class AbstractTaskReminderTests {
 
     static final Instant NOW = Instant.parse("2100-01-01T00:00:00Z");
 
     static final String TITLE = "Prepare the board meeting";
-
-    @TestConfiguration(proxyBeanMethods = false)
-    static class ReminderClock {
-
-        @Bean
-        @Primary
-        SettableClock settableClock() {
-            return new SettableClock(NOW);
-        }
-    }
-
-    static final class SettableClock extends Clock {
-
-        private volatile Instant instant;
-
-        SettableClock(Instant instant) {
-            this.instant = instant;
-        }
-
-        void set(Instant instant) {
-            this.instant = instant;
-        }
-
-        @Override
-        public Instant instant() {
-            return instant;
-        }
-
-        @Override
-        public ZoneId getZone() {
-            return ZoneOffset.UTC;
-        }
-
-        @Override
-        public Clock withZone(ZoneId zone) {
-            return Clock.fixed(instant, zone);
-        }
-    }
 
     record CreatedTask(UUID id, String reference) {
     }
@@ -108,7 +62,7 @@ abstract class AbstractTaskReminderTests {
     TaskReminderProperties properties;
 
     @Autowired
-    SettableClock clock;
+    TestClock clock;
 
     @Autowired
     MockMvc mockMvc;
@@ -124,6 +78,9 @@ abstract class AbstractTaskReminderTests {
 
     @Autowired
     JsonMapper jsonMapper;
+
+    @Autowired
+    TransactionTemplate transactionTemplate;
 
     @Value("${mailpit.api-url}")
     String mailpitApiUrl;
@@ -228,21 +185,21 @@ abstract class AbstractTaskReminderTests {
     }
 
     void disable(User user) {
-        User reloaded = userRepository.findById(user.getId()).orElseThrow();
-        reloaded.setEnabled(false);
-        userRepository.saveAndFlush(reloaded);
+        updateUser(user, reloaded -> reloaded.setEnabled(false));
     }
 
     void enable(User user) {
-        User reloaded = userRepository.findById(user.getId()).orElseThrow();
-        reloaded.setEnabled(true);
-        userRepository.saveAndFlush(reloaded);
+        updateUser(user, reloaded -> reloaded.setEnabled(true));
     }
 
     void unverify(User user) {
-        User reloaded = userRepository.findById(user.getId()).orElseThrow();
-        reloaded.setEmailVerifiedAt(null);
-        userRepository.saveAndFlush(reloaded);
+        updateUser(user, reloaded -> reloaded.setEmailVerifiedAt(null));
+    }
+
+    // On a managed entity, as a service does: saving a detached User would not carry the change to its profile
+    private void updateUser(User user, Consumer<User> change) {
+        transactionTemplate.executeWithoutResult(
+                status -> change.accept(userRepository.findById(user.getId()).orElseThrow()));
     }
 
     void deleteUser(User admin, User user) throws Exception {

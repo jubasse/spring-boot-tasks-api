@@ -2,11 +2,11 @@ package io.julienmetral.tasks.identity.services;
 
 import io.julienmetral.tasks.identity.entities.RefreshToken;
 import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserSummary;
+import io.julienmetral.tasks.identity.entities.UserProfile;
 import io.julienmetral.tasks.identity.exceptions.InvalidRefreshTokenException;
 import io.julienmetral.tasks.identity.repositories.RefreshTokenRepository;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
+import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.identity.security.OpaqueTokens;
 import io.julienmetral.tasks.identity.security.RefreshTokenProperties;
 import io.julienmetral.tasks.identity.services.RefreshTokenService.IssuedRefreshToken;
@@ -23,7 +23,7 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
-import static io.julienmetral.tasks.support.UserSummaries.reference;
+import static io.julienmetral.tasks.support.UserProfiles.reference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -54,7 +54,7 @@ class RefreshTokenServiceTest {
     private UserRepository userRepository;
 
     @Mock
-    private UserSummaryRepository userSummaryRepository;
+    private UserProfileRepository userProfileRepository;
 
     private RefreshTokenService service;
 
@@ -63,7 +63,7 @@ class RefreshTokenServiceTest {
         service = new RefreshTokenService(
                 refreshTokenRepository,
                 userRepository,
-                userSummaryRepository,
+                userProfileRepository,
                 new RefreshTokenProperties(TTL)
         );
     }
@@ -76,7 +76,7 @@ class RefreshTokenServiceTest {
         return user;
     }
 
-    private static RefreshToken storedToken(UserSummary owner, Instant expiresAt, Instant revokedAt) {
+    private static RefreshToken storedToken(UserProfile owner, Instant expiresAt, Instant revokedAt) {
         RefreshToken token = new RefreshToken();
         token.setUser(owner);
         token.setTokenHash(OpaqueTokens.hash(RAW_TOKEN));
@@ -87,15 +87,15 @@ class RefreshTokenServiceTest {
         return token;
     }
 
-    private RefreshToken stubStored(UserSummary owner, Instant expiresAt, Instant revokedAt) {
+    private RefreshToken stubStored(UserProfile owner, Instant expiresAt, Instant revokedAt) {
         RefreshToken token = storedToken(owner, expiresAt, revokedAt);
         when(refreshTokenRepository.findByTokenHash(OpaqueTokens.hash(RAW_TOKEN))).thenReturn(Optional.of(token));
         return token;
     }
 
-    private UserSummary stubReference() {
-        UserSummary reference = reference(USER_ID);
-        when(userSummaryRepository.getReferenceById(USER_ID)).thenReturn(reference);
+    private UserProfile stubReference() {
+        UserProfile reference = reference(USER_ID);
+        when(userProfileRepository.getReferenceById(USER_ID)).thenReturn(reference);
         return reference;
     }
 
@@ -107,7 +107,7 @@ class RefreshTokenServiceTest {
 
     @Test
     void issueSavesHashedTokenInNewFamilyAndReturnsRawValue() {
-        UserSummary reference = stubReference();
+        UserProfile reference = stubReference();
         Instant before = Instant.now();
 
         IssuedRefreshToken issued = service.issue(user());
@@ -211,7 +211,7 @@ class RefreshTokenServiceTest {
         User loaded = user();
         RefreshToken current = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(loaded));
-        UserSummary successorReference = stubReference();
+        UserProfile successorReference = stubReference();
         Instant before = Instant.now();
 
         RotatedRefreshToken rotated = service.rotate(RAW_TOKEN);

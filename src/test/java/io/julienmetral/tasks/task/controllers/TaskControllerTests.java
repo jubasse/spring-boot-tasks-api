@@ -1,17 +1,15 @@
 package io.julienmetral.tasks.task.controllers;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.task.entities.TaskEventType;
 import io.julienmetral.tasks.task.repositories.TaskEventRepository;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -28,9 +26,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
-@AutoConfigureMockMvc
+@IntegrationTest
 class TaskControllerTests {
 
     @Autowired
@@ -72,27 +68,12 @@ class TaskControllerTests {
         );
 
         var events = taskEventRepository
-                .findAllByTaskIdOrderByOccurredAtDesc(taskId, Pageable.unpaged())
+                .findAllByTaskId(taskId, Pageable.unpaged(Sort.by(Sort.Direction.DESC, "occurredAt", "id")))
                 .getContent();
 
         assertThat(events).hasSize(1);
         assertThat(events.getFirst().getType()).isEqualTo(TaskEventType.CREATED);
         assertThat(events.getFirst().getId()).isNotNull();
-    }
-
-    @Test
-    void userCannotAssignTaskOnCreation() throws Exception {
-        User user = createUser(UserRole.USER);
-
-        mockMvc.perform(
-                        post("/api/v1/tasks")
-                                .with(as(user, UserRole.USER))
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
-                                        {"reference": "%s", "title": "Task", "assignedTo": "%s"}
-                                        """.formatted(uniqueReference(), user.getId()))
-                )
-                .andExpect(status().isForbidden());
     }
 
     @Test

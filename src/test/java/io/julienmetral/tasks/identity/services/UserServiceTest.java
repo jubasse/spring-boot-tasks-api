@@ -2,6 +2,7 @@ package io.julienmetral.tasks.identity.services;
 
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
+import io.julienmetral.tasks.identity.events.AccountStateChanged;
 import io.julienmetral.tasks.identity.exceptions.UserEmailAlreadyExistsException;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
@@ -11,6 +12,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.Instant;
@@ -26,6 +28,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -45,6 +48,9 @@ class UserServiceTest {
     @Mock
     private RefreshTokenService refreshTokenService;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     @InjectMocks
     private UserService userService;
 
@@ -60,12 +66,15 @@ class UserServiceTest {
 
     private User stubExisting() {
         User user = existingUser();
-        when(userRepository.findById(ID)).thenReturn(Optional.of(user));
+        // Reads load the profile with findWithProfileById, state changes lock the row with findByIdForUpdate
+        lenient().when(userRepository.findWithProfileById(ID)).thenReturn(Optional.of(user));
+        lenient().when(userRepository.findByIdForUpdate(ID)).thenReturn(Optional.of(user));
         return user;
     }
 
     private void stubMissing() {
-        when(userRepository.findById(ID)).thenReturn(Optional.empty());
+        lenient().when(userRepository.findWithProfileById(ID)).thenReturn(Optional.empty());
+        lenient().when(userRepository.findByIdForUpdate(ID)).thenReturn(Optional.empty());
     }
 
     @Test
@@ -212,6 +221,7 @@ class UserServiceTest {
         userService.verifyEmail(ID);
 
         assertThat(user.getEmailVerifiedAt()).isNotNull().isBetween(before, Instant.now());
+        verify(eventPublisher).publishEvent(new AccountStateChanged(ID));
     }
 
     @Test
@@ -223,6 +233,7 @@ class UserServiceTest {
         userService.verifyEmail(ID);
 
         assertThat(user.getEmailVerifiedAt()).isEqualTo(original);
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
@@ -243,6 +254,7 @@ class UserServiceTest {
         userService.enable(ID);
 
         assertThat(user.isEnabled()).isTrue();
+        verify(eventPublisher).publishEvent(new AccountStateChanged(ID));
     }
 
     @Test
@@ -254,6 +266,7 @@ class UserServiceTest {
 
         assertThat(user.isEnabled()).isFalse();
         verify(refreshTokenService).revokeAllForUser(ID);
+        verify(eventPublisher).publishEvent(new AccountStateChanged(ID));
     }
 
     @Test
@@ -261,7 +274,7 @@ class UserServiceTest {
         stubMissing();
 
         assertThatThrownBy(() -> userService.disable(ID)).isInstanceOf(UserNotFoundException.class);
-        verifyNoInteractions(refreshTokenService);
+        verifyNoInteractions(refreshTokenService, eventPublisher);
     }
 
     @Test
@@ -269,6 +282,7 @@ class UserServiceTest {
         stubMissing();
 
         assertThatThrownBy(() -> userService.enable(ID)).isInstanceOf(UserNotFoundException.class);
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
@@ -315,6 +329,7 @@ class UserServiceTest {
 
         verify(userRepository).delete(user);
         verify(refreshTokenService).revokeAllForUser(ID);
+        verify(eventPublisher).publishEvent(new AccountStateChanged(ID));
     }
 
     @Test
@@ -323,6 +338,20 @@ class UserServiceTest {
 
         assertThatThrownBy(() -> userService.delete(ID)).isInstanceOf(UserNotFoundException.class);
         verify(userRepository, never()).delete(any(User.class));
-        verifyNoInteractions(refreshTokenService);
+        verifyNoInteractions(refreshTokenService, eventPublisher);
+    }
+
+    @Test
+    void changesThatKeepTheAccountStatePublishNothing() {
+        stubExisting();
+        when(passwordEncoder.encode("new-password")).thenReturn("new-hash");
+
+        userService.updateProfile(ID, "New Name");
+        userService.changePassword(ID, "new-password");
+        userService.recordLogin(ID);
+        userService.addRole(ID, UserRole.ADMIN);
+        userService.removeRole(ID, UserRole.ADMIN);
+
+        verifyNoInteractions(eventPublisher);
     }
 }

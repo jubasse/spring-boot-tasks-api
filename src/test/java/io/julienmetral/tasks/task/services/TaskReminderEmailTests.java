@@ -4,7 +4,6 @@ import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.task.entities.TaskReminderKind;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -21,9 +20,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  * back from the Mailpit container.
  */
 class TaskReminderEmailTests extends AbstractTaskReminderTests {
-
-    @Autowired
-    private TransactionTemplate transactionTemplate;
 
     @Test
     void dueSoonReminderEmailsTheAssigneeWithReferenceTitleAndUtcDueDate() throws Exception {

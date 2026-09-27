@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.task.services;
 
 import io.julienmetral.tasks.identity.security.CurrentUser;
+import io.julienmetral.tasks.identity.services.ProfilesForDisplay;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.media.services.MediaService;
@@ -12,6 +13,7 @@ import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.repositories.TaskAttachmentRepository;
 import io.julienmetral.tasks.task.repositories.TaskRepository;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -52,7 +54,7 @@ public class TaskAttachmentService {
 
         taskEventService.attachmentAdded(task, saved);
 
-        return saved;
+        return withMediaLoaded(saved);
     }
 
     @Transactional(readOnly = true)
@@ -93,5 +95,13 @@ public class TaskAttachmentService {
         return attachmentRepository
                 .findByIdAndTaskId(attachmentId, taskId)
                 .orElseThrow(() -> new TaskAttachmentNotFoundException(attachmentId));
+    }
+
+    // The response shows the file and its uploader; the uploader is a proxy set with getReferenceById
+    static TaskAttachment withMediaLoaded(TaskAttachment attachment) {
+        Hibernate.initialize(attachment.getMedia());
+        ProfilesForDisplay.load(attachment.getMedia().getUploadedBy());
+
+        return attachment;
     }
 }

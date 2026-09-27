@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>io.julienmetral</groupId>
 	<artifactId>tasks</artifactId>
-	<version>0.3.0</version>
+	<version>0.4.0</version>
 	<name/>
 	<description/>
 	<url/>
@@ -34,6 +34,11 @@
 		<tika.version>4.0.0</tika.version>
 		<twelvemonkeys.version>3.15.2</twelvemonkeys.version>
 		<metadata-extractor.version>2.21.0</metadata-extractor.version>
+		<!-- Above the versions Spring Boot 4.1.1 manages, which have fixed vulnerabilities: Tomcat 11.0.24 three critical
+		     (GHSA-9xv2-5v5q-p794, GHSA-gcx9-497g-6cp6, GHSA-h3x4-894j-xpx5), amqp-client 5.30.0 four high. Remove both
+		     once Spring Boot manages these versions or later. -->
+		<tomcat.version>11.0.26</tomcat.version>
+		<rabbit-amqp-client.version>5.36.0</rabbit-amqp-client.version>
 	</properties>
 	<dependencyManagement>
 		<dependencies>
@@ -94,7 +99,7 @@
 		<dependency>
 			<groupId>org.springdoc</groupId>
 			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-			<version>3.1.0</version>
+			<version>3.1.1</version>
 		</dependency>
 
 		<dependency>
@@ -265,6 +270,12 @@
 						</exclude>
 					</excludes>
 				</configuration>
+			</plugin>
+			<!-- Writes META-INF/sbom/application.cdx.json, the dependencies of the jar, served by /actuator/sbom/application;
+			     the Spring Boot parent configures it -->
+			<plugin>
+				<groupId>org.cyclonedx</groupId>
+				<artifactId>cyclonedx-maven-plugin</artifactId>
 			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>

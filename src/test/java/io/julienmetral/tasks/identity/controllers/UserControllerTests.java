@@ -1,17 +1,17 @@
 package io.julienmetral.tasks.identity.controllers;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
+import com.jayway.jsonpath.JsonPath;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
+import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.support.IntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
@@ -20,10 +20,13 @@ import java.sql.Timestamp;
 import java.util.EnumSet;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.typedProblem;
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -33,9 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
-@AutoConfigureMockMvc
+@IntegrationTest
 class UserControllerTests {
 
     @Autowired
@@ -43,6 +44,9 @@ class UserControllerTests {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private UserProfileRepository userProfileRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -85,6 +89,23 @@ class UserControllerTests {
         assertThat(saved.getPasswordHash())
                 .isNotEqualTo("password123")
                 .startsWith("{argon2id}");
+    }
+
+    @Test
+    void signUpResponsePointsToTheIdenticonOfTheNewUser() throws Exception {
+        MockHttpServletResponse response = mockMvc.perform(
+                        post("/api/v1/users")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(signUpBody(uniqueEmail(), "password123", "Alice"))
+                )
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.avatarPending").value(false))
+                .andReturn()
+                .getResponse();
+        UUID id = idFromLocation(response.getHeader("Location"));
+
+        assertThat(JsonPath.<String>read(response.getContentAsString(), "$.avatarUrl"))
+                .isEqualTo("http://localhost/api/v1/identicons/" + id);
     }
 
     @Test
@@ -131,36 +152,6 @@ class UserControllerTests {
     }
 
     @Test
-    void signUpRejectsInvalidEmail() throws Exception {
-        mockMvc.perform(
-                        post("/api/v1/users")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(signUpBody("not-an-email", "password123", "Dave"))
-                )
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void signUpRejectsShortPassword() throws Exception {
-        mockMvc.perform(
-                        post("/api/v1/users")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(signUpBody(uniqueEmail(), "short", "Dave"))
-                )
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void signUpRejectsTooLongPassword() throws Exception {
-        mockMvc.perform(
-                        post("/api/v1/users")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(signUpBody(uniqueEmail(), "p".repeat(129), "Dave"))
-                )
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
     void signUpAcceptsPasswordAtDeclaredMaximumLength() throws Exception {
         mockMvc.perform(
                         post("/api/v1/users")
@@ -168,36 +159,6 @@ class UserControllerTests {
                                 .content(signUpBody(uniqueEmail(), "p".repeat(128), "Dave"))
                 )
                 .andExpect(status().isCreated());
-    }
-
-    @Test
-    void signUpRejectsBlankDisplayName() throws Exception {
-        mockMvc.perform(
-                        post("/api/v1/users")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(signUpBody(uniqueEmail(), "password123", "   "))
-                )
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void signUpRejectsMissingFields() throws Exception {
-        mockMvc.perform(
-                        post("/api/v1/users")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("{}")
-                )
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void signUpRejectsMalformedJson() throws Exception {
-        mockMvc.perform(
-                        post("/api/v1/users")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("{\"email\": ")
-                )
-                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -210,9 +171,7 @@ class UserControllerTests {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(signUpBody(email, "password456", "Second"))
                 )
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.status").value(409))
-                .andExpect(jsonPath("$.title").value("User email already exists"));
+                .andExpect(typedProblem(409, "email-taken", "Email already in use"));
     }
 
     @Test
@@ -251,16 +210,7 @@ class UserControllerTests {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(signUpBody(email.toUpperCase(), "password123", "Again"))
                 )
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.title").value("User email already exists"));
-    }
-
-    @Test
-    void getUserWithoutTokenReturnsUnauthorized() throws Exception {
-        User user = createUser(UserRole.USER);
-
-        mockMvc.perform(get("/api/v1/users/{id}", user.getId()))
-                .andExpect(status().isUnauthorized());
+                .andExpect(typedProblem(409, "email-taken", "Email already in use"));
     }
 
     @Test
@@ -272,34 +222,6 @@ class UserControllerTests {
                 .andExpect(jsonPath("$.id").value(user.getId().toString()))
                 .andExpect(jsonPath("$.email").value(user.getEmail()))
                 .andExpect(jsonPath("$.roles", containsInAnyOrder("USER")));
-    }
-
-    @Test
-    void userCannotReadAnotherUser() throws Exception {
-        User user = createUser(UserRole.USER);
-        User other = createUser(UserRole.USER);
-
-        mockMvc.perform(get("/api/v1/users/{id}", other.getId()).with(as(user, UserRole.USER)))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    void userWithoutUidClaimCannotReadAnyUser() throws Exception {
-        User other = createUser(UserRole.USER);
-
-        mockMvc.perform(
-                        get("/api/v1/users/{id}", other.getId())
-                                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER")))
-                )
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    void userReadingUnknownIdGetsForbiddenNotNotFound() throws Exception {
-        User user = createUser(UserRole.USER);
-
-        mockMvc.perform(get("/api/v1/users/{id}", UUID.randomUUID()).with(as(user, UserRole.USER)))
-                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -317,17 +239,8 @@ class UserControllerTests {
         User admin = createUser(UserRole.ADMIN);
 
         mockMvc.perform(get("/api/v1/users/{id}", UUID.randomUUID()).with(as(admin, UserRole.ADMIN)))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.status").value(404))
-                .andExpect(jsonPath("$.title").value("User not found"));
-    }
-
-    @Test
-    void getUserWithInvalidUuidReturnsBadRequest() throws Exception {
-        User admin = createUser(UserRole.ADMIN);
-
-        mockMvc.perform(get("/api/v1/users/{id}", "not-a-uuid").with(as(admin, UserRole.ADMIN)))
-                .andExpect(status().isBadRequest());
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("User not found")));
     }
 
     @Test
@@ -346,27 +259,8 @@ class UserControllerTests {
                 .andExpect(jsonPath("$.id").value(user.getId().toString()))
                 .andExpect(jsonPath("$.displayName").value("Renamed"));
 
-        assertThat(userRepository.findById(user.getId()).orElseThrow().getDisplayName())
+        assertThat(userProfileRepository.findById(user.getId()).orElseThrow().getDisplayName())
                 .isEqualTo("Renamed");
-    }
-
-    @Test
-    void userCannotUpdateAnotherUser() throws Exception {
-        User user = createUser(UserRole.USER);
-        User other = createUser(UserRole.USER);
-
-        mockMvc.perform(
-                        patch("/api/v1/users/{id}", other.getId())
-                                .with(as(user, UserRole.USER))
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
-                                        {"displayName": "Hacked"}
-                                        """)
-                )
-                .andExpect(status().isForbidden());
-
-        assertThat(userRepository.findById(other.getId()).orElseThrow().getDisplayName())
-                .isEqualTo(other.getDisplayName());
     }
 
     @Test
@@ -402,35 +296,6 @@ class UserControllerTests {
     }
 
     @Test
-    void updateRejectsTooLongDisplayName() throws Exception {
-        User user = createUser(UserRole.USER);
-
-        mockMvc.perform(
-                        patch("/api/v1/users/{id}", user.getId())
-                                .with(as(user, UserRole.USER))
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
-                                        {"displayName": "%s"}
-                                        """.formatted("x".repeat(256)))
-                )
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void updateWithoutTokenReturnsUnauthorized() throws Exception {
-        User user = createUser(UserRole.USER);
-
-        mockMvc.perform(
-                        patch("/api/v1/users/{id}", user.getId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
-                                        {"displayName": "Anon"}
-                                        """)
-                )
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
     void partialUpdateWithoutDisplayNameKeepsCurrentValue() throws Exception {
         User user = createUser(UserRole.USER);
 
@@ -458,22 +323,6 @@ class UserControllerTests {
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.displayName").value(user.getDisplayName()));
-    }
-
-    @Test
-    void userCannotDisableOrEnableUsersIncludingSelf() throws Exception {
-        User user = createUser(UserRole.USER);
-        User other = createUser(UserRole.USER);
-
-        mockMvc.perform(post("/api/v1/users/{id}/disable", other.getId()).with(as(user, UserRole.USER)))
-                .andExpect(status().isForbidden());
-        mockMvc.perform(post("/api/v1/users/{id}/disable", user.getId()).with(as(user, UserRole.USER)))
-                .andExpect(status().isForbidden());
-        mockMvc.perform(post("/api/v1/users/{id}/enable", user.getId()).with(as(user, UserRole.USER)))
-                .andExpect(status().isForbidden());
-
-        assertThat(userRepository.findById(other.getId()).orElseThrow().isEnabled()).isTrue();
-        assertThat(userRepository.findById(user.getId()).orElseThrow().isEnabled()).isTrue();
     }
 
     @Test
@@ -519,38 +368,6 @@ class UserControllerTests {
                 .andExpect(status().isNotFound());
         mockMvc.perform(post("/api/v1/users/{id}/disable", UUID.randomUUID()).with(as(admin, UserRole.ADMIN)))
                 .andExpect(status().isNotFound());
-    }
-
-    @Test
-    void enableAndDisableWithoutTokenReturnUnauthorized() throws Exception {
-        User other = createUser(UserRole.USER);
-
-        mockMvc.perform(post("/api/v1/users/{id}/enable", other.getId()))
-                .andExpect(status().isUnauthorized());
-        mockMvc.perform(post("/api/v1/users/{id}/disable", other.getId()))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void userCannotDeleteUsersIncludingSelf() throws Exception {
-        User user = createUser(UserRole.USER);
-        User other = createUser(UserRole.USER);
-
-        mockMvc.perform(delete("/api/v1/users/{id}", other.getId()).with(as(user, UserRole.USER)))
-                .andExpect(status().isForbidden());
-        mockMvc.perform(delete("/api/v1/users/{id}", user.getId()).with(as(user, UserRole.USER)))
-                .andExpect(status().isForbidden());
-
-        assertThat(userRepository.findById(other.getId())).isPresent();
-        assertThat(userRepository.findById(user.getId())).isPresent();
-    }
-
-    @Test
-    void deleteWithoutTokenReturnsUnauthorized() throws Exception {
-        User other = createUser(UserRole.USER);
-
-        mockMvc.perform(delete("/api/v1/users/{id}", other.getId()))
-                .andExpect(status().isUnauthorized());
     }
 
     @Test

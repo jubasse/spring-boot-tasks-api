@@ -1,14 +1,12 @@
 package io.julienmetral.tasks.identity.entities;
 
-import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.shared.entities.AuditableEntity;
 import jakarta.persistence.*;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.DynamicUpdate;
-import org.hibernate.annotations.Generated;
 
 import java.io.Serializable;
 import java.time.Instant;
@@ -16,6 +14,10 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * The account: credentials, roles, verification and activity. What others see of the user lives in
+ * {@link UserProfile}, which shares this entity's id and outlives it.
+ */
 // Updates write only the changed columns. Otherwise every update rewrites the whole row from the loaded state, and
 // the profile photo worker re-enabled an account that an admin disabled while the photo was being processed.
 @Entity
@@ -27,15 +29,6 @@ import java.util.UUID;
                 @UniqueConstraint(
                         name = "users_emailUQ",
                         columnNames = "email"
-                ),
-                // A media file is the avatar of one user at most
-                @UniqueConstraint(
-                        name = "users_avatar_media_idUQ",
-                        columnNames = "avatar_media_id"
-                ),
-                @UniqueConstraint(
-                        name = "users_pending_avatar_media_idUQ",
-                        columnNames = "pending_avatar_media_id"
                 )
         }
 )
@@ -45,15 +38,22 @@ import java.util.UUID;
 public class User extends AuditableEntity implements Serializable {
 
     @Id
-    @Generated
-    @ColumnDefault("uuidv7()")
     @Column(name = "id", nullable = false, updatable = false)
     private UUID id;
+
+    // Warning: the foreign key goes from users to user_profiles, never the other way, so deleting the account leaves
+    // the profile that tasks and history point to. @MapsId gives the user the id of its profile.
+    @OneToOne(fetch = FetchType.LAZY, optional = false, cascade = CascadeType.PERSIST)
+    @MapsId
+    @JoinColumn(name = "id", foreignKey = @ForeignKey(name = "users_profileFK"))
+    @Setter(AccessLevel.NONE)
+    private UserProfile profile = new UserProfile();
 
     @Column(nullable = false, length = 320)
     private String email;
 
     @Column(name = "email_verified_at")
+    @Setter(AccessLevel.NONE)
     private Instant emailVerifiedAt;
 
     @Column(name = "last_login_at")
@@ -66,17 +66,11 @@ public class User extends AuditableEntity implements Serializable {
     @Column(name = "inactivity_warned_at")
     private Instant inactivityWarnedAt;
 
-    // Set on soft-deleted rows only, which JPA never loads: written by UserRetentionQueries
-    @Column(name = "anonymized_at")
-    private Instant anonymizedAt;
-
     @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;
 
-    @Column(name = "display_name", nullable = false, length = 255)
-    private String displayName;
-
     @Column(nullable = false)
+    @Setter(AccessLevel.NONE)
     private boolean enabled = true;
 
     @ElementCollection(fetch = FetchType.EAGER)
@@ -89,25 +83,37 @@ public class User extends AuditableEntity implements Serializable {
     @Enumerated(EnumType.STRING)
     private Set<UserRole> roles = new HashSet<>();
 
-    // ManyToOne rather than OneToOne: the uniqueness is the named constraint above, not an implicit generated one
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(
-            name = "avatar_media_id",
-            foreignKey = @ForeignKey(name = "users_avatar_mediaFK")
-    )
-    private Media avatar;
+    public String getDisplayName() {
+        return profile.getDisplayName();
+    }
 
-    // The uploaded photo waiting for the worker (see AvatarService.process); null once processed
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(
-            name = "pending_avatar_media_id",
-            foreignKey = @ForeignKey(name = "users_pending_avatar_mediaFK")
-    )
-    private Media pendingAvatar;
+    public void setDisplayName(String displayName) {
+        profile.setDisplayName(displayName);
+    }
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+        syncProfileStatus();
+    }
+
+    public void setEmailVerifiedAt(Instant emailVerifiedAt) {
+        this.emailVerifiedAt = emailVerifiedAt;
+        syncProfileStatus();
+    }
+
+    /** To call before a soft delete: Hibernate sets {@code deleted_at} without going through the entity. */
+    public void markDeleted() {
+        profile.setStatus(UserStatus.DELETED);
+    }
 
     /** Any activity cancels a pending inactivity deletion. */
     public void markActive(Instant now) {
         lastActiveAt = now;
         inactivityWarnedAt = null;
+    }
+
+    // The profile's status is the copy others see; every transition of the account goes through here
+    private void syncProfileStatus() {
+        profile.setStatus(UserStatus.of(this));
     }
 }

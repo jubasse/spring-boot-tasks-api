@@ -2,9 +2,9 @@ package io.julienmetral.tasks.notification.mail;
 
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserStatus;
-import io.julienmetral.tasks.identity.entities.UserSummary;
+import io.julienmetral.tasks.identity.entities.UserProfile;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
+import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.mail.MailMessage;
 import io.julienmetral.tasks.mail.MailService;
 import io.julienmetral.tasks.notification.entities.TaskNotificationType;
@@ -49,7 +49,7 @@ public class TaskNotificationSender {
             .withZone(ZoneOffset.UTC);
 
     private final UserRepository userRepository;
-    private final UserSummaryRepository userSummaryRepository;
+    private final UserProfileRepository userProfileRepository;
     private final NotificationSettingsService settingsService;
     private final MailService mailService;
 
@@ -162,10 +162,10 @@ public class TaskNotificationSender {
     }
 
     private String excerpt(String body) {
-        Map<UUID, String> names = userSummaryRepository
+        Map<UUID, String> names = userProfileRepository
                 .findAllById(CommentMentions.parse(body))
                 .stream()
-                .collect(Collectors.toMap(UserSummary::getId, UserSummary::getDisplayName));
+                .collect(Collectors.toMap(UserProfile::getId, UserProfile::getDisplayName));
         String rendered = CommentMentions.render(body, names::get);
 
         return rendered.length() <= MAX_EXCERPT_LENGTH

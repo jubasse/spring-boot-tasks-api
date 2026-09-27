@@ -1,5 +1,7 @@
 package io.julienmetral.tasks.identity.entities;
 
+import java.time.Instant;
+
 /** Account state shown next to a user wherever tasks reference them. */
 public enum UserStatus {
     ACTIVE,
@@ -13,27 +15,16 @@ public enum UserStatus {
             return DELETED;
         }
 
-        if (!user.isEnabled()) {
-            return DISABLED;
-        }
-
-        if (user.getEmailVerifiedAt() == null) {
-            return UNVERIFIED;
-        }
-
-        return ACTIVE;
+        return of(user.isEnabled(), user.getEmailVerifiedAt());
     }
 
-    public static UserStatus of(UserSummary user) {
-        if (user.getDeletedAt() != null) {
-            return DELETED;
-        }
-
-        if (!user.isEnabled()) {
+    /** The status of an account that is not deleted. */
+    public static UserStatus of(boolean enabled, Instant emailVerifiedAt) {
+        if (!enabled) {
             return DISABLED;
         }
 
-        if (user.getEmailVerifiedAt() == null) {
+        if (emailVerifiedAt == null) {
             return UNVERIFIED;
         }
 

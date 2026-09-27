@@ -1,21 +1,21 @@
 package io.julienmetral.tasks.task.controllers;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.task.entities.TaskEvent;
 import io.julienmetral.tasks.task.repositories.TaskEventRepository;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.hibernate.Hibernate;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -33,9 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * database, a JWT post-processor carrying the {@code uid} claim, and a helper to create tasks
  * through the API.
  */
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
-@AutoConfigureMockMvc
+@IntegrationTest
 abstract class AbstractTaskApiTests {
 
     static final String TASKS = "/api/v1/tasks";
@@ -55,6 +54,9 @@ abstract class AbstractTaskApiTests {
     @Autowired
     protected JsonMapper jsonMapper;
 
+    @Autowired
+    protected TransactionTemplate transactionTemplate;
+
     protected User createUser(UserRole role) {
         User user = new User();
 
@@ -66,6 +68,20 @@ abstract class AbstractTaskApiTests {
         user.setRoles(EnumSet.of(UserRole.USER, role));
 
         return userRepository.saveAndFlush(user);
+    }
+
+    /**
+     * Changes a user as a service does, on a managed entity: saving a detached {@code User} would not carry the
+     * change to its profile (display name, status), since the profile is not merged with it.
+     */
+    protected User updateUser(User user, Consumer<User> change) {
+        return transactionTemplate.execute(status -> {
+            User managed = userRepository.findById(user.getId()).orElseThrow();
+            change.accept(managed);
+            // The lazy profile is read after the transaction, by getDisplayName
+            Hibernate.initialize(managed.getProfile());
+            return managed;
+        });
     }
 
     protected RequestPostProcessor as(User user, UserRole role) {
@@ -114,7 +130,7 @@ abstract class AbstractTaskApiTests {
     /** Events of a task, newest first, read straight from the repository. */
     protected List<TaskEvent> events(UUID taskId) {
         return taskEventRepository
-                .findAllByTaskIdOrderByOccurredAtDesc(taskId, Pageable.unpaged())
+                .findAllByTaskId(taskId, Pageable.unpaged(Sort.by(Sort.Direction.DESC, "occurredAt", "id")))
                 .getContent();
     }
 }

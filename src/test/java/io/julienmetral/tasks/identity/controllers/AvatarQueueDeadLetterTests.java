@@ -6,14 +6,13 @@ import io.julienmetral.tasks.identity.messaging.AvatarQueues;
 import io.julienmetral.tasks.identity.messaging.AvatarUploaded;
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
 import io.julienmetral.tasks.media.services.ObjectStorage;
+import io.julienmetral.tasks.support.DeadLetterIntegrationTest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 import java.time.Duration;
 import java.util.List;
@@ -33,21 +32,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Retries and dead-lettering of the profile photo queue, with reads from storage made to fail through a spy. The
- * retry backoff is shortened so that a message reaches the dead-letter queue in well under a second. The same spy
- * also lets a test act while the worker's transaction is open.
+ * same spy also lets a test act while the worker's transaction is open.
  */
-@SpringBootTest(properties = {
-        "spring.rabbitmq.listener.simple.retry.max-retries=" + AvatarQueueDeadLetterTests.MAX_RETRIES,
-        "spring.rabbitmq.listener.simple.retry.initial-interval=50ms",
-        "spring.rabbitmq.listener.simple.retry.max-interval=100ms"
-})
+@DeadLetterIntegrationTest
 class AvatarQueueDeadLetterTests extends AbstractAvatarApiTests {
 
-    static final int MAX_RETRIES = 1;
+    private static final int MAX_RETRIES = DeadLetterIntegrationTest.MAX_RETRIES;
 
     private static final long DEAD_LETTER_TIMEOUT_MILLIS = Duration.ofSeconds(10).toMillis();
 
-    @MockitoSpyBean
+    @Autowired
     private ObjectStorage objectStorage;
 
     @Autowired
@@ -121,11 +115,13 @@ class AvatarQueueDeadLetterTests extends AbstractAvatarApiTests {
         User user = createUser(UserRole.USER);
         AtomicReference<CompletableFuture<Void>> disable = new AtomicReference<>();
         doAnswer(invocation -> {
-            // Stands for a concurrent POST /users/{id}/disable: it waits for the worker's row lock, then commits
-            disable.set(CompletableFuture.runAsync(() -> jdbcTemplate.update(
-                    "update users set enabled = false where id = ?",
-                    user.getId()
-            )));
+            // Stands for a concurrent POST /users/{id}/disable. The profile's status commits before the worker writes
+            // the profile, so a full-row update by the worker would revert it; the account waits for the worker's
+            // row lock, then commits.
+            disable.set(CompletableFuture.runAsync(() -> {
+                jdbcTemplate.update("update user_profiles set status = 'DISABLED' where id = ?", user.getId());
+                jdbcTemplate.update("update users set enabled = false where id = ?", user.getId());
+            }));
 
             return invocation.callRealMethod();
         }).when(objectStorage).open(startsWith("avatar-upload/"));
@@ -141,11 +137,16 @@ class AvatarQueueDeadLetterTests extends AbstractAvatarApiTests {
                 Boolean.class,
                 user.getId()
         )).isFalse();
+        assertThat(jdbcTemplate.queryForObject(
+                "select status from user_profiles where id = ?",
+                String.class,
+                user.getId()
+        )).isEqualTo("DISABLED");
     }
 
     private UUID pendingAvatarMediaId(User user) {
         return jdbcTemplate.queryForObject(
-                "select pending_avatar_media_id from users where id = ?",
+                "select pending_avatar_media_id from user_profiles where id = ?",
                 UUID.class,
                 user.getId()
         );

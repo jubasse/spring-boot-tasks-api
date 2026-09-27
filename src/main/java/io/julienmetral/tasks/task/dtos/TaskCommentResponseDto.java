@@ -1,6 +1,6 @@
 package io.julienmetral.tasks.task.dtos;
 
-import io.julienmetral.tasks.identity.dtos.UserPreviewResponseDto;
+import io.julienmetral.tasks.identity.dtos.UserProfileResponseDto;
 import io.julienmetral.tasks.media.services.MediaUrls;
 import io.julienmetral.tasks.task.entities.TaskComment;
 
@@ -13,8 +13,8 @@ import java.util.UUID;
 public record TaskCommentResponseDto(
         UUID id,
         String body,
-        UserPreviewResponseDto author,
-        List<UserPreviewResponseDto> mentions,
+        UserProfileResponseDto author,
+        List<UserProfileResponseDto> mentions,
         List<TaskAttachmentResponseDto> attachments,
         Instant createdAt,
         Instant editedAt
@@ -24,11 +24,11 @@ public record TaskCommentResponseDto(
         this(
                 comment.getId(),
                 comment.getBody(),
-                UserPreviewResponseDto.of(comment.getAuthor(), mediaUrls),
+                UserProfileResponseDto.of(comment.getAuthor(), mediaUrls),
                 comment.getMentions()
                         .stream()
-                        .map(user -> UserPreviewResponseDto.of(user, mediaUrls))
-                        .sorted(Comparator.comparing(UserPreviewResponseDto::displayName))
+                        .map(user -> UserProfileResponseDto.of(user, mediaUrls))
+                        .sorted(Comparator.comparing(UserProfileResponseDto::displayName))
                         .toList(),
                 comment.getAttachments()
                         .stream()

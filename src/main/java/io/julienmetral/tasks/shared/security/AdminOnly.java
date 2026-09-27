@@ -10,6 +10,7 @@ import java.lang.annotation.*;
         ElementType.TYPE
 })
 @Retention(RetentionPolicy.RUNTIME)
+@AccessDescription("Requires the {adminRole} role.")
 @PreAuthorize("hasRole({adminRole})")
 public @interface AdminOnly {
     UserRole adminRole() default UserRole.ADMIN;

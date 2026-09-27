@@ -2,13 +2,14 @@ package io.julienmetral.tasks.identity.services;
 
 import io.julienmetral.tasks.identity.entities.PasswordResetToken;
 import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserSummary;
+import io.julienmetral.tasks.identity.entities.UserProfile;
+import io.julienmetral.tasks.identity.events.AccountStateChanged;
 import io.julienmetral.tasks.identity.exceptions.InvalidPasswordResetTokenException;
 import io.julienmetral.tasks.identity.mail.PasswordResetProperties;
 import io.julienmetral.tasks.identity.mail.PasswordResetRequested;
 import io.julienmetral.tasks.identity.repositories.PasswordResetTokenRepository;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
+import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.identity.security.OpaqueTokens;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,7 +26,7 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
-import static io.julienmetral.tasks.support.UserSummaries.reference;
+import static io.julienmetral.tasks.support.UserProfiles.reference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -58,7 +59,7 @@ class PasswordResetServiceTest {
     private UserRepository userRepository;
 
     @Mock
-    private UserSummaryRepository userSummaryRepository;
+    private UserProfileRepository userProfileRepository;
 
     @Mock
     private PasswordEncoder passwordEncoder;
@@ -76,7 +77,7 @@ class PasswordResetServiceTest {
         service = new PasswordResetService(
                 tokenRepository,
                 userRepository,
-                userSummaryRepository,
+                userProfileRepository,
                 passwordEncoder,
                 refreshTokenService,
                 new PasswordResetProperties(TTL, "https://app.example.com/reset-password"),
@@ -94,7 +95,7 @@ class PasswordResetServiceTest {
         return user;
     }
 
-    private PasswordResetToken stubStored(UserSummary owner, Instant expiresAt, Instant usedAt) {
+    private PasswordResetToken stubStored(UserProfile owner, Instant expiresAt, Instant usedAt) {
         PasswordResetToken token = new PasswordResetToken();
         token.setUser(owner);
         token.setTokenHash(OpaqueTokens.hash(RAW_TOKEN));
@@ -108,7 +109,7 @@ class PasswordResetServiceTest {
     }
 
     private void assertNoSideEffects() {
-        verifyNoInteractions(passwordEncoder, refreshTokenService);
+        verifyNoInteractions(passwordEncoder, refreshTokenService, eventPublisher);
         verify(tokenRepository, never()).deleteUnusedForUser(any());
     }
 
@@ -121,8 +122,8 @@ class PasswordResetServiceTest {
     @Test
     void requestForEnabledUserReplacesPendingTokensStoresHashAndPublishesEvent() {
         when(userRepository.findByEmailIgnoreCase("jane@example.com")).thenReturn(Optional.of(user()));
-        UserSummary reference = reference(USER_ID);
-        when(userSummaryRepository.getReferenceById(USER_ID)).thenReturn(reference);
+        UserProfile reference = reference(USER_ID);
+        when(userProfileRepository.getReferenceById(USER_ID)).thenReturn(reference);
         Instant before = Instant.now();
 
         service.request("  Jane@Example.COM ");
@@ -173,7 +174,7 @@ class PasswordResetServiceTest {
 
         service.request("jane@example.com");
 
-        verifyNoInteractions(tokenRepository, userSummaryRepository, eventPublisher);
+        verifyNoInteractions(tokenRepository, userProfileRepository, eventPublisher);
     }
 
     @Test
@@ -217,7 +218,7 @@ class PasswordResetServiceTest {
     @Test
     void confirmTokenOfSoftDeletedUserThrowsWithoutConsumingIt() {
         PasswordResetToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.confirm(RAW_TOKEN, NEW_PASSWORD))
                 .isInstanceOf(InvalidPasswordResetTokenException.class);
@@ -231,7 +232,7 @@ class PasswordResetServiceTest {
         User user = user();
         user.setEnabled(false);
         PasswordResetToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
 
         assertThatThrownBy(() -> service.confirm(RAW_TOKEN, NEW_PASSWORD))
                 .isInstanceOf(InvalidPasswordResetTokenException.class);
@@ -245,7 +246,7 @@ class PasswordResetServiceTest {
         // The token holds a lazy reference; the service works on the user loaded by id
         User loaded = user();
         PasswordResetToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(loaded));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(loaded));
         when(passwordEncoder.encode(NEW_PASSWORD)).thenReturn(ENCODED_PASSWORD);
         Instant before = Instant.now();
 
@@ -258,6 +259,7 @@ class PasswordResetServiceTest {
         InOrder order = inOrder(tokenRepository, refreshTokenService);
         order.verify(tokenRepository).deleteUnusedForUser(USER_ID);
         order.verify(refreshTokenService).revokeAllForUser(USER_ID);
+        verify(eventPublisher).publishEvent(new AccountStateChanged(USER_ID));
     }
 
     @Test
@@ -266,7 +268,7 @@ class PasswordResetServiceTest {
         User user = user();
         user.setEmailVerifiedAt(verifiedAt);
         PasswordResetToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
         when(passwordEncoder.encode(NEW_PASSWORD)).thenReturn(ENCODED_PASSWORD);
 
         service.confirm(RAW_TOKEN, NEW_PASSWORD);
@@ -276,5 +278,6 @@ class PasswordResetServiceTest {
         assertThat(user.getEmailVerifiedAt()).isEqualTo(verifiedAt);
         verify(tokenRepository).deleteUnusedForUser(USER_ID);
         verify(refreshTokenService).revokeAllForUser(USER_ID);
+        verifyNoInteractions(eventPublisher);
     }
 }

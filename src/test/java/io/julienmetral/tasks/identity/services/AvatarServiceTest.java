@@ -35,7 +35,7 @@ import java.io.UncheckedIOException;
 import java.util.Optional;
 import java.util.UUID;
 
-import static io.julienmetral.tasks.support.UserSummaries.reference;
+import static io.julienmetral.tasks.support.UserProfiles.reference;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -87,8 +87,8 @@ class AvatarServiceTest {
     private User existingUser(Media avatar, Media pendingAvatar) {
         User user = new User();
         user.setId(USER_ID);
-        user.setAvatar(avatar);
-        user.setPendingAvatar(pendingAvatar);
+        user.getProfile().setAvatar(avatar);
+        user.getProfile().setPendingAvatar(pendingAvatar);
         when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
         return user;
     }
@@ -126,8 +126,8 @@ class AvatarServiceTest {
             User updated = service.update(USER_ID, file);
 
             assertThat(updated).isSameAs(user);
-            assertThat(user.getPendingAvatar()).isSameAs(stored);
-            assertThat(user.getAvatar()).isSameAs(current);
+            assertThat(user.getProfile().getPendingAvatar()).isSameAs(stored);
+            assertThat(user.getProfile().getAvatar()).isSameAs(current);
 
             InOrder order = inOrder(mediaService, imageProcessor, outbox);
             order.verify(mediaService).store(file, MediaUsage.AVATAR_UPLOAD, USER_ID);
@@ -175,7 +175,7 @@ class AvatarServiceTest {
 
             service.update(USER_ID, file);
 
-            assertThat(user.getPendingAvatar()).isSameAs(stored);
+            assertThat(user.getProfile().getPendingAvatar()).isSameAs(stored);
             InOrder order = inOrder(mediaService);
             order.verify(mediaService).store(file, MediaUsage.AVATAR_UPLOAD, USER_ID);
             order.verify(mediaService).delete(pending);
@@ -193,7 +193,7 @@ class AvatarServiceTest {
 
             service.update(USER_ID, file);
 
-            assertThat(user.getAvatar()).isSameAs(current);
+            assertThat(user.getProfile().getAvatar()).isSameAs(current);
             verify(mediaService, never()).delete(current);
         }
 
@@ -210,7 +210,7 @@ class AvatarServiceTest {
 
             assertThatThrownBy(() -> service.update(USER_ID, file)).isSameAs(failure);
 
-            assertThat(user.getPendingAvatar()).isSameAs(pending);
+            assertThat(user.getProfile().getPendingAvatar()).isSameAs(pending);
             verify(mediaService, never()).delete(any());
             verifyNoInteractions(outbox);
         }
@@ -228,7 +228,7 @@ class AvatarServiceTest {
 
             verifyNoInteractions(imageProcessor, outbox);
             verify(mediaService, never()).delete(any());
-            assertThat(user.getPendingAvatar()).isSameAs(pending);
+            assertThat(user.getProfile().getPendingAvatar()).isSameAs(pending);
         }
 
         @Test
@@ -255,7 +255,7 @@ class AvatarServiceTest {
                     .hasCause(failure);
 
             verifyNoInteractions(imageProcessor, outbox);
-            assertThat(user.getPendingAvatar()).isNull();
+            assertThat(user.getProfile().getPendingAvatar()).isNull();
         }
     }
 
@@ -279,7 +279,7 @@ class AvatarServiceTest {
 
             service.process(USER_ID, UPLOAD_ID);
 
-            assertThat(user.getAvatar()).isSameAs(current);
+            assertThat(user.getProfile().getAvatar()).isSameAs(current);
             verifyNoInteractions(mediaService, imageProcessor);
         }
 
@@ -291,8 +291,8 @@ class AvatarServiceTest {
 
             service.process(USER_ID, UPLOAD_ID);
 
-            assertThat(user.getPendingAvatar()).isSameAs(newer);
-            assertThat(user.getAvatar()).isSameAs(current);
+            assertThat(user.getProfile().getPendingAvatar()).isSameAs(newer);
+            assertThat(user.getProfile().getAvatar()).isSameAs(current);
             verifyNoInteractions(mediaService, imageProcessor);
         }
 
@@ -307,8 +307,8 @@ class AvatarServiceTest {
 
             service.process(USER_ID, UPLOAD_ID);
 
-            assertThat(user.getAvatar()).isSameAs(stored);
-            assertThat(user.getPendingAvatar()).isNull();
+            assertThat(user.getProfile().getAvatar()).isSameAs(stored);
+            assertThat(user.getProfile().getPendingAvatar()).isNull();
 
             ArgumentCaptor<MediaSource> storedSource = ArgumentCaptor.forClass(MediaSource.class);
             verify(mediaService).store(storedSource.capture(), eq(MediaUsage.AVATAR), eq(USER_ID));
@@ -369,8 +369,8 @@ class AvatarServiceTest {
 
             service.process(USER_ID, UPLOAD_ID);
 
-            assertThat(user.getAvatar()).isSameAs(stored);
-            assertThat(user.getPendingAvatar()).isNull();
+            assertThat(user.getProfile().getAvatar()).isSameAs(stored);
+            assertThat(user.getProfile().getPendingAvatar()).isNull();
             InOrder order = inOrder(mediaService);
             order.verify(mediaService).store(any(MediaSource.class), eq(MediaUsage.AVATAR), eq(USER_ID));
             order.verify(mediaService).delete(previous);
@@ -387,8 +387,8 @@ class AvatarServiceTest {
 
             assertThatCode(() -> service.process(USER_ID, UPLOAD_ID)).doesNotThrowAnyException();
 
-            assertThat(user.getPendingAvatar()).isNull();
-            assertThat(user.getAvatar()).isSameAs(previous);
+            assertThat(user.getProfile().getPendingAvatar()).isNull();
+            assertThat(user.getProfile().getAvatar()).isSameAs(previous);
             verify(mediaService).delete(upload);
             verify(mediaService, never()).delete(previous);
             verify(mediaService, never()).store(any(MediaSource.class), any(), any());
@@ -408,7 +408,7 @@ class AvatarServiceTest {
 
             assertThatThrownBy(() -> service.process(USER_ID, UPLOAD_ID)).isSameAs(failure);
 
-            assertThat(user.getAvatar()).isSameAs(previous);
+            assertThat(user.getProfile().getAvatar()).isSameAs(previous);
             verifyNoInteractions(imageProcessor);
             verify(mediaService, never()).store(any(MediaSource.class), any(), any());
             verify(mediaService, never()).delete(previous);
@@ -426,7 +426,7 @@ class AvatarServiceTest {
 
             assertThatThrownBy(() -> service.process(USER_ID, UPLOAD_ID)).isSameAs(failure);
 
-            assertThat(user.getAvatar()).isSameAs(previous);
+            assertThat(user.getProfile().getAvatar()).isSameAs(previous);
             verify(mediaService, never()).delete(previous);
         }
     }
@@ -443,8 +443,8 @@ class AvatarServiceTest {
             User updated = service.remove(USER_ID);
 
             assertThat(updated).isSameAs(user);
-            assertThat(user.getAvatar()).isNull();
-            assertThat(user.getPendingAvatar()).isNull();
+            assertThat(user.getProfile().getAvatar()).isNull();
+            assertThat(user.getProfile().getPendingAvatar()).isNull();
             verify(mediaService).delete(previous);
             verify(mediaService).delete(pending);
         }
@@ -456,7 +456,7 @@ class AvatarServiceTest {
 
             service.remove(USER_ID);
 
-            assertThat(user.getPendingAvatar()).isNull();
+            assertThat(user.getProfile().getPendingAvatar()).isNull();
             verify(mediaService).delete(pending);
         }
 
@@ -466,8 +466,8 @@ class AvatarServiceTest {
 
             service.remove(USER_ID);
 
-            assertThat(user.getAvatar()).isNull();
-            assertThat(user.getPendingAvatar()).isNull();
+            assertThat(user.getProfile().getAvatar()).isNull();
+            assertThat(user.getProfile().getPendingAvatar()).isNull();
             verifyNoInteractions(mediaService);
         }
 

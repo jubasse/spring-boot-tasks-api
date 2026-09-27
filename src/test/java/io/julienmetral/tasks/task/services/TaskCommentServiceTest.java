@@ -1,10 +1,12 @@
 package io.julienmetral.tasks.task.services;
 
 import io.julienmetral.tasks.identity.entities.UserStatus;
-import io.julienmetral.tasks.identity.entities.UserSummary;
-import io.julienmetral.tasks.identity.repositories.UserSummaryRepository;
+import io.julienmetral.tasks.identity.entities.UserProfile;
+import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
+import io.julienmetral.tasks.media.model.Media;
+import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.task.entities.Task;
 import io.julienmetral.tasks.task.entities.TaskAttachment;
 import io.julienmetral.tasks.task.entities.TaskComment;
@@ -42,9 +44,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.IntStream;
 
-import static io.julienmetral.tasks.support.UserSummaries.active;
-import static io.julienmetral.tasks.support.UserSummaries.reference;
-import static io.julienmetral.tasks.support.UserSummaries.summary;
+import static io.julienmetral.tasks.support.UserProfiles.active;
+import static io.julienmetral.tasks.support.UserProfiles.reference;
+import static io.julienmetral.tasks.support.UserProfiles.profile;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -65,7 +67,6 @@ class TaskCommentServiceTest {
     private static final UUID ASSIGNEE_ID = UUID.fromString("00000000-0000-0000-0000-000000000002");
     private static final UUID BOB_ID = UUID.fromString("00000000-0000-0000-0000-000000000003");
     private static final UUID CAROL_ID = UUID.fromString("00000000-0000-0000-0000-000000000004");
-    private static final Instant VERIFIED_AT = Instant.parse("2026-01-01T00:00:00Z");
 
     @Mock
     private TaskRepository taskRepository;
@@ -80,7 +81,7 @@ class TaskCommentServiceTest {
     private TaskEventService taskEventService;
 
     @Mock
-    private UserSummaryRepository userSummaryRepository;
+    private UserProfileRepository userProfileRepository;
 
     @Mock
     private CurrentUser currentUser;
@@ -92,7 +93,7 @@ class TaskCommentServiceTest {
     private TaskCommentService service;
 
     private final Task task = new Task();
-    private final UserSummary authorReference = reference(AUTHOR_ID);
+    private final UserProfile authorReference = reference(AUTHOR_ID);
 
     @BeforeEach
     void setUp() {
@@ -116,13 +117,25 @@ class TaskCommentServiceTest {
                 .toList();
     }
 
-    private static UserSummary withStatus(UUID id, UserStatus status) {
-        return switch (status) {
-            case ACTIVE -> active(id, "User");
-            case UNVERIFIED -> summary(id, "User", true, null, null);
-            case DISABLED -> summary(id, "User", false, VERIFIED_AT, null);
-            case DELETED -> summary(id, "User", true, VERIFIED_AT, Instant.parse("2026-02-01T00:00:00Z"));
-        };
+    private TaskAttachment storedAttachment(MultipartFile file) {
+        Media media = new Media();
+        media.setId(UUID.randomUUID());
+        media.setUsage(MediaUsage.TASK_ATTACHMENT);
+        media.setOriginalFilename(file.getOriginalFilename());
+        media.setContentType("text/plain");
+        media.setSizeBytes(1);
+        media.setUploadedBy(authorReference);
+
+        TaskAttachment attachment = new TaskAttachment();
+        attachment.setId(UUID.randomUUID());
+        attachment.setTask(task);
+        attachment.setMedia(media);
+        attachment.setCreatedAt(Instant.now());
+        return attachment;
+    }
+
+    private static UserProfile withStatus(UUID id, UserStatus status) {
+        return profile(id, "User", status);
     }
 
     private void stubTask() {
@@ -136,7 +149,7 @@ class TaskCommentServiceTest {
     private void stubTaskAndAuthor() {
         stubTask();
         stubAuthor();
-        when(userSummaryRepository.getReferenceById(AUTHOR_ID)).thenReturn(authorReference);
+        when(userProfileRepository.getReferenceById(AUTHOR_ID)).thenReturn(authorReference);
     }
 
     private void stubAddUpToSave() {
@@ -148,8 +161,8 @@ class TaskCommentServiceTest {
         });
     }
 
-    private void stubUsers(Set<UUID> ids, UserSummary... users) {
-        when(userSummaryRepository.findAllById(ids)).thenReturn(List.of(users));
+    private void stubUsers(Set<UUID> ids, UserProfile... users) {
+        when(userProfileRepository.findAllById(ids)).thenReturn(List.of(users));
     }
 
     private List<Object> publishedEvents(int expected) {
@@ -158,7 +171,7 @@ class TaskCommentServiceTest {
         return captor.getAllValues();
     }
 
-    private TaskComment existingComment(String body, UserSummary... mentions) {
+    private TaskComment existingComment(String body, UserProfile... mentions) {
         TaskComment comment = new TaskComment();
         comment.setId(COMMENT_ID);
         comment.setTask(task);
@@ -183,17 +196,21 @@ class TaskCommentServiceTest {
                     .isInstanceOf(TooManyCommentAttachmentsException.class)
                     .hasMessage("A comment can have at most 5 files");
             verifyNoInteractions(taskRepository, commentRepository, attachmentService, taskEventService,
-                    userSummaryRepository, currentUser, eventPublisher);
+                    userProfileRepository, currentUser, eventPublisher);
         }
 
         @Test
         void exactlyFiveFilesAreAccepted() {
             stubAddUpToSave();
+            when(attachmentService.add(any(Task.class), any(TaskComment.class), any(MultipartFile.class)))
+                    .thenAnswer(invocation -> storedAttachment(invocation.getArgument(2)));
 
             TaskComment result = service.add(TASK_ID, "Five files", files(TaskCommentService.MAX_FILES));
 
             verify(attachmentService, times(5)).add(any(Task.class), any(TaskComment.class), any(MultipartFile.class));
-            assertThat(result.getAttachments()).hasSize(5);
+            assertThat(result.getAttachments())
+                    .extracting(attachment -> attachment.getMedia().getOriginalFilename())
+                    .containsExactly("file-0.txt", "file-1.txt", "file-2.txt", "file-3.txt", "file-4.txt");
         }
 
         @Test
@@ -224,7 +241,7 @@ class TaskCommentServiceTest {
             assertThat(saved.getAttachments()).isEmpty();
             assertThat(saved.getCreatedAt()).isBetween(before, Instant.now());
             assertThat(saved.getEditedAt()).isNull();
-            verify(userSummaryRepository, never()).findAllById(any());
+            verify(userProfileRepository, never()).findAllById(any());
             verifyNoInteractions(attachmentService);
         }
 
@@ -262,8 +279,8 @@ class TaskCommentServiceTest {
 
         @Test
         void storesTheMentionedUsers() {
-            UserSummary bob = active(BOB_ID, "Bob");
-            UserSummary carol = active(CAROL_ID, "Carol");
+            UserProfile bob = active(BOB_ID, "Bob");
+            UserProfile carol = active(CAROL_ID, "Carol");
             stubAddUpToSave();
             stubUsers(Set.of(BOB_ID, CAROL_ID), bob, carol);
 
@@ -343,7 +360,7 @@ class TaskCommentServiceTest {
 
         @Test
         void authorsCanMentionThemselves() {
-            UserSummary self = active(AUTHOR_ID, "Ada");
+            UserProfile self = active(AUTHOR_ID, "Ada");
             stubAddUpToSave();
             stubUsers(Set.of(AUTHOR_ID), self);
 
@@ -356,8 +373,8 @@ class TaskCommentServiceTest {
         void storesEachFileAsAnAttachmentLinkedToTheSavedComment() {
             MultipartFile first = file("first.txt");
             MultipartFile second = file("second.txt");
-            TaskAttachment firstAttachment = new TaskAttachment();
-            TaskAttachment secondAttachment = new TaskAttachment();
+            TaskAttachment firstAttachment = storedAttachment(first);
+            TaskAttachment secondAttachment = storedAttachment(second);
             stubAddUpToSave();
             when(attachmentService.add(any(Task.class), any(TaskComment.class), any(MultipartFile.class)))
                     .thenAnswer(invocation -> invocation.getArgument(2) == first ? firstAttachment : secondAttachment);
@@ -410,7 +427,7 @@ class TaskCommentServiceTest {
 
             assertThat(result).isSameAs(comment);
             assertThat(comment.getEditedAt()).isNull();
-            verifyNoInteractions(taskEventService, eventPublisher, userSummaryRepository);
+            verifyNoInteractions(taskEventService, eventPublisher, userProfileRepository);
         }
 
         @Test
@@ -444,12 +461,12 @@ class TaskCommentServiceTest {
 
             service.edit(TASK_ID, COMMENT_ID, "After");
 
-            verifyNoInteractions(eventPublisher, userSummaryRepository);
+            verifyNoInteractions(eventPublisher, userProfileRepository);
         }
 
         @Test
         void keepsMentionsOfUsersWhoBecameInactive() {
-            UserSummary disabledBob = withStatus(BOB_ID, UserStatus.DISABLED);
+            UserProfile disabledBob = withStatus(BOB_ID, UserStatus.DISABLED);
             TaskComment comment = existingComment("Hi " + mention(BOB_ID), disabledBob);
             stubComment(comment);
 
@@ -457,32 +474,32 @@ class TaskCommentServiceTest {
 
             assertThat(comment.getMentions()).containsExactly(disabledBob);
             assertThat(comment.getBody()).isEqualTo("Hello again " + mention(BOB_ID));
-            verifyNoInteractions(userSummaryRepository, eventPublisher);
+            verifyNoInteractions(userProfileRepository, eventPublisher);
         }
 
         @Test
         void keepsMentionsOfUsersWhoWereDeleted() {
-            UserSummary deletedBob = withStatus(BOB_ID, UserStatus.DELETED);
+            UserProfile deletedBob = withStatus(BOB_ID, UserStatus.DELETED);
             TaskComment comment = existingComment("Hi " + mention(BOB_ID), deletedBob);
             stubComment(comment);
 
             service.edit(TASK_ID, COMMENT_ID, mention(BOB_ID) + " fixed a typo");
 
             assertThat(comment.getMentions()).containsExactly(deletedBob);
-            verifyNoInteractions(userSummaryRepository, eventPublisher);
+            verifyNoInteractions(userProfileRepository, eventPublisher);
         }
 
         @Test
         void dropsMentionsRemovedFromTheBody() {
-            UserSummary bob = active(BOB_ID, "Bob");
-            UserSummary carol = active(CAROL_ID, "Carol");
+            UserProfile bob = active(BOB_ID, "Bob");
+            UserProfile carol = active(CAROL_ID, "Carol");
             TaskComment comment = existingComment(mention(BOB_ID) + " " + mention(CAROL_ID), bob, carol);
             stubComment(comment);
 
             service.edit(TASK_ID, COMMENT_ID, "Only " + mention(BOB_ID));
 
             assertThat(comment.getMentions()).containsExactly(bob);
-            verifyNoInteractions(userSummaryRepository, eventPublisher);
+            verifyNoInteractions(userProfileRepository, eventPublisher);
         }
 
         @Test
@@ -497,8 +514,8 @@ class TaskCommentServiceTest {
 
         @Test
         void validatesAndPublishesOnlyTheNewMentions() {
-            UserSummary bob = active(BOB_ID, "Bob");
-            UserSummary carol = active(CAROL_ID, "Carol");
+            UserProfile bob = active(BOB_ID, "Bob");
+            UserProfile carol = active(CAROL_ID, "Carol");
             TaskComment comment = existingComment("Hi " + mention(BOB_ID), bob);
             String newBody = "Hi " + mention(BOB_ID) + " and " + mention(CAROL_ID);
             stubComment(comment);
@@ -507,7 +524,7 @@ class TaskCommentServiceTest {
 
             service.edit(TASK_ID, COMMENT_ID, newBody);
 
-            verify(userSummaryRepository).findAllById(Set.of(CAROL_ID));
+            verify(userProfileRepository).findAllById(Set.of(CAROL_ID));
             assertThat(comment.getMentions()).containsExactlyInAnyOrder(bob, carol);
             assertThat(publishedEvents(1)).containsExactly(new UsersMentionedInComment(
                     TASK_ID, "TASK-1", "Write tests", COMMENT_ID, newBody, AUTHOR_ID, Set.of(CAROL_ID)
@@ -541,7 +558,7 @@ class TaskCommentServiceTest {
         @ParameterizedTest
         @EnumSource(value = UserStatus.class, names = {"UNVERIFIED", "DISABLED", "DELETED"})
         void newMentionOfANonActiveUserIsRejectedAndLeavesTheCommentUnchanged(UserStatus status) {
-            UserSummary bob = active(BOB_ID, "Bob");
+            UserProfile bob = active(BOB_ID, "Bob");
             TaskComment comment = existingComment("Hi " + mention(BOB_ID), bob);
             stubComment(comment);
             stubUsers(Set.of(CAROL_ID), withStatus(CAROL_ID, status));

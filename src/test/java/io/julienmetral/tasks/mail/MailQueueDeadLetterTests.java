@@ -1,6 +1,6 @@
 package io.julienmetral.tasks.mail;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
+import io.julienmetral.tasks.support.DeadLetterIntegrationTest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.AmqpAdmin;
@@ -8,14 +8,11 @@ import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.QueueInformation;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.mail.MailParseException;
 import org.springframework.mail.MailSendException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Duration;
@@ -31,24 +28,16 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /**
- * Retries and dead-lettering of the mail queue, against a real broker with SMTP replaced by a mock. The retry
- * backoff is shortened so that a message reaches the dead-letter queue in well under a second, and the mail health
- * indicator is off because it needs a real {@code JavaMailSenderImpl}.
+ * Retries and dead-lettering of the mail queue, against a real broker with SMTP replaced by a mock.
  */
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest(properties = {
-        "spring.rabbitmq.listener.simple.retry.max-retries=" + MailQueueDeadLetterTests.MAX_RETRIES,
-        "spring.rabbitmq.listener.simple.retry.initial-interval=50ms",
-        "spring.rabbitmq.listener.simple.retry.max-interval=100ms",
-        "management.health.mail.enabled=false"
-})
+@DeadLetterIntegrationTest
 class MailQueueDeadLetterTests {
 
-    static final int MAX_RETRIES = 2;
+    private static final int MAX_RETRIES = DeadLetterIntegrationTest.MAX_RETRIES;
 
     private static final long DEAD_LETTER_TIMEOUT_MILLIS = Duration.ofSeconds(10).toMillis();
 
-    @MockitoBean
+    @Autowired
     private JavaMailSender mailSender;
 
     @Autowired

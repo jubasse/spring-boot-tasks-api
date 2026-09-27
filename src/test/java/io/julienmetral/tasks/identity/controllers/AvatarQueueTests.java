@@ -21,10 +21,10 @@ import java.time.Duration;
 import java.util.Set;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.typedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -165,7 +165,7 @@ class AvatarQueueTests extends AbstractAvatarApiTests {
         JsonNode body = userJson(user);
 
         assertThat(body.get("avatarPending").asBoolean()).isFalse();
-        assertThat(body.get("avatarUrl").isNull()).isTrue();
+        assertThat(body.get("avatarUrl").asString()).isEqualTo(identiconUrl(user));
     }
 
     @Test
@@ -214,8 +214,7 @@ class AvatarQueueTests extends AbstractAvatarApiTests {
         Set<String> keysBefore = avatarUploadObjectKeys();
 
         uploadAvatar(user, asUser(user), "photo.png", bomb)
-                .andExpect(status().isUnprocessableContent())
-                .andExpect(jsonPath("$.title").value("Invalid image"));
+                .andExpect(typedProblem(422, "invalid-image", "Invalid image"));
 
         assertThat(pendingAvatarStorageKey(user)).isNull();
         assertThat(avatarUploadCountUploadedBy(user)).isZero();
@@ -253,7 +252,7 @@ class AvatarQueueTests extends AbstractAvatarApiTests {
 
         uploadAvatar(user, asUser(user), "me.png", pngHeaderOnly(100, 100))
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.avatarUrl").value(nullValue()));
+                .andExpect(jsonPath("$.avatarUrl").value(identiconUrl(user)));
 
         awaitProcessed(user);
 
