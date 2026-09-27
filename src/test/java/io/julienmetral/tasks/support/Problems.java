@@ -73,7 +73,7 @@ public final class Problems {
         );
     }
 
-    /** No Java class, package or parser wording anywhere in the body, as {@code docs/problems.md} promises. */
+    /** No Java class, package or parser wording anywhere in the body: the client gets only its own terms. */
     public static ResultMatcher withoutJavaTypeNames() {
         return content().string(allOf(
                 not(containsString("java")),
