@@ -194,7 +194,9 @@ In development, SMTP goes to the Mailpit service of `compose.yaml` (web UI on ht
 
 Every HTTP client Spring Boot builds (the `RestClient.Builder` bean, HTTP service clients) goes through `config.OutboundHttpConfiguration`. The AWS SDK builds its own client and is not affected.
 - **Client:** Apache HttpClient 5, set explicitly (`spring.http.clients.imperative.factory: http-components`); it was otherwise picked only because the AWS SDK brings it. Warning: its automatic retries stay off. Its default strategy sent a POST again on 429 or 503, after sleeping for whatever `Retry-After` the server sent.
-- **Addresses:** a Boot `InetAddressFilter` lets calls reach public addresses only, plus the CIDR ranges of `outbound-http.allowed-addresses` (`OUTBOUND_HTTP_ALLOWED_ADDRESSES`, empty in production). Apache connects to exactly the addresses the filter checked, so DNS rebinding cannot get around it. A refused host raises `FilteredHostException`.
+- **Addresses:** a Boot `InetAddressFilter` lets calls reach public addresses only, plus the CIDR ranges of `outbound-http.allowed-addresses` (`OUTBOUND_HTTP_ALLOWED_ADDRESSES`, empty in production). Apache connects to exactly the addresses the filter checked, so DNS rebinding cannot get around it. A refused host raises `FilteredHostException`, unwrapped by RestClient. Three IPv6 ranges that embed an IPv4 address are refused on top, because `externalAddresses()` lets them through.
+- Warning: never set the `http.proxyHost` or `https.proxyHost` system properties. Boot builds the Apache client with `useSystemProperties()`, and behind a proxy the filter checks the proxy's address instead of the target's.
+- **Timeouts:** 5 s to connect and 15 s to read by default (`spring.http.clients.*`); Apache's own defaults wait minutes for a connection.
 - **Tests:** a local test server needs `127.0.0.1/32` in the allowed ranges. Use MockWebServer (`mockwebserver3`), which runs the real client, filter and timeouts; `MockRestServiceServer` replaces the client and tests none of them.
 
 ### Outbox
