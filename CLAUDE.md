@@ -217,6 +217,7 @@ Every error is an RFC 9457 problem (`application/problem+json`), documented for 
 - **Invalid input** (Bean Validation, a value of the wrong type in the body or a parameter, a missing parameter or part) is a `validation-error` whose `errors` list `{detail, pointer}` for the JSON body and `{detail, parameter}` otherwise (`InvalidValue`). Parser and Java type names never reach the client.
 - The handler extends `ResponseEntityExceptionHandler` for the Spring MVC exceptions; their details are reworded in `messages.properties` (`problemDetail.<exception class>`). Warning: an `@ExceptionHandler` for an exception that `ResponseEntityExceptionHandler` already handles (such as `MaxUploadSizeExceededException`) makes the mapping ambiguous and fails startup: override its method instead.
 - Bean Validation messages follow the request's `Accept-Language`. Tests assert on `pointer` and `parameter`, or pin the language.
+- An unexpected exception is logged and answered as a bare 500 problem (`handleUnexpected`), whose detail never carries its message. Warning: method security throws `AccessDeniedException` from inside the controller call, so that handler rethrows it; catching it would turn every 403 into a 500.
 - The 401 and 403 of the security filters come from Spring Security, without a problem body.
 
 ## Comments and Javadoc: the why and the failure, never the what

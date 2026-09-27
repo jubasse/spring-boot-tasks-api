@@ -39,7 +39,7 @@ A problem can carry more members than these; ignore the ones you do not use.
 
 Each item has a `detail` and one of:
 - **`pointer`**: a [JSON Pointer](https://www.rfc-editor.org/rfc/rfc6901) to the value in the JSON body, such as `#/email` or `#/items/0/name`. `#` alone means the body as a whole.
-- **`parameter`**: the name of a query, path, form or multipart parameter, such as `status` in `GET /api/v1/tasks?status=OPEN`, `id` in a path, or `files` on a comment with too many files.
+- **`parameter`**: the name of a query, path, form or multipart parameter, such as `status` in `GET /api/v1/tasks?status=OPEN`, `sort` naming a property that cannot be sorted on, `id` in a path, or `files` on a comment with too many files.
 
 Fix every listed value and send the request again.
 
@@ -103,12 +103,14 @@ These errors have no `type` member (RFC 9457 reads that as `about:blank`), and t
 
 | Status | When | What to do |
 |---|---|---|
-| 400 Bad Request | The body is not valid JSON, or an uploaded file is empty | Fix the request |
+| 400 Bad Request | The body is not valid JSON or not the JSON object the endpoint expects, or an uploaded file is empty | Fix the request |
 | 401 Unauthorized | Wrong email or password, or an invalid refresh token. Without a valid access token, the response has no body and a `WWW-Authenticate` header | Sign in again |
 | 403 Forbidden | The account may not do this. The response has no body | Do not retry |
 | 404 Not Found | The task, comment, attachment or user does not exist, or no endpoint matches the path | Check the id or the path |
+| 405 Method Not Allowed | The endpoint does not accept this HTTP method | Check the method |
 | 409 Conflict | The request conflicts with data that changed at the same moment | Load the data again and retry |
 | 413 Content Too Large | A file is larger than its limit | Upload a smaller file |
 | 415 Unsupported Media Type | The file type is not accepted, whatever its name or declared type | Upload an accepted type |
 | 429 Too Many Requests | Too many attempts from your address or for that email | Wait for the number of seconds in the `Retry-After` header |
+| 500 Internal Server Error | An unexpected failure on the server; the detail says nothing more | Retry later, and report it if it persists |
 | 503 Service Unavailable | The antivirus or the file storage is unavailable | Retry later |
