@@ -17,8 +17,9 @@ public class UserStatusCacheEviction {
     private final CacheManager cacheManager;
 
     // After the commit: evicted before it, the entry could be reloaded with the old status by a concurrent request.
-    // Without fallbackExecution, a change published outside a transaction would never evict. Spring only logs an
-    // exception thrown here, so the TTL stays the bound.
+    // A load already running when this evicts is covered by the synchronized load of UserStatusLookup. Without
+    // fallbackExecution, a change published outside a transaction would never evict. Spring only logs an exception
+    // thrown here, so the TTL stays the bound.
     @Order(Ordered.HIGHEST_PRECEDENCE)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void evict(AccountStateChanged event) {
