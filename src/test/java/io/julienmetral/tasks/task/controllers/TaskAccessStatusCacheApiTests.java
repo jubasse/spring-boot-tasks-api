@@ -104,12 +104,12 @@ class TaskAccessStatusCacheApiTests extends AbstractUserStateTaskApiTests {
     }
 
     @Test
-    void refusedStatusIsNotCached() throws Exception {
+    void refusedStatusIsCachedUntilTheAccountChanges() throws Exception {
         User user = createUnverifiedUser(UserRole.USER);
 
         listTasks(asUser(user)).andExpect(status().isForbidden());
 
-        assertThat(cachedStatusOf(user.getId())).isNull();
+        assertThat(cachedStatusOf(user.getId())).isEqualTo(UserStatus.UNVERIFIED);
     }
 
     @Test

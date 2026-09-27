@@ -4,7 +4,6 @@ import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.identity.events.AccountStateChanged;
 import io.julienmetral.tasks.identity.repositories.AccountState;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.Cache;
@@ -76,42 +75,34 @@ class UserStatusLookupTest {
     }
 
     @Test
-    void unverifiedStatusIsNotCached() {
+    void refusedStatusIsCachedToo() {
         stubState(true, null);
 
         assertThat(lookup.statusOf(userId)).isEqualTo(UserStatus.UNVERIFIED);
         assertThat(lookup.statusOf(userId)).isEqualTo(UserStatus.UNVERIFIED);
 
-        verify(userRepository, times(2)).findAccountStateById(userId);
-        assertThat(cache().get(userId)).isNull();
+        verify(userRepository, times(1)).findAccountStateById(userId);
+        assertThat(cache().get(userId, UserStatus.class)).isEqualTo(UserStatus.UNVERIFIED);
     }
 
     @Test
-    void disabledStatusIsNotCached() {
-        stubState(false, VERIFIED_AT);
-
-        assertThat(lookup.statusOf(userId)).isEqualTo(UserStatus.DISABLED);
-
-        assertThat(cache().get(userId)).isNull();
-    }
-
-    @Test
-    void accountThatBecomesActiveIsSeenOnTheNextLookup() {
+    void accountThatBecomesActiveIsSeenOnceItsChangeEvictsTheStatus() {
         stubState(true, null);
         assertThat(lookup.statusOf(userId)).isEqualTo(UserStatus.UNVERIFIED);
 
         stubState(true, VERIFIED_AT);
+        eviction.evict(new AccountStateChanged(userId));
 
         assertThat(lookup.statusOf(userId)).isEqualTo(UserStatus.ACTIVE);
     }
 
     @Test
-    void accountThatIsNotFoundIsDeletedAndNotCached() {
+    void accountThatIsNotFoundIsDeleted() {
         when(userRepository.findAccountStateById(userId)).thenReturn(Optional.empty());
 
         assertThat(lookup.statusOf(userId)).isEqualTo(UserStatus.DELETED);
 
-        assertThat(cache().get(userId)).isNull();
+        assertThat(cache().get(userId, UserStatus.class)).isEqualTo(UserStatus.DELETED);
     }
 
     @Test
@@ -151,24 +142,26 @@ class UserStatusLookupTest {
     }
 
     @Test
-    @Disabled("bug: @Cacheable stores what a lookup read after an eviction that ran in between, so an account "
-            + "disabled while one of its requests was being checked keeps task access until the TTL")
     void lookupInFlightDuringAnEvictionDoesNotCacheTheStatusItReadBefore() throws Exception {
         CountDownLatch read = new CountDownLatch(1);
-        CountDownLatch evicted = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
         when(userRepository.findAccountStateById(userId)).thenAnswer(invocation -> {
             read.countDown();
-            evicted.await(5, TimeUnit.SECONDS);
+            release.await(5, TimeUnit.SECONDS);
             return Optional.of(new AccountState(true, VERIFIED_AT));
         });
 
-        // A task request reads ACTIVE, then the account is disabled and its status evicted once committed, all
-        // before the request stores what it read
+        // A task request reads ACTIVE, then the account is disabled and its status evicted once committed, before the
+        // request stores what it read. The eviction runs on its own thread: a synchronized load makes it wait.
         CompletableFuture<UserStatus> request = CompletableFuture.supplyAsync(() -> lookup.statusOf(userId));
         assertThat(read.await(5, TimeUnit.SECONDS)).isTrue();
-        eviction.evict(new AccountStateChanged(userId));
-        evicted.countDown();
+        CompletableFuture<Void> evicting = CompletableFuture.runAsync(
+                () -> eviction.evict(new AccountStateChanged(userId)));
+        // Leaves the eviction time to either finish (unsynchronized load) or block on the loading key
+        Thread.sleep(200);
+        release.countDown();
         request.get(5, TimeUnit.SECONDS);
+        evicting.get(5, TimeUnit.SECONDS);
 
         assertThat(cache().get(userId)).isNull();
     }
