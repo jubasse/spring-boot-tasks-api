@@ -138,7 +138,7 @@ The database migrations are Liquibase changesets in `src/main/resources/db/chang
 
 ## Configuration
 
-The API reads its configuration from `src/main/resources/application.yaml`, which imports `.env`. The variables you are most likely to change:
+The API reads its configuration from `src/main/resources/application.yaml`, which imports `.env`. The defaults below suit local development; a deployed API runs the `prod` profile instead (see [Deploy the API](#deploy-the-api)). The variables you are most likely to change:
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -153,14 +153,52 @@ The API reads its configuration from `src/main/resources/application.yaml`, whic
 | `MEDIA_CLEANUP_RETENTION` | `30d` | How long the files of deleted tasks and accounts are kept |
 | `SPRING_RABBITMQ_HOST`, `SPRING_RABBITMQ_USERNAME`, `SPRING_RABBITMQ_PASSWORD` | provided by Docker Compose | RabbitMQ connection outside local development |
 | `MANAGEMENT_PORT` | `8081` | Port of the health and metrics endpoints |
-| `API_DOCS_ENABLED`, `SWAGGER_UI_ENABLED` | `true` | `false` stops serving the OpenAPI document and Swagger UI, for example in production |
+| `API_DOCS_ENABLED`, `SWAGGER_UI_ENABLED` | `true`, and `false` under the `prod` profile | `false` stops serving the OpenAPI document and Swagger UI |
 | `IDENTITY_STATUS_CACHE_TTL` | `30s` | How long an account's status is reused before it is read again, from 1 second to 1 minute. With several instances, it is also how long an account disabled on one instance can keep working through the others |
 
 `.env.example` lists the other options, and `application.yaml` holds the fixed settings, such as the upload size limits and the schedules of the background jobs.
 
+## Deploy the API
+
+Every deployed environment, staging and production alike, runs the `prod` profile: set `SPRING_PROFILES_ACTIVE=prod` in its environment. Environments differ only by their variables.
+
+Under the `prod` profile, the API:
+- refuses to start while a required variable is missing or empty, and names every missing one in a single error;
+- writes its logs to standard output as one JSON object per line, in Elastic Common Schema (ECS) format, with `DEPLOYMENT_ENVIRONMENT` (default `production`) as `service.environment`;
+- serves neither Swagger UI nor the OpenAPI document; `API_DOCS_ENABLED=true` and `SWAGGER_UI_ENABLED=true` turn them back on, on a staging environment for example;
+- stores files in Amazon S3 and expects the bucket to exist;
+- sends email through SMTP on port 587, with authentication and STARTTLS required;
+- gives requests in progress 20 seconds to finish when it stops.
+
+Required variables:
+
+| Variable | Meaning | Example |
+|---|---|---|
+| `JWT_SECRET` | Base64 key of at least 32 bytes that signs the access tokens: `openssl rand -base64 32` | |
+| `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` | PostgreSQL 18 database | `jdbc:postgresql://db.internal:5432/tasks` |
+| `SPRING_RABBITMQ_HOST` | RabbitMQ host. Set `SPRING_RABBITMQ_USERNAME` and `SPRING_RABBITMQ_PASSWORD` too: the default account, `guest`, only connects from the broker's own machine | `rabbitmq.internal` |
+| `MAIL_HOST` | SMTP server. `SPRING_MAIL_USERNAME` and `SPRING_MAIL_PASSWORD` hold its credentials | `smtp.example.com` |
+| `MAIL_FROM` | Sender address of every email | `no-reply@example.com` |
+| `EMAIL_VERIFICATION_URL`, `PASSWORD_RESET_URL` | Front-end pages that the emailed links open | `https://app.example.com/verify-email` |
+| `S3_BUCKET` | Bucket of the uploaded files. `AWS_REGION` (default `eu-west-3`) and the standard AWS credentials, variables or IAM role, give access to it | `tasks-media` |
+| `CLAMAV_HOST` | Host of the ClamAV daemon, on `CLAMAV_PORT` (default `3310`) | `clamav.internal` |
+
+Other variables, when the defaults do not fit:
+- `MAIL_PORT`, `MAIL_SMTP_AUTH`, `MAIL_STARTTLS`: `587`, `true` and `true` by default; set the last two to `false` for a relay that needs neither.
+- `STORAGE_DRIVER=rustfs`, with `S3_ENDPOINT`, `S3_ACCESS_KEY` and `S3_SECRET_KEY`, for an S3-compatible server other than Amazon S3.
+- The variables of [Configuration](#configuration) keep their meaning, `FORWARD_HEADERS_STRATEGY` behind a reverse proxy in particular.
+
+> Warning: set `SPRING_PROFILES_ACTIVE` only in the environment of a deployment. Exported in your shell or your IDE, it also applies to `./mvnw test` and `./mvnw spring-boot:run`, which then stop and ask for the production variables.
+
 ## Monitor the API
 
-Health checks and metrics are served on a separate port, 8081 by default, without authentication.
+Two probes are served on the API port, 8080, without authentication or details, for the orchestrator or the load balancer:
+- `/livez` fails when the process should be restarted;
+- `/readyz` fails when the API should not receive traffic.
+
+Point your probes at these rather than at the port 8081 ones: they also fail when the API port stops answering.
+
+Health details and metrics are served on a separate port, 8081 by default, without authentication.
 
 > Warning: make port 8081 reachable only from your monitoring systems, never from the internet.
 
@@ -263,6 +301,8 @@ The label matches only this project's test containers.
 ## Troubleshooting
 
 **The API stops at startup with an error about the JWT secret.** `JWT_SECRET` is missing from `.env` or too short. Generate one with `openssl rand -base64 32`, and start the API from the project root so that `.env` is found.
+
+**The API stops at startup with "Required settings without a value".** It runs the `prod` profile and the settings named in the error have no value. Set their variables (see [Deploy the API](#deploy-the-api)). If this happens on your machine, `SPRING_PROFILES_ACTIVE=prod` is exported in your shell or IDE: remove it.
 
 **The API cannot reach RabbitMQ, ClamAV or the object storage after you pull new changes.** When some services of `compose.yaml` already run, the API does not start the ones added since. Run `docker compose up -d` once.
 

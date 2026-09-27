@@ -200,10 +200,16 @@ Every message for RabbitMQ goes through `messaging.services.Outbox.enqueue`, nev
 
 ### Monitoring
 
-Actuator runs on its own port, `management.server.port` (`MANAGEMENT_PORT`, 8081), with `health`, `info`, `metrics` and `prometheus` exposed and no authentication. Warning: that port must stay reachable only from the monitoring network. On the API port, `/actuator/**` does not exist; `SecurityConfiguration` permits every request that arrived on the management port (`local.management.port`), error page included: matching the endpoints only once made every error there answer 401.
+Actuator runs on its own port, `management.server.port` (`MANAGEMENT_PORT`, 8081), with `health`, `info`, `metrics` and `prometheus` exposed and no authentication. Warning: that port must stay reachable only from the monitoring network. On the API port, `/actuator/**` does not exist, but `/livez` and `/readyz` serve the liveness and readiness groups without details (`add-additional-paths`, permitted in `SecurityConfiguration`): a probe on the management port alone could pass while the API port is down. `SecurityConfiguration` also permits every request that arrived on the management port (`local.management.port`), error page included: matching the endpoints only once made every error there answer 401.
 - **Health:** Spring Boot's indicators (`db`, `rabbit`, `mail`, `diskSpace`) plus `storage` (`StorageHealthIndicator`, a `headBucket`) and `antivirus` (`AntivirusHealthIndicator`, clamd `PING` with a 5-second cap; up with `scanning: disabled` when the antivirus is off). Readiness (`/actuator/health/readiness`) includes only `db`: RabbitMQ down only delays messages (the outbox keeps them), and storage or antivirus down only blocks files, so they must not take the whole API out of the load balancer.
 - **Metrics:** `outbox.messages.pending` and `outbox.messages.oldest.pending.age` (`OutboxMetrics`), `outbox.messages.published` and `outbox.publish.failures` per queue (`OutboxRelay`), `rabbitmq.dead.letter.messages` per dead-letter queue (`DeadLetterQueueMetrics`, NaN while the broker is unreachable). Spring records every `@Scheduled` run as `tasks.scheduled.execution`.
 - **Info:** `spring-boot-maven-plugin` writes `build-info`, so `/actuator/info` shows the version.
+
+### Deployment profile
+
+The default configuration serves development and tests. `application-prod.yaml` is the only other profile, used by every deployed environment, staging included; environments differ by their variables alone (README, Deploy the API). Do not add a profile per environment.
+- **A setting with no safe production default** gets an empty default there (`${MAIL_HOST:}`) and an entry in `deployment.required-properties`. `RequiredPropertiesCheck` then stops the startup before any bean is created and names every missing setting. A localhost default would let a deployment start against nothing.
+- Warning: never set `spring.profiles.active` in a file of the jar, and never export `SPRING_PROFILES_ACTIVE` in a shell or an IDE: the tests would load the `prod` profile over `src/test/resources/config/application.yaml` and stop on the missing settings.
 
 ### Method-security annotations
 
@@ -226,7 +232,7 @@ Every task mutation in `TaskService` must call the matching `TaskEventService` m
 
 ### API documentation
 
-springdoc serves the OpenAPI 3.1 document at `/v3/api-docs` and Swagger UI at `/swagger-ui.html` (`API_DOCS_ENABLED`, `SWAGGER_UI_ENABLED`). `docs/openapi.json` is a committed copy: `OpenApiSpecTests` fails when it differs from what the application serves, and `./mvnw test -Dtest=OpenApiSpecTests -Dopenapi.update=true` rewrites it. In CI, Spectral lints it and oasdiff fails a pull request that breaks it.
+springdoc serves the OpenAPI 3.1 document at `/v3/api-docs` and Swagger UI at `/swagger-ui.html` (`API_DOCS_ENABLED`, `SWAGGER_UI_ENABLED`, both off under the `prod` profile). `docs/openapi.json` is a committed copy: `OpenApiSpecTests` fails when it differs from what the application serves, and `./mvnw test -Dtest=OpenApiSpecTests -Dopenapi.update=true` rewrites it. In CI, Spectral lints it and oasdiff fails a pull request that breaks it.
 - **A new endpoint** needs: the controller's `@Tag`; an `@Operation(summary)`; a method name unique across controllers, since it is the operationId (`createTask`, `listTasks`); `@ResponseStatus` for 201, 202 or 204 (a 201 also gets a Location header); `@DocumentedProblems` for the typed problems it can answer; `@RateLimited` if it calls `RateLimiter`; and, if it is public, an entry in `PublicEndpoints`.
 - **Added automatically** (`config.OperationDocumentation`, `config.PathDocumentation`): the bearer requirement or its absence, 401, the 403 of an access rule and of task operations, 400 on input, 404 on a path naming a resource, the problems of an upload, 429, a default response, the page size limit.
 - Warning: an `@ApiResponse` on a method without `@ResponseStatus` makes springdoc drop its success response; declare the success response too (see `AuthController.login`).
