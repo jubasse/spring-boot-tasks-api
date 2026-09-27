@@ -13,6 +13,7 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
 import org.springframework.boot.http.client.FilteredHostException;
+import org.springframework.boot.http.client.HttpClientSettings;
 import org.springframework.boot.http.client.HttpComponentsClientHttpRequestFactoryBuilder;
 import org.springframework.boot.http.client.InetAddressFilter;
 import org.springframework.boot.http.client.autoconfigure.HttpClientAutoConfiguration;
@@ -43,7 +44,7 @@ class OutboundHttpConfigurationTest {
 
     private static final Duration RETRY_AFTER = Duration.ofSeconds(1);
 
-    private final ApplicationContextRunner runner = new ApplicationContextRunner()
+    private final ApplicationContextRunner shippedRunner = new ApplicationContextRunner()
             .withInitializer(context -> context.getEnvironment().getPropertySources()
                     .addLast(mainApplicationYaml()))
             .withConfiguration(AutoConfigurations.of(
@@ -51,7 +52,9 @@ class OutboundHttpConfigurationTest {
                     ImperativeHttpClientAutoConfiguration.class,
                     RestClientAutoConfiguration.class
             ))
-            .withUserConfiguration(OutboundHttpConfiguration.class)
+            .withUserConfiguration(OutboundHttpConfiguration.class);
+
+    private final ApplicationContextRunner runner = shippedRunner
             .withPropertyValues(
                     "spring.http.clients.connect-timeout=2s",
                     "spring.http.clients.read-timeout=5s"
@@ -215,11 +218,22 @@ class OutboundHttpConfigurationTest {
     @ParameterizedTest
     @ValueSource(strings = {
             "100.64.0.1", "fc00::1", "fd00:ec2::254", "127.0.0.1", "::1", "::ffff:127.0.0.1", "0.0.0.0", "::",
-            "169.254.169.254", "fe80::1", "10.0.0.1", "172.16.0.1", "192.168.1.1", "224.0.0.1", "64:ff9b::a9fe:a9fe"
+            "169.254.169.254", "fe80::1", "10.0.0.1", "172.16.0.1", "192.168.1.1", "224.0.0.1", "64:ff9b::a9fe:a9fe",
+            "::127.0.0.1", "::a9fe:a9fe", "::ffff:0:7f00:1", "64:ff9b:1::a9fe:a9fe"
     })
     void privateOrSpecialPurposeAddressDoesNotPassTheFilter(String address) {
         runner.run(context -> assertThat(context.getBean(InetAddressFilter.class)
                 .matches(InetAddress.getByName(address))).isFalse());
+    }
+
+    @Test
+    void shippedTimeoutsBoundEveryCall() {
+        shippedRunner.run(context -> {
+            HttpClientSettings settings = context.getBean(HttpClientSettings.class);
+
+            assertThat(settings.connectTimeout()).isEqualTo(Duration.ofSeconds(5));
+            assertThat(settings.readTimeout()).isEqualTo(Duration.ofSeconds(15));
+        });
     }
 
     private static ResponseEntity<Void> post(AssertableApplicationContext context, String uriTemplate, int port) {
