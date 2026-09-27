@@ -14,8 +14,11 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import java.util.List;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.typedProblem;
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -191,8 +194,8 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
         mockMvc.perform(post(TASKS).with(asAdmin(admin))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(createBody(reference, deleted.getId())))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("User not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("User not found")));
 
         assertThat(taskRepository.existsByReferenceIncludingDeleted(reference)).isFalse();
     }
@@ -235,8 +238,8 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
         int eventsBefore = events(taskId).size();
 
         assign(admin, taskId, deleted.getId())
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("User not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("User not found")));
 
         assertThat(events(taskId)).hasSize(eventsBefore);
         getTask(admin, taskId).andExpect(jsonPath("$.assignedTo.id").value(assignee.getId().toString()));
@@ -248,8 +251,8 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
         UUID taskId = createTask(admin, null);
 
         assign(admin, taskId, UUID.randomUUID())
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("User not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("User not found")));
 
         assertThat(events(taskId)).hasSize(1);
     }
@@ -260,9 +263,7 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
         mockMvc.perform(post(TASKS).with(asAdmin(admin))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(createBody(reference, assigneeId)))
-                .andExpect(status().isUnprocessableContent())
-                .andExpect(jsonPath("$.title").value("User cannot be assigned"))
-                .andExpect(jsonPath("$.status").value(422))
+                .andExpect(typedProblem(422, "assignee-not-active", "Assignee not active"))
                 .andExpect(jsonPath("$.detail").value(containsString(expectedStatus)));
 
         assertThat(taskRepository.existsByReferenceIncludingDeleted(reference)).isFalse();
@@ -274,8 +275,7 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
         int eventsBefore = events(taskId).size();
 
         assign(admin, taskId, assigneeId)
-                .andExpect(status().isUnprocessableContent())
-                .andExpect(jsonPath("$.title").value("User cannot be assigned"))
+                .andExpect(typedProblem(422, "assignee-not-active", "Assignee not active"))
                 .andExpect(jsonPath("$.detail").value(containsString(expectedStatus)));
 
         assertThat(events(taskId)).hasSize(eventsBefore);
