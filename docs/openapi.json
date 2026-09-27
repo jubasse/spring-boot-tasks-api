@@ -1,0 +1,3024 @@
+{
+  "components" : {
+    "responses" : {
+      "BadRequest" : {
+        "content" : {
+          "application/problem+json" : {
+            "examples" : {
+              "validation-error" : {
+                "summary" : "Invalid request",
+                "value" : {
+                  "errors" : [ {
+                    "detail" : "must not be blank",
+                    "pointer" : "#/title"
+                  } ],
+                  "status" : 400,
+                  "title" : "Invalid request",
+                  "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#validation-error"
+                }
+              }
+            },
+            "schema" : {
+              "$ref" : "#/components/schemas/ValidationProblem"
+            }
+          }
+        },
+        "description" : "Invalid request: see errors for each invalid value."
+      },
+      "ContentTooLarge" : {
+        "content" : {
+          "application/problem+json" : {
+            "schema" : {
+              "$ref" : "#/components/schemas/Problem"
+            }
+          }
+        },
+        "description" : "A file is larger than its limit."
+      },
+      "Forbidden" : {
+        "description" : "The account may not do this. Task operations need an active account (verified email, not disabled); other rules are in the operation's description.",
+        "headers" : {
+          "WWW-Authenticate" : {
+            "description" : "Bearer error=\"insufficient_scope\".",
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        }
+      },
+      "InvalidCredentials" : {
+        "content" : {
+          "application/problem+json" : {
+            "schema" : {
+              "$ref" : "#/components/schemas/Problem"
+            }
+          }
+        },
+        "description" : "Wrong email or password, or an unknown, used or revoked refresh token."
+      },
+      "NotFound" : {
+        "content" : {
+          "application/problem+json" : {
+            "schema" : {
+              "$ref" : "#/components/schemas/Problem"
+            }
+          }
+        },
+        "description" : "The resource does not exist."
+      },
+      "ServiceUnavailable" : {
+        "content" : {
+          "application/problem+json" : {
+            "schema" : {
+              "$ref" : "#/components/schemas/Problem"
+            }
+          }
+        },
+        "description" : "The antivirus or the file storage is unavailable: try again later."
+      },
+      "TooManyRequests" : {
+        "content" : {
+          "application/problem+json" : {
+            "schema" : {
+              "$ref" : "#/components/schemas/Problem"
+            }
+          }
+        },
+        "description" : "Too many requests from this address or for this email.",
+        "headers" : {
+          "Retry-After" : {
+            "description" : "Seconds to wait before trying again.",
+            "schema" : {
+              "type" : "integer"
+            }
+          }
+        }
+      },
+      "Unauthorized" : {
+        "description" : "Missing, expired or invalid access token.",
+        "headers" : {
+          "WWW-Authenticate" : {
+            "description" : "Bearer, with the reason of the refusal.",
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        }
+      },
+      "UnexpectedError" : {
+        "content" : {
+          "application/problem+json" : {
+            "schema" : {
+              "$ref" : "#/components/schemas/Problem"
+            }
+          }
+        },
+        "description" : "An unexpected failure on the server."
+      },
+      "UnsupportedMediaType" : {
+        "content" : {
+          "application/problem+json" : {
+            "schema" : {
+              "$ref" : "#/components/schemas/Problem"
+            }
+          }
+        },
+        "description" : "The file type is not accepted, whatever its name or declared type."
+      }
+    },
+    "schemas" : {
+      "AssignTaskDto" : {
+        "properties" : {
+          "userId" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "required" : [ "userId" ],
+        "type" : "object"
+      },
+      "AuthResponseDto" : {
+        "properties" : {
+          "accessToken" : {
+            "type" : "string"
+          },
+          "expiresAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "refreshToken" : {
+            "type" : "string"
+          },
+          "refreshTokenExpiresAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "tokenType" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "CancelTaskDto" : {
+        "properties" : {
+          "reason" : {
+            "maxLength" : 500,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "reason" ],
+        "type" : "object"
+      },
+      "ChangeTaskStatusDto" : {
+        "properties" : {
+          "status" : {
+            "enum" : [ "TO_DO", "IN_PROGRESS", "IN_REVIEW", "BLOCKED", "DONE", "ARCHIVED", "CANCELLED" ],
+            "type" : "string"
+          }
+        },
+        "required" : [ "status" ],
+        "type" : "object"
+      },
+      "CreateTaskDto" : {
+        "properties" : {
+          "assignedTo" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "dueAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "priority" : {
+            "enum" : [ "LOW", "MEDIUM", "HIGH", "URGENT" ],
+            "type" : "string"
+          },
+          "reference" : {
+            "maxLength" : 30,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "title" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "reference", "title" ],
+        "type" : "object"
+      },
+      "CreateUserDto" : {
+        "properties" : {
+          "displayName" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "email" : {
+            "format" : "email",
+            "maxLength" : 320,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "password" : {
+            "maxLength" : 128,
+            "minLength" : 8,
+            "type" : "string"
+          }
+        },
+        "required" : [ "displayName", "email", "password" ],
+        "type" : "object"
+      },
+      "InvalidValue" : {
+        "description" : "One invalid value of a request.",
+        "properties" : {
+          "detail" : {
+            "description" : "What is wrong with the value.",
+            "type" : "string"
+          },
+          "parameter" : {
+            "description" : "Name of the query, path, form or multipart parameter, when not in a JSON body.",
+            "type" : "string"
+          },
+          "pointer" : {
+            "description" : "JSON Pointer to the value in the JSON body, such as #/email; # is the body.",
+            "type" : "string"
+          }
+        },
+        "required" : [ "detail" ],
+        "type" : "object"
+      },
+      "LoginRequestDto" : {
+        "properties" : {
+          "email" : {
+            "format" : "email",
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "password" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "required" : [ "email", "password" ],
+        "type" : "object"
+      },
+      "NotificationSettingsDto" : {
+        "properties" : {
+          "taskAssigned" : {
+            "type" : "boolean"
+          },
+          "taskCancelled" : {
+            "type" : "boolean"
+          },
+          "taskCommented" : {
+            "type" : "boolean"
+          },
+          "taskDeleted" : {
+            "type" : "boolean"
+          },
+          "taskDueSoon" : {
+            "type" : "boolean"
+          },
+          "taskMentioned" : {
+            "type" : "boolean"
+          },
+          "taskOverdue" : {
+            "type" : "boolean"
+          },
+          "taskUnassigned" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "taskAssigned", "taskCancelled", "taskCommented", "taskDeleted", "taskDueSoon", "taskMentioned", "taskOverdue", "taskUnassigned" ],
+        "type" : "object"
+      },
+      "PageMetadata" : {
+        "properties" : {
+          "number" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "size" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "totalElements" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "totalPages" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "number", "size", "totalElements", "totalPages" ],
+        "type" : "object"
+      },
+      "PagedModelTaskCommentResponseDto" : {
+        "properties" : {
+          "content" : {
+            "items" : {
+              "$ref" : "#/components/schemas/TaskCommentResponseDto"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "$ref" : "#/components/schemas/PageMetadata"
+          }
+        },
+        "required" : [ "content", "page" ],
+        "type" : "object"
+      },
+      "PagedModelTaskEventResponseDto" : {
+        "properties" : {
+          "content" : {
+            "items" : {
+              "$ref" : "#/components/schemas/TaskEventResponseDto"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "$ref" : "#/components/schemas/PageMetadata"
+          }
+        },
+        "required" : [ "content", "page" ],
+        "type" : "object"
+      },
+      "PagedModelTaskResponseDto" : {
+        "properties" : {
+          "content" : {
+            "items" : {
+              "$ref" : "#/components/schemas/TaskResponseDto"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "$ref" : "#/components/schemas/PageMetadata"
+          }
+        },
+        "required" : [ "content", "page" ],
+        "type" : "object"
+      },
+      "PasswordResetConfirmDto" : {
+        "properties" : {
+          "newPassword" : {
+            "maxLength" : 128,
+            "minLength" : 8,
+            "type" : "string"
+          },
+          "token" : {
+            "maxLength" : 128,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "newPassword", "token" ],
+        "type" : "object"
+      },
+      "PasswordResetRequestDto" : {
+        "properties" : {
+          "email" : {
+            "format" : "email",
+            "maxLength" : 320,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "email" ],
+        "type" : "object"
+      },
+      "Problem" : {
+        "description" : "A problem document (RFC 9457). docs/problems.md lists every problem and what to do.",
+        "properties" : {
+          "detail" : {
+            "description" : "This occurrence, for a person to read. It follows Accept-Language: do not parse it.",
+            "type" : "string"
+          },
+          "instance" : {
+            "description" : "The path of the request.",
+            "format" : "uri-reference",
+            "type" : "string"
+          },
+          "status" : {
+            "format" : "int32",
+            "maximum" : 599,
+            "minimum" : 100,
+            "type" : "integer"
+          },
+          "title" : {
+            "description" : "Short summary, the same for every occurrence: the problem type's title, or the status phrase.",
+            "type" : "string"
+          },
+          "type" : {
+            "description" : "What went wrong; absent when the status says it all (about:blank). It links to the documentation of the problem.",
+            "format" : "uri",
+            "type" : "string"
+          }
+        },
+        "required" : [ "status", "title" ],
+        "type" : "object"
+      },
+      "RefreshTokenRequestDto" : {
+        "properties" : {
+          "refreshToken" : {
+            "maxLength" : 128,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "refreshToken" ],
+        "type" : "object"
+      },
+      "TaskAttachmentResponseDto" : {
+        "properties" : {
+          "commentId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "contentType" : {
+            "type" : "string"
+          },
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "downloadUrl" : {
+            "type" : "string"
+          },
+          "filename" : {
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "sizeBytes" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "uploadedBy" : {
+            "$ref" : "#/components/schemas/UserProfileResponseDto"
+          }
+        },
+        "type" : "object"
+      },
+      "TaskCommentDto" : {
+        "properties" : {
+          "body" : {
+            "maxLength" : 10000,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "body" ],
+        "type" : "object"
+      },
+      "TaskCommentResponseDto" : {
+        "properties" : {
+          "attachments" : {
+            "items" : {
+              "$ref" : "#/components/schemas/TaskAttachmentResponseDto"
+            },
+            "type" : "array"
+          },
+          "author" : {
+            "$ref" : "#/components/schemas/UserProfileResponseDto"
+          },
+          "body" : {
+            "type" : "string"
+          },
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "editedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "mentions" : {
+            "items" : {
+              "$ref" : "#/components/schemas/UserProfileResponseDto"
+            },
+            "type" : "array"
+          }
+        },
+        "type" : "object"
+      },
+      "TaskEventResponseDto" : {
+        "properties" : {
+          "actor" : {
+            "$ref" : "#/components/schemas/UserProfileResponseDto"
+          },
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "occurredAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "payload" : {
+            "additionalProperties" : { },
+            "type" : "object"
+          },
+          "type" : {
+            "enum" : [ "CREATED", "UPDATED", "ASSIGNED", "UNASSIGNED", "STATUS_CHANGED", "CANCELLED", "ARCHIVED", "UNARCHIVED", "ATTACHMENT_ADDED", "ATTACHMENT_REMOVED", "COMMENT_ADDED", "COMMENT_EDITED", "COMMENT_DELETED" ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "TaskResponseDto" : {
+        "properties" : {
+          "archivedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "assignedTo" : {
+            "$ref" : "#/components/schemas/UserProfileResponseDto"
+          },
+          "blockedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "blockedReason" : {
+            "type" : "string"
+          },
+          "cancelledAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "cancelledReason" : {
+            "type" : "string"
+          },
+          "completedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "createdBy" : {
+            "$ref" : "#/components/schemas/UserProfileResponseDto"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "dueAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "priority" : {
+            "enum" : [ "LOW", "MEDIUM", "HIGH", "URGENT" ],
+            "type" : "string"
+          },
+          "reference" : {
+            "type" : "string"
+          },
+          "status" : {
+            "enum" : [ "TO_DO", "IN_PROGRESS", "IN_REVIEW", "BLOCKED", "DONE", "ARCHIVED", "CANCELLED" ],
+            "type" : "string"
+          },
+          "title" : {
+            "type" : "string"
+          },
+          "updatedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "version" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "UpdateTaskDto" : {
+        "properties" : {
+          "description" : {
+            "type" : "string"
+          },
+          "dueAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "priority" : {
+            "enum" : [ "LOW", "MEDIUM", "HIGH", "URGENT" ],
+            "type" : "string"
+          },
+          "title" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "UpdateUserDto" : {
+        "properties" : {
+          "displayName" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "UserProfileResponseDto" : {
+        "properties" : {
+          "avatarUrl" : {
+            "type" : "string"
+          },
+          "displayName" : {
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "status" : {
+            "enum" : [ "ACTIVE", "UNVERIFIED", "DISABLED", "DELETED" ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "UserResponseDto" : {
+        "properties" : {
+          "avatarPending" : {
+            "type" : "boolean"
+          },
+          "avatarUrl" : {
+            "type" : "string"
+          },
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "displayName" : {
+            "type" : "string"
+          },
+          "email" : {
+            "type" : "string"
+          },
+          "emailVerifiedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "enabled" : {
+            "type" : "boolean"
+          },
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "lastLoginAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "roles" : {
+            "items" : {
+              "enum" : [ "USER", "ADMIN" ],
+              "type" : "string"
+            },
+            "type" : "array",
+            "uniqueItems" : true
+          },
+          "updatedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ValidationProblem" : {
+        "allOf" : [ {
+          "$ref" : "#/components/schemas/Problem"
+        }, {
+          "properties" : {
+            "errors" : {
+              "description" : "Each invalid value, with the validation-error type.",
+              "items" : {
+                "$ref" : "#/components/schemas/InvalidValue"
+              },
+              "type" : "array"
+            }
+          },
+          "type" : "object"
+        } ]
+      },
+      "VerifyEmailRequestDto" : {
+        "properties" : {
+          "token" : {
+            "maxLength" : 128,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "token" ],
+        "type" : "object"
+      }
+    },
+    "securitySchemes" : {
+      "bearer" : {
+        "bearerFormat" : "JWT",
+        "description" : "The access token returned by POST /api/v1/auth/login or /refresh.",
+        "scheme" : "bearer",
+        "type" : "http"
+      }
+    }
+  },
+  "externalDocs" : {
+    "description" : "Error responses and what to do about each",
+    "url" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md"
+  },
+  "info" : {
+    "contact" : {
+      "name" : "Tasks API on GitHub",
+      "url" : "https://github.com/jubasse/spring-boot-tasks-api"
+    },
+    "description" : "Tasks, with their comments, files and history, for teams whose members sign up themselves.\n\n**Authentication.** Sign in with `POST /api/v1/auth/login`, then send the access token in an `Authorization: Bearer` header. It lasts 15 minutes: `POST /api/v1/auth/refresh` trades the refresh token for a new pair. Task operations also need an active account: a verified email, not disabled.\n\n**Errors.** Every error is a problem document (RFC 9457, `application/problem+json`), except the 401 and 403 of an access check, which carry only a `WWW-Authenticate` header. When `type` is present, it links to the documentation of that problem.\n\n**Limits.** Login, sign-up, verification email resend and password reset are rate limited: a 429 gives the seconds to wait in `Retry-After`. A page holds at most 100 items.\n",
+    "title" : "Tasks API",
+    "version" : "development"
+  },
+  "openapi" : "3.1.0",
+  "paths" : {
+    "/api/v1/auth/login" : {
+      "post" : {
+        "operationId" : "login",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/LoginRequestDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuthResponseDto"
+                }
+              }
+            },
+            "description" : "Signed in: the token pair."
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/InvalidCredentials"
+          },
+          "429" : {
+            "$ref" : "#/components/responses/TooManyRequests"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "security" : [ ],
+        "summary" : "Sign in",
+        "tags" : [ "Authentication" ]
+      }
+    },
+    "/api/v1/auth/logout" : {
+      "post" : {
+        "operationId" : "logout",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RefreshTokenRequestDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "security" : [ ],
+        "summary" : "Sign out: revoke the refresh token and its family",
+        "tags" : [ "Authentication" ]
+      }
+    },
+    "/api/v1/auth/password-reset/confirm" : {
+      "post" : {
+        "operationId" : "confirmPasswordReset",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PasswordResetConfirmDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "invalid-token" : {
+                    "summary" : "Invalid or expired token",
+                    "value" : {
+                      "status" : 400,
+                      "title" : "Invalid or expired token",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#invalid-token"
+                    }
+                  },
+                  "validation-error" : {
+                    "summary" : "Invalid request",
+                    "value" : {
+                      "errors" : [ {
+                        "detail" : "must not be blank",
+                        "pointer" : "#/title"
+                      } ],
+                      "status" : 400,
+                      "title" : "Invalid request",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#validation-error"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            },
+            "description" : "Invalid request: see errors for each invalid value, or type for another problem."
+          },
+          "429" : {
+            "$ref" : "#/components/responses/TooManyRequests"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "security" : [ ],
+        "summary" : "Set a new password with the token of the reset email",
+        "tags" : [ "Authentication" ]
+      }
+    },
+    "/api/v1/auth/password-reset/request" : {
+      "post" : {
+        "operationId" : "requestPasswordReset",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PasswordResetRequestDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "202" : {
+            "description" : "Accepted"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "429" : {
+            "$ref" : "#/components/responses/TooManyRequests"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "security" : [ ],
+        "summary" : "Ask for a password reset email; always accepted, whether the account exists or not",
+        "tags" : [ "Authentication" ]
+      }
+    },
+    "/api/v1/auth/refresh" : {
+      "post" : {
+        "operationId" : "refreshTokens",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RefreshTokenRequestDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuthResponseDto"
+                }
+              }
+            },
+            "description" : "The new token pair; the refresh token sent is revoked."
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/InvalidCredentials"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "security" : [ ],
+        "summary" : "Trade a refresh token for a new token pair",
+        "tags" : [ "Authentication" ]
+      }
+    },
+    "/api/v1/auth/verify-email" : {
+      "post" : {
+        "operationId" : "verifyEmail",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/VerifyEmailRequestDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "invalid-token" : {
+                    "summary" : "Invalid or expired token",
+                    "value" : {
+                      "status" : 400,
+                      "title" : "Invalid or expired token",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#invalid-token"
+                    }
+                  },
+                  "validation-error" : {
+                    "summary" : "Invalid request",
+                    "value" : {
+                      "errors" : [ {
+                        "detail" : "must not be blank",
+                        "pointer" : "#/title"
+                      } ],
+                      "status" : 400,
+                      "title" : "Invalid request",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#validation-error"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            },
+            "description" : "Invalid request: see errors for each invalid value, or type for another problem."
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "security" : [ ],
+        "summary" : "Verify an email with the token of its link",
+        "tags" : [ "Authentication" ]
+      }
+    },
+    "/api/v1/auth/verify-email/resend" : {
+      "post" : {
+        "operationId" : "resendVerificationEmail",
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "email-already-verified" : {
+                    "summary" : "Email already verified",
+                    "value" : {
+                      "status" : 409,
+                      "title" : "Email already verified",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#email-already-verified"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Conflict: Email already verified."
+          },
+          "429" : {
+            "$ref" : "#/components/responses/TooManyRequests"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Send the verification email again",
+        "tags" : [ "Authentication" ]
+      }
+    },
+    "/api/v1/identicons/{id}" : {
+      "get" : {
+        "operationId" : "getIdenticon",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "image/svg+xml" : {
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "security" : [ ],
+        "summary" : "Get the identicon of a user, the same for every call",
+        "tags" : [ "Identicons" ]
+      }
+    },
+    "/api/v1/tasks" : {
+      "get" : {
+        "operationId" : "listTasks",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "status",
+          "required" : false,
+          "schema" : {
+            "enum" : [ "TO_DO", "IN_PROGRESS", "IN_REVIEW", "BLOCKED", "DONE", "ARCHIVED", "CANCELLED" ],
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "assigneeId",
+          "required" : false,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "archived",
+          "required" : false,
+          "schema" : {
+            "default" : false,
+            "type" : "boolean"
+          }
+        }, {
+          "description" : "Zero-based page index (0..N)",
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "default" : 0,
+            "minimum" : 0,
+            "type" : "integer"
+          }
+        }, {
+          "description" : "The size of the page to be returned",
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "default" : 10,
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        }, {
+          "description" : "Sorting criteria in the format: property,(asc|desc). Default sort order is ascending. Multiple sort criteria are supported.",
+          "in" : "query",
+          "name" : "sort",
+          "required" : false,
+          "schema" : {
+            "default" : [ "createdAt,DESC" ],
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedModelTaskResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "List tasks, newest first by default",
+        "tags" : [ "Tasks" ]
+      },
+      "post" : {
+        "description" : "**Access:** Any active user; assigning the task on creation requires the ADMIN role.",
+        "operationId" : "createTask",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateTaskDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TaskResponseDto"
+                }
+              }
+            },
+            "description" : "Created",
+            "headers" : {
+              "Location" : {
+                "description" : "URL of the created resource.",
+                "schema" : {
+                  "format" : "uri-reference",
+                  "type" : "string"
+                }
+              }
+            }
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "reference-taken" : {
+                    "summary" : "Task reference already in use",
+                    "value" : {
+                      "status" : 409,
+                      "title" : "Task reference already in use",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#reference-taken"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Conflict: Task reference already in use."
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "assignee-not-active" : {
+                    "summary" : "Assignee not active",
+                    "value" : {
+                      "status" : 422,
+                      "title" : "Assignee not active",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#assignee-not-active"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Unprocessable Content: Assignee not active."
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Create a task",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/tasks/{id}" : {
+      "delete" : {
+        "description" : "**Access:** Requires the ADMIN role.",
+        "operationId" : "deleteTask",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "version-conflict" : {
+                    "summary" : "Changed by another request",
+                    "value" : {
+                      "status" : 409,
+                      "title" : "Changed by another request",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#version-conflict"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Conflict: Changed by another request."
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Delete a task",
+        "tags" : [ "Tasks" ]
+      },
+      "get" : {
+        "operationId" : "getTask",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TaskResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Get a task",
+        "tags" : [ "Tasks" ]
+      },
+      "patch" : {
+        "description" : "**Access:** The task's assignee, or the ADMIN role.",
+        "operationId" : "updateTask",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateTaskDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TaskResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "version-conflict" : {
+                    "summary" : "Changed by another request",
+                    "value" : {
+                      "status" : 409,
+                      "title" : "Changed by another request",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#version-conflict"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Conflict: Changed by another request."
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Update a task",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/tasks/{id}/archive" : {
+      "post" : {
+        "description" : "**Access:** Requires the ADMIN role.",
+        "operationId" : "archiveTask",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TaskResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "version-conflict" : {
+                    "summary" : "Changed by another request",
+                    "value" : {
+                      "status" : 409,
+                      "title" : "Changed by another request",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#version-conflict"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Conflict: Changed by another request."
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Archive a task",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/tasks/{id}/assign" : {
+      "patch" : {
+        "description" : "**Access:** Requires the ADMIN role.",
+        "operationId" : "assignTask",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AssignTaskDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TaskResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "version-conflict" : {
+                    "summary" : "Changed by another request",
+                    "value" : {
+                      "status" : 409,
+                      "title" : "Changed by another request",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#version-conflict"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Conflict: Changed by another request."
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "assignee-not-active" : {
+                    "summary" : "Assignee not active",
+                    "value" : {
+                      "status" : 422,
+                      "title" : "Assignee not active",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#assignee-not-active"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Unprocessable Content: Assignee not active."
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Assign a task",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/tasks/{id}/attachments" : {
+      "get" : {
+        "operationId" : "listAttachments",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/TaskAttachmentResponseDto"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "List the files of a task",
+        "tags" : [ "Attachments" ]
+      },
+      "post" : {
+        "description" : "**Access:** The task's assignee, or the ADMIN role.",
+        "operationId" : "addAttachment",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "multipart/form-data" : {
+              "schema" : {
+                "properties" : {
+                  "file" : {
+                    "format" : "binary",
+                    "type" : "string"
+                  }
+                },
+                "required" : [ "file" ],
+                "type" : "object"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TaskAttachmentResponseDto"
+                }
+              }
+            },
+            "description" : "Created",
+            "headers" : {
+              "Location" : {
+                "description" : "URL of the created resource.",
+                "schema" : {
+                  "format" : "uri-reference",
+                  "type" : "string"
+                }
+              }
+            }
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "413" : {
+            "$ref" : "#/components/responses/ContentTooLarge"
+          },
+          "415" : {
+            "$ref" : "#/components/responses/UnsupportedMediaType"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "infected-file" : {
+                    "summary" : "File rejected by the antivirus",
+                    "value" : {
+                      "status" : 422,
+                      "title" : "File rejected by the antivirus",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#infected-file"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Unprocessable Content: File rejected by the antivirus."
+          },
+          "503" : {
+            "$ref" : "#/components/responses/ServiceUnavailable"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Attach a file to a task",
+        "tags" : [ "Attachments" ]
+      }
+    },
+    "/api/v1/tasks/{id}/attachments/{attachmentId}" : {
+      "delete" : {
+        "description" : "**Access:** The attachment's uploader, or the ADMIN role.",
+        "operationId" : "removeAttachment",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "attachmentId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Remove a file",
+        "tags" : [ "Attachments" ]
+      },
+      "get" : {
+        "operationId" : "getAttachment",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "attachmentId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TaskAttachmentResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Get a file and its download URL",
+        "tags" : [ "Attachments" ]
+      }
+    },
+    "/api/v1/tasks/{id}/cancel" : {
+      "post" : {
+        "description" : "**Access:** The task's assignee, or the ADMIN role.",
+        "operationId" : "cancelTask",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CancelTaskDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TaskResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "version-conflict" : {
+                    "summary" : "Changed by another request",
+                    "value" : {
+                      "status" : 409,
+                      "title" : "Changed by another request",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#version-conflict"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Conflict: Changed by another request."
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Cancel a task",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/tasks/{id}/comments" : {
+      "get" : {
+        "operationId" : "listComments",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "description" : "Zero-based page index (0..N)",
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "default" : 0,
+            "minimum" : 0,
+            "type" : "integer"
+          }
+        }, {
+          "description" : "The size of the page to be returned",
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "default" : 10,
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        }, {
+          "description" : "Sorting criteria in the format: property,(asc|desc). Default sort order is ascending. Multiple sort criteria are supported.",
+          "in" : "query",
+          "name" : "sort",
+          "required" : false,
+          "schema" : {
+            "default" : [ "createdAt,ASC" ],
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedModelTaskCommentResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "List the comments of a task, oldest first",
+        "tags" : [ "Comments" ]
+      },
+      "post" : {
+        "operationId" : "addComment",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/TaskCommentDto"
+              }
+            },
+            "multipart/form-data" : {
+              "schema" : {
+                "allOf" : [ {
+                  "$ref" : "#/components/schemas/TaskCommentDto"
+                }, {
+                  "properties" : {
+                    "files" : {
+                      "items" : {
+                        "format" : "binary",
+                        "type" : "string"
+                      },
+                      "type" : "array"
+                    }
+                  },
+                  "type" : "object"
+                } ]
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TaskCommentResponseDto"
+                }
+              }
+            },
+            "description" : "Created",
+            "headers" : {
+              "Location" : {
+                "description" : "URL of the created resource.",
+                "schema" : {
+                  "format" : "uri-reference",
+                  "type" : "string"
+                }
+              }
+            }
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "413" : {
+            "$ref" : "#/components/responses/ContentTooLarge"
+          },
+          "415" : {
+            "$ref" : "#/components/responses/UnsupportedMediaType"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "infected-file" : {
+                    "summary" : "File rejected by the antivirus",
+                    "value" : {
+                      "status" : 422,
+                      "title" : "File rejected by the antivirus",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#infected-file"
+                    }
+                  },
+                  "invalid-mention" : {
+                    "summary" : "Invalid mention",
+                    "value" : {
+                      "status" : 422,
+                      "title" : "Invalid mention",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#invalid-mention"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Unprocessable Content: Invalid mention, or File rejected by the antivirus."
+          },
+          "503" : {
+            "$ref" : "#/components/responses/ServiceUnavailable"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Comment on a task, as JSON or as a form with up to 5 files",
+        "tags" : [ "Comments" ]
+      }
+    },
+    "/api/v1/tasks/{id}/comments/{commentId}" : {
+      "delete" : {
+        "description" : "**Access:** The comment's author, or the ADMIN role.",
+        "operationId" : "deleteComment",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "commentId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Delete a comment and its files",
+        "tags" : [ "Comments" ]
+      },
+      "get" : {
+        "operationId" : "getComment",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "commentId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TaskCommentResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Get a comment",
+        "tags" : [ "Comments" ]
+      },
+      "patch" : {
+        "description" : "**Access:** Only the comment's author.",
+        "operationId" : "editComment",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "commentId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/TaskCommentDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TaskCommentResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "invalid-mention" : {
+                    "summary" : "Invalid mention",
+                    "value" : {
+                      "status" : 422,
+                      "title" : "Invalid mention",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#invalid-mention"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Unprocessable Content: Invalid mention."
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Edit a comment",
+        "tags" : [ "Comments" ]
+      }
+    },
+    "/api/v1/tasks/{id}/status" : {
+      "patch" : {
+        "description" : "**Access:** The task's assignee, or the ADMIN role.",
+        "operationId" : "changeTaskStatus",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ChangeTaskStatusDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TaskResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "version-conflict" : {
+                    "summary" : "Changed by another request",
+                    "value" : {
+                      "status" : 409,
+                      "title" : "Changed by another request",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#version-conflict"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Conflict: Changed by another request."
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Change the status of a task",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/tasks/{id}/unarchive" : {
+      "post" : {
+        "description" : "**Access:** Requires the ADMIN role.",
+        "operationId" : "unarchiveTask",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TaskResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "version-conflict" : {
+                    "summary" : "Changed by another request",
+                    "value" : {
+                      "status" : 409,
+                      "title" : "Changed by another request",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#version-conflict"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Conflict: Changed by another request."
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Unarchive a task",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/tasks/{taskId}/events" : {
+      "get" : {
+        "operationId" : "listTaskHistory",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "taskId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "description" : "Zero-based page index (0..N)",
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "default" : 0,
+            "minimum" : 0,
+            "type" : "integer"
+          }
+        }, {
+          "description" : "The size of the page to be returned",
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "default" : 10,
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        }, {
+          "description" : "Sorting criteria in the format: property,(asc|desc). Default sort order is ascending. Multiple sort criteria are supported.",
+          "in" : "query",
+          "name" : "sort",
+          "required" : false,
+          "schema" : {
+            "default" : [ "occurredAt,DESC", "id,DESC" ],
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedModelTaskEventResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "List the history of a task",
+        "tags" : [ "History" ]
+      }
+    },
+    "/api/v1/users" : {
+      "post" : {
+        "operationId" : "signUp",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateUserDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserResponseDto"
+                }
+              }
+            },
+            "description" : "Created",
+            "headers" : {
+              "Location" : {
+                "description" : "URL of the created resource.",
+                "schema" : {
+                  "format" : "uri-reference",
+                  "type" : "string"
+                }
+              }
+            }
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "email-taken" : {
+                    "summary" : "Email already in use",
+                    "value" : {
+                      "status" : 409,
+                      "title" : "Email already in use",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#email-taken"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Conflict: Email already in use."
+          },
+          "429" : {
+            "$ref" : "#/components/responses/TooManyRequests"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "security" : [ ],
+        "summary" : "Sign up",
+        "tags" : [ "Users" ]
+      }
+    },
+    "/api/v1/users/{id}" : {
+      "delete" : {
+        "description" : "**Access:** Requires the ADMIN role.",
+        "operationId" : "deleteUser",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Delete an account and revoke its refresh tokens",
+        "tags" : [ "Users" ]
+      },
+      "get" : {
+        "description" : "**Access:** The user themselves, or the ADMIN role.",
+        "operationId" : "getUser",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Get an account",
+        "tags" : [ "Users" ]
+      },
+      "patch" : {
+        "description" : "**Access:** The user themselves, or the ADMIN role.",
+        "operationId" : "updateUser",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateUserDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Update an account",
+        "tags" : [ "Users" ]
+      }
+    },
+    "/api/v1/users/{id}/avatar" : {
+      "delete" : {
+        "description" : "**Access:** The user themselves, or the ADMIN role.",
+        "operationId" : "removeAvatar",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Remove the profile photo",
+        "tags" : [ "Users" ]
+      },
+      "put" : {
+        "description" : "**Access:** The user themselves, or the ADMIN role.",
+        "operationId" : "uploadAvatar",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "multipart/form-data" : {
+              "schema" : {
+                "properties" : {
+                  "file" : {
+                    "format" : "binary",
+                    "type" : "string"
+                  }
+                },
+                "required" : [ "file" ],
+                "type" : "object"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "202" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserResponseDto"
+                }
+              }
+            },
+            "description" : "Accepted"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "413" : {
+            "$ref" : "#/components/responses/ContentTooLarge"
+          },
+          "415" : {
+            "$ref" : "#/components/responses/UnsupportedMediaType"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "infected-file" : {
+                    "summary" : "File rejected by the antivirus",
+                    "value" : {
+                      "status" : 422,
+                      "title" : "File rejected by the antivirus",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#infected-file"
+                    }
+                  },
+                  "invalid-image" : {
+                    "summary" : "Invalid image",
+                    "value" : {
+                      "status" : 422,
+                      "title" : "Invalid image",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#invalid-image"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Unprocessable Content: Invalid image, or File rejected by the antivirus."
+          },
+          "503" : {
+            "$ref" : "#/components/responses/ServiceUnavailable"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Upload a profile photo, processed in the background",
+        "tags" : [ "Users" ]
+      }
+    },
+    "/api/v1/users/{id}/disable" : {
+      "post" : {
+        "description" : "**Access:** Requires the ADMIN role.",
+        "operationId" : "disableUser",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Disable an account and revoke its refresh tokens",
+        "tags" : [ "Users" ]
+      }
+    },
+    "/api/v1/users/{id}/enable" : {
+      "post" : {
+        "description" : "**Access:** Requires the ADMIN role.",
+        "operationId" : "enableUser",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Enable an account",
+        "tags" : [ "Users" ]
+      }
+    },
+    "/api/v1/users/{id}/notification-settings" : {
+      "get" : {
+        "description" : "**Access:** The user themselves, or the ADMIN role.",
+        "operationId" : "getNotificationSettings",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/NotificationSettingsDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Get the notification settings",
+        "tags" : [ "Notification settings" ]
+      },
+      "put" : {
+        "description" : "**Access:** The user themselves, or the ADMIN role.",
+        "operationId" : "updateNotificationSettings",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/NotificationSettingsDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/NotificationSettingsDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Replace the notification settings",
+        "tags" : [ "Notification settings" ]
+      }
+    }
+  },
+  "security" : [ {
+    "bearer" : [ ]
+  } ],
+  "servers" : [ {
+    "url" : "/"
+  } ],
+  "tags" : [ {
+    "description" : "Files attached to a task.",
+    "name" : "Attachments"
+  }, {
+    "description" : "Which task emails an account receives.",
+    "name" : "Notification settings"
+  }, {
+    "description" : "Sign in, keep a session going, verify an email and reset a password.",
+    "name" : "Authentication"
+  }, {
+    "description" : "Generated images standing in for a missing or hidden profile photo.",
+    "name" : "Identicons"
+  }, {
+    "description" : "Accounts: sign-up, profile, profile photo, and the admin actions.",
+    "name" : "Users"
+  }, {
+    "description" : "Tasks, their status, assignee and archive.",
+    "name" : "Tasks"
+  }, {
+    "description" : "Comments on a task, with mentions and files.",
+    "name" : "Comments"
+  }, {
+    "description" : "What happened to a task, and who did it.",
+    "name" : "History"
+  } ]
+}

@@ -1,6 +1,8 @@
 package io.julienmetral.tasks.identity.controllers;
 
 import io.julienmetral.tasks.identity.services.IdenticonGenerator;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
@@ -19,6 +21,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping(IdenticonController.PATH)
 @RequiredArgsConstructor
+@Tag(name = "Identicons", description = "Generated images standing in for a missing or hidden profile photo.")
 public class IdenticonController {
 
     static final String PATH = "/api/v1/identicons";
@@ -40,8 +43,9 @@ public class IdenticonController {
     }
 
     // The image never changes for an id: browsers and proxies may keep it a year without asking again
-    @GetMapping("/{id}")
-    public ResponseEntity<String> identicon(@PathVariable UUID id) {
+    @Operation(summary = "Get the identicon of a user, the same for every call")
+    @GetMapping(path = "/{id}", produces = "image/svg+xml")
+    public ResponseEntity<String> getIdenticon(@PathVariable UUID id) {
         return ResponseEntity.ok()
                 .contentType(SVG)
                 .cacheControl(CacheControl.maxAge(Duration.ofDays(365)).cachePublic().immutable())

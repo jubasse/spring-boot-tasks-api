@@ -13,6 +13,7 @@ import java.lang.annotation.Target;
         ElementType.TYPE
 })
 @Retention(RetentionPolicy.RUNTIME)
+@AccessDescription("The user themselves, or the {value} role.")
 @PreAuthorize("""
         hasAnyRole({value})
         or @userAuthorization.currentUserIsSelf(#id, authentication)

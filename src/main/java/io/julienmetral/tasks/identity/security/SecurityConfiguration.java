@@ -20,7 +20,11 @@ import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 
 import java.util.Map;
@@ -28,6 +32,10 @@ import java.util.Map;
 @Configuration
 @EnableMethodSecurity
 public class SecurityConfiguration {
+
+    private static final String[] API_DOCUMENTATION = {
+            "/v3/api-docs", "/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**"
+    };
 
     @Bean
     static AnnotationTemplateExpressionDefaults templateExpressionDefaults() {
@@ -105,6 +113,19 @@ public class SecurityConfiguration {
         return authenticationConverter;
     }
 
+    // A public endpoint ignores the Authorization header: a client that kept its expired access token got a 401 from
+    // login and refresh, the very endpoints that give it a new one
+    @Bean
+    BearerTokenResolver bearerTokenResolver() {
+        DefaultBearerTokenResolver resolver = new DefaultBearerTokenResolver();
+        RequestMatcher publicEndpoint = new OrRequestMatcher(PublicEndpoints.ALL.stream()
+                .map(endpoint -> (RequestMatcher) PathPatternRequestMatcher.withDefaults()
+                        .matcher(endpoint.method(), endpoint.pattern()))
+                .toList());
+
+        return request -> publicEndpoint.matches(request) ? null : resolver.resolve(request);
+    }
+
     @Bean
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
@@ -120,46 +141,30 @@ public class SecurityConfiguration {
                                 SessionCreationPolicy.STATELESS
                         )
                 )
-                .authorizeHttpRequests(auth ->
-                        auth
-                                // Errors are rendered by an internal dispatch to /error, after the request itself was
-                                // authorized. Securing that dispatch turned every 400 of a public endpoint (malformed
-                                // JSON on login or sign-up, an invalid identicon id) into a 401.
-                                .dispatcherTypeMatchers(DispatcherType.ERROR)
-                                .permitAll()
-                                .requestMatchers(
-                                        HttpMethod.POST,
-                                        "/api/v1/users"
-                                )
-                                .permitAll()
+                .authorizeHttpRequests(auth -> {
+                    // Errors are rendered by an internal dispatch to /error, after the request itself was authorized.
+                    // Securing that dispatch turned every 400 of a public endpoint (malformed JSON on login or
+                    // sign-up, an invalid identicon id) into a 401.
+                    auth.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
 
-                                // Login, token refresh and logout carry their own credentials;
-                                // email verification carries the token received by email
-                                .requestMatchers(
-                                        HttpMethod.POST,
-                                        "/api/v1/auth/login",
-                                        "/api/v1/auth/refresh",
-                                        "/api/v1/auth/logout",
-                                        "/api/v1/auth/verify-email",
-                                        "/api/v1/auth/password-reset/request",
-                                        "/api/v1/auth/password-reset/confirm"
-                                )
-                                .permitAll()
-                                // Everything on the management port is public, that port being private by
-                                // deployment. Matching the endpoints only left its error page (404, 406, 500)
-                                // behind authentication, so every error there answered 401.
-                                .requestMatchers(onManagementPort(environment))
-                                .permitAll()
-                                // Identicons are images loaded by <img> tags, which send no token
-                                .requestMatchers(HttpMethod.GET, "/api/v1/identicons/*")
-                                .permitAll()
-                                // Tasks are reserved to enabled users with a verified email
-                                .requestMatchers("/api/v1/tasks/**")
-                                .access(activeUserAuthorizationManager)
+                    PublicEndpoints.ALL.forEach(endpoint ->
+                            auth.requestMatchers(endpoint.method(), endpoint.pattern()).permitAll());
 
-                                .anyRequest()
-                                .authenticated()
-                )
+                    auth
+                            // Everything on the management port is public, that port being private by deployment.
+                            // Matching the endpoints only left its error page (404, 406, 500) behind
+                            // authentication, so every error there answered 401.
+                            .requestMatchers(onManagementPort(environment))
+                            .permitAll()
+                            // The documentation of a public API; API_DOCS_ENABLED and SWAGGER_UI_ENABLED turn it off
+                            .requestMatchers(HttpMethod.GET, API_DOCUMENTATION)
+                            .permitAll()
+                            // Tasks are reserved to enabled users with a verified email
+                            .requestMatchers("/api/v1/tasks/**")
+                            .access(activeUserAuthorizationManager)
+                            .anyRequest()
+                            .authenticated();
+                })
                 .oauth2ResourceServer(oauth ->
                         oauth.jwt(jwt ->
                                 jwt.jwtAuthenticationConverter(

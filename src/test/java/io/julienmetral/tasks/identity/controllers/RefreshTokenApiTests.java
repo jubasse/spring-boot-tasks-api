@@ -152,6 +152,27 @@ class RefreshTokenApiTests {
     }
 
     @Test
+    void refreshIgnoresAnExpiredAccessTokenLeftInTheAuthorizationHeader() throws Exception {
+        String email = uniqueEmail();
+        signUp(email);
+        String refreshToken = refreshTokenOf(loginJson(email));
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer eyJhbGciOiJIUzI1NiJ9.expired.signature")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(tokenBody(refreshToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").isNotEmpty());
+    }
+
+    @Test
+    void protectedEndpointStillRejectsAnInvalidAccessToken() throws Exception {
+        mockMvc.perform(get("/api/v1/tasks")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer eyJhbGciOiJIUzI1NiJ9.expired.signature"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void consecutiveRefreshesChainAndEachReturnsADifferentToken() throws Exception {
         String email = uniqueEmail();
         signUp(email);
