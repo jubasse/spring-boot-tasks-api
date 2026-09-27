@@ -2,7 +2,6 @@ package io.julienmetral.tasks.task.controllers;
 
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -72,7 +71,6 @@ class TaskListApiTests extends AbstractUserStateTaskApiTests {
     }
 
     @Test
-    @Disabled("bug: an unknown sort property throws PropertyReferenceException, which no handler maps, so it answers 500")
     void sortByAnUnknownPropertyIsAValidationErrorOnTheSortParameter() throws Exception {
         User admin = createUser(UserRole.ADMIN);
 

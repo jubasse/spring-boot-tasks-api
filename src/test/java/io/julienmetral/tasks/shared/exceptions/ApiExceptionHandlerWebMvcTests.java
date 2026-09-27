@@ -2,7 +2,6 @@ package io.julienmetral.tasks.shared.exceptions;
 
 import io.julienmetral.tasks.identity.services.UserService;
 import io.julienmetral.tasks.support.WebLayerTest;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -53,7 +52,6 @@ class ApiExceptionHandlerWebMvcTests {
     }
 
     @Test
-    @Disabled("bug: no handler catches unexpected exceptions, so a 500 is the servlet error page, not a problem")
     void unexpectedFailureIsAnUntypedInternalServerErrorWithoutItsMessage() throws Exception {
         UUID id = UUID.randomUUID();
         when(userService.findById(id)).thenThrow(new IllegalStateException("connection pool exhausted"));
