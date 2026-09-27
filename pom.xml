@@ -34,6 +34,7 @@
 		<tika.version>4.0.0</tika.version>
 		<twelvemonkeys.version>3.15.2</twelvemonkeys.version>
 		<metadata-extractor.version>2.21.0</metadata-extractor.version>
+		<mockwebserver.version>5.5.0</mockwebserver.version>
 		<!-- Above the versions Spring Boot 4.1.1 manages, which have fixed vulnerabilities: Tomcat 11.0.24 three critical
 		     (GHSA-9xv2-5v5q-p794, GHSA-gcx9-497g-6cp6, GHSA-h3x4-894j-xpx5), amqp-client 5.30.0 four high. Remove both
 		     once Spring Boot manages these versions or later. -->
@@ -95,6 +96,17 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc</artifactId>
+		</dependency>
+		<!-- RestClient and HTTP service clients; without it, the spring.http.* properties are ignored silently -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-restclient</artifactId>
+		</dependency>
+		<!-- Declared rather than inherited from the AWS SDK at runtime scope: RestClient uses it, and its address
+		     filtering is the one that also holds against DNS rebinding (see OutboundHttpConfiguration) -->
+		<dependency>
+			<groupId>org.apache.httpcomponents.client5</groupId>
+			<artifactId>httpclient5</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.springdoc</groupId>
@@ -238,6 +250,13 @@
 		<dependency>
 			<groupId>org.testcontainers</groupId>
 			<artifactId>testcontainers-rabbitmq</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<!-- A real HTTP server on a local port, so tests go through the real client, filter and timeouts -->
+		<dependency>
+			<groupId>com.squareup.okhttp3</groupId>
+			<artifactId>mockwebserver3-junit5</artifactId>
+			<version>${mockwebserver.version}</version>
 			<scope>test</scope>
 		</dependency>
 		<dependency>
