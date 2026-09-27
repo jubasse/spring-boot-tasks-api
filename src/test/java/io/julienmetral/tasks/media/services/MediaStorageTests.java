@@ -49,6 +49,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static io.julienmetral.tasks.support.Presigning.waitForTheNextSecond;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @IntegrationTest
@@ -162,6 +163,59 @@ class MediaStorageTests {
                     assertThat(disposition.isAttachment()).isTrue();
                     assertThat(disposition.getFilename()).isEqualTo("Été rapport.pdf");
                 });
+    }
+
+    @Test
+    void downloadIsServedWithTheCacheControlSignedIntoItsUrl() throws Exception {
+        Media stored = mediaService.store(
+                new MockMultipartFile("file", "notes.pdf", "application/pdf", uniquePdf()),
+                MediaUsage.TASK_ATTACHMENT,
+                createUser().getId()
+        );
+
+        HttpResponse<byte[]> download = download(mediaService.downloadUrl(stored));
+
+        assertThat(download.statusCode()).isEqualTo(200);
+        assertThat(download.headers().firstValue("Cache-Control"))
+                .hasValue("private, max-age=" + storageProperties.presignedUrlTtl().toSeconds() + ", immutable");
+    }
+
+    @Test
+    void downloadUrlOfAMediaIsHandedOutAgainAfterItWasSigned() throws Exception {
+        Media stored = mediaService.store(
+                new MockMultipartFile("file", "notes.pdf", "application/pdf", uniquePdf()),
+                MediaUsage.TASK_ATTACHMENT,
+                createUser().getId()
+        );
+
+        MediaDownload first = mediaService.downloadUrl(stored);
+        waitForTheNextSecond();
+        MediaDownload second = mediaService.downloadUrl(reload(stored.getId()));
+
+        assertThat(second.url().toString()).isEqualTo(first.url().toString());
+        assertThat(second.expiresAt()).isEqualTo(first.expiresAt());
+    }
+
+    @Test
+    void twoMediaGetDistinctDownloadUrls() {
+        User uploader = createUser();
+        byte[] pdf = uniquePdf();
+        Media first = mediaService.store(
+                new MockMultipartFile("file", "same.pdf", "application/pdf", pdf),
+                MediaUsage.TASK_ATTACHMENT,
+                uploader.getId()
+        );
+        Media second = mediaService.store(
+                new MockMultipartFile("file", "same.pdf", "application/pdf", pdf),
+                MediaUsage.TASK_ATTACHMENT,
+                uploader.getId()
+        );
+
+        String firstUrl = mediaService.downloadUrl(first).url().toString();
+        String secondUrl = mediaService.downloadUrl(second).url().toString();
+
+        assertThat(firstUrl).contains(first.getStorageKey());
+        assertThat(secondUrl).contains(second.getStorageKey()).isNotEqualTo(firstUrl);
     }
 
     @Test

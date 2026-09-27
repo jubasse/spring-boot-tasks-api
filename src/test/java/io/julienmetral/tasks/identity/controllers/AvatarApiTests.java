@@ -14,6 +14,8 @@ import java.util.Arrays;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
+import static io.julienmetral.tasks.support.Presigning.waitForTheNextSecond;
+import static io.julienmetral.tasks.support.ProfilePhotos.givePhoto;
 import static io.julienmetral.tasks.support.Problems.typedProblem;
 import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -271,6 +273,29 @@ class AvatarApiTests extends AbstractAvatarApiTests {
 
         assertThat(avatarUrl).contains(key);
         assertThat(download(avatarUrl).body()).isEqualTo(objectBytes(key));
+    }
+
+    @Test
+    void responsesShowingTheSamePhotoGiveTheSameUrl() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User user = createUser(UserRole.USER);
+        User other = createUser(UserRole.USER);
+        givePhoto(jdbcTemplate, user.getId());
+        givePhoto(jdbcTemplate, other.getId());
+        UUID taskId = createTask(admin, user);
+
+        String fromUser = userJson(user).get("avatarUrl").asString();
+        waitForTheNextSecond();
+        String task = mockMvc.perform(get("/api/v1/tasks/{id}", taskId).with(asAdmin(admin)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String fromTask = json(task).get("assignedTo").get("avatarUrl").asString();
+
+        assertThat(fromUser).doesNotContain("/identicons/");
+        assertThat(fromTask).isEqualTo(fromUser);
+        assertThat(userJson(other).get("avatarUrl").asString()).isNotEqualTo(fromUser);
     }
 
     @Test
