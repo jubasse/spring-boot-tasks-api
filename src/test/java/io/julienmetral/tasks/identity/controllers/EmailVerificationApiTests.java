@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.typedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -44,7 +45,8 @@ class EmailVerificationApiTests {
 
     private static final String DISPLAY_NAME = "Verification test";
 
-    private static final String INVALID_TOKEN_TITLE = "Invalid email verification token";
+    private static final String INVALID_TOKEN_DETAIL =
+            "The email verification token is invalid, expired or already used";
 
     @Autowired
     private MockMvc mockMvc;
@@ -297,9 +299,7 @@ class EmailVerificationApiTests {
         verify(mailpit.latestVerificationTokenFor(email)).andExpect(status().isNoContent());
 
         resend(accessToken)
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.title").value("Email already verified"))
-                .andExpect(jsonPath("$.status").value(409));
+                .andExpect(typedProblem(409, "email-already-verified", "Email already verified"));
 
         Thread.sleep(500);
         assertThat(mailpit.countTo(email)).isEqualTo(1);
@@ -393,9 +393,8 @@ class EmailVerificationApiTests {
 
     private static void expectInvalidToken(ResultActions result) throws Exception {
         result
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.title").value(INVALID_TOKEN_TITLE))
-                .andExpect(jsonPath("$.status").value(400));
+                .andExpect(typedProblem(400, "invalid-token", "Invalid or expired token"))
+                .andExpect(jsonPath("$.detail").value(INVALID_TOKEN_DETAIL));
     }
 
     private void awaitEmailCount(String email, int expected) throws InterruptedException {

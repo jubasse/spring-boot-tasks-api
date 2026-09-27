@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -456,9 +457,8 @@ class RefreshTokenApiTests {
 
     private static void expectInvalidRefreshToken(ResultActions result) throws Exception {
         result
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.title").value("Invalid refresh token"))
-                .andExpect(jsonPath("$.status").value(401));
+                .andExpect(untypedProblem(401, "Unauthorized"))
+                .andExpect(jsonPath("$.detail").value("The refresh token is invalid, expired or revoked"));
     }
 
     private String tokenBody(String refreshToken) {

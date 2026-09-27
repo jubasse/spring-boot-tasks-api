@@ -20,6 +20,7 @@ import java.time.Instant;
 import java.util.EnumSet;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -234,9 +235,8 @@ class AuthControllerTests {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(loginBody(email, "wrong-password"))
                 )
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.status").value(401))
-                .andExpect(jsonPath("$.message").value("Invalid email or password"))
+                .andExpect(untypedProblem(401, "Unauthorized"))
+                .andExpect(jsonPath("$.detail").value("Invalid email or password"))
                 .andExpect(jsonPath("$.accessToken").doesNotExist());
 
         assertThat(userRepository.findById(id).orElseThrow().getLastLoginAt()).isNull();
@@ -249,9 +249,8 @@ class AuthControllerTests {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(loginBody(uniqueEmail(), PASSWORD))
                 )
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.status").value(401))
-                .andExpect(jsonPath("$.message").value("Invalid email or password"));
+                .andExpect(untypedProblem(401, "Unauthorized"))
+                .andExpect(jsonPath("$.detail").value("Invalid email or password"));
     }
 
     @Test
@@ -272,8 +271,8 @@ class AuthControllerTests {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(loginBody(email, PASSWORD))
                 )
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.message").value("Invalid email or password"));
+                .andExpect(untypedProblem(401, "Unauthorized"))
+                .andExpect(jsonPath("$.detail").value("Invalid email or password"));
 
         assertThat(userRepository.findById(id).orElseThrow().getLastLoginAt()).isNull();
 

@@ -20,10 +20,13 @@ import java.sql.Timestamp;
 import java.util.EnumSet;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.typedProblem;
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -168,9 +171,7 @@ class UserControllerTests {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(signUpBody(email, "password456", "Second"))
                 )
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.status").value(409))
-                .andExpect(jsonPath("$.title").value("User email already exists"));
+                .andExpect(typedProblem(409, "email-taken", "Email already in use"));
     }
 
     @Test
@@ -209,8 +210,7 @@ class UserControllerTests {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(signUpBody(email.toUpperCase(), "password123", "Again"))
                 )
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.title").value("User email already exists"));
+                .andExpect(typedProblem(409, "email-taken", "Email already in use"));
     }
 
     @Test
@@ -239,9 +239,8 @@ class UserControllerTests {
         User admin = createUser(UserRole.ADMIN);
 
         mockMvc.perform(get("/api/v1/users/{id}", UUID.randomUUID()).with(as(admin, UserRole.ADMIN)))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.status").value(404))
-                .andExpect(jsonPath("$.title").value("User not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("User not found")));
     }
 
     @Test
