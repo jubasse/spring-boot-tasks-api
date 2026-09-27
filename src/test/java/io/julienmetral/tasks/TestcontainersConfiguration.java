@@ -47,11 +47,12 @@ public class TestcontainersConfiguration {
 	) + "\n";
 
 	// Not reused: the dead-letter tests make the listeners' collaborators fail, and on a shared broker those listeners
-	// would consume, and dead-letter, the messages of every other context
+	// would consume, and dead-letter, the messages of every other context. Warning: keep the version of compose.yaml,
+	// which Dependabot updates; it cannot update this one.
 	@Bean
 	@ServiceConnection
 	RabbitMQContainer rabbitContainer() {
-		return new RabbitMQContainer(DockerImageName.parse("rabbitmq:4.2.9-management"));
+		return new RabbitMQContainer(DockerImageName.parse("rabbitmq:4.3.6-management"));
 	}
 
 	// SMTP server that catches every email; tests read them through its HTTP API (see support.Mailpit)
