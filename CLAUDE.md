@@ -81,7 +81,7 @@ Refresh, verification and reset tokens are 256-bit random values (`OpaqueTokens`
    - accounts without activity for 2 years get a warning email, then are deleted 30 days later if still inactive, and anonymized by a later run. Activity is `last_active_at`, set by login and by token refresh (`User.markActive`, which also clears the warning); older rows fall back to `last_login_at`, then `created_at`.
    - admins are never warned or deleted for inactivity, so the last admin cannot disappear.
 
-Public endpoints: `POST /api/v1/users` (sign-up), and `POST /api/v1/auth/login`, `/refresh`, `/logout`, `/verify-email`, `/password-reset/request` and `/password-reset/confirm`.
+Public endpoints: `POST /api/v1/users` (sign-up), and `POST /api/v1/auth/login`, `/refresh`, `/logout`, `/verify-email`, `/password-reset/request` and `/password-reset/confirm`, plus the identicons. `identity.security.PublicEndpoints` lists them once: `SecurityConfiguration` permits them, and the API documentation marks them public. They ignore the `Authorization` header: a client that kept its expired access token got a 401 from login and refresh.
 
 ### Rate limiting
 
@@ -213,6 +213,8 @@ Authorization is declared with custom meta-annotations wrapping `@PreAuthorize`,
 - `@SelfOnly`, `@AllowedRolesOrSelfOnly(...)`: delegate to the `userAuthorization` bean (`UserAuthorization`).
 - `@AllowedRolesOrAssignedToOnly(...)` (in `task.security`): delegates to the `taskAuthorization` bean (`TaskAuthorization`).
 - `@AllowedRolesOrUploaderOnly(...)`, `@CommentAuthorOnly`, `@AllowedRolesOrCommentAuthorOnly(...)` (in `task.security`): delegate to `taskAttachmentAuthorization` and `taskCommentAuthorization`, and read `#attachmentId` or `#commentId` instead.
+- `@AllowedRolesOrWithoutAssigneeOnly(...)` (in `task.security`): anyone may create an unassigned task; assigning it on creation needs a role. It reads `#dto`.
+- Every one of them carries `@AccessDescription`, the sentence the API documentation shows for the rule. Warning: a rule without it, or a `@PreAuthorize` written directly on a controller method, fails `AccessDescriptionTest`.
 
 The SpEL in the other annotations references the method parameter **`#id`**, so the annotated controller methods must name their path variable `id`. New ownership rules follow the same pattern: add a `@Component("name")` bean with a boolean method, plus a meta-annotation.
 
@@ -221,6 +223,15 @@ The SpEL in the other annotations references the method parameter **`#id`**, so 
 Every task mutation in `TaskService` must call the matching `TaskEventService` method (`created`, `updated`, `statusChanged`, `assignmentChanged`, `archived`, `cancelled`, ...). Those methods are `@Transactional(propagation = MANDATORY)`, so they throw if called outside the caller's transaction. They write a `TaskEvent` row with the current user as the actor and a type-specific payload record serialized to a `jsonb` column. The history is exposed at `GET /api/v1/tasks/{taskId}/events`.
 
 `Task` uses optimistic locking (`@Version`). Mutations rely on JPA dirty checking inside the transaction and don't call `save()` explicitly.
+
+### API documentation
+
+springdoc serves the OpenAPI 3.1 document at `/v3/api-docs` and Swagger UI at `/swagger-ui.html` (`API_DOCS_ENABLED`, `SWAGGER_UI_ENABLED`). `docs/openapi.json` is a committed copy: `OpenApiSpecTests` fails when it differs from what the application serves, and `./mvnw test -Dtest=OpenApiSpecTests -Dopenapi.update=true` rewrites it. In CI, Spectral lints it and oasdiff fails a pull request that breaks it.
+- **A new endpoint** needs: the controller's `@Tag`; an `@Operation(summary)`; a method name unique across controllers, since it is the operationId (`createTask`, `listTasks`); `@ResponseStatus` for 201, 202 or 204 (a 201 also gets a Location header); `@DocumentedProblems` for the typed problems it can answer; `@RateLimited` if it calls `RateLimiter`; and, if it is public, an entry in `PublicEndpoints`.
+- **Added automatically** (`config.OperationDocumentation`, `config.PathDocumentation`): the bearer requirement or its absence, 401, the 403 of an access rule and of task operations, 400 on input, 404 on a path naming a resource, the problems of an upload, 429, a default response, the page size limit.
+- Warning: an `@ApiResponse` on a method without `@ResponseStatus` makes springdoc drop its success response; declare the success response too (see `AuthController.login`).
+- Warning: the `Problem` schema is written by hand (`config.ProblemDocumentation`): the one springdoc derives from `ProblemDetail` describes a `properties` object that the JSON flattens. `springdoc.override-with-generic-response` stays false, or every handler of `ApiExceptionHandler` becomes a response of every operation.
+- `springdoc.allowed-locales` stays `en`: before springdoc 3.1.1, varying `Accept-Language` exhausted the memory with one cached document per language.
 
 ### Errors
 

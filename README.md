@@ -95,6 +95,12 @@ docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
 
 The role is part of the access token, so log in again afterwards.
 
+### Explore the API in the browser
+
+Open http://localhost:8080/swagger-ui.html. Every endpoint is listed with its parameters, responses and errors, and you can call it from the page: sign in with `POST /api/v1/auth/login`, copy the `accessToken`, then paste it in **Authorize**.
+
+The OpenAPI document behind the page is at http://localhost:8080/v3/api-docs, and a copy is kept in [docs/openapi.json](docs/openapi.json), so a change to the API shows in the diff of its pull request. To generate a client, use that file.
+
 ### Explore every endpoint with Postman
 
 `postman/tasks-api.postman_collection.json` covers every endpoint, with test scripts. Import it into Postman, or run it with newman:
@@ -124,6 +130,7 @@ Add `ANTIVIRUS_ENABLED=false` to `.env`. Uploads are then stored without being s
 | `./mvnw compile` | Builds the project |
 | `./mvnw test` | Runs all the unit and integration tests, and writes a coverage report to `target/site/jacoco/index.html` |
 | `./mvnw test -Dtest=AuthControllerTests` | Runs one test class (`-Dtest=Class#method` for one test) |
+| `./mvnw test -Dtest=OpenApiSpecTests -Dopenapi.update=true` | Regenerates `docs/openapi.json` after a change to the API |
 | `./mvnw verify` | Runs what the CI runs: the tests and the coverage report |
 | `gitleaks git . --redact` | Scans the Git history for secrets, as the CI does |
 
@@ -146,6 +153,7 @@ The API reads its configuration from `src/main/resources/application.yaml`, whic
 | `MEDIA_CLEANUP_RETENTION` | `30d` | How long the files of deleted tasks and accounts are kept |
 | `SPRING_RABBITMQ_HOST`, `SPRING_RABBITMQ_USERNAME`, `SPRING_RABBITMQ_PASSWORD` | provided by Docker Compose | RabbitMQ connection outside local development |
 | `MANAGEMENT_PORT` | `8081` | Port of the health and metrics endpoints |
+| `API_DOCS_ENABLED`, `SWAGGER_UI_ENABLED` | `true` | `false` stops serving the OpenAPI document and Swagger UI, for example in production |
 | `IDENTITY_STATUS_CACHE_TTL` | `30s` | How long an account's status is reused before it is read again, from 1 second to 1 minute. With several instances, it is also how long an account disabled on one instance can keep working through the others |
 
 `.env.example` lists the other options, and `application.yaml` holds the fixed settings, such as the upload size limits and the schedules of the background jobs.
