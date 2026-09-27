@@ -410,17 +410,13 @@ class PasswordResetApiTests {
     }
 
     /**
-     * Waits until the address has received {@code expectedCount} emails (the verification email included),
-     * then returns the token of the latest one, which must be a reset link.
+     * Waits until the address has received {@code expectedCount} emails (the verification email included), then
+     * returns the token of the latest reset email: the verification email sent at sign-up can arrive after it.
      */
     private String awaitResetToken(String email, int expectedCount) throws InterruptedException {
         awaitEmailCount(email, expectedCount);
 
-        String text = mailpit.latestTextTo(email);
-
-        assertThat(text).contains(RESET_LINK);
-
-        return Mailpit.extractToken(text);
+        return Mailpit.extractToken(mailpit.latestTextTo(email, RESET_LINK));
     }
 
     private void awaitEmailCount(String email, int expected) throws InterruptedException {
