@@ -271,6 +271,12 @@
 					</excludes>
 				</configuration>
 			</plugin>
+			<!-- Writes META-INF/sbom/application.cdx.json, the dependencies of the jar, served by /actuator/sbom/application;
+			     the Spring Boot parent configures it -->
+			<plugin>
+				<groupId>org.cyclonedx</groupId>
+				<artifactId>cyclonedx-maven-plugin</artifactId>
+			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
