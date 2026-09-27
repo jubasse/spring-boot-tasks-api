@@ -27,11 +27,16 @@ import org.springframework.security.web.servlet.util.matcher.PathPatternRequestM
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 
+import java.util.Arrays;
 import java.util.Map;
+import java.util.stream.Stream;
 
 @Configuration
 @EnableMethodSecurity
 public class SecurityConfiguration {
+
+    // The probes of the orchestrator, which sends no token; the health details stay on the management port
+    private static final String[] PROBES = {"/livez", "/readyz"};
 
     private static final String[] API_DOCUMENTATION = {
             "/v3/api-docs", "/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**"
@@ -113,17 +118,21 @@ public class SecurityConfiguration {
         return authenticationConverter;
     }
 
-    // A public endpoint ignores the Authorization header: a client that kept its expired access token got a 401 from
-    // login and refresh, the very endpoints that give it a new one
+    // Public endpoints and probes ignore the Authorization header: a client that kept its expired access token got a
+    // 401 from login and refresh, the very endpoints that give it a new one, and a probe would fail the same way
     @Bean
     BearerTokenResolver bearerTokenResolver() {
         DefaultBearerTokenResolver resolver = new DefaultBearerTokenResolver();
-        RequestMatcher publicEndpoint = new OrRequestMatcher(PublicEndpoints.ALL.stream()
-                .map(endpoint -> (RequestMatcher) PathPatternRequestMatcher.withDefaults()
-                        .matcher(endpoint.method(), endpoint.pattern()))
+        RequestMatcher withoutToken = new OrRequestMatcher(Stream.concat(
+                        PublicEndpoints.ALL.stream().map(endpoint -> matcher(endpoint.method(), endpoint.pattern())),
+                        Arrays.stream(PROBES).map(probe -> matcher(HttpMethod.GET, probe)))
                 .toList());
 
-        return request -> publicEndpoint.matches(request) ? null : resolver.resolve(request);
+        return request -> withoutToken.matches(request) ? null : resolver.resolve(request);
+    }
+
+    private static RequestMatcher matcher(HttpMethod method, String pattern) {
+        return PathPatternRequestMatcher.withDefaults().matcher(method, pattern);
     }
 
     @Bean
@@ -158,6 +167,8 @@ public class SecurityConfiguration {
                             .permitAll()
                             // The documentation of a public API; API_DOCS_ENABLED and SWAGGER_UI_ENABLED turn it off
                             .requestMatchers(HttpMethod.GET, API_DOCUMENTATION)
+                            .permitAll()
+                            .requestMatchers(HttpMethod.GET, PROBES)
                             .permitAll()
                             // Tasks are reserved to enabled users with a verified email
                             .requestMatchers("/api/v1/tasks/**")

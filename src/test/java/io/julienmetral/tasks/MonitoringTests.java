@@ -21,11 +21,14 @@ import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.health.actuate.endpoint.HealthEndpointGroups;
 import org.springframework.boot.micrometer.metrics.test.autoconfigure.AutoConfigureMetrics;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalManagementPort;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -45,6 +48,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalDouble;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -71,6 +75,9 @@ class MonitoringTests {
 
     @Autowired
     private JsonMapper jsonMapper;
+
+    @Autowired
+    private HealthEndpointGroups healthGroups;
 
     @Autowired
     private MailService mailService;
@@ -256,6 +263,48 @@ class MonitoringTests {
         assertThat(Objects.toString(response.getBody(), "")).doesNotContain("UP", "outbox_messages_pending");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"/livez", "/readyz"})
+    void probeOnTheApiPortIsUpWithoutATokenAndShowsNoDetails(String path) {
+        ResponseEntity<String> response = get(apiPort, path);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode probe = jsonMapper.readTree(response.getBody());
+        assertThat(probe.path("status").asString()).isEqualTo("UP");
+        assertThat(probe.has("components")).isFalse();
+        assertThat(probe.has("details")).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/livez", "/readyz"})
+    void probeOnTheApiPortIgnoresAnInvalidBearerToken(String path) {
+        ResponseEntity<String> response = exchange(HttpMethod.GET, apiPort, path,
+                headers -> headers.setBearerAuth("not-a-valid-token"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void probesOnTheApiPortCheckTheSameComponentsAsTheManagementPortProbes() {
+        List<String> components = List.of("db", "rabbit", "mail", "diskSpace", "storage", "antivirus",
+                "livenessState", "readinessState", "ping", "ssl");
+
+        assertThat(components).allSatisfy(component -> {
+            assertThat(healthGroups.get("livez").isMember(component))
+                    .isEqualTo(healthGroups.get("liveness").isMember(component));
+            assertThat(healthGroups.get("readyz").isMember(component))
+                    .isEqualTo(healthGroups.get("readiness").isMember(component));
+        });
+    }
+
+    @Test
+    void postToAProbeOnTheApiPortIsUnauthorized() {
+        ResponseEntity<String> response = exchange(HttpMethod.POST, apiPort, "/livez", headers -> {
+        });
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
     @Test
     void unknownPathOnTheManagementPortIsNotFound() {
         assertThat(get(managementPort, "/actuator/unknown").getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
@@ -318,10 +367,16 @@ class MonitoringTests {
     }
 
     private static ResponseEntity<String> get(int port, String path, MediaType accept) {
+        return exchange(HttpMethod.GET, port, path, headers -> headers.setAccept(List.of(accept)));
+    }
+
+    private static ResponseEntity<String> exchange(
+            HttpMethod method, int port, String path, Consumer<HttpHeaders> headers
+    ) {
         return RestClient.create("http://localhost:" + port)
-                .get()
+                .method(method)
                 .uri(path)
-                .accept(accept)
+                .headers(headers)
                 .retrieve()
                 .onStatus(status -> true, (request, response) -> {
                 })
