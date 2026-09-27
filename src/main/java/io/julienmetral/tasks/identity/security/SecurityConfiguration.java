@@ -33,6 +33,9 @@ import java.util.Map;
 @EnableMethodSecurity
 public class SecurityConfiguration {
 
+    // The probes of the orchestrator, which sends no token; the health details stay on the management port
+    private static final String[] PROBES = {"/livez", "/readyz"};
+
     private static final String[] API_DOCUMENTATION = {
             "/v3/api-docs", "/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**"
     };
@@ -158,6 +161,8 @@ public class SecurityConfiguration {
                             .permitAll()
                             // The documentation of a public API; API_DOCS_ENABLED and SWAGGER_UI_ENABLED turn it off
                             .requestMatchers(HttpMethod.GET, API_DOCUMENTATION)
+                            .permitAll()
+                            .requestMatchers(HttpMethod.GET, PROBES)
                             .permitAll()
                             // Tasks are reserved to enabled users with a verified email
                             .requestMatchers("/api/v1/tasks/**")
