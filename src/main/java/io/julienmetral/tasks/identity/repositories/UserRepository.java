@@ -21,6 +21,12 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     @Query("SELECT u FROM User u WHERE u.id = :id")
     Optional<User> findWithProfileById(@Param("id") UUID id);
 
+    // Read on every task request: findById would load the whole account, password hash and roles included. Empty
+    // for a soft-deleted account, which JPQL skips.
+    @Query("SELECT new io.julienmetral.tasks.identity.repositories.AccountState(u.enabled, u.emailVerifiedAt) "
+            + "FROM User u WHERE u.id = :id")
+    Optional<AccountState> findAccountStateById(@Param("id") UUID id);
+
     /** Locks the row until the transaction ends ({@code SELECT ... FOR UPDATE}); skips soft-deleted users. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT u FROM User u WHERE u.id = :id")

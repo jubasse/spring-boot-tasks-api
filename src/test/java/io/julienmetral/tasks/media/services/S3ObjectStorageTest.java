@@ -12,6 +12,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.ContentDisposition;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.exception.SdkClientException;
@@ -44,6 +47,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -62,6 +66,13 @@ class S3ObjectStorageTest {
     private static final String BUCKET = "tasks-media";
 
     private static final Duration TTL = Duration.ofMinutes(10);
+
+    private static final AwsCredentials STORAGE_CREDENTIALS =
+            AwsBasicCredentials.create("test-access-key", "test-secret-key");
+
+    // Differs from the storage's credentials, so a URL signed with the presigner's own provider would show
+    private static final AwsCredentials PRESIGNER_CREDENTIALS =
+            AwsBasicCredentials.create("presigner-access-key", "presigner-secret-key");
 
     @Mock
     private S3Client s3Client;
@@ -91,11 +102,14 @@ class S3ObjectStorageTest {
                 .builder()
                 .region(Region.EU_WEST_3)
                 .endpointOverride(URI.create("http://storage.example:9000"))
-                .credentialsProvider(StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create("test-access-key", "test-secret-key")))
+                .credentialsProvider(StaticCredentialsProvider.create(PRESIGNER_CREDENTIALS))
                 .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
                 .build();
-        storage = new S3ObjectStorage(s3Client, presigner, BUCKET, TTL);
+        storage = storageSigningWith(StaticCredentialsProvider.create(STORAGE_CREDENTIALS));
+    }
+
+    private S3ObjectStorage storageSigningWith(AwsCredentialsProvider credentials) {
+        return new S3ObjectStorage(s3Client, presigner, BUCKET, TTL, credentials);
     }
 
     @AfterEach
@@ -225,6 +239,65 @@ class S3ObjectStorageTest {
     }
 
     @Test
+    void presignedDownloadSignsWithTheStorageCredentialsResolvedOnce() {
+        AtomicInteger resolutions = new AtomicInteger();
+        S3ObjectStorage counting = storageSigningWith(() -> {
+            resolutions.incrementAndGet();
+            return STORAGE_CREDENTIALS;
+        });
+
+        MediaDownload download = counting.presignDownload("key", "report.pdf", "application/pdf");
+
+        assertThat(resolutions).hasValue(1);
+        assertThat(query(URI.create(download.url().toString())).get("X-Amz-Credential"))
+                .startsWith("test-access-key/");
+    }
+
+    @Test
+    void presignedDownloadWithTemporaryCredentialsCarriesTheirSessionToken() {
+        S3ObjectStorage temporary = storageSigningWith(StaticCredentialsProvider.create(
+                temporaryCredentials(Instant.now().plus(Duration.ofHours(1)))));
+
+        MediaDownload download = temporary.presignDownload("key", "report.pdf", "application/pdf");
+
+        Map<String, String> query = query(URI.create(download.url().toString()));
+        assertThat(query.get("X-Amz-Credential")).startsWith("temporary-access-key/");
+        assertThat(query).containsEntry("X-Amz-Security-Token", "temporary-session-token");
+    }
+
+    @Test
+    void presignedDownloadExpiresWithCredentialsEndingBeforeTheTtl() {
+        Instant credentialsExpiry = Instant.now().plus(Duration.ofMinutes(3));
+        S3ObjectStorage temporary = storageSigningWith(StaticCredentialsProvider.create(
+                temporaryCredentials(credentialsExpiry)));
+
+        MediaDownload download = temporary.presignDownload("key", "report.pdf", "application/pdf");
+
+        assertThat(download.expiresAt()).isEqualTo(credentialsExpiry);
+        assertThat(query(URI.create(download.url().toString())))
+                .containsEntry("X-Amz-Expires", String.valueOf(TTL.toSeconds()));
+    }
+
+    @Test
+    void presignedDownloadExpiresAfterTheTtlWhenTheCredentialsOutliveIt() {
+        Instant before = Instant.now();
+        S3ObjectStorage temporary = storageSigningWith(StaticCredentialsProvider.create(
+                temporaryCredentials(Instant.now().plus(Duration.ofHours(1)))));
+
+        MediaDownload download = temporary.presignDownload("key", "report.pdf", "application/pdf");
+
+        assertThat(download.expiresAt()).isBetween(before.plus(TTL).minusSeconds(1), Instant.now().plus(TTL));
+    }
+
+    @Test
+    void presignedDownloadLetsTheBrowserKeepTheFileForTheTtl() {
+        MediaDownload download = storage.presignDownload("key", "report.pdf", "application/pdf");
+
+        assertThat(query(URI.create(download.url().toString())))
+                .containsEntry("response-cache-control", "private, max-age=600, immutable");
+    }
+
+    @Test
     void presignedDownloadForcesTheTypeAndAnAttachmentUnderTheOriginalName() {
         MediaDownload download = storage.presignDownload("key", "report.pdf", "application/pdf");
 
@@ -323,6 +396,15 @@ class S3ObjectStorageTest {
         assertThatThrownBy(() -> storage.listKeysModifiedBefore(Instant.now()))
                 .isInstanceOf(StorageUnavailableException.class)
                 .hasCause(failure);
+    }
+
+    private static AwsSessionCredentials temporaryCredentials(Instant expiresAt) {
+        return AwsSessionCredentials.builder()
+                .accessKeyId("temporary-access-key")
+                .secretAccessKey("temporary-secret-key")
+                .sessionToken("temporary-session-token")
+                .expirationTime(expiresAt)
+                .build();
     }
 
     @SuppressWarnings("unchecked")

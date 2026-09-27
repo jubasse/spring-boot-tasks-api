@@ -6,6 +6,7 @@ import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.identity.security.JwtConfiguration;
 import io.julienmetral.tasks.identity.security.SecurityConfiguration;
 import io.julienmetral.tasks.identity.security.UserAuthorization;
+import io.julienmetral.tasks.identity.security.UserStatusLookup;
 import io.julienmetral.tasks.identity.services.AuthService;
 import io.julienmetral.tasks.identity.services.AvatarService;
 import io.julienmetral.tasks.identity.services.DatabaseUserDetailsService;
@@ -39,8 +40,9 @@ import java.lang.annotation.Target;
  * security and {@link ActiveUserAuthorizationManager}. No database, broker or container: services, repositories and
  * the ownership beans that query the database are mocks, while the pure security components run for real.
  * <p>
- * Task endpoints first reload the caller's account through the {@link UserRepository} mock, so a test calling them
- * stubs it with {@link WebCallers#everyAccountIsActive}.
+ * Task endpoints first read the caller's account state through {@link UserStatusLookup} and the {@link UserRepository}
+ * mock, so a test calling them stubs it with {@link WebCallers#everyAccountIsActive}. The slice enables no caching, so
+ * every request reads it.
  * <p>
  * Warning: this annotation loads all controllers on purpose, so that every web test shares one cached context. Naming
  * the controllers of a class, or adding a mock or an import to a single class, creates another context, which counts
@@ -57,6 +59,7 @@ import java.lang.annotation.Target;
         CurrentUser.class,
         UserAuthorization.class,
         ActiveUserAuthorizationManager.class,
+        UserStatusLookup.class,
         IdenticonGenerator.class
 })
 @MockitoBean(types = {

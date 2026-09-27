@@ -106,6 +106,40 @@ class UserRepositoryTests {
     }
 
     @Test
+    void findAccountStateByIdReadsWhetherTheAccountIsEnabledAndWhenItWasVerified() {
+        Instant verifiedAt = Instant.parse("2026-01-01T00:00:00Z");
+        User user = newUser(uniqueEmail());
+        user.setEnabled(false);
+        user.setEmailVerifiedAt(verifiedAt);
+        UUID id = entityManager.persistAndFlush(user).getId();
+        entityManager.clear();
+
+        assertThat(userRepository.findAccountStateById(id)).contains(new AccountState(false, verifiedAt));
+    }
+
+    @Test
+    void findAccountStateByIdSkipsASoftDeletedUserAndAnUnknownId() {
+        User deleted = persistUser(uniqueEmail());
+        softDelete(deleted);
+
+        assertThat(userRepository.findAccountStateById(deleted.getId())).isEmpty();
+        assertThat(userRepository.findAccountStateById(UUID.randomUUID())).isEmpty();
+    }
+
+    @Test
+    void findAccountStateByIdReadsTheAccountRowAlone() throws Exception {
+        UUID id = persistUser(uniqueEmail()).getId();
+        entityManager.clear();
+
+        List<String> statements = SqlStatementCounter.statementsDuring(() -> userRepository.findAccountStateById(id));
+
+        assertThat(statements)
+                .singleElement(as(STRING))
+                .startsWith("select ")
+                .doesNotContain(" join ", "password_hash");
+    }
+
+    @Test
     void findWithProfileByIdLoadsTheProfileItsPhotosAndTheRoles() {
         User user = newUser(uniqueEmail());
         user.getRoles().add(UserRole.ADMIN);

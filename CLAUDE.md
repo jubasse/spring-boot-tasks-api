@@ -140,6 +140,17 @@ Warning: Hibernate refuses a `LAZY` to-one association towards an entity with `@
 - Measured on a page of 20 tasks: 3 queries, whatever the number of distinct users (8 before, growing with them).
 - `TaskQueryCountTests` and `UserQueryCountTests` lock these counts: each read must run as many statements for a long list as for a short one. `support.SqlStatementCounter`, a Hibernate `StatementInspector` registered in the test `application.yaml`, records only the test thread, since the outbox relay and the listeners query the database on their own threads.
 
+### Caching
+
+Two Caffeine caches run on Spring Boot's cache manager. `CacheConfiguration` sets them up, and `spring.cache.cache-names` lists them, so a mistyped name fails instead of creating a cache without limit or metrics.
+- **`userStatus`** (`UserStatusLookup`) holds the status that `ActiveUserAuthorizationManager` checks on every task request, read with a light query (`findAccountStateById`), for `identity.status-cache.ttl` (30 s, 1 s to 1 min) after it was written.
+  - The lookup is `@Cacheable(sync = true)`: Caffeine loads under the key's lock, so an eviction that arrives during a load waits for it and removes what it stored. Without it, a request that read ACTIVE just before a disable committed stored it after the eviction, and the account kept access until the TTL. Spring forbids `unless` with `sync`, so every status is cached, refused ones included.
+  - Every change to an account publishes `AccountStateChanged`, and `UserStatusCacheEviction` evicts the status after the commit. Warning: a new way of changing an account, native SQL included, must publish it too, or a disabled account keeps access until the TTL. Spring Data's `@DomainEvents` would not fire, since entities change through dirty checking, without `save()`.
+  - Warning: never expire after access or refresh after write. A client calling in a loop would keep a stale ACTIVE alive, and a refresh serves the old value when the database fails.
+  - Other instances do not see an eviction: the TTL is their delay. Checks at write time (the assignee in `TaskService`) read the account, never the cache.
+- **`mediaDownloads`** (`MediaService.downloadUrl`) holds the presigned URL of each media, so browsers see the same URL and reuse the file. An entry lives at most half the URL's validity, less when temporary AWS credentials end the URL sooner (`CacheConfiguration.reuseWindow`), and the URL signs `Cache-Control: private, max-age=<validity>, immutable`. Warning: the `@Cacheable` is on `MediaService`, not on `MediaUrls`, whose `avatarOf` calls `of` on itself and would bypass the cache proxy.
+- Metrics: `cache.gets` (hit or miss), `cache.size` and `cache.evictions` per cache, on the management port.
+
 ### Mail
 
 `io.julienmetral.tasks.mail` is the cross-cutting mail service. Features call `MailService.send(MailMessage)`, usually from an event listener that writes the content (for example `identity.mail.VerificationEmailSender`). The sender address is `mail.from`.
@@ -268,7 +279,7 @@ Cut:
   - `AuthControllerTests` sends real `Authorization: Bearer` tokens obtained from the login endpoint.
   - **Time:** `TestClock` is the application's `Clock`. It follows the system time until a test pins it (`set`) or moves it (`advance`), and it is reset after every test.
 - **Web tests** (`*WebMvcTests`) are annotated `@WebLayerTest` (`support`): every controller and `ApiExceptionHandler` behind the real `SecurityConfiguration`, JWT decoding and method security, without Docker. Services, repositories and the ownership beans that query the database are mocks. They cover request validation, 401, role-only 403, the ids the SpEL passes to ownership beans, and exception mapping; everything that depends on stored data stays in `@IntegrationTest`.
-  - Callers come from `WebCallers` (`user`, `admin`, `withoutUid`); task endpoints need `WebCallers.everyAccountIsActive(userRepository)`, because `ActiveUserAuthorizationManager` reloads the account. `verifyNoInteractions(service)` proves a request was refused before the service ran.
+  - Callers come from `WebCallers` (`user`, `admin`, `withoutUid`); task endpoints need `WebCallers.everyAccountIsActive(userRepository)`, because `ActiveUserAuthorizationManager` reads the account's status (`findAccountStateById`) through `UserStatusLookup`. `verifyNoInteractions(service)` proves a request was refused before the service ran.
 - **SQL and repository tests** run in slices on the same reused Postgres, migrated by Liquibase, and roll back after each test: `@JdbcSliceTest` (`JdbcTemplate` and every `*Queries` class) and `@RepositoryTest` (JPA, the repositories, `TestEntityManager` and auditing). `@AutoConfigureTestDatabase(replace = NONE)` is not needed: the default keeps a `@ServiceConnection` data source.
   - A test that must commit (locks seen from another connection, concurrency, Liquibase on its own connection) uses `Transactions.inNewTransaction` or `@Transactional(propagation = NOT_SUPPORTED)`, and cleans up after itself. Fixtures of queries that sweep a whole table are dated in 2000, so the cutoffs reach only the class's own rows.
   - Warning: Postgres is declared once, in `PostgresTestcontainersConfiguration`. Testcontainers reuses a container only when its whole definition matches, so a second definition starts a second database.

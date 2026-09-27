@@ -3,6 +3,7 @@ package io.julienmetral.tasks.identity.services;
 import io.julienmetral.tasks.identity.entities.PasswordResetToken;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserProfile;
+import io.julienmetral.tasks.identity.events.AccountStateChanged;
 import io.julienmetral.tasks.identity.exceptions.InvalidPasswordResetTokenException;
 import io.julienmetral.tasks.identity.mail.PasswordResetProperties;
 import io.julienmetral.tasks.identity.mail.PasswordResetRequested;
@@ -108,7 +109,7 @@ class PasswordResetServiceTest {
     }
 
     private void assertNoSideEffects() {
-        verifyNoInteractions(passwordEncoder, refreshTokenService);
+        verifyNoInteractions(passwordEncoder, refreshTokenService, eventPublisher);
         verify(tokenRepository, never()).deleteUnusedForUser(any());
     }
 
@@ -258,6 +259,7 @@ class PasswordResetServiceTest {
         InOrder order = inOrder(tokenRepository, refreshTokenService);
         order.verify(tokenRepository).deleteUnusedForUser(USER_ID);
         order.verify(refreshTokenService).revokeAllForUser(USER_ID);
+        verify(eventPublisher).publishEvent(new AccountStateChanged(USER_ID));
     }
 
     @Test
@@ -276,5 +278,6 @@ class PasswordResetServiceTest {
         assertThat(user.getEmailVerifiedAt()).isEqualTo(verifiedAt);
         verify(tokenRepository).deleteUnusedForUser(USER_ID);
         verify(refreshTokenService).revokeAllForUser(USER_ID);
+        verifyNoInteractions(eventPublisher);
     }
 }

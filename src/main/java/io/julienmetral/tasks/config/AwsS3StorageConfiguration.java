@@ -6,6 +6,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.util.Assert;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -19,27 +20,45 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 @ConditionalOnProperty(name = "storage.driver", havingValue = "aws-s3")
 public class AwsS3StorageConfiguration {
 
+    // One provider for the client, the presigner and the storage, which reads when the credentials it signed with
+    // expire (see S3ObjectStorage.presignDownload)
     @Bean
-    S3Client s3Client(StorageProperties properties) {
+    AwsCredentialsProvider storageCredentials() {
+        return DefaultCredentialsProvider.builder().build();
+    }
+
+    @Bean
+    S3Client s3Client(StorageProperties properties, AwsCredentialsProvider storageCredentials) {
         return S3Client
                 .builder()
                 .region(region(properties))
-                .credentialsProvider(DefaultCredentialsProvider.builder().build())
+                .credentialsProvider(storageCredentials)
                 .build();
     }
 
     @Bean
-    S3Presigner s3Presigner(StorageProperties properties) {
+    S3Presigner s3Presigner(StorageProperties properties, AwsCredentialsProvider storageCredentials) {
         return S3Presigner
                 .builder()
                 .region(region(properties))
-                .credentialsProvider(DefaultCredentialsProvider.builder().build())
+                .credentialsProvider(storageCredentials)
                 .build();
     }
 
     @Bean
-    ObjectStorage objectStorage(S3Client s3Client, S3Presigner s3Presigner, StorageProperties properties) {
-        return new S3ObjectStorage(s3Client, s3Presigner, properties.bucket(), properties.presignedUrlTtl());
+    ObjectStorage objectStorage(
+            S3Client s3Client,
+            S3Presigner s3Presigner,
+            StorageProperties properties,
+            AwsCredentialsProvider storageCredentials
+    ) {
+        return new S3ObjectStorage(
+                s3Client,
+                s3Presigner,
+                properties.bucket(),
+                properties.presignedUrlTtl(),
+                storageCredentials
+        );
     }
 
     private static Region region(StorageProperties properties) {

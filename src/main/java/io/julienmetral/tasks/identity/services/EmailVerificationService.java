@@ -2,6 +2,7 @@ package io.julienmetral.tasks.identity.services;
 
 import io.julienmetral.tasks.identity.entities.EmailVerificationToken;
 import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.events.AccountStateChanged;
 import io.julienmetral.tasks.identity.exceptions.EmailAlreadyVerifiedException;
 import io.julienmetral.tasks.identity.exceptions.InvalidEmailVerificationTokenException;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
@@ -76,6 +77,7 @@ public class EmailVerificationService {
 
         if (user.getEmailVerifiedAt() == null) {
             user.setEmailVerifiedAt(now);
+            eventPublisher.publishEvent(new AccountStateChanged(user.getId()));
         }
     }
 

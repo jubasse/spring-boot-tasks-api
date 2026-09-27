@@ -3,7 +3,9 @@ package io.julienmetral.tasks.task.controllers;
 import com.jayway.jsonpath.JsonPath;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
+import io.julienmetral.tasks.identity.security.UserStatusLookup;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 
 import java.util.ArrayList;
@@ -20,18 +22,21 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class TaskQueryCountTests extends AbstractTaskCommentApiTests {
 
-    // Measured with open-in-view off, the same for the short and the long list, each including the reload of the
-    // caller by ActiveUserAuthorizationManager. Comments take 7: the photos of the mentioned users and the media of
-    // the files are two batch queries of their own.
-    private static final int TASK_PAGE_STATEMENTS = 3;
-    private static final int TASK_STATEMENTS = 2;
-    private static final int EVENT_PAGE_STATEMENTS = 4;
-    private static final int COMMENT_PAGE_STATEMENTS = 7;
-    private static final int ATTACHMENT_LIST_STATEMENTS = 3;
+    // Measured with open-in-view off, the same for the short and the long list, with the caller's status already
+    // cached (one statement more on a caller's first request, see callerStatusIsReadOnceWhileItIsCached). Comments
+    // take 6: the photos of the mentioned users and the media of the files are two batch queries of their own.
+    private static final int TASK_PAGE_STATEMENTS = 2;
+    private static final int TASK_STATEMENTS = 1;
+    private static final int EVENT_PAGE_STATEMENTS = 3;
+    private static final int COMMENT_PAGE_STATEMENTS = 6;
+    private static final int ATTACHMENT_LIST_STATEMENTS = 2;
 
     // Longer than every list below: Spring Data skips the count query for a first page that is not full, so a size
     // between the short and the long list would add a statement to the long one only
     private static final String PAGE_SIZE = "50";
+
+    @Autowired
+    private UserStatusLookup userStatusLookup;
 
     private record Response(String body, List<String> statements) {
     }
@@ -122,7 +127,28 @@ class TaskQueryCountTests extends AbstractTaskCommentApiTests {
                 .hasSizeLessThanOrEqualTo(ATTACHMENT_LIST_STATEMENTS);
     }
 
+    @Test
+    void callerStatusIsReadOnceWhileItIsCached() throws Exception {
+        User reader = createUser(UserRole.USER);
+        String task = TASKS + "/" + createTask(createUser(UserRole.ADMIN), null);
+
+        Response first = measure(reader, task);
+        Response second = measure(reader, task);
+
+        assertThat(first.statements()).hasSize(second.statements().size() + 1);
+        assertThat(first.statements()).filteredOn(TaskQueryCountTests::readsAccounts).hasSize(1);
+        assertThat(second.statements()).noneMatch(TaskQueryCountTests::readsAccounts);
+    }
+
+    // Warms the caller's status first: otherwise only the reader's first request would read it, and the short and
+    // the long list would differ by that statement
     private Response read(User reader, String uri) throws Exception {
+        userStatusLookup.statusOf(reader.getId());
+
+        return measure(reader, uri);
+    }
+
+    private Response measure(User reader, String uri) throws Exception {
         AtomicReference<String> body = new AtomicReference<>();
 
         List<String> statements = statementsDuring(() -> body.set(mockMvc.perform(get(uri).with(asUser(reader)))
@@ -219,6 +245,10 @@ class TaskQueryCountTests extends AbstractTaskCommentApiTests {
         }
 
         return taskId;
+    }
+
+    private static boolean readsAccounts(String sql) {
+        return sql.contains(" from users ");
     }
 
     private static List<String> values(Response response, String jsonPath) {

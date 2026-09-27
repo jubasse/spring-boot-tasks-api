@@ -4,6 +4,9 @@ import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
 import io.julienmetral.tasks.media.model.MediaDownload;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ContentDisposition;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -24,6 +27,7 @@ public class S3ObjectStorage implements ObjectStorage {
     private final S3Presigner s3Presigner;
     private final String bucket;
     private final Duration presignedUrlTtl;
+    private final AwsCredentialsProvider credentialsProvider;
 
     @Override
     public void put(String key, InputStream content, long length, String contentType) {
@@ -86,14 +90,26 @@ public class S3ObjectStorage implements ObjectStorage {
                 .build()
                 .toString();
 
+        // Signed with credentials resolved here, to know when they expire: a URL signed with temporary credentials (an
+        // IAM role on AWS) stops working when they do, which can be before its own expiration
+        AwsCredentials credentials = credentialsProvider.resolveCredentials();
+
         var presigned = s3Presigner.presignGetObject(request -> request
                 .signatureDuration(presignedUrlTtl)
                 .getObjectRequest(get -> get
                         .bucket(bucket)
                         .key(key)
                         .responseContentType(contentType)
-                        .responseContentDisposition(contentDisposition)));
+                        .responseContentDisposition(contentDisposition)
+                        // The object behind a key never changes, so the browser may keep it as long as the URL works
+                        .responseCacheControl("private, max-age=" + presignedUrlTtl.toSeconds() + ", immutable")
+                        .overrideConfiguration(override -> override
+                                .credentialsProvider(StaticCredentialsProvider.create(credentials)))));
 
-        return new MediaDownload(presigned.url(), presigned.expiration());
+        Instant expiresAt = credentials.expirationTime()
+                .filter(credentialsExpiry -> credentialsExpiry.isBefore(presigned.expiration()))
+                .orElse(presigned.expiration());
+
+        return new MediaDownload(presigned.url(), expiresAt);
     }
 }
