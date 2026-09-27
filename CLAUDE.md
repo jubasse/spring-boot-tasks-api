@@ -59,7 +59,7 @@ Package-by-feature under `io.julienmetral.tasks`, and each feature uses the same
 - `messaging`: the outbox through which every RabbitMQ message is published (see Outbox below).
 - `media`: stored files and their metadata (see Media storage below). Its sub-packages are `model` (entities, enums and value records), `services`, `repositories`, `controllers` and `exceptions`.
 - `config`: application-wide technical configuration, such as the storage drivers.
-- `notification`: task email notifications and their per-user settings.
+- `notification`: task email notifications, their per-user settings, and the webhook endpoints (see Webhooks below).
   - **Settings:** `GET`/`PUT /api/v1/users/{id}/notification-settings`, for the user or an admin. There is one switch per task event (plus `taskCommented`, `taskMentioned`, `taskDueSoon` and `taskOverdue`), and a user without a stored row gets `NotificationSettings.defaults` (everything enabled).
   - **Emails:** `TaskService` and `TaskCommentService` publish domain events (`task.events.TaskAssigned`, `TaskUnassigned`, `TaskCancelled`, `TaskDeleted`, `TaskCommentAdded`, `UsersMentionedInComment`), `TaskReminderService` publishes `TaskDueSoon` and `TaskOverdue`, and `notification.mail.TaskNotificationSender` turns them into emails. Only the concerned assignee (or mentioned user) receives one, never about their own action, only while their account is active, and only if the matching switch is on. The `task` package never depends on `notification`.
 - `shared`: the auditable base entity, the global `ApiExceptionHandler` (`@RestControllerAdvice` returning `ProblemDetail`), and the reusable security annotations.
@@ -161,6 +161,14 @@ Two Caffeine caches run on Spring Boot's cache manager. `CacheConfiguration` set
 - **Sending:** `MailQueueListener` consumes the queue and sends through SMTP. A failure is retried in the consumer with backoff (`spring.rabbitmq.listener.simple.retry`, about 1.5 minutes), then the message goes to `mail.send.dead-letter`, where it stays for inspection or a manual move from the RabbitMQ management UI (http://localhost:15672 in development). A message that can never be built is dead-lettered at once. Delivery is at least once.
 
 In development, SMTP goes to the Mailpit service of `compose.yaml` (web UI on http://localhost:8025). Tests start RabbitMQ and Mailpit containers (`TestcontainersConfiguration`) and read the received emails with `support.Mailpit`. Sending is asynchronous, so use its waiting methods (`latestTextTo`, `latestVerificationTokenFor`).
+
+### Webhooks
+
+Users declare HTTPS endpoints that will receive their task notifications: `/api/v1/users/{id}/webhooks`, for the user or an admin.
+- **Secrets:** Standard Webhooks `whsec_` secrets of 32 random bytes, encrypted with AES-256-GCM by `WebhookSecrets` (`webhooks.encryption-key`, `WEBHOOK_ENCRYPTION_KEY`; the `v1:` prefix names the key). Only the creation and rotation responses show a secret. A rotation keeps the previous one for `webhooks.previous-secret-validity` (24 h), so receivers can switch. Warning: a new encryption key makes every stored secret unreadable.
+- **URLs:** `WebhookUrlPolicy` refuses, when a URL is declared or changed, anything but HTTPS on port 443 (`webhooks.require-https=false` only on a development machine), credentials in the URL, and hosts that resolve to a non-public address. The HTTP client checks the addresses again at every call (see Outgoing HTTP): a public host today can resolve to an internal address tomorrow.
+- **Events:** `WebhookEvent`, one per `TaskNotificationType`, named `task.assigned` and so on in the API and in the payloads.
+- **Limits and erasure:** 5 endpoints per user (`webhooks.max-per-user`); a creation locks the account row, so concurrent creations count each other. Erasing an account deletes its endpoints (`UserRetentionQueries`).
 
 ### Media storage
 

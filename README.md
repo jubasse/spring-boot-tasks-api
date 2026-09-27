@@ -25,7 +25,7 @@ Only accounts that are enabled and have a verified email address can work on tas
    cp .env.example .env
    ```
 
-2. Generate a signing key for the access tokens and put it in `.env` as `JWT_SECRET`:
+2. Generate two keys and put them in `.env`: one as `JWT_SECRET`, which signs the access tokens, and another as `WEBHOOK_ENCRYPTION_KEY`, which encrypts the webhook secrets. Run this once per key:
 
    ```bash
    openssl rand -base64 32
@@ -145,6 +145,7 @@ The API reads its configuration from `src/main/resources/application.yaml`, whic
 | Variable | Default | Meaning |
 |---|---|---|
 | `JWT_SECRET` | none, required | Base64 key of at least 32 bytes that signs the access tokens |
+| `WEBHOOK_ENCRYPTION_KEY` | none, required | Base64 key of at least 32 bytes that encrypts the webhook signing secrets in the database. Changing it makes the secrets of existing webhooks unreadable |
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | set in `.env.example` | Database of the local PostgreSQL service |
 | `MAIL_FROM` | `no-reply@tasks.local` | Sender address of every email |
 | `EMAIL_VERIFICATION_URL`, `PASSWORD_RESET_URL` | `http://localhost:3000/...` | Front-end pages that the emailed links open, with `?token=...` |
@@ -155,6 +156,8 @@ The API reads its configuration from `src/main/resources/application.yaml`, whic
 | `MEDIA_CLEANUP_RETENTION` | `30d` | How long the files of deleted tasks and accounts are kept |
 | `SPRING_RABBITMQ_HOST`, `SPRING_RABBITMQ_USERNAME`, `SPRING_RABBITMQ_PASSWORD` | provided by Docker Compose | RabbitMQ connection outside local development |
 | `MANAGEMENT_PORT` | `8081` | Port of the health and metrics endpoints |
+| `WEBHOOK_REQUIRE_HTTPS` | `true` | `false` accepts plain HTTP webhook URLs on any port, for a receiver on your machine. Use it only in development |
+| `OUTBOUND_HTTP_ALLOWED_ADDRESSES` | empty | Private address ranges, in CIDR notation, that webhooks may reach besides public addresses, such as `127.0.0.1/32` for a receiver on your machine. Keep it empty in production |
 | `API_DOCS_ENABLED`, `SWAGGER_UI_ENABLED` | `true`, and `false` under the `prod` profile | `false` stops serving the OpenAPI document and Swagger UI |
 | `IDENTITY_STATUS_CACHE_TTL` | `30s` | How long an account's status is reused before it is read again, from 1 second to 1 minute. With several instances, it is also how long an account disabled on one instance can keep working through the others |
 
@@ -177,6 +180,7 @@ Required variables:
 | Variable | Meaning | Example |
 |---|---|---|
 | `JWT_SECRET` | Base64 key of at least 32 bytes that signs the access tokens: `openssl rand -base64 32` | |
+| `WEBHOOK_ENCRYPTION_KEY` | Base64 key of at least 32 bytes that encrypts the webhook signing secrets, generated the same way. Keep it: a new key makes the secrets of existing webhooks unreadable | |
 | `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` | PostgreSQL 18 database | `jdbc:postgresql://db.internal:5432/tasks` |
 | `SPRING_RABBITMQ_HOST` | RabbitMQ host. Set `SPRING_RABBITMQ_USERNAME` and `SPRING_RABBITMQ_PASSWORD` too: the default account, `guest`, only connects from the broker's own machine | `rabbitmq.internal` |
 | `MAIL_HOST` | SMTP server. `SPRING_MAIL_USERNAME` and `SPRING_MAIL_PASSWORD` hold its credentials | `smtp.example.com` |
@@ -225,7 +229,7 @@ gh attestation verify oci://ghcr.io/jubasse/spring-boot-tasks-api:0.4.0 -R jubas
 
 ### Run the production image locally
 
-`compose.production.yaml` runs the image as a production platform would: `prod` profile, read-only file system, no Linux capabilities, 1 GB of memory and 2 CPUs. It starts its own copy of the services of `compose.yaml`, with its own data, next to your development services. It reads `JWT_SECRET` and the other values from your `.env`.
+`compose.production.yaml` runs the image as a production platform would: `prod` profile, read-only file system, no Linux capabilities, 1 GB of memory and 2 CPUs. It starts its own copy of the services of `compose.yaml`, with its own data, next to your development services. It reads `JWT_SECRET`, `WEBHOOK_ENCRYPTION_KEY` and the other values from your `.env`.
 
 ```bash
 docker compose -p tasks-prod -f compose.yaml -f compose.production.yaml up -d --build
@@ -358,7 +362,7 @@ The label matches only this project's test containers.
 
 ## Troubleshooting
 
-**The API stops at startup with an error about the JWT secret.** `JWT_SECRET` is missing from `.env` or too short. Generate one with `openssl rand -base64 32`, and start the API from the project root so that `.env` is found.
+**The API stops at startup with an error about the JWT secret or `WEBHOOK_ENCRYPTION_KEY`.** The key is missing from `.env` or too short. Generate one with `openssl rand -base64 32`, and start the API from the project root so that `.env` is found.
 
 **The API stops at startup with "Required settings without a value".** It runs the `prod` profile and the settings named in the error have no value. Set their variables (see [Deploy the API](#deploy-the-api)). If this happens on your machine, `SPRING_PROFILES_ACTIVE=prod` is exported in your shell or IDE: remove it.
 
