@@ -4028,7 +4028,7 @@
                   "const send = (remaining) => {",
                   "  if (remaining === 0) return;",
                   "  pm.sendRequest({",
-                  "    url: pm.collectionVariables.get('baseUrl') + '/api/v1/auth/password-reset/request',",
+                  "    url: pm.variables.get('baseUrl') + '/api/v1/auth/password-reset/request',",
                   "    method: 'POST',",
                   "    header: { 'Content-Type': 'application/json' },",
                   "    body: { mode: 'raw', raw: JSON.stringify({ email }) }",
