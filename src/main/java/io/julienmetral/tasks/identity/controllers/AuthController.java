@@ -39,6 +39,8 @@ public class AuthController {
 
     @Operation(summary = "Sign in")
     @RateLimited
+    // Declaring any response makes springdoc document only the declared ones: the 200 must be declared too
+    @ApiResponse(responseCode = "200", description = "Signed in: the token pair.")
     @ApiResponse(responseCode = "401", ref = "#/components/responses/InvalidCredentials")
     @PostMapping("/login")
     public ResponseEntity<AuthResponseDto> login(
@@ -53,6 +55,7 @@ public class AuthController {
     }
 
     @Operation(summary = "Trade a refresh token for a new token pair")
+    @ApiResponse(responseCode = "200", description = "The new token pair; the refresh token sent is revoked.")
     @ApiResponse(responseCode = "401", ref = "#/components/responses/InvalidCredentials")
     @PostMapping("/refresh")
     public ResponseEntity<AuthResponseDto> refreshTokens(
