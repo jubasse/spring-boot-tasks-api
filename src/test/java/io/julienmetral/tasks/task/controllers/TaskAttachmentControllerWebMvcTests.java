@@ -31,6 +31,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.invalidParameter;
+import static io.julienmetral.tasks.support.Problems.typedProblem;
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
+import static io.julienmetral.tasks.support.Problems.withoutJavaTypeNames;
 import static io.julienmetral.tasks.support.WebCallers.admin;
 import static io.julienmetral.tasks.support.WebCallers.everyAccountIsActive;
 import static io.julienmetral.tasks.support.WebCallers.user;
@@ -93,9 +97,9 @@ class TaskAttachmentControllerWebMvcTests {
     class Uploading {
 
         @Test
-        void missingFilePartIsRejected() throws Exception {
+        void missingFilePartNamesTheMissingPart() throws Exception {
             mockMvc.perform(multipart(attachments()).with(admin(UUID.randomUUID())))
-                    .andExpect(status().isBadRequest());
+                    .andExpect(invalidParameter("file", "is required"));
 
             verifyNoInteractions(attachmentService);
         }
@@ -125,37 +129,37 @@ class TaskAttachmentControllerWebMvcTests {
         @Test
         void emptyFileReturnsBadRequest() throws Exception {
             expectUploadRejected(new EmptyMediaException())
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.title").value("Empty file"));
+                    .andExpect(untypedProblem(400, "Bad Request"))
+                    .andExpect(jsonPath("$.detail").value("The file is empty"));
         }
 
         @Test
         void tooLargeFileReturnsContentTooLargeWithTheLimit() throws Exception {
             expectUploadRejected(new MediaTooLargeException(DataSize.ofMegabytes(25)))
-                    .andExpect(status().isContentTooLarge())
-                    .andExpect(jsonPath("$.title").value("File too large"))
+                    .andExpect(untypedProblem(413, "Content Too Large"))
                     .andExpect(jsonPath("$.detail").value("The file exceeds the maximum size of 25 MB"));
         }
 
         @Test
         void requestAboveTheMultipartLimitReturnsContentTooLarge() throws Exception {
             expectUploadRejected(new MaxUploadSizeExceededException(26L * 1024 * 1024))
-                    .andExpect(status().isContentTooLarge())
-                    .andExpect(jsonPath("$.detail").value("The request exceeds the maximum upload size"));
+                    .andExpect(untypedProblem(413, "Content Too Large"))
+                    .andExpect(jsonPath("$.detail").value("The request exceeds the maximum upload size"))
+                    .andExpect(withoutJavaTypeNames());
         }
 
         @Test
         void unsupportedTypeReturnsUnsupportedMediaType() throws Exception {
             expectUploadRejected(new UnsupportedMediaTypeException("text/html", MediaUsage.TASK_ATTACHMENT))
-                    .andExpect(status().isUnsupportedMediaType())
-                    .andExpect(jsonPath("$.title").value("Unsupported file type"));
+                    .andExpect(untypedProblem(415, "Unsupported Media Type"))
+                    .andExpect(jsonPath("$.detail")
+                            .value("Files of type text/html are not accepted for TASK_ATTACHMENT"));
         }
 
         @Test
         void infectedFileReturnsUnprocessableNamingTheThreat() throws Exception {
             expectUploadRejected(new InfectedMediaException("Eicar-Test-Signature"))
-                    .andExpect(status().isUnprocessableContent())
-                    .andExpect(jsonPath("$.title").value("File rejected by the antivirus"))
+                    .andExpect(typedProblem(422, "infected-file", "File rejected by the antivirus"))
                     .andExpect(jsonPath("$.detail")
                             .value("The file was rejected by the antivirus: Eicar-Test-Signature"));
         }
@@ -163,22 +167,22 @@ class TaskAttachmentControllerWebMvcTests {
         @Test
         void unreachableAntivirusReturnsServiceUnavailableWithoutTheCause() throws Exception {
             expectUploadRejected(new AntivirusUnavailableException("ERROR INSTREAM size limit exceeded"))
-                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(untypedProblem(503, "Service Unavailable"))
                     .andExpect(jsonPath("$.detail").value("The antivirus is temporarily unavailable, try again later"));
         }
 
         @Test
         void unreachableStorageReturnsServiceUnavailable() throws Exception {
             expectUploadRejected(new StorageUnavailableException(new IOException("Connection refused")))
-                    .andExpect(status().isServiceUnavailable())
-                    .andExpect(jsonPath("$.title").value("Storage unavailable"));
+                    .andExpect(untypedProblem(503, "Service Unavailable"))
+                    .andExpect(jsonPath("$.detail").value("File storage is temporarily unavailable"));
         }
 
         @Test
         void uploadToUnknownTaskReturnsNotFoundProblem() throws Exception {
             expectUploadRejected(new TaskNotFoundException(taskId))
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.title").value("Task not found"));
+                    .andExpect(untypedProblem(404, "Not Found"))
+                    .andExpect(jsonPath("$.detail").value("Task not found with id: " + taskId));
         }
 
         private ResultActions expectUploadRejected(RuntimeException rejection) throws Exception {
@@ -197,15 +201,14 @@ class TaskAttachmentControllerWebMvcTests {
                     .thenThrow(new TaskAttachmentNotFoundException(attachmentId));
 
             mockMvc.perform(get(attachment()).with(user(UUID.randomUUID())))
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.status").value(404))
-                    .andExpect(jsonPath("$.title").value("Attachment not found"));
+                    .andExpect(untypedProblem(404, "Not Found"))
+                    .andExpect(jsonPath("$.detail").value("Attachment not found with id: " + attachmentId));
         }
 
         @Test
-        void malformedAttachmentIdReturnsBadRequest() throws Exception {
+        void malformedAttachmentIdNamesThePathParameter() throws Exception {
             mockMvc.perform(get(attachments() + "/not-a-uuid").with(user(UUID.randomUUID())))
-                    .andExpect(status().isBadRequest());
+                    .andExpect(invalidParameter("attachmentId", "must be a UUID"));
 
             verifyNoInteractions(attachmentService);
         }
@@ -248,8 +251,8 @@ class TaskAttachmentControllerWebMvcTests {
                     .when(attachmentService).remove(taskId, attachmentId);
 
             mockMvc.perform(delete(attachment()).with(admin(UUID.randomUUID())))
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.title").value("Attachment not found"));
+                    .andExpect(untypedProblem(404, "Not Found"))
+                    .andExpect(jsonPath("$.detail").value("Attachment not found with id: " + attachmentId));
         }
     }
 

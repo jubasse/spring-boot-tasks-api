@@ -11,6 +11,8 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.invalidParameter;
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static io.julienmetral.tasks.support.WebCallers.everyAccountIsActive;
 import static io.julienmetral.tasks.support.WebCallers.user;
 import static org.mockito.ArgumentMatchers.any;
@@ -49,9 +51,9 @@ class TaskEventControllerWebMvcTests {
     }
 
     @Test
-    void malformedTaskIdReturns400() throws Exception {
+    void malformedTaskIdNamesThePathParameter() throws Exception {
         mockMvc.perform(get(EVENTS, "not-a-uuid").with(user(UUID.randomUUID())))
-                .andExpect(status().isBadRequest());
+                .andExpect(invalidParameter("taskId", "must be a UUID"));
 
         verifyNoInteractions(taskEventService);
     }
@@ -62,7 +64,7 @@ class TaskEventControllerWebMvcTests {
         when(taskEventService.findAllByTaskId(eq(unknown), any())).thenThrow(new TaskNotFoundException(unknown));
 
         mockMvc.perform(get(EVENTS, unknown).with(user(UUID.randomUUID())))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("Task not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value("Task not found with id: " + unknown));
     }
 }
