@@ -5,8 +5,8 @@ import io.julienmetral.tasks.task.dtos.TaskEventResponseDto;
 import io.julienmetral.tasks.task.entities.TaskEvent;
 import io.julienmetral.tasks.task.services.TaskEventService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PagedModel;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -23,13 +23,11 @@ public class TaskEventController {
     private final MediaUrls mediaUrls;
 
     @GetMapping
-    public Page<TaskEventResponseDto> findAll(
+    public PagedModel<TaskEventResponseDto> findAll(
             @PathVariable UUID taskId,
             Pageable pageable
     ) {
-        return taskEventService
-                .findAllByTaskId(taskId, pageable)
-                .map(this::response);
+        return new PagedModel<>(taskEventService.findAllByTaskId(taskId, pageable).map(this::response));
     }
 
     private TaskEventResponseDto response(TaskEvent entity) {

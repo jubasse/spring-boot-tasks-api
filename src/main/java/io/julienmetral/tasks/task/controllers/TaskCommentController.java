@@ -10,10 +10,10 @@ import io.julienmetral.tasks.task.security.CommentAuthorOnly;
 import io.julienmetral.tasks.task.services.TaskCommentService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.data.web.PagedModel;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -49,13 +49,11 @@ public class TaskCommentController {
     }
 
     @GetMapping
-    public Page<TaskCommentResponseDto> findAll(
+    public PagedModel<TaskCommentResponseDto> findAll(
             @PathVariable UUID id,
             @PageableDefault(sort = "createdAt", direction = Sort.Direction.ASC) Pageable pageable
     ) {
-        return commentService
-                .findAll(id, pageable)
-                .map(this::response);
+        return new PagedModel<>(commentService.findAll(id, pageable).map(this::response));
     }
 
     @GetMapping("/{commentId}")

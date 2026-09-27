@@ -10,10 +10,10 @@ import io.julienmetral.tasks.task.security.AllowedRolesOrAssignedToOnly;
 import io.julienmetral.tasks.task.services.TaskService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.data.web.PagedModel;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -43,15 +43,15 @@ public class TaskController {
     }
 
     @GetMapping
-    public Page<TaskResponseDto> findAll(
+    public PagedModel<TaskResponseDto> findAll(
             @RequestParam(required = false) TaskStatus status,
             @RequestParam(required = false) UUID assigneeId,
             @RequestParam(defaultValue = "false") boolean archived,
             @PageableDefault(sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
     ) {
-        return taskService
-                .findAll(status, assigneeId, archived, pageable)
-                .map(this::response);
+        return new PagedModel<>(
+                taskService.findAll(status, assigneeId, archived, pageable).map(this::response)
+        );
     }
 
     @GetMapping("/{id}")
