@@ -111,7 +111,7 @@ spring:
   cache:
     type: caffeine
     # Each cache is configured in CacheConfiguration; listing them makes a mistyped name fail
-    cache-names: userStatus
+    cache-names: userStatus, mediaDownloads
   application:
     name: tasks
 

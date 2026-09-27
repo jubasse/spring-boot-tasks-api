@@ -61,7 +61,13 @@ public class RustFsStorageConfiguration {
 
     @Bean
     ObjectStorage objectStorage(S3Client s3Client, S3Presigner s3Presigner, StorageProperties properties) {
-        return new S3ObjectStorage(s3Client, s3Presigner, properties.bucket(), properties.presignedUrlTtl());
+        return new S3ObjectStorage(
+                s3Client,
+                s3Presigner,
+                properties.bucket(),
+                properties.presignedUrlTtl(),
+                credentials(settings(properties))
+        );
     }
 
     @Bean
