@@ -1,0 +1,70 @@
+# The API image run as in production, on its own copy of the services of compose.yaml (README, Run the production
+# image locally):
+#
+#   docker compose -p tasks-prod -f compose.yaml -f compose.production.yaml up -d --build
+#
+# Warning: always pass -p tasks-prod. Without it, these services join the development project, and a "down -v" would
+# delete the development data. Never rename this file compose.override.yaml either: Docker Compose loads that name
+# by itself, so every development command would start the image too.
+#
+# Only what a person opens is published, on the development port plus 10000, so both stacks run side by side.
+# !reset and !override need Docker Compose 2.24.4 or later.
+services:
+  api:
+    build: .
+    image: tasks-api:local
+    depends_on: [postgres, rabbitmq, mailpit, rustfs, clamav]
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DEPLOYMENT_ENVIRONMENT: local
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-tasks}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-tasks}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-tasks}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-tasks-dev}
+      MAIL_HOST: mailpit
+      MAIL_PORT: 1025
+      MAIL_SMTP_AUTH: "false"
+      MAIL_STARTTLS: "false"
+      MAIL_FROM: no-reply@tasks.local
+      EMAIL_VERIFICATION_URL: http://localhost:3000/verify-email
+      PASSWORD_RESET_URL: http://localhost:3000/reset-password
+      STORAGE_DRIVER: rustfs
+      S3_BUCKET: tasks-media
+      S3_ENDPOINT: http://rustfs:9000
+      # Download links open in a browser, outside the Compose network
+      S3_PUBLIC_ENDPOINT: http://localhost:19000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-tasks-dev}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-tasks-dev-secret}
+      S3_CREATE_BUCKET: "true"
+      CLAMAV_HOST: clamav
+    ports:
+      - "127.0.0.1:18080:8080"
+      - "127.0.0.1:18081:8081"
+    # The hardening a production platform would apply: nothing written outside /tmp (uploads in progress), no
+    # capability, no privilege escalation, bounded resources
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 1g
+    cpus: 2
+    pids_limit: 512
+    # Above the 20 seconds the prod profile gives requests in progress
+    stop_grace_period: 30s
+
+  postgres:
+    ports: !reset []
+  mailpit:
+    ports: !override
+      - "127.0.0.1:18025:8025"
+  rustfs:
+    ports: !override
+      - "127.0.0.1:19000:9000"
+  clamav:
+    ports: !reset []
+  rabbitmq:
+    ports: !reset []
