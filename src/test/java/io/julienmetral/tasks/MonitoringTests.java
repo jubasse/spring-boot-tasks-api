@@ -1,9 +1,16 @@
 package io.julienmetral.tasks;
 
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.messaging.AvatarQueues;
+import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.identity.security.UserStatusLookup;
 import io.julienmetral.tasks.mail.MailMessage;
 import io.julienmetral.tasks.mail.MailQueues;
 import io.julienmetral.tasks.mail.MailService;
+import io.julienmetral.tasks.media.model.Media;
+import io.julienmetral.tasks.media.model.MediaUsage;
+import io.julienmetral.tasks.media.services.MediaService;
 import io.julienmetral.tasks.messaging.entities.OutboxMessage;
 import io.julienmetral.tasks.messaging.repositories.OutboxMessageRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -22,6 +29,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -31,6 +39,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -74,6 +83,18 @@ class MonitoringTests {
 
     @Autowired
     private OutboxMessageRepository outboxRepository;
+
+    @Autowired
+    private UserStatusLookup userStatusLookup;
+
+    @Autowired
+    private MediaService mediaService;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     private final List<UUID> insertedOutboxRows = new ArrayList<>();
 
@@ -196,6 +217,32 @@ class MonitoringTests {
     }
 
     @Test
+    void statusLookupsAreCountedAsCacheMissesThenHits() {
+        UUID userId = createActiveUser();
+        double misses = cacheGets(UserStatusLookup.CACHE, "miss");
+        double hits = cacheGets(UserStatusLookup.CACHE, "hit");
+
+        userStatusLookup.statusOf(userId);
+        userStatusLookup.statusOf(userId);
+
+        assertThat(cacheGets(UserStatusLookup.CACHE, "miss")).isEqualTo(misses + 1);
+        assertThat(cacheGets(UserStatusLookup.CACHE, "hit")).isEqualTo(hits + 1);
+    }
+
+    @Test
+    void downloadUrlsAreCountedAsCacheMissesThenHits() {
+        Media media = unsavedMedia();
+        double misses = cacheGets(MediaService.DOWNLOAD_URLS, "miss");
+        double hits = cacheGets(MediaService.DOWNLOAD_URLS, "hit");
+
+        mediaService.downloadUrl(media);
+        mediaService.downloadUrl(media);
+
+        assertThat(cacheGets(MediaService.DOWNLOAD_URLS, "miss")).isEqualTo(misses + 1);
+        assertThat(cacheGets(MediaService.DOWNLOAD_URLS, "hit")).isEqualTo(hits + 1);
+    }
+
+    @Test
     void managementPortServesHealthWithoutAuthentication() {
         assertThat(get(managementPort, "/actuator/health").getStatusCode()).isEqualTo(HttpStatus.OK);
     }
@@ -226,6 +273,37 @@ class MonitoringTests {
 
         assertThat(response.getStatusCode()).as(path).isEqualTo(HttpStatus.OK);
         return jsonMapper.readTree(response.getBody());
+    }
+
+    private double cacheGets(String cache, String result) {
+        JsonNode metric = managementJson("/actuator/metrics/cache.gets?tag=cache:" + cache + "&tag=result:" + result);
+
+        return metric.path("measurements").path(0).path("value").asDouble();
+    }
+
+    private UUID createActiveUser() {
+        User user = new User();
+
+        user.setEmail(uniqueEmail());
+        user.setPasswordHash(passwordEncoder.encode("password"));
+        user.setEmailVerifiedAt(Instant.now());
+        user.setDisplayName("Monitoring");
+        user.setRoles(EnumSet.of(UserRole.USER));
+
+        return userRepository.saveAndFlush(user).getId();
+    }
+
+    // Presigning is local: the media needs neither a row nor a stored object
+    private static Media unsavedMedia() {
+        Media media = new Media();
+
+        media.setId(UUID.randomUUID());
+        media.setStorageKey(MediaUsage.AVATAR.storagePrefix() + "/" + UUID.randomUUID());
+        media.setUsage(MediaUsage.AVATAR);
+        media.setOriginalFilename("photo.jpg");
+        media.setContentType("image/jpeg");
+
+        return media;
     }
 
     private String scrape() {
