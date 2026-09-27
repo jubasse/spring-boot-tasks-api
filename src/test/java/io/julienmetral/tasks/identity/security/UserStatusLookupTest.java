@@ -4,6 +4,7 @@ import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.identity.events.AccountStateChanged;
 import io.julienmetral.tasks.identity.repositories.AccountState;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.Cache;
@@ -20,6 +21,9 @@ import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -144,6 +148,29 @@ class UserStatusLookupTest {
         eviction.evict(new AccountStateChanged(userId));
 
         assertThat(lookup.statusOf(userId)).isEqualTo(UserStatus.DISABLED);
+    }
+
+    @Test
+    @Disabled("bug: @Cacheable stores what a lookup read after an eviction that ran in between, so an account "
+            + "disabled while one of its requests was being checked keeps task access until the TTL")
+    void lookupInFlightDuringAnEvictionDoesNotCacheTheStatusItReadBefore() throws Exception {
+        CountDownLatch read = new CountDownLatch(1);
+        CountDownLatch evicted = new CountDownLatch(1);
+        when(userRepository.findAccountStateById(userId)).thenAnswer(invocation -> {
+            read.countDown();
+            evicted.await(5, TimeUnit.SECONDS);
+            return Optional.of(new AccountState(true, VERIFIED_AT));
+        });
+
+        // A task request reads ACTIVE, then the account is disabled and its status evicted once committed, all
+        // before the request stores what it read
+        CompletableFuture<UserStatus> request = CompletableFuture.supplyAsync(() -> lookup.statusOf(userId));
+        assertThat(read.await(5, TimeUnit.SECONDS)).isTrue();
+        eviction.evict(new AccountStateChanged(userId));
+        evicted.countDown();
+        request.get(5, TimeUnit.SECONDS);
+
+        assertThat(cache().get(userId)).isNull();
     }
 
     private void stubState(boolean enabled, Instant emailVerifiedAt) {
