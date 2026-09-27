@@ -3,6 +3,7 @@ package io.julienmetral.tasks.identity.services;
 import io.julienmetral.tasks.identity.entities.EmailVerificationToken;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserProfile;
+import io.julienmetral.tasks.identity.events.AccountStateChanged;
 import io.julienmetral.tasks.identity.exceptions.EmailAlreadyVerifiedException;
 import io.julienmetral.tasks.identity.exceptions.InvalidEmailVerificationTokenException;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
@@ -159,7 +160,7 @@ class EmailVerificationServiceTest {
                 .isInstanceOf(InvalidEmailVerificationTokenException.class);
 
         assertThat(token.getUsedAt()).isEqualTo(usedAt);
-        verifyNoInteractions(userRepository);
+        verifyNoInteractions(userRepository, eventPublisher);
     }
 
     @Test
@@ -170,7 +171,7 @@ class EmailVerificationServiceTest {
                 .isInstanceOf(InvalidEmailVerificationTokenException.class);
 
         assertThat(token.getUsedAt()).isNull();
-        verifyNoInteractions(userRepository);
+        verifyNoInteractions(userRepository, eventPublisher);
     }
 
     @Test
@@ -182,6 +183,7 @@ class EmailVerificationServiceTest {
                 .isInstanceOf(InvalidEmailVerificationTokenException.class);
 
         assertThat(token.getUsedAt()).isNull();
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
@@ -195,6 +197,7 @@ class EmailVerificationServiceTest {
 
         assertThat(token.getUsedAt()).isBetween(before, Instant.now());
         assertThat(loaded.getEmailVerifiedAt()).isEqualTo(token.getUsedAt());
+        verify(eventPublisher).publishEvent(new AccountStateChanged(USER_ID));
     }
 
     @Test
@@ -209,6 +212,7 @@ class EmailVerificationServiceTest {
 
         assertThat(token.getUsedAt()).isNotNull();
         assertThat(user.getEmailVerifiedAt()).isEqualTo(verifiedAt);
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
