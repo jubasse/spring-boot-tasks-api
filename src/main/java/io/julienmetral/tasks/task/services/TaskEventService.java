@@ -132,7 +132,7 @@ public class TaskEventService {
         }
 
         return taskEventRepository
-                .findAllByTaskIdOrderByOccurredAtDesc(
+                .findAllByTaskId(
                         taskId,
                         pageable
                 );

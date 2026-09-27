@@ -9,6 +9,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.data.web.PagedModel;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -30,7 +32,9 @@ public class TaskEventController {
     @GetMapping
     public PagedModel<TaskEventResponseDto> listTaskHistory(
             @PathVariable UUID taskId,
-            @ParameterObject Pageable pageable
+            @ParameterObject
+            @PageableDefault(sort = {"occurredAt", "id"}, direction = Sort.Direction.DESC)
+            Pageable pageable
     ) {
         return new PagedModel<>(taskEventService.findAllByTaskId(taskId, pageable).map(this::response));
     }

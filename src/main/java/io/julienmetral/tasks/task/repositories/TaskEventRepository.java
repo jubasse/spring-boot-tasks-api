@@ -13,7 +13,7 @@ public interface TaskEventRepository
         extends JpaRepository<TaskEvent, UUID> {
 
     @EntityGraph(type = EntityGraphType.LOAD, attributePaths = {"actor", "actor.avatar"})
-    Page<TaskEvent> findAllByTaskIdOrderByOccurredAtDesc(
+    Page<TaskEvent> findAllByTaskId(
             UUID taskId,
             Pageable pageable
     );
