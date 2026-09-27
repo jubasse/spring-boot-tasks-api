@@ -132,6 +132,8 @@ Add `ANTIVIRUS_ENABLED=false` to `.env`. Uploads are then stored without being s
 | `./mvnw test -Dtest=AuthControllerTests` | Runs one test class (`-Dtest=Class#method` for one test) |
 | `./mvnw test -Dtest=OpenApiSpecTests -Dopenapi.update=true` | Regenerates `docs/openapi.json` after a change to the API |
 | `./mvnw verify` | Runs what the CI runs: the tests and the coverage report |
+| `docker build -t tasks-api .` | Builds the production image (see [Build the image](#build-the-image)) |
+| `docker compose -p tasks-prod -f compose.yaml -f compose.production.yaml up -d --build` | Runs the production image locally (see [Run the production image locally](#run-the-production-image-locally)) |
 | `gitleaks git . --redact` | Scans the Git history for secrets, as the CI does |
 
 The database migrations are Liquibase changesets in `src/main/resources/db/changelog/changes/`. [CLAUDE.md](CLAUDE.md) explains how to generate a new one from the entities with `./mvnw liquibase:diff`.
@@ -189,6 +191,47 @@ Other variables, when the defaults do not fit:
 - The variables of [Configuration](#configuration) keep their meaning, `FORWARD_HEADERS_STRATEGY` behind a reverse proxy in particular.
 
 > Warning: set `SPRING_PROFILES_ACTIVE` only in the environment of a deployment. Exported in your shell or your IDE, it also applies to `./mvnw test` and `./mvnw spring-boot:run`, which then stop and ask for the production variables.
+
+### Build the image
+
+```bash
+docker build -t tasks-api .
+```
+
+The build compiles the API inside Docker, so it needs neither Java nor Maven on your machine. At the end, it starts the API once, without reaching any service, to record which classes it loads. The container then starts about twice as fast.
+
+The image:
+- listens on 8080 for the API and on 8081 for health checks and metrics (see [Monitor the API](#monitor-the-api));
+- runs as a non-root user and writes only to `/tmp`, where uploads wait while they are checked, so it works with a read-only file system;
+- takes the variables of the tables above, with `SPRING_PROFILES_ACTIVE=prod`.
+
+Give the container at least 1 GB of memory: the JVM takes up to 75% of the container's limit for its heap. The JVM options live in `JAVA_TOOL_OPTIONS` (`-XX:+UseG1GC -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError`). To change one, set the whole variable again with the others kept.
+
+Note: the first lines of output are plain text from the JVM, such as `Picked up JAVA_TOOL_OPTIONS`; the JSON log lines follow.
+
+### Run the production image locally
+
+`compose.production.yaml` runs the image as a production platform would: `prod` profile, read-only file system, no Linux capabilities, 1 GB of memory and 2 CPUs. It starts its own copy of the services of `compose.yaml`, with its own data, next to your development services. It reads `JWT_SECRET` and the other values from your `.env`.
+
+```bash
+docker compose -p tasks-prod -f compose.yaml -f compose.production.yaml up -d --build
+```
+
+| URL | What you get |
+|---|---|
+| http://localhost:18080 | The API, with an empty database |
+| http://localhost:18081/actuator/health | Health of the API and of each service |
+| http://localhost:18025 | Mailpit, with the emails the API sent |
+
+Swagger UI is off, as in production. To make an account an admin, run the command of [Make an account an admin](#make-an-account-an-admin) with `-p tasks-prod` after `docker compose`.
+
+> Warning: pass `-p tasks-prod` to every command on this stack, `down` included. Without it, the command acts on your development services, and `down -v` deletes their data.
+
+To stop the stack and delete its data:
+
+```bash
+docker compose -p tasks-prod -f compose.yaml -f compose.production.yaml down -v
+```
 
 ## Monitor the API
 
