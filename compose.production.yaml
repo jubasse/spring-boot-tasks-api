@@ -13,9 +13,14 @@ services:
   api:
     build: .
     image: tasks-api:local
-    depends_on: [postgres, rabbitmq, mailpit, rustfs, clamav]
+    # The API fails its startup when the database is not accepting connections yet
+    depends_on:
+      postgres: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+      mailpit: {condition: service_started}
+      rustfs: {condition: service_started}
+      clamav: {condition: service_started}
     environment:
-      SPRING_PROFILES_ACTIVE: prod
       DEPLOYMENT_ENVIRONMENT: local
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-tasks}
@@ -58,6 +63,10 @@ services:
 
   postgres:
     ports: !reset []
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 2s
+      retries: 30
   mailpit:
     ports: !override
       - "127.0.0.1:18025:8025"
@@ -68,3 +77,7 @@ services:
     ports: !reset []
   rabbitmq:
     ports: !reset []
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      retries: 24

@@ -198,16 +198,30 @@ Other variables, when the defaults do not fit:
 docker build -t tasks-api .
 ```
 
-The build compiles the API inside Docker, so it needs neither Java nor Maven on your machine. At the end, it starts the API once, without reaching any service, to record which classes it loads. The container then starts about twice as fast.
+The build compiles the API inside Docker, so it needs neither Java nor Maven on your machine. At the end, it starts the API once, without reaching any service, to record which classes it loads. The container then starts about a third faster.
 
 The image:
 - listens on 8080 for the API and on 8081 for health checks and metrics (see [Monitor the API](#monitor-the-api));
 - runs as a non-root user and writes only to `/tmp`, where uploads wait while they are checked, so it works with a read-only file system;
-- takes the variables of the tables above, with `SPRING_PROFILES_ACTIVE=prod`.
+- runs the `prod` profile and takes the variables of the tables above.
 
 Give the container at least 1 GB of memory: the JVM takes up to 75% of the container's limit for its heap. The JVM options live in `JAVA_TOOL_OPTIONS` (`-XX:+UseG1GC -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError`). To change one, set the whole variable again with the others kept.
 
 Note: the first lines of output are plain text from the JVM, such as `Picked up JAVA_TOOL_OPTIONS`; the JSON log lines follow.
+
+### Use a released image
+
+Every release is published to GitHub Container Registry, tagged with its version (`0.4.0`), its minor version (`0.4`) and `latest`:
+
+```bash
+docker pull ghcr.io/jubasse/spring-boot-tasks-api:0.4.0
+```
+
+Each image carries a signed record of the workflow run that built it. Check it with the GitHub CLI before you deploy:
+
+```bash
+gh attestation verify oci://ghcr.io/jubasse/spring-boot-tasks-api:0.4.0 -R jubasse/spring-boot-tasks-api
+```
 
 ### Run the production image locally
 
@@ -252,6 +266,7 @@ Health details and metrics are served on a separate port, 8081 by default, witho
 | http://localhost:8081/actuator/health/readiness | Whether the API can take traffic, which only needs the database. RabbitMQ, the object storage or the antivirus being down delays emails or blocks files, and shows in the overall health, but does not take the API out of traffic |
 | http://localhost:8081/actuator/prometheus | Metrics in Prometheus format |
 | http://localhost:8081/actuator/info | Deployed version |
+| http://localhost:8081/actuator/sbom/application | Libraries in the deployed jar and their versions, in CycloneDX format, to check a vulnerability announcement against |
 
 Metrics worth alerting on:
 

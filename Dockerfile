@@ -41,6 +41,9 @@ RUN JWT_SECRET="$(head -c 32 /dev/urandom | base64)" \
         -Dstorage.driver=aws-s3 \
         -jar application.jar
 
+# After the training run, which must not ask for the production settings. An image started without it would take the
+# development defaults, localhost services included.
+ENV SPRING_PROFILES_ACTIVE=prod
 USER tasks
 EXPOSE 8080 8081
 ENTRYPOINT ["java", "-XX:AOTCache=app.aot", "-jar", "application.jar"]

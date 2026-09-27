@@ -153,6 +153,16 @@ class MonitoringTests {
     }
 
     @Test
+    void sbomListsTheDependenciesWithTheirVersions() {
+        JsonNode sbom = managementJson("/actuator/sbom/application");
+
+        assertThat(sbom.path("bomFormat").asString()).isEqualTo("CycloneDX");
+        assertThat(sbom.path("components").valueStream()
+                .map(component -> component.path("name").asString() + ":" + component.path("version").asString()))
+                .anyMatch(component -> component.startsWith("tomcat-embed-core:11."));
+    }
+
+    @Test
     void infoShowsTheBuildVersion() {
         JsonNode build = managementJson("/actuator/info").path("build");
 
@@ -255,7 +265,9 @@ class MonitoringTests {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/actuator/health", "/actuator/info", "/actuator/prometheus", "/actuator/metrics"})
+    @ValueSource(strings = {
+            "/actuator/health", "/actuator/info", "/actuator/prometheus", "/actuator/metrics", "/actuator/sbom/application"
+    })
     void apiPortDoesNotServeTheActuatorEndpoints(String path) {
         ResponseEntity<String> response = get(apiPort, path);
 
