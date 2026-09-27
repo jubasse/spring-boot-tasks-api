@@ -20,7 +20,11 @@ import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 
 import java.util.Map;
@@ -107,6 +111,19 @@ public class SecurityConfiguration {
                 );
 
         return authenticationConverter;
+    }
+
+    // A public endpoint ignores the Authorization header: a client that kept its expired access token got a 401 from
+    // login and refresh, the very endpoints that give it a new one
+    @Bean
+    BearerTokenResolver bearerTokenResolver() {
+        DefaultBearerTokenResolver resolver = new DefaultBearerTokenResolver();
+        RequestMatcher publicEndpoint = new OrRequestMatcher(PublicEndpoints.ALL.stream()
+                .map(endpoint -> (RequestMatcher) PathPatternRequestMatcher.withDefaults()
+                        .matcher(endpoint.method(), endpoint.pattern()))
+                .toList());
+
+        return request -> publicEndpoint.matches(request) ? null : resolver.resolve(request);
     }
 
     @Bean
