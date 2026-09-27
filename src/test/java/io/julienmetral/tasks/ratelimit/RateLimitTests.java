@@ -36,11 +36,11 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -187,11 +187,8 @@ class RateLimitTests {
             }
 
             login(address, uniqueEmail(), PASSWORD)
-                    .andExpect(status().isTooManyRequests())
+                    .andExpect(untypedProblem(429, "Too Many Requests"))
                     .andExpect(header().string(HttpHeaders.RETRY_AFTER, UNTIL_NEXT_MINUTE))
-                    .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-                    .andExpect(jsonPath("$.status").value(429))
-                    .andExpect(jsonPath("$.title").value("Too many requests"))
                     .andExpect(jsonPath("$.detail").value(
                             "Too many requests, try again in " + UNTIL_NEXT_MINUTE + " seconds"));
         }
@@ -668,10 +665,8 @@ class RateLimitTests {
     private static MockHttpServletResponse expectTooManyRequests(ResultActions result, String retryAfter)
             throws Exception {
         return result
-                .andExpect(status().isTooManyRequests())
+                .andExpect(untypedProblem(429, "Too Many Requests"))
                 .andExpect(header().string(HttpHeaders.RETRY_AFTER, retryAfter))
-                .andExpect(jsonPath("$.title").value("Too many requests"))
-                .andExpect(jsonPath("$.status").value(429))
                 .andReturn()
                 .getResponse();
     }
