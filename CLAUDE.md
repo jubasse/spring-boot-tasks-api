@@ -45,6 +45,8 @@ Generate a changeset from entity changes. Run it against a database that already
 ```
 Then review the file, and give its changesets readable `id`s and a real `author`.
 
+Warning: compile before the diff, since it reads the entities from `target/classes`. Even then it compares indexes and foreign keys by table and columns, not by name: a renamed constraint or index is not reported (checked on 2026-09-27), so check names against the convention by hand. A missing constraint or a changed column is reported.
+
 Passwords are hashed with Argon2id (`SecurityConfiguration.passwordEncoder`, Bouncy Castle provides the implementation). BCrypt is registered only to verify legacy hashes, which `DatabaseUserDetailsService.updatePassword` upgrades to Argon2id on the next successful login. `{noop}` is not registered, so tests that store users directly must hash with the `PasswordEncoder` bean.
 
 ## Architecture
