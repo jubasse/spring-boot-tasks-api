@@ -130,7 +130,13 @@ class OperationDocumentation implements OperationCustomizer {
                 .distinct()
                 .collect(Collectors.groupingBy(ProblemType::status, LinkedHashMap::new, Collectors.toList()));
 
-        byStatus.forEach((status, statusTypes) -> {
+        byStatus.forEach((status, newTypes) -> {
+            // Two handlers can share one operation (the JSON and the multipart comment): keep what the other added
+            List<ProblemType> statusTypes = Stream.concat(
+                    documentedTypes(responses(operation).get(String.valueOf(status.value()))).stream(),
+                    newTypes.stream()
+            ).distinct().toList();
+
             // A 400 is always also a possible validation-error, so its examples start with one
             if (status == HttpStatus.BAD_REQUEST) {
                 List<ProblemType> withValidation = Stream.concat(
@@ -149,6 +155,21 @@ class OperationDocumentation implements OperationCustomizer {
                     String.valueOf(status.value()),
                     response(status.getReasonPhrase() + ": " + titles + ".", PROBLEM, statusTypes));
         });
+    }
+
+    private static List<ProblemType> documentedTypes(ApiResponse response) {
+        if (response == null || response.getContent() == null) {
+            return List.of();
+        }
+
+        io.swagger.v3.oas.models.media.MediaType problem = response.getContent().get(ProblemDocumentation.PROBLEM_JSON);
+        if (problem == null || problem.getExamples() == null) {
+            return List.of();
+        }
+
+        return Arrays.stream(ProblemType.values())
+                .filter(type -> problem.getExamples().containsKey(type.slug()))
+                .toList();
     }
 
     private static boolean takesFiles(HandlerMethod handlerMethod) {
