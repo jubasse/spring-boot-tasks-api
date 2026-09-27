@@ -12,6 +12,7 @@ import io.julienmetral.tasks.task.security.AllowedRolesOrAssignedToOnly;
 import io.julienmetral.tasks.task.security.AllowedRolesOrWithoutAssigneeOnly;
 import io.julienmetral.tasks.task.services.TaskService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +40,8 @@ public class TaskController {
     @Operation(summary = "Create a task")
     @ResponseStatus(HttpStatus.CREATED)
     @DocumentedProblems({ProblemType.REFERENCE_TAKEN, ProblemType.ASSIGNEE_NOT_ACTIVE})
+    // The assignee named in the body does not exist; the path names no resource, so no rule adds this 404
+    @ApiResponse(responseCode = "404", ref = "#/components/responses/NotFound")
     @PostMapping
     @AllowedRolesOrWithoutAssigneeOnly(UserRole.ADMIN)
     public ResponseEntity<TaskResponseDto> createTask(
