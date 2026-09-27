@@ -205,11 +205,14 @@ Actuator runs on its own port, `management.server.port` (`MANAGEMENT_PORT`, 8081
 - **Metrics:** `outbox.messages.pending` and `outbox.messages.oldest.pending.age` (`OutboxMetrics`), `outbox.messages.published` and `outbox.publish.failures` per queue (`OutboxRelay`), `rabbitmq.dead.letter.messages` per dead-letter queue (`DeadLetterQueueMetrics`, NaN while the broker is unreachable). Spring records every `@Scheduled` run as `tasks.scheduled.execution`.
 - **Info:** `spring-boot-maven-plugin` writes `build-info`, so `/actuator/info` shows the version.
 
-### Deployment profile
+### Deployment profile and image
 
 The default configuration serves development and tests. `application-prod.yaml` is the only other profile, used by every deployed environment, staging included; environments differ by their variables alone (README, Deploy the API). Do not add a profile per environment.
 - **A setting with no safe production default** gets an empty default there (`${MAIL_HOST:}`) and an entry in `deployment.required-properties`. `RequiredPropertiesCheck` then stops the startup before any bean is created and names every missing setting. A localhost default would let a deployment start against nothing.
 - Warning: never set `spring.profiles.active` in a file of the jar, and never export `SPRING_PROFILES_ACTIVE` in a shell or an IDE: the tests would load the `prod` profile over `src/test/resources/config/application.yaml` and stop on the missing settings.
+- **Image** (`Dockerfile`): Maven builds the jar in a JDK stage, `jarmode=tools extract --layers` splits it, and it runs on the Temurin 25 JRE as uid 10001. Base images are pinned by digest. `.dockerignore` is an allowlist: a file the build needs must be added there.
+- **AOT cache:** a training run during the build (`-XX:AOTCacheOutput`, `-Dspring.context.exit=onRefresh`) records the classes loaded up to the context refresh; the start then takes about half the time (19.5 s instead of 36 s, measured on a loaded machine). The training reaches no service: Liquibase and Hibernate's JDBC metadata access are off, with an explicit dialect. Warning: a bean that connects to a service while the context refreshes, rather than in an `ApplicationRunner` or a lifecycle `start`, fails the image build.
+- **`compose.production.yaml`** runs the image hardened, on its own copy of the services, as the project `tasks-prod` (README, Run the production image locally).
 
 ### Method-security annotations
 
