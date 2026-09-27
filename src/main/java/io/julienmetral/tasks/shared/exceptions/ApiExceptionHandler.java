@@ -22,6 +22,7 @@ import io.julienmetral.tasks.task.exceptions.TaskCommentNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException;
 import io.julienmetral.tasks.task.exceptions.TooManyCommentAttachmentsException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.TypeMismatchException;
 import org.springframework.context.MessageSource;
 import org.springframework.context.MessageSourceResolvable;
@@ -34,6 +35,8 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -43,6 +46,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
+import org.springframework.web.util.DisconnectedClientHelper;
 import tools.jackson.databind.exc.MismatchedInputException;
 
 import java.util.List;
@@ -54,6 +58,7 @@ import java.util.Locale;
  * becomes a {@link ProblemType#VALIDATION_ERROR} listing each invalid value. See {@link ProblemType} for when an error
  * gets a type of its own.
  */
+@Slf4j
 @RestControllerAdvice
 public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
@@ -179,6 +184,26 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
                 .status(HttpStatus.TOO_MANY_REQUESTS)
                 .header(HttpHeaders.RETRY_AFTER, String.valueOf(ex.retryAfterSeconds()))
                 .body(ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage()));
+    }
+
+    /**
+     * The last resort: an unexpected failure is logged with its stack trace and answered as a bare 500, whose detail
+     * never carries the exception's message.
+     * <p>
+     * Warning: method security throws {@link AccessDeniedException} from inside the controller call, so this handler
+     * sees it; it is rethrown, and Spring Security still answers 403 (or 401) instead of a 500. A client that went away
+     * is rethrown too, since there is no one left to answer.
+     */
+    @ExceptionHandler(Exception.class)
+    public ProblemDetail handleUnexpected(Exception ex) throws Exception {
+        if (ex instanceof AccessDeniedException || ex instanceof AuthenticationException
+                || DisconnectedClientHelper.isClientDisconnectedException(ex)) {
+            throw ex;
+        }
+
+        log.error("Unexpected error while handling a request", ex);
+
+        return ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred");
     }
 
     @Override
