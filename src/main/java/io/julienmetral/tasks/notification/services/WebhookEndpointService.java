@@ -1,0 +1,135 @@
+package io.julienmetral.tasks.notification.services;
+
+import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
+import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
+import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.notification.dtos.CreateWebhookEndpointDto;
+import io.julienmetral.tasks.notification.dtos.UpdateWebhookEndpointDto;
+import io.julienmetral.tasks.notification.entities.WebhookDisabledReason;
+import io.julienmetral.tasks.notification.entities.WebhookEndpoint;
+import io.julienmetral.tasks.notification.exceptions.WebhookEndpointNotFoundException;
+import io.julienmetral.tasks.notification.exceptions.WebhookLimitReachedException;
+import io.julienmetral.tasks.notification.repositories.WebhookEndpointRepository;
+import io.julienmetral.tasks.notification.webhook.WebhookProperties;
+import io.julienmetral.tasks.notification.webhook.WebhookSecrets;
+import io.julienmetral.tasks.notification.webhook.WebhookUrlPolicy;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.UUID;
+
+@Service
+@RequiredArgsConstructor
+public class WebhookEndpointService {
+
+    public record CreatedWebhookEndpoint(WebhookEndpoint endpoint, String secret) {
+    }
+
+    public record RotatedWebhookSecret(String secret, Instant previousSecretExpiresAt) {
+    }
+
+    private final WebhookEndpointRepository endpointRepository;
+    private final UserRepository userRepository;
+    private final UserProfileRepository userProfileRepository;
+    private final WebhookUrlPolicy urlPolicy;
+    private final WebhookSecrets secrets;
+    private final WebhookProperties properties;
+    private final Clock clock;
+
+    /** Returns the endpoint with its secret in clear, which no later read shows again. */
+    @Transactional
+    public CreatedWebhookEndpoint create(UUID userId, CreateWebhookEndpointDto dto) {
+        // Locking the account row makes two concurrent creations count each other against the limit
+        userRepository.findByIdForUpdate(userId).orElseThrow(() -> new UserNotFoundException(userId));
+
+        if (endpointRepository.countByUserId(userId) >= properties.maxPerUser()) {
+            throw new WebhookLimitReachedException(properties.maxPerUser());
+        }
+
+        urlPolicy.check(dto.url());
+
+        Instant now = clock.instant();
+        String secret = secrets.generate();
+
+        WebhookEndpoint endpoint = new WebhookEndpoint();
+        endpoint.setUser(userProfileRepository.getReferenceById(userId));
+        endpoint.setUrl(dto.url());
+        endpoint.setSecret(secrets.encrypt(secret));
+        endpoint.setEvents(EnumSet.copyOf(dto.events()));
+        endpoint.setCreatedAt(now);
+        endpoint.setUpdatedAt(now);
+
+        return new CreatedWebhookEndpoint(endpointRepository.save(endpoint), secret);
+    }
+
+    @Transactional(readOnly = true)
+    public List<WebhookEndpoint> findAll(UUID userId) {
+        userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
+
+        return endpointRepository.findAllByUserIdOrderByCreatedAt(userId);
+    }
+
+    @Transactional(readOnly = true)
+    public WebhookEndpoint get(UUID userId, UUID webhookId) {
+        return find(userId, webhookId);
+    }
+
+    @Transactional
+    public WebhookEndpoint update(UUID userId, UUID webhookId, UpdateWebhookEndpointDto dto) {
+        WebhookEndpoint endpoint = find(userId, webhookId);
+
+        if (!endpoint.getUrl().equals(dto.url())) {
+            urlPolicy.check(dto.url());
+            endpoint.setUrl(dto.url());
+        }
+
+        endpoint.setEvents(EnumSet.copyOf(dto.events()));
+
+        Instant now = clock.instant();
+
+        if (dto.enabled()) {
+            endpoint.enable();
+        } else {
+            endpoint.disable(WebhookDisabledReason.OWNER, now);
+        }
+
+        endpoint.setUpdatedAt(now);
+
+        return endpoint;
+    }
+
+    @Transactional
+    public void delete(UUID userId, UUID webhookId) {
+        endpointRepository.delete(find(userId, webhookId));
+    }
+
+    /**
+     * Replaces the signing secret. The previous one keeps signing deliveries, next to the new one, for
+     * {@code webhooks.previous-secret-validity}, so the receiver can switch without losing any.
+     */
+    @Transactional
+    public RotatedWebhookSecret rotateSecret(UUID userId, UUID webhookId) {
+        WebhookEndpoint endpoint = find(userId, webhookId);
+        Instant now = clock.instant();
+        Instant previousSecretExpiresAt = now.plus(properties.previousSecretValidity());
+        String secret = secrets.generate();
+
+        endpoint.setPreviousSecret(endpoint.getSecret());
+        endpoint.setPreviousSecretExpiresAt(previousSecretExpiresAt);
+        endpoint.setSecret(secrets.encrypt(secret));
+        endpoint.setUpdatedAt(now);
+
+        return new RotatedWebhookSecret(secret, previousSecretExpiresAt);
+    }
+
+    private WebhookEndpoint find(UUID userId, UUID webhookId) {
+        return endpointRepository
+                .findByIdAndUserId(webhookId, userId)
+                .orElseThrow(() -> new WebhookEndpointNotFoundException(webhookId));
+    }
+}
