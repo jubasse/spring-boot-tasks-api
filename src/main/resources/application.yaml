@@ -129,6 +129,9 @@ spring:
     clients:
       imperative:
         factory: http-components
+      # Apache's own defaults wait minutes for a connection. A client group can set its own values.
+      connect-timeout: 5s
+      read-timeout: 15s
   data:
     web:
       pageable:

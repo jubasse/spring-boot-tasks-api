@@ -16,6 +16,11 @@ import org.springframework.context.annotation.Configuration;
 @EnableConfigurationProperties(OutboundHttpProperties.class)
 public class OutboundHttpConfiguration {
 
+    // Warning: externalAddresses() lets through IPv6 forms that embed an IPv4 address, loopback and metadata ones
+    // included: IPv4-compatible (::/96), IPv4-translated (::ffff:0:0:0/96) and local-use NAT64 (64:ff9b:1::/48).
+    // Measured with Spring Boot 4.1.1.
+    private static final String[] EMBEDDED_IPV4 = {"::/96", "::ffff:0:0:0/96", "64:ff9b:1::/48"};
+
     /**
      * Only public addresses, plus {@code outbound-http.allowed-addresses}: users supply webhook URLs, and a private
      * address would let them make the API call its own network or the cloud metadata service (SSRF). With Apache
@@ -24,7 +29,7 @@ public class OutboundHttpConfiguration {
      */
     @Bean
     InetAddressFilter outboundAddressFilter(OutboundHttpProperties properties) {
-        InetAddressFilter publicAddresses = InetAddressFilter.externalAddresses();
+        InetAddressFilter publicAddresses = InetAddressFilter.externalAddresses().andNot(EMBEDDED_IPV4);
 
         return properties.allowedAddresses().isEmpty()
                 ? publicAddresses
