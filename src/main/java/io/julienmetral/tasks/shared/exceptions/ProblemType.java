@@ -31,14 +31,25 @@ public enum ProblemType {
 
     private final HttpStatus status;
 
+    private final String slug;
+
     private final URI type;
 
     private final String title;
 
     ProblemType(HttpStatus status, String slug, String title) {
         this.status = status;
+        this.slug = slug;
         this.type = URI.create(DOCUMENT + slug);
         this.title = title;
+    }
+
+    public String slug() {
+        return slug;
+    }
+
+    public String title() {
+        return title;
     }
 
     public HttpStatus status() {

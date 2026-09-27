@@ -29,6 +29,10 @@ import java.util.Map;
 @EnableMethodSecurity
 public class SecurityConfiguration {
 
+    private static final String[] API_DOCUMENTATION = {
+            "/v3/api-docs", "/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**"
+    };
+
     @Bean
     static AnnotationTemplateExpressionDefaults templateExpressionDefaults() {
         return new AnnotationTemplateExpressionDefaults();
@@ -120,46 +124,30 @@ public class SecurityConfiguration {
                                 SessionCreationPolicy.STATELESS
                         )
                 )
-                .authorizeHttpRequests(auth ->
-                        auth
-                                // Errors are rendered by an internal dispatch to /error, after the request itself was
-                                // authorized. Securing that dispatch turned every 400 of a public endpoint (malformed
-                                // JSON on login or sign-up, an invalid identicon id) into a 401.
-                                .dispatcherTypeMatchers(DispatcherType.ERROR)
-                                .permitAll()
-                                .requestMatchers(
-                                        HttpMethod.POST,
-                                        "/api/v1/users"
-                                )
-                                .permitAll()
+                .authorizeHttpRequests(auth -> {
+                    // Errors are rendered by an internal dispatch to /error, after the request itself was authorized.
+                    // Securing that dispatch turned every 400 of a public endpoint (malformed JSON on login or
+                    // sign-up, an invalid identicon id) into a 401.
+                    auth.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
 
-                                // Login, token refresh and logout carry their own credentials;
-                                // email verification carries the token received by email
-                                .requestMatchers(
-                                        HttpMethod.POST,
-                                        "/api/v1/auth/login",
-                                        "/api/v1/auth/refresh",
-                                        "/api/v1/auth/logout",
-                                        "/api/v1/auth/verify-email",
-                                        "/api/v1/auth/password-reset/request",
-                                        "/api/v1/auth/password-reset/confirm"
-                                )
-                                .permitAll()
-                                // Everything on the management port is public, that port being private by
-                                // deployment. Matching the endpoints only left its error page (404, 406, 500)
-                                // behind authentication, so every error there answered 401.
-                                .requestMatchers(onManagementPort(environment))
-                                .permitAll()
-                                // Identicons are images loaded by <img> tags, which send no token
-                                .requestMatchers(HttpMethod.GET, "/api/v1/identicons/*")
-                                .permitAll()
-                                // Tasks are reserved to enabled users with a verified email
-                                .requestMatchers("/api/v1/tasks/**")
-                                .access(activeUserAuthorizationManager)
+                    PublicEndpoints.ALL.forEach(endpoint ->
+                            auth.requestMatchers(endpoint.method(), endpoint.pattern()).permitAll());
 
-                                .anyRequest()
-                                .authenticated()
-                )
+                    auth
+                            // Everything on the management port is public, that port being private by deployment.
+                            // Matching the endpoints only left its error page (404, 406, 500) behind
+                            // authentication, so every error there answered 401.
+                            .requestMatchers(onManagementPort(environment))
+                            .permitAll()
+                            // The documentation of a public API; API_DOCS_ENABLED and SWAGGER_UI_ENABLED turn it off
+                            .requestMatchers(HttpMethod.GET, API_DOCUMENTATION)
+                            .permitAll()
+                            // Tasks are reserved to enabled users with a verified email
+                            .requestMatchers("/api/v1/tasks/**")
+                            .access(activeUserAuthorizationManager)
+                            .anyRequest()
+                            .authenticated();
+                })
                 .oauth2ResourceServer(oauth ->
                         oauth.jwt(jwt ->
                                 jwt.jwtAuthenticationConverter(

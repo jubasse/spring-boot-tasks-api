@@ -7,7 +7,10 @@ import io.julienmetral.tasks.task.entities.TaskAttachment;
 import io.julienmetral.tasks.task.security.AllowedRolesOrAssignedToOnly;
 import io.julienmetral.tasks.task.security.AllowedRolesOrUploaderOnly;
 import io.julienmetral.tasks.task.services.TaskAttachmentService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -21,14 +24,17 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/tasks/{id}/attachments")
 @RequiredArgsConstructor
+@Tag(name = "Attachments", description = "Files attached to a task.")
 public class TaskAttachmentController {
 
     private final TaskAttachmentService attachmentService;
     private final MediaUrls mediaUrls;
 
+    @Operation(summary = "Attach a file to a task")
+    @ResponseStatus(HttpStatus.CREATED)
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @AllowedRolesOrAssignedToOnly(UserRole.ADMIN)
-    public ResponseEntity<TaskAttachmentResponseDto> add(
+    public ResponseEntity<TaskAttachmentResponseDto> addAttachment(
             @PathVariable UUID id,
             @RequestPart("file") MultipartFile file
     ) {
@@ -39,8 +45,9 @@ public class TaskAttachmentController {
                 .body(response(attachment));
     }
 
+    @Operation(summary = "List the files of a task")
     @GetMapping
-    public List<TaskAttachmentResponseDto> findAll(
+    public List<TaskAttachmentResponseDto> listAttachments(
             @PathVariable UUID id
     ) {
         return attachmentService
@@ -50,17 +57,20 @@ public class TaskAttachmentController {
                 .toList();
     }
 
+    @Operation(summary = "Get a file and its download URL")
     @GetMapping("/{attachmentId}")
-    public TaskAttachmentResponseDto find(
+    public TaskAttachmentResponseDto getAttachment(
             @PathVariable UUID id,
             @PathVariable UUID attachmentId
     ) {
         return response(attachmentService.find(id, attachmentId));
     }
 
+    @Operation(summary = "Remove a file")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     @DeleteMapping("/{attachmentId}")
     @AllowedRolesOrUploaderOnly(UserRole.ADMIN)
-    public ResponseEntity<Void> remove(
+    public ResponseEntity<Void> removeAttachment(
             @PathVariable UUID id,
             @PathVariable UUID attachmentId
     ) {

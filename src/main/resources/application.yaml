@@ -169,3 +169,19 @@ spring:
   liquibase:
     enabled: true
     change-log: classpath:/db/changelog/db.changelog-master.yaml
+# API documentation (see OpenApiConfiguration): the spec at /v3/api-docs and Swagger UI at /swagger-ui.html
+springdoc:
+  api-docs:
+    enabled: ${API_DOCS_ENABLED:true}
+    version: openapi_3_1
+  swagger-ui:
+    enabled: ${SWAGGER_UI_ENABLED:true}
+  paths-to-match: /api/**
+  default-produces-media-type: application/json
+  # Before 3.1.1, one spec was generated and kept per Accept-Language: varying it exhausted the memory
+  allowed-locales: en
+  # Handlers of ApiExceptionHandler would otherwise be added as responses of every operation
+  override-with-generic-response: false
+  # A stable output for the committed docs/openapi.json
+  writer-with-order-by-keys: true
+  writer-with-default-pretty-printer: true

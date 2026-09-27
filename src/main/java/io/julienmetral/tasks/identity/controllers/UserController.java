@@ -8,12 +8,18 @@ import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.services.AvatarService;
 import io.julienmetral.tasks.identity.services.UserService;
 import io.julienmetral.tasks.media.services.MediaUrls;
+import io.julienmetral.tasks.shared.exceptions.ProblemType;
+import io.julienmetral.tasks.shared.openapi.DocumentedProblems;
+import io.julienmetral.tasks.shared.openapi.RateLimited;
 import io.julienmetral.tasks.shared.security.AdminOnly;
 import io.julienmetral.tasks.shared.security.AllowedRolesOrSelfOnly;
 import io.julienmetral.tasks.ratelimit.services.RateLimiter;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -25,6 +31,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/users")
 @RequiredArgsConstructor
+@Tag(name = "Users", description = "Accounts: sign-up, profile, profile photo, and the admin actions.")
 public class UserController {
 
     private final UserService userService;
@@ -32,8 +39,12 @@ public class UserController {
     private final MediaUrls mediaUrls;
     private final RateLimiter rateLimiter;
 
+    @Operation(summary = "Sign up")
+    @ResponseStatus(HttpStatus.CREATED)
+    @DocumentedProblems(ProblemType.EMAIL_TAKEN)
+    @RateLimited
     @PostMapping
-    public ResponseEntity<UserResponseDto> create(
+    public ResponseEntity<UserResponseDto> signUp(
             @Valid @RequestBody CreateUserDto dto,
             HttpServletRequest request
     ) {
@@ -56,9 +67,10 @@ public class UserController {
                 );
     }
 
+    @Operation(summary = "Get an account")
     @GetMapping("/{id}")
     @AllowedRolesOrSelfOnly(UserRole.ADMIN)
-    public ResponseEntity<UserResponseDto> findById(
+    public ResponseEntity<UserResponseDto> getUser(
             @PathVariable UUID id
     ) {
         return ResponseEntity.ok(
@@ -68,9 +80,10 @@ public class UserController {
         );
     }
 
+    @Operation(summary = "Update an account")
     @PatchMapping("/{id}")
     @AllowedRolesOrSelfOnly(UserRole.ADMIN)
-    public ResponseEntity<UserResponseDto> update(
+    public ResponseEntity<UserResponseDto> updateUser(
             @PathVariable UUID id,
             @Valid @RequestBody UpdateUserDto dto
     ) {
@@ -84,9 +97,11 @@ public class UserController {
         );
     }
 
+    @Operation(summary = "Enable an account")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     @PostMapping("/{id}/enable")
     @AdminOnly
-    public ResponseEntity<Void> enable(
+    public ResponseEntity<Void> enableUser(
             @PathVariable UUID id
     ) {
         userService.enable(id);
@@ -96,9 +111,11 @@ public class UserController {
                 .build();
     }
 
+    @Operation(summary = "Disable an account and revoke its refresh tokens")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     @PostMapping("/{id}/disable")
     @AdminOnly
-    public ResponseEntity<Void> disable(
+    public ResponseEntity<Void> disableUser(
             @PathVariable UUID id
     ) {
         userService.disable(id);
@@ -108,9 +125,11 @@ public class UserController {
                 .build();
     }
 
+    @Operation(summary = "Delete an account and revoke its refresh tokens")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     @DeleteMapping("/{id}")
     @AdminOnly
-    public ResponseEntity<Void> delete(
+    public ResponseEntity<Void> deleteUser(
             @PathVariable UUID id
     ) {
         userService.delete(id);
@@ -120,9 +139,12 @@ public class UserController {
                 .build();
     }
 
+    @Operation(summary = "Upload a profile photo, processed in the background")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    @DocumentedProblems(ProblemType.INVALID_IMAGE)
     @PutMapping(path = "/{id}/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @AllowedRolesOrSelfOnly(UserRole.ADMIN)
-    public ResponseEntity<UserResponseDto> updateAvatar(
+    public ResponseEntity<UserResponseDto> uploadAvatar(
             @PathVariable UUID id,
             @RequestPart("file") MultipartFile file
     ) {
@@ -131,6 +153,8 @@ public class UserController {
                 .body(response(avatarService.update(id, file)));
     }
 
+    @Operation(summary = "Remove the profile photo")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     @DeleteMapping("/{id}/avatar")
     @AllowedRolesOrSelfOnly(UserRole.ADMIN)
     public ResponseEntity<Void> removeAvatar(

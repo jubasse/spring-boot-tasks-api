@@ -6,6 +6,7 @@ import java.lang.annotation.*;
 
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
+@AccessDescription("Only the user themselves.")
 @PreAuthorize(
         "@userAuthorization.currentUserIsSelf(#id, authentication)"
 )
