@@ -6,6 +6,7 @@
 # a shell or an IDE: in the tests, this file would then override src/test/resources/config/application.yaml.
 deployment:
   required-properties:
+    - security.jwt.secret
     - spring.datasource.url
     - spring.datasource.username
     - spring.datasource.password
