@@ -116,9 +116,19 @@ management:
 # rate limits comes from X-Forwarded-For; without a proxy, keep none, or clients could pick their own address
 server:
   forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
+# Outgoing HTTP calls (webhooks) reach only public addresses; OutboundHttpConfiguration explains why. To try a
+# receiver on your machine, set OUTBOUND_HTTP_ALLOWED_ADDRESSES=127.0.0.1/32.
+outbound-http:
+  allowed-addresses: ${OUTBOUND_HTTP_ALLOWED_ADDRESSES:}
 spring:
   config:
     import: optional:file:.env[.properties]
+  # Apache HttpClient explicitly: it would otherwise be picked only because the AWS SDK brings it, and its address
+  # filtering also holds against DNS rebinding
+  http:
+    clients:
+      imperative:
+        factory: http-components
   data:
     web:
       pageable:
