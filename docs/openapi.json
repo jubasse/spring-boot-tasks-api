@@ -137,6 +137,28 @@
         "required" : [ "userId" ],
         "type" : "object"
       },
+      "AuthResponseDto" : {
+        "properties" : {
+          "accessToken" : {
+            "type" : "string"
+          },
+          "expiresAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "refreshToken" : {
+            "type" : "string"
+          },
+          "refreshTokenExpiresAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "tokenType" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "CancelTaskDto" : {
         "properties" : {
           "reason" : {
@@ -745,6 +767,16 @@
           "required" : true
         },
         "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuthResponseDto"
+                }
+              }
+            },
+            "description" : "Signed in: the token pair."
+          },
           "400" : {
             "$ref" : "#/components/responses/BadRequest"
           },
@@ -899,6 +931,16 @@
           "required" : true
         },
         "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuthResponseDto"
+                }
+              }
+            },
+            "description" : "The new token pair; the refresh token sent is revoked."
+          },
           "400" : {
             "$ref" : "#/components/responses/BadRequest"
           },
@@ -1177,6 +1219,9 @@
           },
           "403" : {
             "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
           },
           "409" : {
             "content" : {
@@ -2020,6 +2065,14 @@
             "content" : {
               "application/problem+json" : {
                 "examples" : {
+                  "infected-file" : {
+                    "summary" : "File rejected by the antivirus",
+                    "value" : {
+                      "status" : 422,
+                      "title" : "File rejected by the antivirus",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#infected-file"
+                    }
+                  },
                   "invalid-mention" : {
                     "summary" : "Invalid mention",
                     "value" : {
@@ -2034,7 +2087,7 @@
                 }
               }
             },
-            "description" : "Unprocessable Content: Invalid mention."
+            "description" : "Unprocessable Content: Invalid mention, or File rejected by the antivirus."
           },
           "503" : {
             "$ref" : "#/components/responses/ServiceUnavailable"
@@ -2386,7 +2439,7 @@
           "name" : "size",
           "required" : false,
           "schema" : {
-            "default" : 20,
+            "default" : 10,
             "maximum" : 100,
             "minimum" : 1,
             "type" : "integer"
@@ -2397,6 +2450,7 @@
           "name" : "sort",
           "required" : false,
           "schema" : {
+            "default" : [ "occurredAt,DESC", "id,DESC" ],
             "items" : {
               "type" : "string"
             },
