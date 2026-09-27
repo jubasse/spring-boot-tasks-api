@@ -37,9 +37,15 @@ import java.time.Duration;
 import java.util.Set;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.invalidParameter;
+import static io.julienmetral.tasks.support.Problems.typedProblem;
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
+import static io.julienmetral.tasks.support.Problems.validationError;
+import static io.julienmetral.tasks.support.Problems.withoutJavaTypeNames;
 import static io.julienmetral.tasks.support.WebCallers.admin;
 import static io.julienmetral.tasks.support.WebCallers.user;
 import static io.julienmetral.tasks.support.WebCallers.withoutUid;
+import static org.hamcrest.Matchers.contains;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -125,29 +131,62 @@ class UserControllerWebMvcTests {
         }
 
         @Test
-        void signUpRejectsMalformedJson() throws Exception {
-            expectRejected("{\"email\": ");
+        void signUpRejectsMalformedJsonWithAnUntypedProblem() throws Exception {
+            expectRejected("{\"email\": ")
+                    .andExpect(untypedProblem(400, "Bad Request"))
+                    .andExpect(jsonPath("$.detail").value("Failed to read request"))
+                    .andExpect(withoutJavaTypeNames());
         }
 
         @Test
-        void signUpWithTakenEmailReturnsConflictProblem() throws Exception {
+        void signUpWithSeveralInvalidFieldsListsThemSortedByPointerThenDetail() throws Exception {
+            mockMvc.perform(post(USERS)
+                            .header(HttpHeaders.ACCEPT_LANGUAGE, "en")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(signUpBody("not-an-email", "", " ")))
+                    .andExpect(validationError())
+                    .andExpect(jsonPath("$.errors[*].pointer")
+                            .value(contains("#/displayName", "#/email", "#/password", "#/password")))
+                    .andExpect(jsonPath("$.errors[*].detail").value(contains(
+                            "must not be blank",
+                            "must be a well-formed email address",
+                            "must not be blank",
+                            "size must be between 8 and 128"
+                    )))
+                    .andExpect(jsonPath("$.errors[*].parameter").isEmpty());
+
+            verifyNoInteractions(userService);
+        }
+
+        @Test
+        void validationMessagesFollowTheAcceptLanguageHeader() throws Exception {
+            mockMvc.perform(post(USERS)
+                            .header(HttpHeaders.ACCEPT_LANGUAGE, "fr")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(signUpBody(uniqueEmail(), "password123", " ")))
+                    .andExpect(validationError())
+                    .andExpect(jsonPath("$.errors[0].pointer").value("#/displayName"))
+                    .andExpect(jsonPath("$.errors[0].detail").value("ne doit pas être vide"));
+        }
+
+        @Test
+        void signUpWithTakenEmailReturnsEmailTakenProblem() throws Exception {
             when(userService.create(anyString(), anyString(), anyString()))
                     .thenThrow(new UserEmailAlreadyExistsException("taken@example.com"));
 
             signUp(signUpBody("taken@example.com", "password123", "Second"))
-                    .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.status").value(409))
-                    .andExpect(jsonPath("$.title").value("User email already exists"));
+                    .andExpect(typedProblem(409, "email-taken", "Email already in use"))
+                    .andExpect(jsonPath("$.detail").value("User already exists with email: taken@example.com"))
+                    .andExpect(jsonPath("$.instance").value(USERS));
         }
 
         @Test
-        void signUpLosingARaceOnTheEmailReturnsAGenericConflict() throws Exception {
+        void signUpLosingARaceOnTheEmailReturnsAnUntypedConflict() throws Exception {
             when(userService.create(anyString(), anyString(), anyString()))
                     .thenThrow(new DataIntegrityViolationException("duplicate key value violates users_emailUQ"));
 
             signUp(signUpBody(uniqueEmail(), "password123", "Racer"))
-                    .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.title").value("Data conflict"))
+                    .andExpect(untypedProblem(409, "Conflict"))
                     .andExpect(jsonPath("$.detail").value("The request conflicts with existing data"));
         }
 
@@ -156,17 +195,17 @@ class UserControllerWebMvcTests {
             doThrow(new RateLimitExceededException(Duration.ofSeconds(90))).when(rateLimiter).signUp(anyString());
 
             signUp(signUpBody(uniqueEmail(), "password123", "Eve"))
-                    .andExpect(status().isTooManyRequests())
-                    .andExpect(header().string(HttpHeaders.RETRY_AFTER, "90"))
-                    .andExpect(jsonPath("$.title").value("Too many requests"));
+                    .andExpect(untypedProblem(429, "Too Many Requests"))
+                    .andExpect(header().string(HttpHeaders.RETRY_AFTER, "90"));
 
             verifyNoInteractions(userService);
         }
 
-        private void expectRejected(String body) throws Exception {
-            signUp(body).andExpect(status().isBadRequest());
+        private ResultActions expectRejected(String body) throws Exception {
+            ResultActions result = signUp(body).andExpect(status().isBadRequest());
 
             verifyNoInteractions(userService);
+            return result;
         }
 
         private ResultActions signUp(String body) throws Exception {
@@ -222,16 +261,17 @@ class UserControllerWebMvcTests {
             when(userService.findById(unknown)).thenThrow(new UserNotFoundException(unknown));
 
             mockMvc.perform(get(USER, unknown).with(admin(UUID.randomUUID())))
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.status").value(404))
-                    .andExpect(jsonPath("$.title").value("User not found"))
+                    .andExpect(untypedProblem(404, "Not Found"))
                     .andExpect(jsonPath("$.detail").value("User not found with id: " + unknown));
         }
 
         @Test
-        void getUserWithInvalidUuidReturnsBadRequest() throws Exception {
+        void getUserWithInvalidUuidNamesThePathParameter() throws Exception {
             mockMvc.perform(get(USER, "not-a-uuid").with(admin(UUID.randomUUID())))
-                    .andExpect(status().isBadRequest());
+                    .andExpect(invalidParameter("id", "must be a UUID"))
+                    .andExpect(withoutJavaTypeNames());
+
+            verifyNoInteractions(userService);
         }
     }
 
@@ -355,8 +395,8 @@ class UserControllerWebMvcTests {
             doThrow(new UserNotFoundException(unknown)).when(userService).disable(unknown);
 
             mockMvc.perform(post(USER + "/disable", unknown).with(admin(UUID.randomUUID())))
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.title").value("User not found"));
+                    .andExpect(untypedProblem(404, "Not Found"))
+                    .andExpect(jsonPath("$.detail").value("User not found with id: " + unknown));
         }
     }
 
@@ -380,11 +420,11 @@ class UserControllerWebMvcTests {
         }
 
         @Test
-        void uploadWithoutFilePartReturnsBadRequest() throws Exception {
+        void uploadWithoutFilePartNamesTheMissingPart() throws Exception {
             UUID id = UUID.randomUUID();
 
             mockMvc.perform(multipart(HttpMethod.PUT, AVATAR, id).with(user(id)))
-                    .andExpect(status().isBadRequest());
+                    .andExpect(invalidParameter("file", "is required"));
 
             verifyNoInteractions(avatarService);
         }
@@ -404,44 +444,45 @@ class UserControllerWebMvcTests {
             expectUploadRejected(
                     new UnsupportedMediaTypeException("application/pdf", MediaUsage.AVATAR_UPLOAD)
             )
-                    .andExpect(status().isUnsupportedMediaType())
-                    .andExpect(jsonPath("$.title").value("Unsupported file type"));
+                    .andExpect(untypedProblem(415, "Unsupported Media Type"))
+                    .andExpect(jsonPath("$.detail")
+                            .value("Files of type application/pdf are not accepted for AVATAR_UPLOAD"));
         }
 
         @Test
         void tooLargeFileReturnsContentTooLarge() throws Exception {
             expectUploadRejected(new MediaTooLargeException(DataSize.ofMegabytes(5)))
-                    .andExpect(status().isContentTooLarge())
-                    .andExpect(jsonPath("$.title").value("File too large"));
+                    .andExpect(untypedProblem(413, "Content Too Large"))
+                    .andExpect(jsonPath("$.detail").value("The file exceeds the maximum size of 5 MB"));
         }
 
         @Test
         void requestAboveTheMultipartLimitReturnsContentTooLargeWithoutParserDetails() throws Exception {
             expectUploadRejected(new MaxUploadSizeExceededException(26L * 1024 * 1024))
-                    .andExpect(status().isContentTooLarge())
-                    .andExpect(jsonPath("$.title").value("File too large"))
-                    .andExpect(jsonPath("$.detail").value("The request exceeds the maximum upload size"));
+                    .andExpect(untypedProblem(413, "Content Too Large"))
+                    .andExpect(jsonPath("$.detail").value("The request exceeds the maximum upload size"))
+                    .andExpect(withoutJavaTypeNames());
         }
 
         @Test
         void emptyFileReturnsBadRequest() throws Exception {
             expectUploadRejected(new EmptyMediaException())
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.title").value("Empty file"));
+                    .andExpect(untypedProblem(400, "Bad Request"))
+                    .andExpect(jsonPath("$.detail").value("The file is empty"));
         }
 
         @Test
-        void invalidImageReturnsUnprocessable() throws Exception {
+        void invalidImageReturnsInvalidImageProblem() throws Exception {
             expectUploadRejected(new InvalidImageException("the image is larger than 10000 pixels"))
-                    .andExpect(status().isUnprocessableContent())
-                    .andExpect(jsonPath("$.title").value("Invalid image"));
+                    .andExpect(typedProblem(422, "invalid-image", "Invalid image"))
+                    .andExpect(jsonPath("$.detail")
+                            .value("The image cannot be used: the image is larger than 10000 pixels"));
         }
 
         @Test
         void infectedFileReturnsUnprocessableNamingTheThreat() throws Exception {
             expectUploadRejected(new InfectedMediaException("Eicar-Test-Signature"))
-                    .andExpect(status().isUnprocessableContent())
-                    .andExpect(jsonPath("$.title").value("File rejected by the antivirus"))
+                    .andExpect(typedProblem(422, "infected-file", "File rejected by the antivirus"))
                     .andExpect(jsonPath("$.detail")
                             .value("The file was rejected by the antivirus: Eicar-Test-Signature"));
         }
@@ -449,16 +490,14 @@ class UserControllerWebMvcTests {
         @Test
         void unreachableAntivirusReturnsServiceUnavailableWithoutTheCause() throws Exception {
             expectUploadRejected(new AntivirusUnavailableException(new IOException("Connection refused: clamav:3310")))
-                    .andExpect(status().isServiceUnavailable())
-                    .andExpect(jsonPath("$.title").value("Antivirus unavailable"))
+                    .andExpect(untypedProblem(503, "Service Unavailable"))
                     .andExpect(jsonPath("$.detail").value("The antivirus is temporarily unavailable, try again later"));
         }
 
         @Test
         void unreachableStorageReturnsServiceUnavailable() throws Exception {
             expectUploadRejected(new StorageUnavailableException(new IOException("Connection refused: rustfs:9000")))
-                    .andExpect(status().isServiceUnavailable())
-                    .andExpect(jsonPath("$.title").value("Storage unavailable"))
+                    .andExpect(untypedProblem(503, "Service Unavailable"))
                     .andExpect(jsonPath("$.detail").value("File storage is temporarily unavailable"));
         }
 

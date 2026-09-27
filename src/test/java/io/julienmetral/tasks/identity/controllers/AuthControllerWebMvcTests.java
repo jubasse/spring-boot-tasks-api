@@ -33,6 +33,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.typedProblem;
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static io.julienmetral.tasks.support.WebCallers.user;
 import static io.julienmetral.tasks.support.WebCallers.withoutUid;
 import static org.mockito.ArgumentMatchers.any;
@@ -104,13 +106,23 @@ class AuthControllerWebMvcTests {
         }
 
         @Test
-        void wrongCredentialsReturnUnauthorizedWithAMessageBody() throws Exception {
+        void loginWithInvalidEmailPointsToIt() throws Exception {
+            login("{\"email\": \"not-an-email\", \"password\": \"password123\"}")
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errors.length()").value(1))
+                    .andExpect(jsonPath("$.errors[0].pointer").value("#/email"));
+
+            verifyNoInteractions(authService, rateLimiter);
+        }
+
+        @Test
+        void wrongCredentialsReturnAnUntypedUnauthorizedProblem() throws Exception {
             when(authService.login(any())).thenThrow(new InvalidCredentialsException());
 
             login("{\"email\": \"alice@example.com\", \"password\": \"wrong-password\"}")
-                    .andExpect(status().isUnauthorized())
-                    .andExpect(jsonPath("$.status").value(401))
-                    .andExpect(jsonPath("$.message").value("Invalid email or password"));
+                    .andExpect(untypedProblem(401, "Unauthorized"))
+                    .andExpect(jsonPath("$.detail").value("Invalid email or password"))
+                    .andExpect(jsonPath("$.message").doesNotExist());
         }
 
         @Test
@@ -119,10 +131,9 @@ class AuthControllerWebMvcTests {
                     .when(rateLimiter).login(anyString(), anyString());
 
             login("{\"email\": \"alice@example.com\", \"password\": \"password123\"}")
-                    .andExpect(status().isTooManyRequests())
+                    .andExpect(untypedProblem(429, "Too Many Requests"))
                     .andExpect(header().string(HttpHeaders.RETRY_AFTER, "2"))
-                    .andExpect(jsonPath("$.status").value(429))
-                    .andExpect(jsonPath("$.title").value("Too many requests"));
+                    .andExpect(jsonPath("$.detail").value("Too many requests, try again in 2 seconds"));
 
             verifyNoInteractions(authService);
         }
@@ -161,13 +172,12 @@ class AuthControllerWebMvcTests {
         }
 
         @Test
-        void invalidRefreshTokenReturnsUnauthorizedProblem() throws Exception {
+        void invalidRefreshTokenReturnsAnUntypedUnauthorizedProblem() throws Exception {
             when(authService.refresh("revoked")).thenThrow(new InvalidRefreshTokenException());
 
             postJson("/refresh", tokenBody("refreshToken", "revoked"))
-                    .andExpect(status().isUnauthorized())
-                    .andExpect(jsonPath("$.status").value(401))
-                    .andExpect(jsonPath("$.title").value("Invalid refresh token"));
+                    .andExpect(untypedProblem(401, "Unauthorized"))
+                    .andExpect(jsonPath("$.detail").value("The refresh token is invalid, expired or revoked"));
         }
 
         @ParameterizedTest
@@ -212,13 +222,13 @@ class AuthControllerWebMvcTests {
         }
 
         @Test
-        void invalidVerificationTokenReturnsBadRequestProblem() throws Exception {
+        void invalidVerificationTokenReturnsInvalidTokenProblem() throws Exception {
             doThrow(new InvalidEmailVerificationTokenException()).when(emailVerificationService).verify("used");
 
             postJson("/verify-email", tokenBody("token", "used"))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.status").value(400))
-                    .andExpect(jsonPath("$.title").value("Invalid email verification token"));
+                    .andExpect(typedProblem(400, "invalid-token", "Invalid or expired token"))
+                    .andExpect(jsonPath("$.detail")
+                            .value("The email verification token is invalid, expired or already used"));
         }
 
         @Test
@@ -238,13 +248,12 @@ class AuthControllerWebMvcTests {
         }
 
         @Test
-        void resendWhenAlreadyVerifiedReturnsConflictProblem() throws Exception {
+        void resendWhenAlreadyVerifiedReturnsEmailAlreadyVerifiedProblem() throws Exception {
             UUID id = UUID.randomUUID();
             doThrow(new EmailAlreadyVerifiedException()).when(emailVerificationService).resend(id);
 
             mockMvc.perform(post(AUTH + "/verify-email/resend").with(user(id)))
-                    .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.title").value("Email already verified"));
+                    .andExpect(typedProblem(409, "email-already-verified", "Email already verified"));
         }
 
         @Test
@@ -253,7 +262,7 @@ class AuthControllerWebMvcTests {
             doThrow(new RateLimitExceededException(Duration.ofMinutes(20))).when(rateLimiter).verificationResend(id);
 
             mockMvc.perform(post(AUTH + "/verify-email/resend").with(user(id)))
-                    .andExpect(status().isTooManyRequests())
+                    .andExpect(untypedProblem(429, "Too Many Requests"))
                     .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1200"));
 
             verifyNoInteractions(emailVerificationService);
@@ -345,14 +354,14 @@ class AuthControllerWebMvcTests {
         }
 
         @Test
-        void invalidResetTokenReturnsBadRequestProblem() throws Exception {
+        void invalidResetTokenReturnsInvalidTokenProblem() throws Exception {
             doThrow(new InvalidPasswordResetTokenException())
                     .when(passwordResetService).confirm("used", VALID_PASSWORD);
 
             confirm("used", VALID_PASSWORD)
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.status").value(400))
-                    .andExpect(jsonPath("$.title").value("Invalid password reset token"));
+                    .andExpect(typedProblem(400, "invalid-token", "Invalid or expired token"))
+                    .andExpect(jsonPath("$.detail")
+                            .value("The password reset token is invalid, expired or already used"));
         }
 
         @Test
