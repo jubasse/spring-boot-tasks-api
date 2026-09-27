@@ -437,8 +437,8 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
                     .andExpect(jsonPath("$.content[0].id").value(first.toString()))
                     .andExpect(jsonPath("$.content[1].id").value(second.toString()))
                     .andExpect(jsonPath("$.content[1].author.id").value(reader.getId().toString()))
-                    .andExpect(jsonPath("$.totalElements").value(3))
-                    .andExpect(jsonPath("$.totalPages").value(2));
+                    .andExpect(jsonPath("$.page.totalElements").value(3))
+                    .andExpect(jsonPath("$.page.totalPages").value(2));
 
             listComments(asUser(reader), taskId, "?size=2&page=1")
                     .andExpect(status().isOk())
@@ -471,7 +471,7 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.content", hasSize(1)))
                     .andExpect(jsonPath("$.content[0].id").value(own.toString()))
-                    .andExpect(jsonPath("$.totalElements").value(1));
+                    .andExpect(jsonPath("$.page.totalElements").value(1));
         }
 
         @Test
@@ -482,7 +482,7 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             listComments(asAdmin(admin), taskId, "")
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.content", hasSize(0)))
-                    .andExpect(jsonPath("$.totalElements").value(0));
+                    .andExpect(jsonPath("$.page.totalElements").value(0));
         }
 
         @Test

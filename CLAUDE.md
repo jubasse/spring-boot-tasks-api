@@ -100,6 +100,7 @@ Only **active** users can work on tasks. Active means enabled, not deleted, and 
 - **Assignees:** `TaskService` refuses to assign a task to a user who is not active and throws `AssigneeNotActiveException` (422).
 - **Responses:** task responses and task history expose referenced users as `UserProfileResponseDto(id, displayName, status, avatarUrl)`, with `status` one of `ACTIVE`, `UNVERIFIED`, `DISABLED` or `DELETED`.
 - **Listing:** `GET /api/v1/tasks` is paginated and filters on `status`, `assigneeId` and `archived`, which defaults to false.
+- **Pages:** every paginated list returns Spring Data's `PagedModel` (`{content, page: {size, number, totalElements, totalPages}}`), never a `Page`: the JSON of a `Page` has no stable structure. `spring.data.web.pageable.max-page-size` clamps a page to 100 items.
 
 ### Task comments
 
