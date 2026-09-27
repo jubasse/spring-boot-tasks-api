@@ -2,6 +2,9 @@ package io.julienmetral.tasks.task.controllers;
 
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
+import io.julienmetral.tasks.identity.events.AccountStateChanged;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.ResultActions;
 
@@ -18,6 +21,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * read tasks and their history through the API.
  */
 abstract class AbstractUserStateTaskApiTests extends AbstractTaskApiTests {
+
+    @Autowired
+    protected ApplicationEventPublisher eventPublisher;
 
     protected User createUnverifiedUser(UserRole role) {
         return updateUser(createUser(role), user -> user.setEmailVerifiedAt(null));
@@ -48,9 +54,16 @@ abstract class AbstractUserStateTaskApiTests extends AbstractTaskApiTests {
                 .andExpect(status().isNoContent());
     }
 
-    /** Clears the verification date of an existing user, as if it had never verified its email. */
+    /**
+     * Clears the verification date of an existing user, as if it had never verified its email. Publishes
+     * {@code AccountStateChanged} like every change to an account: without it, a status cached by the user's earlier
+     * task requests would keep granting access.
+     */
     protected void unverify(User user) {
-        updateUser(user, reloaded -> reloaded.setEmailVerifiedAt(null));
+        updateUser(user, reloaded -> {
+            reloaded.setEmailVerifiedAt(null);
+            eventPublisher.publishEvent(new AccountStateChanged(reloaded.getId()));
+        });
     }
 
     protected ResultActions getTask(User reader, UUID taskId) throws Exception {
