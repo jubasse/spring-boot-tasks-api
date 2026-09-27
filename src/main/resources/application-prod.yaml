@@ -1,0 +1,68 @@
+# The profile of every deployed environment: staging and production differ only by their environment variables
+# (README, Configuration). It turns off what only development wants, and gives no default to what each deployment
+# must set, which deployment.required-properties then checks at startup.
+#
+# Warning: never set spring.profiles.active in a file of the jar, and never export SPRING_PROFILES_ACTIVE globally in
+# a shell or an IDE: in the tests, this file would then override src/test/resources/config/application.yaml.
+deployment:
+  required-properties:
+    - spring.datasource.url
+    - spring.datasource.username
+    - spring.datasource.password
+    - spring.rabbitmq.host
+    - spring.mail.host
+    - mail.from
+    - identity.email-verification.verify-url
+    - identity.password-reset.reset-url
+    - storage.bucket
+    - antivirus.host
+
+identity:
+  email-verification:
+    verify-url: ${EMAIL_VERIFICATION_URL:}
+  password-reset:
+    reset-url: ${PASSWORD_RESET_URL:}
+
+mail:
+  from: ${MAIL_FROM:}
+
+storage:
+  driver: ${STORAGE_DRIVER:aws-s3}
+  bucket: ${S3_BUCKET:}
+  rustfs:
+    # Buckets are created by the infrastructure; S3_CREATE_BUCKET=true only for a production-like local run
+    create-bucket: ${S3_CREATE_BUCKET:false}
+
+antivirus:
+  host: ${CLAMAV_HOST:}
+
+# Swagger UI and the OpenAPI document are off: docs/openapi.json documents the API. Staging may turn them back on.
+springdoc:
+  api-docs:
+    enabled: ${API_DOCS_ENABLED:false}
+  swagger-ui:
+    enabled: ${SWAGGER_UI_ENABLED:false}
+
+spring:
+  main:
+    # stdout carries only JSON log lines
+    banner-mode: off
+  lifecycle:
+    # Below the orchestrator's grace period (Kubernetes 30 s), so requests in flight end before the kill
+    timeout-per-shutdown-phase: 20s
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:587}
+    # SPRING_MAIL_USERNAME and SPRING_MAIL_PASSWORD hold the credentials
+    properties:
+      mail.smtp.auth: ${MAIL_SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${MAIL_STARTTLS:true}
+      mail.smtp.starttls.required: ${MAIL_STARTTLS:true}
+
+logging:
+  structured:
+    format:
+      console: ecs
+    ecs:
+      service:
+        environment: ${DEPLOYMENT_ENVIRONMENT:production}
