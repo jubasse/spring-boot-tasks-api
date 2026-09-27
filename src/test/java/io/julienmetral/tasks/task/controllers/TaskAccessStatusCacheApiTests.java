@@ -25,10 +25,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The account status that task access depends on is cached while ACTIVE; every way of changing the account must
- * evict it, so the change applies from the account's very next request.
- */
 class TaskAccessStatusCacheApiTests extends AbstractUserStateTaskApiTests {
 
     @Autowired
