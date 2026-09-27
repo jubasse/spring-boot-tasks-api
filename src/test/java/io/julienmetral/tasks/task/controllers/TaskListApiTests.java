@@ -2,6 +2,7 @@ package io.julienmetral.tasks.task.controllers;
 
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -11,11 +12,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.validationError;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -66,6 +69,16 @@ class TaskListApiTests extends AbstractUserStateTaskApiTests {
                 .param("sort", "createdAt,asc"));
 
         assertThat(ids(page)).containsExactly(first, second);
+    }
+
+    @Test
+    @Disabled("bug: an unknown sort property throws PropertyReferenceException, which no handler maps, so it answers 500")
+    void sortByAnUnknownPropertyIsAValidationErrorOnTheSortParameter() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+
+        mockMvc.perform(get(TASKS).param("sort", "nonExistent,asc").with(asAdmin(admin)))
+                .andExpect(validationError())
+                .andExpect(jsonPath("$.errors[0].parameter").value("sort"));
     }
 
     @Test
