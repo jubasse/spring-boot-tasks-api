@@ -296,7 +296,7 @@ class TaskEventControllerTests extends AbstractTaskApiTests {
 
     /** Page metadata, whether Spring Data serializes the page directly or via PagedModel. */
     private JsonNode pageMetadata(JsonNode page) {
-        return page.has("page") ? page.get("page") : page;
+        return page.get("page");
     }
 
     private List<String> types(JsonNode content) {

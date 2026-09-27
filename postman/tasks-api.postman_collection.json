@@ -3323,7 +3323,7 @@
                   "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
                   "const body = pm.response.json();",
                   "pm.test('oldest first', () => pm.expect(body.content[0].id).to.eql(pm.collectionVariables.get('commentId')));",
-                  "pm.test('both comments are listed', () => pm.expect(body.totalElements).to.eql(2));"
+                  "pm.test('both comments are listed', () => pm.expect(body.page.totalElements).to.eql(2));"
                 ]
               }
             }
