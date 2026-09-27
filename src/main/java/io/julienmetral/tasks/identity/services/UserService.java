@@ -2,10 +2,12 @@ package io.julienmetral.tasks.identity.services;
 
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
+import io.julienmetral.tasks.identity.events.AccountStateChanged;
 import io.julienmetral.tasks.identity.exceptions.UserEmailAlreadyExistsException;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +27,7 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final EmailVerificationService emailVerificationService;
     private final RefreshTokenService refreshTokenService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public User create(
@@ -88,6 +91,7 @@ public class UserService {
 
         if (user.getEmailVerifiedAt() == null) {
             user.setEmailVerifiedAt(Instant.now());
+            eventPublisher.publishEvent(new AccountStateChanged(id));
         }
     }
 
@@ -99,11 +103,13 @@ public class UserService {
     @Transactional
     public void enable(UUID id) {
         getUserForUpdate(id).setEnabled(true);
+        eventPublisher.publishEvent(new AccountStateChanged(id));
     }
 
     @Transactional
     public void disable(UUID id) {
         getUserForUpdate(id).setEnabled(false);
+        eventPublisher.publishEvent(new AccountStateChanged(id));
 
         // Access tokens expire on their own; refresh tokens must stop working now
         refreshTokenService.revokeAllForUser(id);
@@ -131,6 +137,7 @@ public class UserService {
 
         user.markDeleted();
         userRepository.delete(user);
+        eventPublisher.publishEvent(new AccountStateChanged(id));
 
         refreshTokenService.revokeAllForUser(id);
     }

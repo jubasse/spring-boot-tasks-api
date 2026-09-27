@@ -2,6 +2,7 @@ package io.julienmetral.tasks.identity.services;
 
 import io.julienmetral.tasks.identity.entities.PasswordResetToken;
 import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.events.AccountStateChanged;
 import io.julienmetral.tasks.identity.exceptions.InvalidPasswordResetTokenException;
 import io.julienmetral.tasks.identity.mail.PasswordResetProperties;
 import io.julienmetral.tasks.identity.mail.PasswordResetRequested;
@@ -68,6 +69,7 @@ public class PasswordResetService {
 
         if (user.getEmailVerifiedAt() == null) {
             user.setEmailVerifiedAt(now);
+            eventPublisher.publishEvent(new AccountStateChanged(user.getId()));
         }
 
         tokenRepository.deleteUnusedForUser(user.getId());
