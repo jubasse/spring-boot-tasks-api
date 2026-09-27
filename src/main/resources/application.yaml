@@ -95,18 +95,23 @@ management:
       show-details: always
       probes:
         enabled: true
-        # /livez and /readyz on the API port too: a probe on the separate management port could succeed while the API
-        # port no longer answers. There, they show no details.
-        add-additional-paths: true
       # Ready when every request can be served, which only needs the database. RabbitMQ down only delays emails and
       # photos (the outbox keeps them), and storage or antivirus down only blocks files: the overall health reports
       # them, but taking the API out of the load balancer for them would stop everything else too.
       group:
-        liveness:
-          show-details: never
         readiness:
-          include: readinessState, db
+          include: &readiness-components readinessState, db
+        # The probes again on the API port, where they show no details: a probe on the separate management port could
+        # pass while the API port no longer answers. Groups of their own rather than add-additional-paths, because a
+        # group's settings apply to all its paths: hiding the details of readiness on /readyz hid them on 8081 too.
+        livez:
+          include: livenessState
           show-details: never
+          additional-path: server:/livez
+        readyz:
+          include: *readiness-components
+          show-details: never
+          additional-path: server:/readyz
 # Behind a reverse proxy, set FORWARD_HEADERS_STRATEGY=native (or framework) so that the client address used by the
 # rate limits comes from X-Forwarded-For; without a proxy, keep none, or clients could pick their own address
 server:
