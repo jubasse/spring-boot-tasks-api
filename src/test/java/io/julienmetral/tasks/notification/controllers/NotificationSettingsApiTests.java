@@ -20,7 +20,9 @@ import java.util.EnumSet;
 import java.util.Map;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -338,9 +340,8 @@ class NotificationSettingsApiTests {
         User admin = createUser(UserRole.ADMIN);
 
         mockMvc.perform(get(SETTINGS, UUID.randomUUID()).with(as(admin, UserRole.ADMIN)))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.status").value(404))
-                .andExpect(jsonPath("$.title").value("User not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("User not found")));
     }
 
     @Test
@@ -354,8 +355,8 @@ class NotificationSettingsApiTests {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(body(false, false, false, false, true, true, true, true))
                 )
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("User not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("User not found")));
 
         assertThat(rowCount(unknown)).isZero();
     }
@@ -367,8 +368,8 @@ class NotificationSettingsApiTests {
         softDelete(deleted);
 
         mockMvc.perform(get(SETTINGS, deleted.getId()).with(as(admin, UserRole.ADMIN)))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("User not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("User not found")));
     }
 
     @Test
@@ -378,8 +379,8 @@ class NotificationSettingsApiTests {
         softDelete(deleted);
 
         putSettings(deleted, as(admin, UserRole.ADMIN), body(false, false, false, false, true, true, true, true))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("User not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("User not found")));
 
         assertThat(rowCount(deleted)).isZero();
     }

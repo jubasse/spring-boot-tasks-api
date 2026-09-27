@@ -17,11 +17,15 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.StreamSupport;
 
+import static io.julienmetral.tasks.support.Problems.invalidParameter;
+import static io.julienmetral.tasks.support.Problems.typedProblem;
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -162,8 +166,7 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
 
             postComment(asAdmin(admin), taskId, "Six files", pdfFile("1.pdf"), pdfFile("2.pdf"), pdfFile("3.pdf"),
                     pdfFile("4.pdf"), pdfFile("5.pdf"), pdfFile("6.pdf"))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.title").value("Too many files"));
+                    .andExpect(invalidParameter("files", "A comment can have at most 5 files"));
 
             assertNothingPosted(admin, taskId, keysBefore);
         }
@@ -187,8 +190,7 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             // The clean PDF comes first, so it is already in the bucket when the antivirus rejects the second file
             postComment(asAdmin(admin), taskId, "Ping " + mention(mentioned),
                     pdfFile("clean.pdf"), file("notes.txt", EICAR))
-                    .andExpect(status().isUnprocessableContent())
-                    .andExpect(jsonPath("$.title").value("File rejected by the antivirus"));
+                    .andExpect(typedProblem(422, "infected-file", "File rejected by the antivirus"));
 
             assertNothingPosted(admin, taskId, keysBefore);
             assertThat(jdbcTemplate.queryForObject(
@@ -205,8 +207,8 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
                     + "</title></head><body></body></html>").getBytes(StandardCharsets.UTF_8);
 
             postComment(asAdmin(admin), taskId, "Page attached", pdfFile("clean.pdf"), file("page.html", html))
-                    .andExpect(status().isUnsupportedMediaType())
-                    .andExpect(jsonPath("$.title").value("Unsupported file type"));
+                    .andExpect(untypedProblem(415, "Unsupported Media Type"))
+                    .andExpect(jsonPath("$.detail").value(containsString("are not accepted")));
 
             assertNothingPosted(admin, taskId, keysBefore);
         }
@@ -218,8 +220,8 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             Set<String> keysBefore = storedAttachmentKeys();
 
             postComment(asAdmin(admin), taskId, "Empty file", file("empty.pdf", new byte[0]))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.title").value("Empty file"));
+                    .andExpect(untypedProblem(400, "Bad Request"))
+                    .andExpect(jsonPath("$.detail").value("The file is empty"));
 
             assertNothingPosted(admin, taskId, keysBefore);
         }
@@ -230,8 +232,8 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID unknown = UUID.randomUUID();
 
             postComment(asAdmin(admin), unknown, "Hello")
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.title").value("Task not found"));
+                    .andExpect(untypedProblem(404, "Not Found"))
+                    .andExpect(jsonPath("$.detail").value(startsWith("Task not found")));
             postComment(asAdmin(admin), unknown, "Hello", pdfFile("report.pdf"))
                     .andExpect(status().isNotFound());
 
@@ -246,8 +248,8 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             deleteTask(admin, taskId).andExpect(status().isNoContent());
 
             postComment(asAdmin(admin), taskId, "Too late")
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.title").value("Task not found"));
+                    .andExpect(untypedProblem(404, "Not Found"))
+                    .andExpect(jsonPath("$.detail").value(startsWith("Task not found")));
             postComment(asAdmin(admin), taskId, "Too late", pdfFile("late.pdf"))
                     .andExpect(status().isNotFound());
             listComments(asAdmin(admin), taskId, "")
@@ -369,8 +371,7 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID unknown = UUID.randomUUID();
 
             postComment(asAdmin(admin), taskId, "Hello <@" + unknown + ">")
-                    .andExpect(status().isUnprocessableContent())
-                    .andExpect(jsonPath("$.title").value("User cannot be mentioned"))
+                    .andExpect(typedProblem(422, "invalid-mention", "Invalid mention"))
                     .andExpect(jsonPath("$.detail").value(containsString(unknown.toString())));
 
             assertThat(commentCount(taskId)).isZero();
@@ -399,8 +400,7 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID taskId = createTask(admin, null);
 
             postComment(asAdmin(admin), taskId, mention(active) + " " + mention(disabled), pdfFile("report.pdf"))
-                    .andExpect(status().isUnprocessableContent())
-                    .andExpect(jsonPath("$.title").value("User cannot be mentioned"));
+                    .andExpect(typedProblem(422, "invalid-mention", "Invalid mention"));
 
             assertThat(commentCount(taskId)).isZero();
             assertThat(attachmentCount(taskId)).isZero();
@@ -412,8 +412,7 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID taskId = createTask(admin, null);
 
             postComment(asAdmin(admin), taskId, "Hello " + mention(inactive))
-                    .andExpect(status().isUnprocessableContent())
-                    .andExpect(jsonPath("$.title").value("User cannot be mentioned"))
+                    .andExpect(typedProblem(422, "invalid-mention", "Invalid mention"))
                     .andExpect(jsonPath("$.detail").value(containsString(status)));
 
             assertThat(commentCount(taskId)).isZero();
@@ -505,8 +504,8 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             User admin = createUser(UserRole.ADMIN);
 
             listComments(asAdmin(admin), UUID.randomUUID(), "")
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.title").value("Task not found"));
+                    .andExpect(untypedProblem(404, "Not Found"))
+                    .andExpect(jsonPath("$.detail").value(startsWith("Task not found")));
         }
 
         @Test
@@ -557,8 +556,8 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID taskId = createTask(admin, null);
 
             findComment(asAdmin(admin), taskId, UUID.randomUUID())
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.title").value("Comment not found"));
+                    .andExpect(untypedProblem(404, "Not Found"))
+                    .andExpect(jsonPath("$.detail").value(startsWith("Comment not found")));
         }
 
         @Test
@@ -569,8 +568,8 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID commentId = addComment(asAdmin(admin), taskId, "Mine");
 
             findComment(asAdmin(admin), otherTaskId, commentId)
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.title").value("Comment not found"));
+                    .andExpect(untypedProblem(404, "Not Found"))
+                    .andExpect(jsonPath("$.detail").value(startsWith("Comment not found")));
         }
     }
 
@@ -726,8 +725,7 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID commentId = addComment(asAdmin(admin), taskId, "For " + mention(kept));
 
             editComment(asAdmin(admin), taskId, commentId, mention(kept) + " " + mention(unverified))
-                    .andExpect(status().isUnprocessableContent())
-                    .andExpect(jsonPath("$.title").value("User cannot be mentioned"))
+                    .andExpect(typedProblem(422, "invalid-mention", "Invalid mention"))
                     .andExpect(jsonPath("$.detail").value(containsString("UNVERIFIED")));
 
             assertThat(bodyOf(commentId)).isEqualTo("For " + mention(kept));
@@ -743,8 +741,7 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID commentId = addComment(asAdmin(admin), taskId, "Original");
 
             editComment(asAdmin(admin), taskId, commentId, "Hello <@" + UUID.randomUUID() + ">")
-                    .andExpect(status().isUnprocessableContent())
-                    .andExpect(jsonPath("$.title").value("User cannot be mentioned"));
+                    .andExpect(typedProblem(422, "invalid-mention", "Invalid mention"));
 
             assertThat(bodyOf(commentId)).isEqualTo("Original");
         }
@@ -757,8 +754,8 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID commentId = addComment(asAdmin(admin), taskId, "Original");
 
             editComment(asAdmin(admin), otherTaskId, commentId, "Moved")
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.title").value("Comment not found"));
+                    .andExpect(untypedProblem(404, "Not Found"))
+                    .andExpect(jsonPath("$.detail").value(startsWith("Comment not found")));
 
             assertThat(bodyOf(commentId)).isEqualTo("Original");
         }
@@ -901,8 +898,8 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID taskId = createTask(admin, null);
 
             deleteComment(asAdmin(admin), taskId, UUID.randomUUID())
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.title").value("Comment not found"));
+                    .andExpect(untypedProblem(404, "Not Found"))
+                    .andExpect(jsonPath("$.detail").value(startsWith("Comment not found")));
         }
 
         @Test

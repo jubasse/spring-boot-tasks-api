@@ -11,7 +11,11 @@ import java.util.Arrays;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
+import static io.julienmetral.tasks.support.Problems.typedProblem;
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -28,8 +32,8 @@ class TaskAttachmentValidationApiTests extends AbstractTaskAttachmentApiTests {
         UUID taskId = createTask(admin, null);
 
         assertRejected(admin, taskId, upload(asAdmin(admin), taskId, "empty.pdf", new byte[0]))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.title").value("Empty file"));
+                .andExpect(untypedProblem(400, "Bad Request"))
+                .andExpect(jsonPath("$.detail").value("The file is empty"));
     }
 
     @Test
@@ -38,8 +42,8 @@ class TaskAttachmentValidationApiTests extends AbstractTaskAttachmentApiTests {
         UUID taskId = createTask(admin, null);
 
         assertRejected(admin, taskId, upload(asAdmin(admin), taskId, "large.pdf", pdfOfSize(MAX_BYTES + 1)))
-                .andExpect(status().isContentTooLarge())
-                .andExpect(jsonPath("$.title").value("File too large"));
+                .andExpect(untypedProblem(413, "Content Too Large"))
+                .andExpect(jsonPath("$.detail").value(startsWith("The file exceeds the maximum size")));
     }
 
     @Test
@@ -59,8 +63,8 @@ class TaskAttachmentValidationApiTests extends AbstractTaskAttachmentApiTests {
         UUID taskId = createTask(admin, null);
 
         assertRejected(admin, taskId, upload(asAdmin(admin), taskId, "invoice.pdf", "application/pdf", executable()))
-                .andExpect(status().isUnsupportedMediaType())
-                .andExpect(jsonPath("$.title").value("Unsupported file type"));
+                .andExpect(untypedProblem(415, "Unsupported Media Type"))
+                .andExpect(jsonPath("$.detail").value(containsString("are not accepted")));
     }
 
     @Test
@@ -80,8 +84,7 @@ class TaskAttachmentValidationApiTests extends AbstractTaskAttachmentApiTests {
         UUID taskId = createTask(admin, null);
 
         assertRejected(admin, taskId, upload(asAdmin(admin), taskId, "notes.txt", "text/plain", EICAR))
-                .andExpect(status().isUnprocessableContent())
-                .andExpect(jsonPath("$.title").value("File rejected by the antivirus"))
+                .andExpect(typedProblem(422, "infected-file", "File rejected by the antivirus"))
                 .andExpect(jsonPath("$.detail").value("The file was rejected by the antivirus: " + TestcontainersConfiguration.EICAR_THREAT));
     }
 

@@ -12,9 +12,12 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.typedProblem;
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -54,9 +57,8 @@ class TaskLifecycleControllerTests extends AbstractTaskApiTests {
     @Test
     void findByIdReturns404ForUnknownTask() throws Exception {
         mockMvc.perform(get(TASKS + "/" + UUID.randomUUID()).with(asUser(createUser(UserRole.USER))))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("Task not found"))
-                .andExpect(jsonPath("$.status").value(404));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("Task not found")));
     }
 
     @Test
@@ -71,8 +73,7 @@ class TaskLifecycleControllerTests extends AbstractTaskApiTests {
                 .andExpect(status().isCreated());
 
         mockMvc.perform(post(TASKS).with(asUser(user)).contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.title").value("Task reference already exists"));
+                .andExpect(typedProblem(409, "reference-taken", "Task reference already in use"));
     }
 
     @Test
@@ -133,8 +134,8 @@ class TaskLifecycleControllerTests extends AbstractTaskApiTests {
                         .content("""
                                 {"reference": "%s", "title": "Task", "assignedTo": "%s"}
                                 """.formatted(reference, UUID.randomUUID())))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("User not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("User not found")));
 
         // Nothing was persisted: the same reference is still free
         mockMvc.perform(post(TASKS).with(asUser(createUser(UserRole.USER))).contentType(MediaType.APPLICATION_JSON)
@@ -328,8 +329,8 @@ class TaskLifecycleControllerTests extends AbstractTaskApiTests {
         UUID taskId = createTask(admin, null);
 
         assign(admin, taskId, UUID.randomUUID())
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("User not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("User not found")));
     }
 
     @Test
@@ -337,8 +338,8 @@ class TaskLifecycleControllerTests extends AbstractTaskApiTests {
         User admin = createUser(UserRole.ADMIN);
 
         assign(admin, UUID.randomUUID(), admin.getId())
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("Task not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("Task not found")));
     }
 
     @Test
@@ -436,8 +437,7 @@ class TaskLifecycleControllerTests extends AbstractTaskApiTests {
 
         // tasks_referenceUQ still covers the soft-deleted row: the reference stays taken, with a clean 409
         mockMvc.perform(post(TASKS).with(asAdmin(admin)).contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.title").value("Task reference already exists"));
+                .andExpect(typedProblem(409, "reference-taken", "Task reference already in use"));
     }
 
     private ResultActions changeStatusRaw(User admin, UUID taskId, String status)

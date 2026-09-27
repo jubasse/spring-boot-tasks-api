@@ -11,7 +11,6 @@ import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException
 import io.julienmetral.tasks.task.security.TaskAuthorization;
 import io.julienmetral.tasks.task.services.TaskService;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -33,11 +32,17 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import java.util.List;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.invalidBodyValue;
+import static io.julienmetral.tasks.support.Problems.invalidParameter;
+import static io.julienmetral.tasks.support.Problems.typedProblem;
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
+import static io.julienmetral.tasks.support.Problems.withoutJavaTypeNames;
 import static io.julienmetral.tasks.support.WebCallers.admin;
 import static io.julienmetral.tasks.support.WebCallers.everyAccountIsActive;
 import static io.julienmetral.tasks.support.WebCallers.user;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -146,23 +151,50 @@ class TaskControllerWebMvcTests {
         }
 
         @Test
-        void createWithUnknownPriorityReturns400() throws Exception {
-            expectCreateRejected("{\"reference\": \"T-1\", \"title\": \"Task\", \"priority\": \"CRITICAL\"}");
+        void createWithUnknownPriorityPointsToItAndListsThePriorities() throws Exception {
+            expectCreateRejected("{\"reference\": \"T-1\", \"title\": \"Task\", \"priority\": \"CRITICAL\"}")
+                    .andExpect(invalidBodyValue("#/priority", "must be one of LOW, MEDIUM, HIGH, URGENT"))
+                    .andExpect(withoutJavaTypeNames());
         }
 
         @Test
-        void createWithMalformedDueDateReturns400() throws Exception {
-            expectCreateRejected("{\"reference\": \"T-1\", \"title\": \"Task\", \"dueAt\": \"tomorrow\"}");
+        void createWithMalformedDueDatePointsToItAndAsksForAnIsoInstant() throws Exception {
+            expectCreateRejected("{\"reference\": \"T-1\", \"title\": \"Task\", \"dueAt\": \"tomorrow\"}")
+                    .andExpect(invalidBodyValue("#/dueAt", "must be an ISO 8601 date and time"))
+                    .andExpect(withoutJavaTypeNames());
         }
 
         @Test
-        void createWithMalformedAssigneeIdReturns400() throws Exception {
-            expectCreateRejected("{\"reference\": \"T-1\", \"title\": \"Task\", \"assignedTo\": \"not-a-uuid\"}");
+        void createWithMalformedAssigneeIdPointsToItWithoutParserDetails() throws Exception {
+            expectCreateRejected("{\"reference\": \"T-1\", \"title\": \"Task\", \"assignedTo\": \"not-a-uuid\"}")
+                    .andExpect(invalidBodyValue("#/assignedTo", "must be a UUID"))
+                    .andExpect(withoutJavaTypeNames());
         }
 
         @Test
-        void createWithMalformedJsonReturns400() throws Exception {
-            expectCreateRejected("{\"reference\": ");
+        void createWithAnObjectAsTitlePointsToItWithoutParserDetails() throws Exception {
+            expectCreateRejected("{\"reference\": \"T-1\", \"title\": {\"text\": \"Task\"}}")
+                    .andExpect(invalidBodyValue("#/title", "has an invalid value"))
+                    .andExpect(withoutJavaTypeNames());
+        }
+
+        @Test
+        void createWithMalformedJsonIsAnUntypedBadRequestWithoutErrors() throws Exception {
+            expectCreateRejected("{\"reference\": ")
+                    .andExpect(untypedProblem(400, "Bad Request"))
+                    .andExpect(jsonPath("$.detail").value("Failed to read request"))
+                    .andExpect(jsonPath("$.errors").doesNotExist())
+                    .andExpect(withoutJavaTypeNames());
+        }
+
+        @Test
+        void createWithSeveralInvalidFieldsListsEachByPointerInOrder() throws Exception {
+            String body = "{\"title\": \"%s\", \"reference\": \"%s\"}".formatted("t".repeat(256), "R".repeat(31));
+
+            expectCreateRejected(body)
+                    .andExpect(jsonPath("$.errors.length()").value(2))
+                    .andExpect(jsonPath("$.errors[0].pointer").value("#/reference"))
+                    .andExpect(jsonPath("$.errors[1].pointer").value("#/title"));
         }
 
         @Test
@@ -193,51 +225,48 @@ class TaskControllerWebMvcTests {
         }
 
         @Test
-        void takenReferenceReturnsConflictProblem() throws Exception {
+        void takenReferenceReturnsReferenceTakenProblem() throws Exception {
             when(taskService.create(any())).thenThrow(new TaskReferenceAlreadyExistsException("T-1"));
 
             create(user(UUID.randomUUID()), NEW_TASK)
-                    .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.status").value(409))
-                    .andExpect(jsonPath("$.title").value("Task reference already exists"));
+                    .andExpect(typedProblem(409, "reference-taken", "Task reference already in use"))
+                    .andExpect(jsonPath("$.detail").value("Task reference already exists: T-1"));
         }
 
         @Test
-        void referenceTakenByAConcurrentCreationReturnsAGenericConflict() throws Exception {
+        void referenceTakenByAConcurrentCreationReturnsAnUntypedConflict() throws Exception {
             when(taskService.create(any())).thenThrow(new DataIntegrityViolationException("tasks_referenceUQ"));
 
             create(user(UUID.randomUUID()), NEW_TASK)
-                    .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.title").value("Data conflict"))
+                    .andExpect(untypedProblem(409, "Conflict"))
                     .andExpect(jsonPath("$.detail").value("The request conflicts with existing data"));
         }
 
         @Test
-        void unknownAssigneeReturnsNotFoundProblem() throws Exception {
+        void unknownAssigneeReturnsNotFoundProblemNamingTheUser() throws Exception {
             UUID unknown = UUID.randomUUID();
             when(taskService.create(any())).thenThrow(new UserNotFoundException(unknown));
 
             create(admin(UUID.randomUUID()), newTaskAssignedTo(unknown))
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.title").value("User not found"));
+                    .andExpect(untypedProblem(404, "Not Found"))
+                    .andExpect(jsonPath("$.detail").value("User not found with id: " + unknown));
         }
 
         @Test
-        void inactiveAssigneeReturnsUnprocessableProblemNamingTheStatus() throws Exception {
+        void inactiveAssigneeReturnsAssigneeNotActiveProblemNamingTheStatus() throws Exception {
             UUID disabled = UUID.randomUUID();
             when(taskService.create(any())).thenThrow(new AssigneeNotActiveException(disabled, UserStatus.DISABLED));
 
             create(admin(UUID.randomUUID()), newTaskAssignedTo(disabled))
-                    .andExpect(status().isUnprocessableContent())
-                    .andExpect(jsonPath("$.status").value(422))
-                    .andExpect(jsonPath("$.title").value("User cannot be assigned"))
+                    .andExpect(typedProblem(422, "assignee-not-active", "Assignee not active"))
                     .andExpect(jsonPath("$.detail").value(containsString("DISABLED")));
         }
 
-        private void expectCreateRejected(String body) throws Exception {
-            create(admin(UUID.randomUUID()), body).andExpect(status().isBadRequest());
+        private ResultActions expectCreateRejected(String body) throws Exception {
+            ResultActions result = create(admin(UUID.randomUUID()), body).andExpect(status().isBadRequest());
 
             verifyNoInteractions(taskService);
+            return result;
         }
 
         private ResultActions create(RequestPostProcessor caller, String body) throws Exception {
@@ -253,18 +282,26 @@ class TaskControllerWebMvcTests {
     class Listing {
 
         @Test
-        void invalidStatusIsBadRequest() throws Exception {
-            expectListRejected("status", "NOT_A_STATUS");
+        void invalidStatusNamesTheParameterAndListsTheStatuses() throws Exception {
+            expectListRejected("status", "NOT_A_STATUS")
+                    .andExpect(invalidParameter(
+                            "status", "must be one of TO_DO, IN_PROGRESS, IN_REVIEW, BLOCKED, DONE, ARCHIVED, CANCELLED"
+                    ))
+                    .andExpect(withoutJavaTypeNames());
         }
 
         @Test
-        void invalidAssigneeIdIsBadRequest() throws Exception {
-            expectListRejected("assigneeId", "not-a-uuid");
+        void invalidAssigneeIdNamesTheParameter() throws Exception {
+            expectListRejected("assigneeId", "not-a-uuid")
+                    .andExpect(invalidParameter("assigneeId", "must be a UUID"))
+                    .andExpect(withoutJavaTypeNames());
         }
 
         @Test
-        void invalidArchivedFlagIsBadRequest() throws Exception {
-            expectListRejected("archived", "maybe");
+        void invalidArchivedFlagNamesTheParameter() throws Exception {
+            expectListRejected("archived", "maybe")
+                    .andExpect(invalidParameter("archived", "must be true or false"))
+                    .andExpect(withoutJavaTypeNames());
         }
 
         @Test
@@ -279,11 +316,12 @@ class TaskControllerWebMvcTests {
             assertThat(pageable.getValue().getSort()).isEqualTo(Sort.by(Sort.Direction.DESC, "createdAt"));
         }
 
-        private void expectListRejected(String parameter, String value) throws Exception {
-            mockMvc.perform(get(TASKS).param(parameter, value).with(admin(UUID.randomUUID())))
+        private ResultActions expectListRejected(String parameter, String value) throws Exception {
+            ResultActions result = mockMvc.perform(get(TASKS).param(parameter, value).with(admin(UUID.randomUUID())))
                     .andExpect(status().isBadRequest());
 
             verifyNoInteractions(taskService);
+            return result;
         }
     }
 
@@ -291,20 +329,22 @@ class TaskControllerWebMvcTests {
     class Reading {
 
         @Test
-        void findByIdReturns400ForMalformedId() throws Exception {
+        void malformedIdNamesThePathParameter() throws Exception {
             mockMvc.perform(get(TASKS + "/not-a-uuid").with(user(UUID.randomUUID())))
-                    .andExpect(status().isBadRequest());
+                    .andExpect(invalidParameter("id", "must be a UUID"))
+                    .andExpect(withoutJavaTypeNames());
+
+            verifyNoInteractions(taskService);
         }
 
         @Test
-        void unknownTaskReturnsNotFoundProblem() throws Exception {
+        void unknownTaskReturnsUntypedNotFoundProblem() throws Exception {
             when(taskService.findById(taskId)).thenThrow(new TaskNotFoundException(taskId));
 
             mockMvc.perform(get(TASKS + "/" + taskId).with(user(UUID.randomUUID())))
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.status").value(404))
-                    .andExpect(jsonPath("$.title").value("Task not found"))
-                    .andExpect(jsonPath("$.detail").value("Task not found with id: " + taskId));
+                    .andExpect(untypedProblem(404, "Not Found"))
+                    .andExpect(jsonPath("$.detail").value("Task not found with id: " + taskId))
+                    .andExpect(jsonPath("$.instance").value(TASKS + "/" + taskId));
         }
     }
 
@@ -323,8 +363,18 @@ class TaskControllerWebMvcTests {
 
         @ParameterizedTest
         @ValueSource(strings = {"{\"status\": \"FINISHED\"}", "{}", "{\"status\": null}"})
-        void statusWithInvalidValueReturns400(String body) throws Exception {
-            expectRejected(patch(TASKS + "/" + taskId + "/status"), body);
+        void statusWithInvalidValuePointsToTheStatus(String body) throws Exception {
+            expectRejected(patch(TASKS + "/" + taskId + "/status"), body)
+                    .andExpect(jsonPath("$.errors.length()").value(1))
+                    .andExpect(jsonPath("$.errors[0].pointer").value("#/status"));
+        }
+
+        @Test
+        void statusOutsideTheEnumListsTheStatuses() throws Exception {
+            expectRejected(patch(TASKS + "/" + taskId + "/status"), "{\"status\": \"FINISHED\"}")
+                    .andExpect(invalidBodyValue(
+                            "#/status", "must be one of TO_DO, IN_PROGRESS, IN_REVIEW, BLOCKED, DONE, ARCHIVED, CANCELLED"
+                    ));
         }
 
         @ParameterizedTest
@@ -376,20 +426,22 @@ class TaskControllerWebMvcTests {
         }
 
         @Test
-        @Disabled("bug: no handler maps ObjectOptimisticLockingFailureException, so a lost @Version race answers 500")
         void updateLosingAConcurrentModificationReturnsConflict() throws Exception {
             when(taskService.update(eq(taskId), any()))
                     .thenThrow(new ObjectOptimisticLockingFailureException(Task.class, taskId));
 
             mockMvc.perform(json(patch(TASKS + "/" + taskId), "{\"title\": \"x\"}").with(admin(UUID.randomUUID())))
-                    .andExpect(status().isConflict());
+                    .andExpect(typedProblem(409, "version-conflict", "Changed by another request"))
+                    .andExpect(jsonPath("$.detail", startsWith("Another request changed this resource")))
+                    .andExpect(withoutJavaTypeNames());
         }
 
-        private void expectRejected(MockHttpServletRequestBuilder request, String body) throws Exception {
-            mockMvc.perform(json(request, body).with(admin(UUID.randomUUID())))
+        private ResultActions expectRejected(MockHttpServletRequestBuilder request, String body) throws Exception {
+            ResultActions result = mockMvc.perform(json(request, body).with(admin(UUID.randomUUID())))
                     .andExpect(status().isBadRequest());
 
             verifyNoInteractions(taskService);
+            return result;
         }
     }
 
@@ -435,18 +487,20 @@ class TaskControllerWebMvcTests {
         }
 
         @Test
-        void assignWithoutUserIdReturns400() throws Exception {
+        void assignWithoutUserIdPointsToIt() throws Exception {
             mockMvc.perform(json(patch(TASKS + "/" + taskId + "/assign"), "{}").with(admin(UUID.randomUUID())))
-                    .andExpect(status().isBadRequest());
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errors.length()").value(1))
+                    .andExpect(jsonPath("$.errors[0].pointer").value("#/userId"));
 
             verifyNoInteractions(taskService);
         }
 
         @Test
-        void assignWithMalformedUserIdReturns400() throws Exception {
+        void assignWithMalformedUserIdPointsToIt() throws Exception {
             mockMvc.perform(json(patch(TASKS + "/" + taskId + "/assign"), "{\"userId\": \"not-a-uuid\"}")
                             .with(admin(UUID.randomUUID())))
-                    .andExpect(status().isBadRequest());
+                    .andExpect(invalidBodyValue("#/userId", "must be a UUID"));
 
             verifyNoInteractions(taskService);
         }
@@ -472,15 +526,14 @@ class TaskControllerWebMvcTests {
         }
 
         @Test
-        void assigningAnInactiveUserReturnsUnprocessableProblem() throws Exception {
+        void assigningAnInactiveUserReturnsAssigneeNotActiveProblem() throws Exception {
             UUID unverified = UUID.randomUUID();
             when(taskService.assign(taskId, unverified))
                     .thenThrow(new AssigneeNotActiveException(unverified, UserStatus.UNVERIFIED));
 
             mockMvc.perform(json(patch(TASKS + "/" + taskId + "/assign"), "{\"userId\": \"%s\"}".formatted(unverified))
                             .with(admin(UUID.randomUUID())))
-                    .andExpect(status().isUnprocessableContent())
-                    .andExpect(jsonPath("$.title").value("User cannot be assigned"))
+                    .andExpect(typedProblem(422, "assignee-not-active", "Assignee not active"))
                     .andExpect(jsonPath("$.detail").value(containsString("UNVERIFIED")));
         }
 

@@ -189,7 +189,7 @@ The code lives under `src/main/java/io/julienmetral/tasks`, organized by feature
 
 ### Requests
 
-Controllers validate the request and delegate to a service, which owns the database transaction and returns entities; the controller turns them into response DTOs. Errors come back as `application/problem+json` responses (RFC 9457). Authentication is stateless: every request carries a signed JWT, and authorization rules are declared on the controller methods.
+Controllers validate the request and delegate to a service, which owns the database transaction and returns entities; the controller turns them into response DTOs. Errors come back as `application/problem+json` responses (RFC 9457); [docs/problems.md](docs/problems.md) lists them and what a client should do about each. Authentication is stateless: every request carries a signed JWT, and authorization rules are declared on the controller methods.
 
 ### Data
 

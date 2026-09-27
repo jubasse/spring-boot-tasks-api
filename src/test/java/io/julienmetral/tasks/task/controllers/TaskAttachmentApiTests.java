@@ -12,10 +12,12 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -214,8 +216,8 @@ class TaskAttachmentApiTests extends AbstractTaskAttachmentApiTests {
         UUID taskId = createTask(admin, null);
 
         find(asAdmin(admin), taskId, UUID.randomUUID())
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("Attachment not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("Attachment not found")));
     }
 
     @Test
@@ -226,8 +228,8 @@ class TaskAttachmentApiTests extends AbstractTaskAttachmentApiTests {
         UUID attachmentId = uploadPdf(asAdmin(admin), taskId, "report.pdf");
 
         find(asAdmin(admin), otherTaskId, attachmentId)
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("Attachment not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("Attachment not found")));
     }
 
     @Test
@@ -235,8 +237,8 @@ class TaskAttachmentApiTests extends AbstractTaskAttachmentApiTests {
         User admin = createUser(UserRole.ADMIN);
 
         upload(asAdmin(admin), UUID.randomUUID(), "report.pdf", uniquePdf())
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("Task not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("Task not found")));
 
         assertThat(mediaCountUploadedBy(admin)).isZero();
     }
@@ -246,8 +248,8 @@ class TaskAttachmentApiTests extends AbstractTaskAttachmentApiTests {
         User admin = createUser(UserRole.ADMIN);
 
         list(asAdmin(admin), UUID.randomUUID())
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("Task not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("Task not found")));
     }
 
     @Test
@@ -345,8 +347,8 @@ class TaskAttachmentApiTests extends AbstractTaskAttachmentApiTests {
         UUID taskId = createTask(admin, null);
 
         remove(asAdmin(admin), taskId, UUID.randomUUID())
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("Attachment not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("Attachment not found")));
     }
 
     @Test
@@ -358,8 +360,8 @@ class TaskAttachmentApiTests extends AbstractTaskAttachmentApiTests {
         String storageKey = storageKeyOf(attachmentId);
 
         remove(asAdmin(admin), otherTaskId, attachmentId)
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.title").value("Attachment not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value(startsWith("Attachment not found")));
 
         assertThat(attachmentCount(taskId)).isOne();
         assertThat(objectBytes(storageKey)).isNotEmpty();

@@ -20,6 +20,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import static io.julienmetral.tasks.support.Problems.invalidBodyValue;
+import static io.julienmetral.tasks.support.Problems.invalidParameter;
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static io.julienmetral.tasks.support.WebCallers.admin;
 import static io.julienmetral.tasks.support.WebCallers.user;
 import static org.mockito.ArgumentMatchers.any;
@@ -52,11 +55,13 @@ class NotificationSettingsControllerWebMvcTests {
             "taskAssigned", "taskUnassigned", "taskCancelled", "taskDeleted",
             "taskCommented", "taskMentioned", "taskDueSoon", "taskOverdue"
     })
-    void putWithoutAFlagReturnsBadRequest(String missing) throws Exception {
+    void putWithoutAFlagPointsToIt(String missing) throws Exception {
         Map<String, Object> body = allFlags(false);
         body.remove(missing);
 
-        expectRejected(json(body));
+        expectRejected(json(body))
+                .andExpect(jsonPath("$.errors.length()").value(1))
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/" + missing));
     }
 
     @ParameterizedTest
@@ -64,11 +69,22 @@ class NotificationSettingsControllerWebMvcTests {
             "taskAssigned", "taskUnassigned", "taskCancelled", "taskDeleted",
             "taskCommented", "taskMentioned", "taskDueSoon", "taskOverdue"
     })
-    void putWithANullFlagReturnsBadRequest(String nulled) throws Exception {
+    void putWithANullFlagPointsToIt(String nulled) throws Exception {
         Map<String, Object> body = allFlags(true);
         body.put(nulled, null);
 
-        expectRejected(json(body));
+        expectRejected(json(body))
+                .andExpect(jsonPath("$.errors.length()").value(1))
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/" + nulled));
+    }
+
+    @Test
+    void putWithAFlagThatIsNotABooleanPointsToIt() throws Exception {
+        Map<String, Object> body = allFlags(true);
+        body.put("taskDueSoon", "\"maybe\"");
+
+        expectRejected(json(body))
+                .andExpect(invalidBodyValue("#/taskDueSoon", "must be true or false"));
     }
 
     @Test
@@ -109,7 +125,7 @@ class NotificationSettingsControllerWebMvcTests {
     @Test
     void getWithInvalidUuidReturnsBadRequest() throws Exception {
         mockMvc.perform(get(SETTINGS, "not-a-uuid").with(admin(UUID.randomUUID())))
-                .andExpect(status().isBadRequest());
+                .andExpect(invalidParameter("id", "must be a UUID"));
     }
 
     @Test
@@ -168,17 +184,17 @@ class NotificationSettingsControllerWebMvcTests {
         when(settingsService.get(unknown)).thenThrow(new UserNotFoundException(unknown));
 
         mockMvc.perform(get(SETTINGS, unknown).with(admin(UUID.randomUUID())))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.status").value(404))
-                .andExpect(jsonPath("$.title").value("User not found"));
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value("User not found with id: " + unknown));
     }
 
-    private void expectRejected(String body) throws Exception {
+    private ResultActions expectRejected(String body) throws Exception {
         UUID id = UUID.randomUUID();
 
-        putSettings(id, user(id), body).andExpect(status().isBadRequest());
+        ResultActions result = putSettings(id, user(id), body).andExpect(status().isBadRequest());
 
         verifyNoInteractions(settingsService);
+        return result;
     }
 
     private ResultActions putSettings(UUID id, RequestPostProcessor caller, String body) throws Exception {

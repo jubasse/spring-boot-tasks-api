@@ -14,8 +14,11 @@ import java.util.Arrays;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
+import static io.julienmetral.tasks.support.Problems.typedProblem;
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -101,8 +104,8 @@ class AvatarApiTests extends AbstractAvatarApiTests {
                 .getBytes(StandardCharsets.US_ASCII);
 
         uploadAvatar(user, asUser(user), "photo.png", pdf)
-                .andExpect(status().isUnsupportedMediaType())
-                .andExpect(jsonPath("$.title").value("Unsupported file type"));
+                .andExpect(untypedProblem(415, "Unsupported Media Type"))
+                .andExpect(jsonPath("$.detail").value(containsString("are not accepted")));
 
         assertThat(avatarStorageKey(user)).isNull();
         assertThat(pendingAvatarStorageKey(user)).isNull();
@@ -115,8 +118,8 @@ class AvatarApiTests extends AbstractAvatarApiTests {
         byte[] oversized = Arrays.copyOf(opaquePng(), AVATAR_MAX_BYTES + 1);
 
         uploadAvatar(user, asUser(user), "photo.png", oversized)
-                .andExpect(status().isContentTooLarge())
-                .andExpect(jsonPath("$.title").value("File too large"));
+                .andExpect(untypedProblem(413, "Content Too Large"))
+                .andExpect(jsonPath("$.detail").value(startsWith("The file exceeds the maximum size")));
 
         assertThat(mediaCountUploadedBy(user)).isZero();
     }
@@ -126,8 +129,8 @@ class AvatarApiTests extends AbstractAvatarApiTests {
         User user = createUser(UserRole.USER);
 
         uploadAvatar(user, asUser(user), "photo.png", new byte[0])
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.title").value("Empty file"));
+                .andExpect(untypedProblem(400, "Bad Request"))
+                .andExpect(jsonPath("$.detail").value("The file is empty"));
 
         assertThat(mediaCountUploadedBy(user)).isZero();
     }
@@ -140,8 +143,7 @@ class AvatarApiTests extends AbstractAvatarApiTests {
         byte[] corrupt = concat(PNG_SIGNATURE, garbage);
 
         uploadAvatar(user, asUser(user), "photo.png", corrupt)
-                .andExpect(status().isUnprocessableContent())
-                .andExpect(jsonPath("$.title").value("Invalid image"));
+                .andExpect(typedProblem(422, "invalid-image", "Invalid image"));
 
         assertThat(avatarStorageKey(user)).isNull();
         assertThat(pendingAvatarStorageKey(user)).isNull();
@@ -161,8 +163,7 @@ class AvatarApiTests extends AbstractAvatarApiTests {
         assertThat(bomb.length).isLessThan(100);
 
         uploadAvatar(user, asUser(user), "photo.png", bomb)
-                .andExpect(status().isUnprocessableContent())
-                .andExpect(jsonPath("$.title").value("Invalid image"));
+                .andExpect(typedProblem(422, "invalid-image", "Invalid image"));
 
         assertThat(mediaCountUploadedBy(user)).isZero();
         assertThat(pendingAvatarStorageKey(user)).isNull();

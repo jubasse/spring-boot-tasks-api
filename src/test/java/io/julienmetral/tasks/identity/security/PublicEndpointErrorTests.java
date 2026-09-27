@@ -47,13 +47,16 @@ class PublicEndpointErrorTests {
 
         assertThat(response.statusCode()).isEqualTo(400);
         assertThat(response.headers().firstValue("WWW-Authenticate")).isEmpty();
+        assertThat(response.headers().firstValue("Content-Type")).hasValue("application/problem+json");
     }
 
     @Test
-    void invalidIdenticonIdGivesBadRequest() throws Exception {
+    void invalidIdenticonIdGivesAProblemNamingTheParameter() throws Exception {
         HttpResponse<String> response = get("/api/v1/identicons/not-a-uuid", null);
 
         assertThat(response.statusCode()).isEqualTo(400);
+        assertThat(response.headers().firstValue("Content-Type")).hasValue("application/problem+json");
+        assertThat(response.body()).contains("\"parameter\":\"id\"");
     }
 
     @Test

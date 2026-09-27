@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
@@ -30,6 +31,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.invalidBodyValue;
+import static io.julienmetral.tasks.support.Problems.invalidParameter;
+import static io.julienmetral.tasks.support.Problems.typedProblem;
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static io.julienmetral.tasks.support.WebCallers.admin;
 import static io.julienmetral.tasks.support.WebCallers.everyAccountIsActive;
 import static io.julienmetral.tasks.support.WebCallers.user;
@@ -108,6 +113,24 @@ class TaskCommentControllerWebMvcTests {
         }
 
         @Test
+        void blankJsonBodyPointsToTheBodyField() throws Exception {
+            postJsonInEnglish(bodyJson("   "))
+                    .andExpect(invalidBodyValue("#/body", "must not be blank"));
+
+            verifyNoInteractions(commentService);
+        }
+
+        @Test
+        void blankMultipartBodyNamesTheBodyParameter() throws Exception {
+            mockMvc.perform(multipartComment(" ", pdf("report.pdf"))
+                            .with(user(UUID.randomUUID()))
+                            .header(HttpHeaders.ACCEPT_LANGUAGE, "en"))
+                    .andExpect(invalidParameter("body", "must not be blank"));
+
+            verifyNoInteractions(commentService);
+        }
+
+        @Test
         void missingBodyIsRejected() throws Exception {
             postJson("{}").andExpect(status().isBadRequest());
             postMultipart(null, pdf("report.pdf")).andExpect(status().isBadRequest());
@@ -126,8 +149,10 @@ class TaskCommentControllerWebMvcTests {
         }
 
         @Test
-        void malformedJsonIsRejected() throws Exception {
-            postJson("{\"body\": ").andExpect(status().isBadRequest());
+        void malformedJsonIsRejectedWithAnUntypedProblem() throws Exception {
+            postJson("{\"body\": ")
+                    .andExpect(untypedProblem(400, "Bad Request"))
+                    .andExpect(jsonPath("$.detail").value("Failed to read request"));
 
             verifyNoInteractions(commentService);
         }
@@ -157,15 +182,13 @@ class TaskCommentControllerWebMvcTests {
         }
 
         @Test
-        void tooManyFilesReturnsBadRequestProblem() throws Exception {
+        void tooManyFilesIsAValidationErrorOnTheFilesParameter() throws Exception {
             when(commentService.add(eq(taskId), anyString(), anyList()))
                     .thenThrow(new TooManyCommentAttachmentsException(5));
 
             postMultipart("Six files",
                     pdf("1.pdf"), pdf("2.pdf"), pdf("3.pdf"), pdf("4.pdf"), pdf("5.pdf"), pdf("6.pdf"))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.title").value("Too many files"))
-                    .andExpect(jsonPath("$.detail").value("A comment can have at most 5 files"));
+                    .andExpect(invalidParameter("files", "A comment can have at most 5 files"));
         }
 
         @Test
@@ -173,25 +196,32 @@ class TaskCommentControllerWebMvcTests {
             when(commentService.add(eq(taskId), anyString(), anyList())).thenThrow(new TaskNotFoundException(taskId));
 
             postJson(bodyJson("Hello"))
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.title").value("Task not found"));
+                    .andExpect(untypedProblem(404, "Not Found"))
+                    .andExpect(jsonPath("$.detail").value("Task not found with id: " + taskId));
         }
 
         @Test
-        void mentionOfInactiveUserReturnsUnprocessableProblem() throws Exception {
+        void mentionOfInactiveUserReturnsInvalidMentionProblem() throws Exception {
             UUID mentioned = UUID.randomUUID();
             when(commentService.add(eq(taskId), anyString(), anyList()))
                     .thenThrow(InvalidMentionException.inactiveUser(mentioned, UserStatus.DISABLED));
 
             postJson(bodyJson("Hi <@" + mentioned + ">"))
-                    .andExpect(status().isUnprocessableContent())
-                    .andExpect(jsonPath("$.title").value("User cannot be mentioned"))
+                    .andExpect(typedProblem(422, "invalid-mention", "Invalid mention"))
                     .andExpect(jsonPath("$.detail").value(containsString(mentioned.toString())));
         }
 
         private ResultActions postJson(String body) throws Exception {
             return mockMvc.perform(post(comments())
                     .with(user(UUID.randomUUID()))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(body));
+        }
+
+        private ResultActions postJsonInEnglish(String body) throws Exception {
+            return mockMvc.perform(post(comments())
+                    .with(user(UUID.randomUUID()))
+                    .header(HttpHeaders.ACCEPT_LANGUAGE, "en")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(body));
         }
@@ -221,15 +251,14 @@ class TaskCommentControllerWebMvcTests {
             when(commentService.find(taskId, commentId)).thenThrow(new TaskCommentNotFoundException(commentId));
 
             mockMvc.perform(get(comment()).with(user(UUID.randomUUID())))
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.title").value("Comment not found"))
+                    .andExpect(untypedProblem(404, "Not Found"))
                     .andExpect(jsonPath("$.detail").value("Comment not found with id: " + commentId));
         }
 
         @Test
-        void malformedCommentIdReturnsBadRequest() throws Exception {
+        void malformedCommentIdNamesThePathParameter() throws Exception {
             mockMvc.perform(get(comments() + "/not-a-uuid").with(user(UUID.randomUUID())))
-                    .andExpect(status().isBadRequest());
+                    .andExpect(invalidParameter("commentId", "must be a UUID"));
 
             verifyNoInteractions(commentService);
         }

@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.typedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -43,7 +44,7 @@ class PasswordResetApiTests {
 
     private static final String RESET_LINK = "http://localhost:3000/reset-password?token=";
 
-    private static final String INVALID_TOKEN_TITLE = "Invalid password reset token";
+    private static final String INVALID_TOKEN_DETAIL = "The password reset token is invalid, expired or already used";
 
     @Autowired
     private MockMvc mockMvc;
@@ -449,9 +450,8 @@ class PasswordResetApiTests {
 
     private static void expectInvalidToken(ResultActions result) throws Exception {
         result
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.title").value(INVALID_TOKEN_TITLE))
-                .andExpect(jsonPath("$.status").value(400));
+                .andExpect(typedProblem(400, "invalid-token", "Invalid or expired token"))
+                .andExpect(jsonPath("$.detail").value(INVALID_TOKEN_DETAIL));
     }
 
     private static String sha256Hex(String value) throws Exception {

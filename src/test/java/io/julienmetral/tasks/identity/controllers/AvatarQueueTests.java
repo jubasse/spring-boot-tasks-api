@@ -21,6 +21,7 @@ import java.time.Duration;
 import java.util.Set;
 import java.util.UUID;
 
+import static io.julienmetral.tasks.support.Problems.typedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.hamcrest.Matchers.containsString;
@@ -213,8 +214,7 @@ class AvatarQueueTests extends AbstractAvatarApiTests {
         Set<String> keysBefore = avatarUploadObjectKeys();
 
         uploadAvatar(user, asUser(user), "photo.png", bomb)
-                .andExpect(status().isUnprocessableContent())
-                .andExpect(jsonPath("$.title").value("Invalid image"));
+                .andExpect(typedProblem(422, "invalid-image", "Invalid image"));
 
         assertThat(pendingAvatarStorageKey(user)).isNull();
         assertThat(avatarUploadCountUploadedBy(user)).isZero();
