@@ -22,7 +22,7 @@ import java.util.UUID;
 
 // The task path variable is named id: @AllowedRolesOrAssignedToOnly reads #id
 @RestController
-@RequestMapping("/api/v1/tasks/{id}/attachments")
+@RequestMapping("/tasks/{id}/attachments")
 @RequiredArgsConstructor
 @Tag(name = "Attachments", description = "Files attached to a task.")
 public class TaskAttachmentController {

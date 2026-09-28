@@ -24,7 +24,7 @@ import java.util.UUID;
 @Tag(name = "Identicons", description = "Generated images standing in for a missing or hidden profile photo.")
 public class IdenticonController {
 
-    static final String PATH = "/api/v1/identicons";
+    static final String PATH = "/identicons";
 
     private static final MediaType SVG = MediaType.valueOf("image/svg+xml");
 
