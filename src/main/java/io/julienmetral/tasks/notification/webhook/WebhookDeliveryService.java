@@ -10,6 +10,7 @@ import io.julienmetral.tasks.notification.entities.WebhookDeliveryStatus;
 import io.julienmetral.tasks.notification.entities.WebhookDisabledReason;
 import io.julienmetral.tasks.notification.entities.WebhookEndpoint;
 import io.julienmetral.tasks.notification.entities.WebhookEvent;
+import io.julienmetral.tasks.notification.entities.WebhookKind;
 import io.julienmetral.tasks.notification.repositories.WebhookDeliveryQueries;
 import io.julienmetral.tasks.notification.repositories.WebhookDeliveryRepository;
 import io.julienmetral.tasks.notification.repositories.WebhookEndpointRepository;
@@ -86,6 +87,7 @@ public class WebhookDeliveryService {
     private final WebhookDeliveryQueries deliveryQueries;
     private final UserRepository userRepository;
     private final MailService mailService;
+    private final SlackMessages slackMessages;
     private final JsonMapper jsonMapper;
     private final WebhookClient client;
     private final WebhookSigner signer;
@@ -102,6 +104,7 @@ public class WebhookDeliveryService {
             WebhookDeliveryQueries deliveryQueries,
             UserRepository userRepository,
             MailService mailService,
+            SlackMessages slackMessages,
             JsonMapper jsonMapper,
             WebhookClient client,
             WebhookSigner signer,
@@ -117,6 +120,7 @@ public class WebhookDeliveryService {
         this.deliveryQueries = deliveryQueries;
         this.userRepository = userRepository;
         this.mailService = mailService;
+        this.slackMessages = slackMessages;
         this.jsonMapper = jsonMapper;
         this.client = client;
         this.signer = signer;
@@ -129,26 +133,24 @@ public class WebhookDeliveryService {
     }
 
     /**
-     * Creates one delivery per endpoint and queues their first attempt, in the caller's transaction: nothing is sent
-     * for a change that rolls back.
+     * Creates the delivery of one event to one endpoint and queues its first attempt, in the caller's transaction:
+     * nothing is sent for a change that rolls back.
      */
     @Transactional(propagation = Propagation.MANDATORY)
-    public void schedule(List<WebhookEndpoint> endpoints, WebhookEvent event, String payload) {
+    public void schedule(WebhookEndpoint endpoint, WebhookEvent event, String payload) {
         Instant now = clock.instant();
 
-        for (WebhookEndpoint endpoint : endpoints) {
-            WebhookDelivery delivery = new WebhookDelivery();
-            delivery.setEndpoint(endpoint);
-            delivery.setEvent(event);
-            delivery.setPayload(payload);
-            delivery.setStatus(WebhookDeliveryStatus.PENDING);
-            delivery.setNextAttemptAt(now.plus(properties.deliveryLease()));
-            delivery.setCreatedAt(now);
+        WebhookDelivery delivery = new WebhookDelivery();
+        delivery.setEndpoint(endpoint);
+        delivery.setEvent(event);
+        delivery.setPayload(payload);
+        delivery.setStatus(WebhookDeliveryStatus.PENDING);
+        delivery.setNextAttemptAt(now.plus(properties.deliveryLease()));
+        delivery.setCreatedAt(now);
 
-            UUID deliveryId = deliveryRepository.save(delivery).getId();
+        UUID deliveryId = deliveryRepository.save(delivery).getId();
 
-            outbox.enqueue(WebhookQueues.DELIVER, new WebhookDeliveryRequested(deliveryId));
-        }
+        outbox.enqueue(WebhookQueues.DELIVER, new WebhookDeliveryRequested(deliveryId));
     }
 
     /** Queues the pending deliveries whose retry is due; each one is leased so no other poll queues it again. */
@@ -185,16 +187,23 @@ public class WebhookDeliveryService {
      * paused or not, and records nothing. Runs outside any transaction.
      */
     public WebhookTestResult sendTest(WebhookEndpoint endpoint) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("type", TEST_EVENT);
-        payload.put("timestamp", clock.instant().toString());
-        payload.put("data", Map.of("webhookId", endpoint.getId()));
+        String payload;
+
+        if (endpoint.getKind() == WebhookKind.SLACK) {
+            payload = slackMessages.renderTest();
+        } else {
+            Map<String, Object> event = new LinkedHashMap<>();
+            event.put("type", TEST_EVENT);
+            event.put("timestamp", clock.instant().toString());
+            event.put("data", Map.of("webhookId", endpoint.getId()));
+            payload = jsonMapper.writeValueAsString(event);
+        }
 
         long start = System.nanoTime();
         Outcome outcome = send(new Attempt(
                 UUID.randomUUID(),
-                URI.create(endpoint.getUrl()),
-                jsonMapper.writeValueAsString(payload).getBytes(StandardCharsets.UTF_8),
+                targetUrl(endpoint),
+                payload.getBytes(StandardCharsets.UTF_8),
                 signingSecrets(endpoint)
         ));
 
@@ -245,13 +254,24 @@ public class WebhookDeliveryService {
 
         return Optional.of(new Attempt(
                 deliveryId,
-                URI.create(endpoint.getUrl()),
+                targetUrl(endpoint),
                 delivery.getPayload().getBytes(StandardCharsets.UTF_8),
                 signingSecrets(endpoint)
         ));
     }
 
+    private URI targetUrl(WebhookEndpoint endpoint) {
+        return URI.create(endpoint.getKind() == WebhookKind.SLACK
+                ? secrets.decrypt(endpoint.getUrl())
+                : endpoint.getUrl());
+    }
+
+    // None for Slack, which verifies nothing: its URL is the credential
     private List<String> signingSecrets(WebhookEndpoint endpoint) {
+        if (endpoint.getKind() == WebhookKind.SLACK) {
+            return List.of();
+        }
+
         List<String> signingSecrets = new ArrayList<>();
         signingSecrets.add(secrets.decrypt(endpoint.getSecret()));
 
@@ -263,8 +283,9 @@ public class WebhookDeliveryService {
     }
 
     private Outcome send(Attempt attempt) {
-        var headers = signer.headers(attempt.deliveryId().toString(), clock.instant(), attempt.body(),
-                attempt.secrets());
+        Map<String, String> headers = attempt.secrets().isEmpty()
+                ? Map.of()
+                : signer.headers(attempt.deliveryId().toString(), clock.instant(), attempt.body(), attempt.secrets());
 
         try {
             ResponseEntity<Void> response = client.send(attempt.url(), headers, attempt.body());
@@ -308,8 +329,15 @@ public class WebhookDeliveryService {
             return;
         }
 
-        if (outcome.statusCode() != null && outcome.statusCode() == HttpStatus.GONE.value()) {
+        if (isGone(delivery.getEndpoint(), outcome.statusCode())) {
             delivery.getEndpoint().disable(WebhookDisabledReason.GONE, now);
+            fail(delivery, null);
+            return;
+        }
+
+        // Slack answers 400 to a message it cannot read: sending the same one again cannot succeed
+        if (delivery.getEndpoint().getKind() == WebhookKind.SLACK && outcome.statusCode() != null
+                && outcome.statusCode() == HttpStatus.BAD_REQUEST.value()) {
             fail(delivery, null);
             return;
         }
@@ -341,6 +369,19 @@ public class WebhookDeliveryService {
         }
     }
 
+    /**
+     * Whether the receiver said it no longer exists: 410 for any endpoint; for Slack also 403 and 404, its answers
+     * for a revoked webhook, a deleted channel or a disabled workspace.
+     */
+    private static boolean isGone(WebhookEndpoint endpoint, Integer statusCode) {
+        if (statusCode == null) {
+            return false;
+        }
+
+        return statusCode == HttpStatus.GONE.value() || (endpoint.getKind() == WebhookKind.SLACK
+                && (statusCode == HttpStatus.FORBIDDEN.value() || statusCode == HttpStatus.NOT_FOUND.value()));
+    }
+
     // The host only: the rest of a URL can hold a secret, the path of a Slack webhook for one
     private void notifyDisabled(WebhookEndpoint endpoint) {
         userRepository.findById(endpoint.getUser().getId()).ifPresent(owner -> mailService.send(new MailMessage(
@@ -353,7 +394,7 @@ public class WebhookDeliveryService {
                         are no longer sent to it.
 
                         Once the receiver works again, turn the webhook back on in your webhook settings.
-                        """.formatted(owner.getDisplayName(), URI.create(endpoint.getUrl()).getHost(),
+                        """.formatted(owner.getDisplayName(), targetUrl(endpoint).getHost(),
                         properties.disableAfter().toDays())
         )));
     }

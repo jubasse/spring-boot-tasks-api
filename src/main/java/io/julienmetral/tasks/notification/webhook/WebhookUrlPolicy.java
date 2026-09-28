@@ -19,6 +19,12 @@ public class WebhookUrlPolicy {
 
     private static final Set<String> SCHEMES = Set.of("http", "https");
 
+    private static final String SLACK_HOST = "hooks.slack.com";
+
+    private static final String SLACK_PATH = "/services/";
+
+    private static final int MAX_SLACK_URL_LENGTH = 256;
+
     private final InetAddressFilter addressFilter;
 
     private final boolean requireHttps;
@@ -49,6 +55,24 @@ public class WebhookUrlPolicy {
             if (!addressFilter.matches(address)) {
                 throw new WebhookUrlNotAllowedException("The URL must point to a public address");
             }
+        }
+    }
+
+    /** Only a Slack incoming webhook URL, which leaves no destination to choose: nothing to resolve or filter. */
+    public void checkSlack(String url) {
+        URI uri = parse(url);
+
+        // Real ones are about 80 characters; the bound keeps the encrypted form within the url column
+        if (url.length() > MAX_SLACK_URL_LENGTH
+                || !"https".equalsIgnoreCase(uri.getScheme())
+                || !SLACK_HOST.equalsIgnoreCase(uri.getHost())
+                || (uri.getPort() != -1 && uri.getPort() != 443)
+                || uri.getUserInfo() != null
+                || uri.getRawQuery() != null
+                || uri.getRawPath() == null
+                || !uri.getRawPath().startsWith(SLACK_PATH)) {
+            throw new WebhookUrlNotAllowedException(
+                    "A Slack webhook URL must start with https://" + SLACK_HOST + SLACK_PATH);
         }
     }
 

@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.web.client.support.RestClientHttpServiceGroupConfigurer;
 import org.springframework.web.service.registry.ImportHttpServices;
+import tools.jackson.databind.json.JsonMapper;
 
 @Configuration
 @EnableConfigurationProperties(WebhookProperties.class)
@@ -19,6 +20,11 @@ public class WebhookConfiguration {
     @Bean
     WebhookSecrets webhookSecrets(WebhookProperties properties) {
         return new WebhookSecrets(properties.encryptionKey());
+    }
+
+    @Bean
+    SlackMessages slackMessages(JsonMapper jsonMapper) {
+        return new SlackMessages(jsonMapper);
     }
 
     @Bean

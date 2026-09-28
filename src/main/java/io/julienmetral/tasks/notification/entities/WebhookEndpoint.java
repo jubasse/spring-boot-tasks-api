@@ -58,6 +58,12 @@ public class WebhookEndpoint {
     )
     private UserProfile user;
 
+    @Enumerated(EnumType.STRING)
+    @ColumnDefault("'WEBHOOK'")
+    @Column(name = "kind", nullable = false, updatable = false, length = 20)
+    private WebhookKind kind = WebhookKind.WEBHOOK;
+
+    // Encrypted by WebhookSecrets for a Slack endpoint, whose URL is its credential
     @Column(name = "url", nullable = false, length = 2048)
     private String url;
 
