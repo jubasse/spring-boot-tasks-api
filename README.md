@@ -183,6 +183,7 @@ To do it yourself: Base64-decode the secret without its `whsec_` prefix, compute
 Answer with any 2xx status within 15 seconds. Redirects are not followed.
 
 - **A failure** (another status, no answer in time, no connection) is retried after about 5 seconds, 5 minutes, 30 minutes, 2 hours, 5 hours and 10 hours; a `Retry-After` header you send is honoured. After the last retry, the notification is dropped.
+- **A host that keeps failing:** when half the calls to one host fail within a minute, notifications to that host pause for a minute, then one is sent to test it. Paused notifications do not use up their retries.
 - **410 Gone** stops everything: the webhook is disabled, and no more notifications are sent to it.
 - **Duplicates:** a notification can arrive twice. Its `webhook-id` stays the same on every attempt, so ignore an id you have already processed.
 
@@ -371,6 +372,8 @@ Metrics worth alerting on:
 | `outbox_publish_failures_total` | It increases steadily |
 | `cache_gets_total{cache="userStatus",result=...}` | The share of `hit` falls: every task request reads the account from the database again |
 | `tasks_scheduled_execution_seconds_count{outcome="FAILURE"}` | A background job failed |
+| `webhook_deliveries_total{outcome="failed"}` | It increases steadily: webhook notifications are being dropped after all their retries |
+| `webhook_circuit_breakers_open` | Above 0 for long: some webhook receivers are down, and notifications to them wait |
 
 ## Architecture
 
