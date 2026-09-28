@@ -38,6 +38,12 @@ spring:
   testcontainers:
     beans:
       startup: parallel
+  http:
+    serviceclient:
+      webhooks:
+        # WebhookDeliveryTests answers slower than this to get a Timeout; the shipped 15 s would stall that test.
+        # Here rather than on the class, which would start another context.
+        read-timeout: 2s
   jpa:
     properties:
       # Counts the statements of a request in the query-count tests; records nothing unless a test asks for it
