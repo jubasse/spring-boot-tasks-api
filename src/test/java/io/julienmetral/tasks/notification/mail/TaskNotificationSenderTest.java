@@ -6,6 +6,7 @@ import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.mail.MailMessage;
 import io.julienmetral.tasks.mail.MailService;
 import io.julienmetral.tasks.notification.entities.TaskNotificationType;
+import io.julienmetral.tasks.notification.services.CommentExcerpts;
 import io.julienmetral.tasks.notification.services.NotificationSettingsService;
 import io.julienmetral.tasks.task.events.TaskAssigned;
 import io.julienmetral.tasks.task.events.TaskCancelled;
@@ -24,7 +25,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -69,8 +69,13 @@ class TaskNotificationSenderTest {
     @Mock
     private MailService mailService;
 
-    @InjectMocks
     private TaskNotificationSender sender;
+
+    @BeforeEach
+    void createSender() {
+        sender = new TaskNotificationSender(
+                userRepository, new CommentExcerpts(userProfileRepository), settingsService, mailService);
+    }
 
     private static User activeUser(UUID id, String displayName, String email) {
         User user = new User();

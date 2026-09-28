@@ -3,6 +3,8 @@ package io.julienmetral.tasks.notification.controllers;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
 import io.julienmetral.tasks.notification.dtos.CreateWebhookEndpointDto;
 import io.julienmetral.tasks.notification.dtos.UpdateWebhookEndpointDto;
+import io.julienmetral.tasks.notification.entities.WebhookDelivery;
+import io.julienmetral.tasks.notification.entities.WebhookDeliveryStatus;
 import io.julienmetral.tasks.notification.entities.WebhookEndpoint;
 import io.julienmetral.tasks.notification.entities.WebhookEvent;
 import io.julienmetral.tasks.notification.exceptions.WebhookEndpointNotFoundException;
@@ -15,9 +17,15 @@ import io.julienmetral.tasks.support.UserProfiles;
 import io.julienmetral.tasks.support.WebLayerTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -40,6 +48,7 @@ import static io.julienmetral.tasks.support.WebCallers.user;
 import static io.julienmetral.tasks.support.WebCallers.withoutUid;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -61,6 +70,8 @@ class WebhookEndpointControllerWebMvcTests {
     private static final String WEBHOOK = WEBHOOKS + "/{webhookId}";
 
     private static final String SECRET = WEBHOOK + "/secret";
+
+    private static final String DELIVERIES = WEBHOOK + "/deliveries";
 
     private static final String URL = "https://hooks.example.com/tasks";
 
@@ -225,6 +236,126 @@ class WebhookEndpointControllerWebMvcTests {
         verify(webhookService).rotateSecret(id, webhookId);
     }
 
+    // Deliveries
+
+    @Test
+    void deliveriesPassBothIdsAndDefaultToTenNewestFirst() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        when(webhookService.findDeliveries(eq(id), eq(webhookId), any())).thenReturn(Page.empty());
+
+        mockMvc.perform(get(DELIVERIES, id, webhookId).with(user(id)))
+                .andExpect(status().isOk());
+
+        Pageable pageable = requestedDeliveryPage(id, webhookId);
+        assertThat(pageable.getPageNumber()).isZero();
+        assertThat(pageable.getPageSize()).isEqualTo(10);
+        assertThat(pageable.getSort()).isEqualTo(Sort.by(Sort.Direction.DESC, "createdAt"));
+    }
+
+    @Test
+    void deliveriesPassThePagingParameters() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        when(webhookService.findDeliveries(eq(id), eq(webhookId), any())).thenReturn(Page.empty());
+
+        mockMvc.perform(get(DELIVERIES, id, webhookId)
+                        .param("page", "3")
+                        .param("size", "5")
+                        .param("sort", "attempts,asc")
+                        .with(user(id)))
+                .andExpect(status().isOk());
+
+        Pageable pageable = requestedDeliveryPage(id, webhookId);
+        assertThat(pageable.getPageNumber()).isEqualTo(3);
+        assertThat(pageable.getPageSize()).isEqualTo(5);
+        assertThat(pageable.getSort()).isEqualTo(Sort.by(Sort.Direction.ASC, "attempts"));
+    }
+
+    @Test
+    void deliveriesPageSizeAbove100IsClamped() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        when(webhookService.findDeliveries(eq(id), eq(webhookId), any())).thenReturn(Page.empty());
+
+        mockMvc.perform(get(DELIVERIES, id, webhookId).param("size", "500").with(user(id)))
+                .andExpect(status().isOk());
+
+        assertThat(requestedDeliveryPage(id, webhookId).getPageSize()).isEqualTo(100);
+    }
+
+    @Test
+    void deliveriesAreAPagedModelWithTheirAttemptsButNeitherPayloadNorEndpoint() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        WebhookDelivery pending = delivery(WebhookDeliveryStatus.PENDING);
+        pending.setAttempts(2);
+        pending.setLastStatusCode(503);
+        pending.setLastAttemptAt(CREATED_AT.plusSeconds(10));
+        when(webhookService.findDeliveries(eq(id), eq(webhookId), any()))
+                .thenReturn(new PageImpl<>(List.of(pending), PageRequest.of(1, 1), 3));
+
+        mockMvc.perform(get(DELIVERIES, id, webhookId).param("page", "1").param("size", "1").with(user(id)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(pending.getId().toString()))
+                .andExpect(jsonPath("$.content[0].event").value("task.overdue"))
+                .andExpect(jsonPath("$.content[0].status").value("PENDING"))
+                .andExpect(jsonPath("$.content[0].attempts").value(2))
+                .andExpect(jsonPath("$.content[0].lastStatusCode").value(503))
+                .andExpect(jsonPath("$.content[0].lastError").value(nullValue()))
+                .andExpect(jsonPath("$.content[0].nextAttemptAt").value(CREATED_AT.plusSeconds(310).toString()))
+                .andExpect(jsonPath("$.content[0].lastAttemptAt").value(CREATED_AT.plusSeconds(10).toString()))
+                .andExpect(jsonPath("$.content[0].deliveredAt").value(nullValue()))
+                .andExpect(jsonPath("$.content[0].createdAt").value(CREATED_AT.toString()))
+                .andExpect(jsonPath("$.content[0].payload").doesNotExist())
+                .andExpect(jsonPath("$.content[0].endpoint").doesNotExist())
+                .andExpect(jsonPath("$.page.size").value(1))
+                .andExpect(jsonPath("$.page.number").value(1))
+                .andExpect(jsonPath("$.page.totalElements").value(3))
+                .andExpect(jsonPath("$.page.totalPages").value(3));
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = WebhookDeliveryStatus.class, names = {"DELIVERED", "FAILED"})
+    void finishedDeliveryShowsNoNextAttempt(WebhookDeliveryStatus status) throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        when(webhookService.findDeliveries(eq(id), eq(webhookId), any()))
+                .thenReturn(new PageImpl<>(List.of(delivery(status))));
+
+        mockMvc.perform(get(DELIVERIES, id, webhookId).with(user(id)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].status").value(status.name()))
+                .andExpect(jsonPath("$.content[0].nextAttemptAt").value(nullValue()));
+    }
+
+    @Test
+    void adminPassesTheCheckForTheDeliveriesOfAnotherUsersWebhook() throws Exception {
+        UUID other = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        when(webhookService.findDeliveries(eq(other), eq(webhookId), any())).thenReturn(Page.empty());
+
+        mockMvc.perform(get(DELIVERIES, other, webhookId).with(admin(UUID.randomUUID())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isEmpty())
+                .andExpect(jsonPath("$.page.totalElements").value(0));
+
+        verify(webhookService).findDeliveries(eq(other), eq(webhookId), any());
+    }
+
+    @Test
+    void deliveriesOfAWebhookTheServiceCannotFindAreANotFoundProblem() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        when(webhookService.findDeliveries(eq(id), eq(webhookId), any()))
+                .thenThrow(new WebhookEndpointNotFoundException(webhookId));
+
+        mockMvc.perform(get(DELIVERIES, id, webhookId).with(user(id)))
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value("Webhook not found with id: " + webhookId));
+    }
+
     // Validation
 
     @Test
@@ -323,6 +454,8 @@ class WebhookEndpointControllerWebMvcTests {
                 .andExpect(invalidParameter("webhookId", "must be a UUID"));
         mockMvc.perform(post(SECRET, id, "not-a-uuid").with(user(id)))
                 .andExpect(invalidParameter("webhookId", "must be a UUID"));
+        mockMvc.perform(get(DELIVERIES, id, "not-a-uuid").with(user(id)))
+                .andExpect(invalidParameter("webhookId", "must be a UUID"));
 
         verifyNoInteractions(webhookService);
     }
@@ -418,8 +551,27 @@ class WebhookEndpointControllerWebMvcTests {
                 get(WEBHOOK, id, webhookId),
                 put(WEBHOOK, id, webhookId).contentType(MediaType.APPLICATION_JSON).content(UPDATE_BODY),
                 delete(WEBHOOK, id, webhookId),
-                post(SECRET, id, webhookId)
+                post(SECRET, id, webhookId),
+                get(DELIVERIES, id, webhookId)
         );
+    }
+
+    private Pageable requestedDeliveryPage(UUID id, UUID webhookId) {
+        ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+        verify(webhookService).findDeliveries(eq(id), eq(webhookId), pageable.capture());
+        return pageable.getValue();
+    }
+
+    private static WebhookDelivery delivery(WebhookDeliveryStatus status) {
+        WebhookDelivery delivery = new WebhookDelivery();
+        delivery.setId(UUID.randomUUID());
+        delivery.setEvent(WebhookEvent.TASK_OVERDUE);
+        delivery.setPayload("{\"type\":\"task.overdue\"}");
+        delivery.setStatus(status);
+        delivery.setAttempts(1);
+        delivery.setNextAttemptAt(CREATED_AT.plusSeconds(310));
+        delivery.setCreatedAt(CREATED_AT);
+        return delivery;
     }
 
     private static WebhookEndpoint endpoint(UUID userId, UUID webhookId) {
