@@ -8,13 +8,17 @@ import io.julienmetral.tasks.notification.dtos.UpdateWebhookEndpointDto;
 import io.julienmetral.tasks.notification.entities.WebhookDelivery;
 import io.julienmetral.tasks.notification.entities.WebhookDisabledReason;
 import io.julienmetral.tasks.notification.entities.WebhookEndpoint;
+import io.julienmetral.tasks.notification.exceptions.WebhookDeliveryNotFoundException;
 import io.julienmetral.tasks.notification.exceptions.WebhookEndpointNotFoundException;
 import io.julienmetral.tasks.notification.exceptions.WebhookLimitReachedException;
 import io.julienmetral.tasks.notification.repositories.WebhookDeliveryRepository;
 import io.julienmetral.tasks.notification.repositories.WebhookEndpointRepository;
+import io.julienmetral.tasks.notification.webhook.WebhookDeliveryService;
 import io.julienmetral.tasks.notification.webhook.WebhookProperties;
 import io.julienmetral.tasks.notification.webhook.WebhookSecrets;
+import io.julienmetral.tasks.notification.webhook.WebhookTestResult;
 import io.julienmetral.tasks.notification.webhook.WebhookUrlPolicy;
+import io.julienmetral.tasks.ratelimit.services.RateLimiter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -39,6 +43,8 @@ public class WebhookEndpointService {
 
     private final WebhookEndpointRepository endpointRepository;
     private final WebhookDeliveryRepository deliveryRepository;
+    private final WebhookDeliveryService deliveryService;
+    private final RateLimiter rateLimiter;
     private final UserRepository userRepository;
     private final UserProfileRepository userProfileRepository;
     private final WebhookUrlPolicy urlPolicy;
@@ -115,6 +121,29 @@ public class WebhookEndpointService {
 
         deliveryRepository.deleteAllByEndpointId(endpoint.getId());
         endpointRepository.delete(endpoint);
+    }
+
+    /**
+     * Sends a test event to the endpoint and returns how the receiver answered; nothing is recorded. Rate limited per
+     * owner, since each call is an HTTP request to a URL the user chose. Not transactional: the call can take seconds.
+     */
+    public WebhookTestResult sendTest(UUID userId, UUID webhookId) {
+        rateLimiter.webhookTest(userId);
+
+        return deliveryService.sendTest(find(userId, webhookId));
+    }
+
+    /** Starts a delivery over with the full retry schedule, under the same {@code webhook-id}. */
+    @Transactional
+    public WebhookDelivery redeliver(UUID userId, UUID webhookId, UUID deliveryId) {
+        WebhookEndpoint endpoint = find(userId, webhookId);
+        WebhookDelivery delivery = deliveryRepository
+                .findByIdAndEndpointId(deliveryId, endpoint.getId())
+                .orElseThrow(() -> new WebhookDeliveryNotFoundException(deliveryId));
+
+        deliveryService.requeue(delivery);
+
+        return delivery;
     }
 
     @Transactional(readOnly = true)

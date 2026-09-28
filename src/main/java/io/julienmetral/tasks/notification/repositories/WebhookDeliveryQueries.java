@@ -44,4 +44,11 @@ public class WebhookDeliveryQueries {
                 UUID.class
         );
     }
+
+    public int deleteCreatedBefore(Instant cutoff) {
+        return jdbc.update(
+                "DELETE FROM webhook_deliveries WHERE created_at < :cutoff",
+                new MapSqlParameterSource("cutoff", Timestamp.from(cutoff))
+        );
+    }
 }

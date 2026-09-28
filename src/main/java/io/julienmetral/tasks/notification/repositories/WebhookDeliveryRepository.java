@@ -18,6 +18,8 @@ public interface WebhookDeliveryRepository extends JpaRepository<WebhookDelivery
 
     Page<WebhookDelivery> findAllByEndpointId(UUID endpointId, Pageable pageable);
 
+    Optional<WebhookDelivery> findByIdAndEndpointId(UUID id, UUID endpointId);
+
     @EntityGraph(attributePaths = "endpoint", type = EntityGraph.EntityGraphType.LOAD)
     Optional<WebhookDelivery> findWithEndpointById(UUID id);
 

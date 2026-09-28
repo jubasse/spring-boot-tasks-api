@@ -22,6 +22,11 @@ import java.time.Duration;
  * @param retryEnabled           whether this instance sends the due retries ({@link WebhookRetryJob})
  * @param retryPollInterval      how often the due retries are looked for
  * @param retryBatchSize         retries queued per poll
+ * @param disableAfter           how long an endpoint can fail every attempt before it is disabled and its owner
+ *                               emailed
+ * @param deliveryRetention      how long deliveries stay listed; they hold names and comment excerpts
+ * @param purgeEnabled           whether this instance deletes the deliveries older than the retention
+ * @param purgeCron              when the old deliveries are deleted (Spring cron, six fields)
  */
 @Validated
 @ConfigurationProperties(prefix = "webhooks")
@@ -34,6 +39,10 @@ public record WebhookProperties(
         @DefaultValue("5m") @NotNull Duration deliveryLease,
         @DefaultValue("true") boolean retryEnabled,
         @DefaultValue("30s") @NotNull Duration retryPollInterval,
-        @DefaultValue("100") @Min(1) int retryBatchSize
+        @DefaultValue("100") @Min(1) int retryBatchSize,
+        @DefaultValue("3d") @NotNull Duration disableAfter,
+        @DefaultValue("30d") @NotNull Duration deliveryRetention,
+        @DefaultValue("true") boolean purgeEnabled,
+        @DefaultValue("0 45 3 * * *") String purgeCron
 ) {
 }

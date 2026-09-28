@@ -37,6 +37,7 @@ rate-limit:
   password-reset-per-ip: {requests: 20, window: PT1H}
   password-reset-per-email: {requests: 3, window: PT1H}
   verification-resend-per-user: {requests: 3, window: PT1H}
+  webhook-test-per-user: {requests: 10, window: PT1H}
 # Messages for RabbitMQ are written to an outbox table in the business transaction, then published after commit
 messaging:
   outbox:
@@ -129,6 +130,10 @@ webhooks:
   retry-enabled: ${WEBHOOK_RETRY_ENABLED:true}
   retry-poll-interval: PT30S
   retry-batch-size: 100
+  disable-after: 3d
+  delivery-retention: 30d
+  purge-enabled: ${WEBHOOK_PURGE_ENABLED:true}
+  purge-cron: 0 45 3 * * *
 # Outgoing HTTP calls (webhooks) reach only public addresses; OutboundHttpConfiguration explains why. To try a
 # receiver on your machine, set OUTBOUND_HTTP_ALLOWED_ADDRESSES=127.0.0.1/32.
 outbound-http:

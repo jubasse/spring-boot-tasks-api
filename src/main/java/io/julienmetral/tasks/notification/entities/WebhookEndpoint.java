@@ -75,6 +75,10 @@ public class WebhookEndpoint {
     @Enumerated(EnumType.STRING)
     private Set<WebhookEvent> events = new HashSet<>();
 
+    // When the first of the failed attempts since the last success happened; cleared by a success
+    @Column(name = "failing_since")
+    private Instant failingSince;
+
     @Column(name = "disabled_at")
     private Instant disabledAt;
 
@@ -95,6 +99,7 @@ public class WebhookEndpoint {
     public void enable() {
         disabledAt = null;
         disabledReason = null;
+        failingSince = null;
     }
 
     public void disable(WebhookDisabledReason reason, Instant now) {

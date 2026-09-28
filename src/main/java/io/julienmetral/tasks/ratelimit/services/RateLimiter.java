@@ -55,6 +55,11 @@ public class RateLimiter {
         consume(RateLimitKeys.user("verification-resend", userId), properties.verificationResendPerUser());
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void webhookTest(UUID userId) {
+        consume(RateLimitKeys.user("webhook-test", userId), properties.webhookTestPerUser());
+    }
+
     private void consume(String key, Limit limit) {
         if (!properties.enabled()) {
             return;
