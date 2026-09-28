@@ -124,6 +124,11 @@ webhooks:
   require-https: ${WEBHOOK_REQUIRE_HTTPS:true}
   max-per-user: 5
   previous-secret-validity: 24h
+  concurrent-deliveries: 4
+  delivery-lease: 5m
+  retry-enabled: ${WEBHOOK_RETRY_ENABLED:true}
+  retry-poll-interval: PT30S
+  retry-batch-size: 100
 # Outgoing HTTP calls (webhooks) reach only public addresses; OutboundHttpConfiguration explains why. To try a
 # receiver on your machine, set OUTBOUND_HTTP_ALLOWED_ADDRESSES=127.0.0.1/32.
 outbound-http:
@@ -140,6 +145,14 @@ spring:
       # Apache's own defaults wait minutes for a connection. A client group can set its own values.
       connect-timeout: 5s
       read-timeout: 15s
+    # The client that delivers webhooks (WebhookClient). A redirect or a cookie would let a receiver steer the next
+    # call, so neither is followed.
+    serviceclient:
+      webhooks:
+        connect-timeout: 5s
+        read-timeout: 15s
+        redirects: dont-follow
+        cookie-handling: disable
   data:
     web:
       pageable:
