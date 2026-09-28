@@ -260,7 +260,10 @@ public class WebhookDeliveryService {
         deliveryRepository.findForUpdateById(deliveryId)
                 .filter(delivery -> delivery.getStatus() == WebhookDeliveryStatus.PENDING)
                 .ifPresent(delivery -> {
-                    delivery.setNextAttemptAt(clock.instant().plus(properties.circuitBreaker().openDuration()));
+                    // A second past the open duration: the breaker lets a call through only once it has elapsed
+                    delivery.setNextAttemptAt(clock.instant()
+                            .plus(properties.circuitBreaker().openDuration())
+                            .plusSeconds(1));
                     delivery.setLastError("HostUnavailable");
                     count("postponed");
                 });
