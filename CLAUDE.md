@@ -164,11 +164,16 @@ In development, SMTP goes to the Mailpit service of `compose.yaml` (web UI on ht
 
 ### Webhooks
 
-Users declare HTTPS endpoints that will receive their task notifications: `/api/v1/users/{id}/webhooks`, for the user or an admin.
+Users declare HTTPS endpoints that receive their task notifications: `/api/v1/users/{id}/webhooks`, for the user or an admin. The README documents the contract for receivers.
 - **Secrets:** Standard Webhooks `whsec_` secrets of 32 random bytes, encrypted with AES-256-GCM by `WebhookSecrets` (`webhooks.encryption-key`, `WEBHOOK_ENCRYPTION_KEY`; the `v1:` prefix names the key). Only the creation and rotation responses show a secret. A rotation keeps the previous one for `webhooks.previous-secret-validity` (24 h), so receivers can switch. Warning: a new encryption key makes every stored secret unreadable.
 - **URLs:** `WebhookUrlPolicy` refuses, when a URL is declared or changed, anything but HTTPS on port 443 (`webhooks.require-https=false` only on a development machine), credentials in the URL, and hosts that resolve to a non-public address. The HTTP client checks the addresses again at every call (see Outgoing HTTP): a public host today can resolve to an internal address tomorrow.
 - **Events:** `WebhookEvent`, one per `TaskNotificationType`, named `task.assigned` and so on in the API and in the payloads.
 - **Limits and erasure:** 5 endpoints per user (`webhooks.max-per-user`); a creation locks the account row, so concurrent creations count each other. Erasing an account deletes its endpoints (`UserRetentionQueries`).
+- **Deliveries:** `WebhookNotificationSender` listens to the same task events as the emails, in the publisher's transaction, with the same rules (never one's own action, active accounts only); the endpoint's events replace the email switches. `WebhookDeliveryService.schedule` saves one `WebhookDelivery` per endpoint and queues it through the outbox (`webhook.deliver`); its id is the `webhook-id` header of every attempt.
+  - An attempt reads the delivery, calls the receiver outside any transaction, then records the result, so a slow receiver never holds a database connection. The payload is stored as text and sent as those exact bytes, which are what the signature covers.
+  - `WebhookClient` is an HTTP service client (`@HttpExchange`, `@ImportHttpServices`, group `webhooks` under `spring.http.serviceclient.webhooks`: 5 s connect, 15 s read, no redirect, no cookie). Its group configurer turns every status into a response and gives its metrics and traces a constant client name, without the host or the URL.
+  - Retries live in the database, not in RabbitMQ: `next_attempt_at` after 5 s, 5 min, 30 min, 2 h, 5 h and 10 h (plus or minus 20 %, or a longer `Retry-After`), then FAILED. `WebhookRetryJob` claims the due ones with `FOR UPDATE SKIP LOCKED` and moves them to the end of a lease (`webhooks.delivery-lease`) before queueing them, so a crashed attempt is due again later. The listener uses its own factory without retries: the global listener retry sleeps on the consumer thread.
+  - A 410 disables the endpoint (reason `GONE`). Warning: never store or log an exception message of the client: it carries the URL, and a Slack URL carries its secret. `last_error` holds a short kind (`Timeout`, `DestinationNotAllowed`).
 
 ### Media storage
 
