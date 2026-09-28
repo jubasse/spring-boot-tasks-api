@@ -2162,6 +2162,98 @@
           ]
         },
         {
+          "name": "Send a test event (200)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/webhooks/{{webhookId}}/test",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{userId}}",
+                "webhooks",
+                "{{webhookId}}",
+                "test"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Sends a signed webhook.test event at once, even to a paused webhook, and returns how the receiver answered. This request calls the webhook's URL on the internet. 10 per hour."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "const body = pm.response.json();",
+                  "pm.test('tells how the receiver answered', () => { pm.expect(body).to.have.property('delivered'); pm.expect(body.durationMillis).to.be.at.least(0); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Redeliver an unknown delivery (404)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/webhooks/{{webhookId}}/deliveries/0199a3c4-6f1e-7b52-9d0a-2f6e8c1b4a77/redeliver",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{userId}}",
+                "webhooks",
+                "{{webhookId}}",
+                "deliveries",
+                "0199a3c4-6f1e-7b52-9d0a-2f6e8c1b4a77",
+                "redeliver"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Starts a delivery over with the full retry schedule and the same webhook-id (202); an id of another webhook, or unknown, is a 404."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [404]', () => pm.expect(pm.response.code).to.be.oneOf([404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Refuse a private address (422)",
           "request": {
             "method": "POST",
