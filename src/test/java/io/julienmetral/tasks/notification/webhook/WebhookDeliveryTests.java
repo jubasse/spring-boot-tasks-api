@@ -26,23 +26,36 @@ import mockwebserver3.RecordedRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.http.client.FilteredHostException;
+import org.springframework.context.ApplicationEvent;
+import org.springframework.context.ApplicationListener;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.resilience.retry.MethodRetryEvent;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.client.ResourceAccessException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.net.ConnectException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.net.SocketTimeoutException;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -54,8 +67,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -82,6 +97,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * HTTP client, address filter and timeouts.
  */
 @IntegrationTest
+@ExtendWith(ForgetWebhookHostsBeforeEach.class)
 class WebhookDeliveryTests {
 
     private static final String WEBHOOKS = "/api/v1/users/{id}/webhooks";
@@ -133,6 +149,16 @@ class WebhookDeliveryTests {
     // Emails leave through the outbox and RabbitMQ: "no email sent" can only be checked after a grace period
     private static final Duration NO_MAIL_GRACE_PERIOD = Duration.ofSeconds(1);
 
+    // webhooks.circuit-breaker.minimum-calls, all failed
+    private static final int FAILURES_OPENING_A_BREAKER = 5;
+
+    private static final Duration OPEN_DURATION = Duration.ofMinutes(1);
+
+    // The delay of WebhookClient's @Retryable, to which the jitter only adds
+    private static final Duration QUICK_RETRY_DELAY = Duration.ofMillis(200);
+
+    private static final byte[] BODY = "{}".getBytes(StandardCharsets.UTF_8);
+
     private record Endpoint(UUID id, String secret, String url, String[] events) {
     }
 
@@ -181,7 +207,21 @@ class WebhookDeliveryTests {
     @Autowired
     private Mailpit mailpit;
 
+    @Autowired
+    private WebhookClient client;
+
+    @Autowired
+    private ConfigurableApplicationContext applicationContext;
+
     private final MockWebServer receiver = new MockWebServer();
+
+    private final List<MethodRetryEvent> retryEvents = new CopyOnWriteArrayList<>();
+
+    private final ApplicationListener<ApplicationEvent> retryEventRecorder = event -> {
+        if (event instanceof MethodRetryEvent retry) {
+            retryEvents.add(retry);
+        }
+    };
 
     // An unexpected request gets an answer at once instead of waiting for the read timeout
     @BeforeEach
@@ -205,6 +245,16 @@ class WebhookDeliveryTests {
                         + "WHERE status = 'PENDING' AND next_attempt_at < ?",
                 Timestamp.from(PINNED_ERA_END)
         );
+    }
+
+    @BeforeEach
+    void recordRetryEvents() {
+        applicationContext.addApplicationListener(retryEventRecorder);
+    }
+
+    @AfterEach
+    void stopRecordingRetryEvents() {
+        applicationContext.removeApplicationListener(retryEventRecorder);
     }
 
     // Signature and headers
@@ -925,11 +975,7 @@ class WebhookDeliveryTests {
     @Test
     void receiverThatRefusesTheConnectionIsAConnectionFailure() throws Exception {
         User assignee = createUser(UserRole.USER);
-        int closedPort;
-        try (ServerSocket socket = new ServerSocket(0, 1, LOOPBACK)) {
-            closedPort = socket.getLocalPort();
-        }
-        Endpoint endpoint = createEndpointAt(assignee, "http://127.0.0.1:" + closedPort + "/hooks", "task.assigned");
+        Endpoint endpoint = createEndpointAt(assignee, "http://127.0.0.1:" + closedPort() + "/hooks", "task.assigned");
 
         createTask(createUser(UserRole.ADMIN), assignee);
 
@@ -1649,6 +1695,247 @@ class WebhookDeliveryTests {
         assertThat(mailpit.countTo(owner.getEmail(), DISABLED_EMAIL)).isZero();
     }
 
+    // Circuit breaker and bulkhead per host
+
+    @Test
+    void deliveryToAHostWhoseLastFiveCallsFailedWaitsWithoutARequestOrAnAttempt() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User assignee = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(assignee, "task.assigned");
+        openTheBreakerOfTheReceiver(admin, assignee, endpoint);
+
+        createTask(admin, assignee);
+
+        WebhookDelivery postponed = awaitPostponed(deliveryIds(endpoint).getLast());
+        assertThat(postponed.getStatus()).isEqualTo(WebhookDeliveryStatus.PENDING);
+        assertThat(postponed.getAttempts()).isZero();
+        assertThat(postponed.getNextAttemptAt()).isEqualTo(NOW.plus(OPEN_DURATION));
+        assertThat(postponed.getLastAttemptAt()).isNull();
+        assertThat(postponed.getLastStatusCode()).isNull();
+        assertThat(receiver.getRequestCount()).isEqualTo(FAILURES_OPENING_A_BREAKER);
+        assertThat(failingSince(endpoint)).isEqualTo(NOW);
+        assertThat(openBreakers()).isOne();
+    }
+
+    @Test
+    void breakerOpenedByOneEndpointAlsoHoldsTheDeliveriesOfOtherEndpointsOnTheSameHost() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User failing = createUser(UserRole.USER);
+        openTheBreakerOfTheReceiver(admin, failing, createEndpoint(failing, "task.assigned"));
+        User other = createUser(UserRole.USER);
+        Endpoint otherEndpoint = createEndpointAt(other, receiverUrl("/other-hooks"), "task.assigned");
+
+        createTask(admin, other);
+
+        WebhookDelivery postponed = awaitPostponed(onlyDeliveryId(otherEndpoint));
+        assertThat(postponed.getAttempts()).isZero();
+        assertThat(receiver.getRequestCount()).isEqualTo(FAILURES_OPENING_A_BREAKER);
+        assertThat(failingSince(otherEndpoint)).isNull();
+    }
+
+    @Test
+    void afterTheOpenDurationAPostponedDeliveryTestsTheHostAndItsSuccessClosesTheBreaker() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User assignee = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(assignee, "task.assigned");
+        openTheBreakerOfTheReceiver(admin, assignee, endpoint);
+        createTask(admin, assignee);
+        UUID deliveryId = deliveryIds(endpoint).getLast();
+        Instant retryAt = awaitPostponed(deliveryId).getNextAttemptAt();
+        // The breaker lets a call through strictly after the open duration
+        clock.set(retryAt.plusMillis(1));
+        answer(204);
+
+        deliveryService.deliver(deliveryId);
+
+        WebhookDelivery delivered = delivery(deliveryId);
+        assertThat(delivered.getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
+        assertThat(delivered.getAttempts()).isOne();
+        assertThat(delivered.getLastError()).isNull();
+        assertThat(delivered.getDeliveredAt()).isEqualTo(retryAt.plusMillis(1));
+        assertThat(openBreakers()).isZero();
+        answer(204);
+        createTask(admin, assignee);
+        assertThat(awaitAttempts(deliveryIds(endpoint).getLast(), 1).getStatus())
+                .isEqualTo(WebhookDeliveryStatus.DELIVERED);
+    }
+
+    @Test
+    void deliveryThatFailsToTestTheHostOpensTheBreakerAgain() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User assignee = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(assignee, "task.assigned");
+        openTheBreakerOfTheReceiver(admin, assignee, endpoint);
+        answer(503);
+        createTask(admin, assignee);
+        UUID tested = deliveryIds(endpoint).getLast();
+        clock.set(awaitPostponed(tested).getNextAttemptAt().plusMillis(1));
+        deliveryService.deliver(tested);
+        createTask(admin, assignee);
+
+        WebhookDelivery postponed = awaitPostponed(deliveryIds(endpoint).getLast());
+
+        assertThat(delivery(tested).getAttempts()).isOne();
+        assertThat(delivery(tested).getLastStatusCode()).isEqualTo(503);
+        assertThat(postponed.getAttempts()).isZero();
+        assertThat(postponed.getNextAttemptAt()).isEqualTo(clock.instant().plus(OPEN_DURATION));
+        assertThat(receiver.getRequestCount()).isEqualTo(FAILURES_OPENING_A_BREAKER + 1);
+        assertThat(openBreakers()).isOne();
+    }
+
+    @Test
+    void testEventReachesAHostWhoseBreakerIsOpenAndLeavesItOpen() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User assignee = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(assignee, "task.assigned");
+        openTheBreakerOfTheReceiver(admin, assignee, endpoint);
+        answer(204);
+
+        sendTestEvent(assignee, endpoint)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.delivered").value(true))
+                .andExpect(jsonPath("$.statusCode").value(204));
+
+        assertThat(json(nextRequest()).get("type").asString()).isEqualTo("webhook.test");
+        createTask(admin, assignee);
+        assertThat(awaitPostponed(deliveryIds(endpoint).getLast()).getAttempts()).isZero();
+        assertThat(openBreakers()).isOne();
+    }
+
+    @Test
+    void postponedDeliveryIsCountedApartFromRetriesAndFailures() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User assignee = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(assignee, "task.assigned");
+        openTheBreakerOfTheReceiver(admin, assignee, endpoint);
+        double postponed = deliveryCount("postponed");
+        double retried = deliveryCount("retried");
+        double failed = deliveryCount("failed");
+
+        createTask(admin, assignee);
+
+        awaitPostponed(deliveryIds(endpoint).getLast());
+        assertThat(deliveryCount("postponed") - postponed).isEqualTo(1);
+        assertThat(deliveryCount("retried") - retried).isZero();
+        assertThat(deliveryCount("failed") - failed).isZero();
+    }
+
+    @Test
+    void deliveryToAHostAlreadyReceivingTwoCallsWaitsWithoutARequestOrAnAttempt() throws Exception {
+        clock.set(NOW);
+        User admin = createUser(UserRole.ADMIN);
+        User assignee = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(assignee, "task.assigned");
+        // Both calls are held until the third delivery was turned away, within the read timeout
+        CountDownLatch thirdTurnedAway = new CountDownLatch(1);
+        receiver.setDispatcher(new Dispatcher() {
+            @Override
+            public MockResponse dispatch(RecordedRequest request) throws InterruptedException {
+                thirdTurnedAway.await(READ_TIMEOUT.minusMillis(300).toMillis(), TimeUnit.MILLISECONDS);
+                return new MockResponse.Builder().code(204).build();
+            }
+        });
+        createTask(admin, assignee);
+        createTask(admin, assignee);
+        nextRequest();
+        nextRequest();
+
+        createTask(admin, assignee);
+
+        List<UUID> ids = deliveryIds(endpoint);
+        WebhookDelivery postponed = awaitPostponed(ids.getLast());
+        thirdTurnedAway.countDown();
+        assertThat(postponed.getAttempts()).isZero();
+        assertThat(postponed.getNextAttemptAt()).isEqualTo(NOW.plus(OPEN_DURATION));
+        assertThat(awaitAttempts(ids.get(0), 1).getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
+        assertThat(awaitAttempts(ids.get(1), 1).getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
+        assertThat(receiver.getRequestCount()).isEqualTo(2);
+        assertThat(openBreakers()).isZero();
+    }
+
+    // Quick retry of a connection that could not be made
+
+    @Test
+    void clientTriesARefusedConnectionOnceMoreAfterAShortDelay() throws Exception {
+        int port = closedPort();
+        long start = System.nanoTime();
+
+        assertThatExceptionOfType(ResourceAccessException.class)
+                .isThrownBy(() -> client.send(URI.create("http://127.0.0.1:" + port + "/hooks"), Map.of(), BODY))
+                .withCauseInstanceOf(ConnectException.class);
+
+        assertThat(Duration.ofNanos(System.nanoTime() - start)).isGreaterThanOrEqualTo(QUICK_RETRY_DELAY);
+        assertThat(failedCallsTo("127.0.0.1:" + port)).isEqualTo(2);
+    }
+
+    @Test
+    void clientDoesNotTryAReadTimeoutAgain() {
+        receiver.enqueue(new MockResponse.Builder().code(204).headersDelay(5, TimeUnit.SECONDS).build());
+
+        assertThatExceptionOfType(ResourceAccessException.class)
+                .isThrownBy(() -> client.send(URI.create(receiverUrl("/hooks")), Map.of(), BODY))
+                .withCauseInstanceOf(SocketTimeoutException.class);
+
+        assertThat(receiver.getRequestCount()).isOne();
+        assertThat(failedCallsTo("127.0.0.1:" + receiver.getPort())).isOne();
+    }
+
+    @Test
+    void clientDoesNotTryAServerErrorAgain() {
+        answer(503);
+
+        ResponseEntity<Void> response = client.send(URI.create(receiverUrl("/hooks")), Map.of(), BODY);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(503);
+        assertThat(receiver.getRequestCount()).isOne();
+        assertThat(failedCallsTo("127.0.0.1:" + receiver.getPort())).isZero();
+    }
+
+    @Test
+    void clientNeverConnectsToAnAddressTheFilterRefuses() throws Exception {
+        try (MockWebServer privateReceiver = new MockWebServer()) {
+            privateReceiver.start(address(127, 0, 0, 2), 0);
+            URI url = URI.create("http://127.0.0.2:" + privateReceiver.getPort() + "/hooks");
+
+            assertThatExceptionOfType(FilteredHostException.class).isThrownBy(() -> client.send(url, Map.of(), BODY));
+
+            assertThat(privateReceiver.getRequestCount()).isZero();
+            assertThat(failedCallsTo("127.0.0.2")).isOne();
+        }
+    }
+
+    @Test
+    void receiverThatRefusesTheFirstConnectionGetsTheDeliveryFromTheQuickRetryWithinOneAttempt() throws Exception {
+        clock.set(NOW);
+        User assignee = createUser(UserRole.USER);
+        int port = closedPort();
+        Endpoint endpoint = createEndpointAt(assignee, "http://127.0.0.1:" + port + "/hooks", "task.assigned");
+        try (MockWebServer lateReceiver = new MockWebServer()) {
+            lateReceiver.enqueue(new MockResponse.Builder().code(204).build());
+            // Retry events are published on the delivery's thread, between the refused call and the retry's delay
+            AtomicBoolean started = new AtomicBoolean();
+            ApplicationListener<ApplicationEvent> startOnFirstRefusal = event -> {
+                if (event instanceof MethodRetryEvent retry && retry.getFailure().toString().contains(":" + port)
+                        && started.compareAndSet(false, true)) {
+                    start(lateReceiver, port);
+                }
+            };
+            applicationContext.addApplicationListener(startOnFirstRefusal);
+            try {
+                createTask(createUser(UserRole.ADMIN), assignee);
+
+                WebhookDelivery delivered = awaitAttempts(onlyDeliveryId(endpoint), 1);
+
+                assertThat(delivered.getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
+                assertThat(delivered.getLastStatusCode()).isEqualTo(204);
+                assertThat(lateReceiver.getRequestCount()).isOne();
+                assertThat(failedCallsTo("127.0.0.1:" + port)).isOne();
+            } finally {
+                applicationContext.removeApplicationListener(startOnFirstRefusal);
+            }
+        }
+    }
+
     // Purge
 
     @Test
@@ -1787,6 +2074,38 @@ class WebhookDeliveryTests {
         return deliveryId;
     }
 
+    private void openTheBreakerOfTheReceiver(User admin, User owner, Endpoint endpoint) throws Exception {
+        for (int i = 0; i < FAILURES_OPENING_A_BREAKER; i++) {
+            attemptAt(NOW, 500, admin, owner, endpoint);
+        }
+        assertThat(openBreakers()).isOne();
+    }
+
+    private double openBreakers() {
+        return meterRegistry.get("webhook.circuit.breakers.open").gauge().value();
+    }
+
+    private long failedCallsTo(String hostAndPort) {
+        return retryEvents.stream()
+                .filter(event -> !event.isRetryAborted())
+                .filter(event -> event.getFailure().toString().contains(hostAndPort))
+                .count();
+    }
+
+    private static int closedPort() throws IOException {
+        try (ServerSocket socket = new ServerSocket(0, 1, LOOPBACK)) {
+            return socket.getLocalPort();
+        }
+    }
+
+    private static void start(MockWebServer server, int port) {
+        try {
+            server.start(LOOPBACK, port);
+        } catch (IOException failed) {
+            throw new UncheckedIOException(failed);
+        }
+    }
+
     private Instant failingSince(Endpoint endpoint) {
         Timestamp failingSince = jdbcTemplate.queryForObject(
                 "SELECT failing_since FROM webhook_endpoints WHERE id = ?", Timestamp.class, endpoint.id());
@@ -1832,6 +2151,11 @@ class WebhookDeliveryTests {
     private WebhookDelivery awaitAttempts(UUID deliveryId, int attempts) {
         return await().atMost(DELIVERY_TIMEOUT).pollInterval(Duration.ofMillis(50))
                 .until(() -> delivery(deliveryId), delivery -> delivery.getAttempts() >= attempts);
+    }
+
+    private WebhookDelivery awaitPostponed(UUID deliveryId) {
+        return await().atMost(DELIVERY_TIMEOUT).pollInterval(Duration.ofMillis(50))
+                .until(() -> delivery(deliveryId), delivery -> "HostUnavailable".equals(delivery.getLastError()));
     }
 
     private WebhookDelivery awaitFinished(UUID deliveryId) {
