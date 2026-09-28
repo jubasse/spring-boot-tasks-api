@@ -171,11 +171,23 @@ Answer with any 2xx status within 15 seconds. Redirects are not followed.
 - **410 Gone** stops everything: the webhook is disabled, and no more notifications are sent to it.
 - **Duplicates:** a notification can arrive twice. Its `webhook-id` stays the same on every attempt, so ignore an id you have already processed.
 
-Each notification and its attempts are listed at `GET /api/v1/users/{id}/webhooks/{webhookId}/deliveries`, newest first.
+- **A receiver that keeps failing:** when every attempt has failed for 3 days, the webhook is disabled and you get an email. Fix the receiver, then turn the webhook back on.
+
+Each notification and its attempts are listed at `GET /api/v1/users/{id}/webhooks/{webhookId}/deliveries`, newest first, for 30 days. To send one again with a fresh retry schedule, `POST .../deliveries/{deliveryId}/redeliver`; it keeps its `webhook-id`.
+
+### Test a webhook
+
+`POST /api/v1/users/{id}/webhooks/{webhookId}/test` sends a signed `webhook.test` event at once, even to a paused webhook, and answers how your receiver responded:
+
+```json
+{"delivered": false, "statusCode": 500, "error": null, "durationMillis": 184}
+```
+
+When no answer came back, `statusCode` is absent and `error` says why: `Timeout`, `ConnectionFailed` or `DestinationNotAllowed`. You can send 10 test events per hour.
 
 ### Pause, change or rotate
 
-- `PUT /api/v1/users/{id}/webhooks/{webhookId}` replaces the URL and events, and pauses (`"enabled": false`) or resumes the webhook, also after a 410.
+- `PUT /api/v1/users/{id}/webhooks/{webhookId}` replaces the URL and events, and pauses (`"enabled": false`) or resumes the webhook, also after a 410 or an automatic disabling.
 - `POST /api/v1/users/{id}/webhooks/{webhookId}/secret` gives a new secret. For the next 24 hours, each request is signed with both the old and the new one, so you can switch without losing any.
 - `DELETE /api/v1/users/{id}/webhooks/{webhookId}` removes it with its delivery history.
 
