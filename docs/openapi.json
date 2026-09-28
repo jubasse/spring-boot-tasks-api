@@ -416,6 +416,21 @@
         "required" : [ "content", "page" ],
         "type" : "object"
       },
+      "PagedModelWebhookDeliveryResponseDto" : {
+        "properties" : {
+          "content" : {
+            "items" : {
+              "$ref" : "#/components/schemas/WebhookDeliveryResponseDto"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "$ref" : "#/components/schemas/PageMetadata"
+          }
+        },
+        "required" : [ "content", "page" ],
+        "type" : "object"
+      },
       "PasswordResetConfirmDto" : {
         "properties" : {
           "newPassword" : {
@@ -805,6 +820,55 @@
         "required" : [ "token" ],
         "type" : "object"
       },
+      "WebhookDeliveryResponseDto" : {
+        "properties" : {
+          "attempts" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "deliveredAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "event" : {
+            "enum" : [ "task.assigned", "task.unassigned", "task.cancelled", "task.deleted", "task.commented", "task.mentioned", "task.due_soon", "task.overdue" ],
+            "type" : "string"
+          },
+          "id" : {
+            "description" : "Also the webhook-id header of every attempt",
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "lastAttemptAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "lastError" : {
+            "description" : "Why the last attempt got no response or could not go on",
+            "example" : "Timeout",
+            "type" : "string"
+          },
+          "lastStatusCode" : {
+            "description" : "HTTP status of the last attempt, absent when no response came back",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "nextAttemptAt" : {
+            "description" : "When the next attempt is due, while the delivery is pending",
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "status" : {
+            "enum" : [ "PENDING", "DELIVERED", "FAILED" ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "WebhookEndpointResponseDto" : {
         "properties" : {
           "createdAt" : {
@@ -816,7 +880,7 @@
             "type" : "string"
           },
           "disabledReason" : {
-            "enum" : [ "OWNER" ],
+            "enum" : [ "OWNER", "GONE" ],
             "type" : "string"
           },
           "enabled" : {
@@ -3431,6 +3495,91 @@
           }
         },
         "summary" : "Replace a webhook's URL, events and state",
+        "tags" : [ "Webhooks" ]
+      }
+    },
+    "/api/v1/users/{id}/webhooks/{webhookId}/deliveries" : {
+      "get" : {
+        "description" : "**Access:** The user themselves, or the ADMIN role.",
+        "operationId" : "listWebhookDeliveries",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "webhookId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "description" : "Zero-based page index (0..N)",
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "default" : 0,
+            "minimum" : 0,
+            "type" : "integer"
+          }
+        }, {
+          "description" : "The size of the page to be returned",
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "default" : 10,
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        }, {
+          "description" : "Sorting criteria in the format: property,(asc|desc). Default sort order is ascending. Multiple sort criteria are supported.",
+          "in" : "query",
+          "name" : "sort",
+          "required" : false,
+          "schema" : {
+            "default" : [ "createdAt,DESC" ],
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedModelWebhookDeliveryResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "List the deliveries of a webhook, newest first by default",
         "tags" : [ "Webhooks" ]
       }
     },
