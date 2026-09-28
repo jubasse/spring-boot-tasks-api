@@ -26,7 +26,8 @@ public enum ProblemType {
     INFECTED_FILE(HttpStatus.UNPROCESSABLE_CONTENT, "infected-file", "File rejected by the antivirus"),
     INVALID_IMAGE(HttpStatus.UNPROCESSABLE_CONTENT, "invalid-image", "Invalid image"),
     WEBHOOK_URL_NOT_ALLOWED(HttpStatus.UNPROCESSABLE_CONTENT, "webhook-url-not-allowed", "Webhook URL not allowed"),
-    WEBHOOK_LIMIT_REACHED(HttpStatus.UNPROCESSABLE_CONTENT, "webhook-limit-reached", "Webhook limit reached");
+    WEBHOOK_LIMIT_REACHED(HttpStatus.UNPROCESSABLE_CONTENT, "webhook-limit-reached", "Webhook limit reached"),
+    WEBHOOK_NOT_SIGNED(HttpStatus.UNPROCESSABLE_CONTENT, "webhook-not-signed", "Webhook not signed");
 
     private static final String DOCUMENT =
             "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#";

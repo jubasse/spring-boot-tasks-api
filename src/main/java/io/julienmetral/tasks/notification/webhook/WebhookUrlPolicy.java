@@ -9,6 +9,7 @@ import java.net.URISyntaxException;
 import java.net.UnknownHostException;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Checks a webhook URL when it is declared, so its owner gets a clear refusal. The HTTP client checks the resolved
@@ -21,7 +22,11 @@ public class WebhookUrlPolicy {
 
     private static final String SLACK_HOST = "hooks.slack.com";
 
-    private static final String SLACK_PATH = "/services/";
+    private static final String SLACK_PREFIX = "/services/";
+
+    // The path of an incoming webhook, /services/T.../B.../..., with nothing that could be read another way: no dot
+    // segment, no encoded character, no mask
+    private static final Pattern SLACK_PATH = Pattern.compile("/services(/[A-Za-z0-9_-]+){2,3}");
 
     private static final int MAX_SLACK_URL_LENGTH = 256;
 
@@ -69,10 +74,11 @@ public class WebhookUrlPolicy {
                 || (uri.getPort() != -1 && uri.getPort() != 443)
                 || uri.getUserInfo() != null
                 || uri.getRawQuery() != null
+                || uri.getRawFragment() != null
                 || uri.getRawPath() == null
-                || !uri.getRawPath().startsWith(SLACK_PATH)) {
+                || !SLACK_PATH.matcher(uri.getRawPath()).matches()) {
             throw new WebhookUrlNotAllowedException(
-                    "A Slack webhook URL must start with https://" + SLACK_HOST + SLACK_PATH);
+                    "A Slack webhook URL must start with https://" + SLACK_HOST + SLACK_PREFIX);
         }
     }
 

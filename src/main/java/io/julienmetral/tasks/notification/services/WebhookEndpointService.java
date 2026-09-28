@@ -12,6 +12,7 @@ import io.julienmetral.tasks.notification.entities.WebhookKind;
 import io.julienmetral.tasks.notification.exceptions.WebhookDeliveryNotFoundException;
 import io.julienmetral.tasks.notification.exceptions.WebhookEndpointNotFoundException;
 import io.julienmetral.tasks.notification.exceptions.WebhookLimitReachedException;
+import io.julienmetral.tasks.notification.exceptions.WebhookNotSignedException;
 import io.julienmetral.tasks.notification.repositories.WebhookDeliveryRepository;
 import io.julienmetral.tasks.notification.repositories.WebhookEndpointRepository;
 import io.julienmetral.tasks.notification.webhook.WebhookDeliveryService;
@@ -164,6 +165,11 @@ public class WebhookEndpointService {
     @Transactional
     public RotatedWebhookSecret rotateSecret(UUID userId, UUID webhookId) {
         WebhookEndpoint endpoint = find(userId, webhookId);
+
+        if (endpoint.getKind() == WebhookKind.SLACK) {
+            throw new WebhookNotSignedException();
+        }
+
         Instant now = clock.instant();
         Instant previousSecretExpiresAt = now.plus(properties.previousSecretValidity());
         String secret = secrets.generate();
@@ -176,7 +182,6 @@ public class WebhookEndpointService {
         return new RotatedWebhookSecret(secret, previousSecretExpiresAt);
     }
 
-    // The account is read first: its endpoints stay in the database while it is soft-deleted, until the erasure
     // A Slack URL is its credential: it is stored encrypted, like the signing secrets
     private String checkedUrl(WebhookKind kind, String url) {
         if (kind == WebhookKind.SLACK) {
@@ -199,6 +204,7 @@ public class WebhookEndpointService {
         return endpoint.getKind() == WebhookKind.SLACK && WebhookUrls.SLACK_MASK.equals(url);
     }
 
+    // The account is read first: its endpoints stay in the database while it is soft-deleted, until the erasure
     private WebhookEndpoint find(UUID userId, UUID webhookId) {
         userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
 
