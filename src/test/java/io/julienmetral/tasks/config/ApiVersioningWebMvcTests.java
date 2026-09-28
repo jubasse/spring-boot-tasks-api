@@ -137,6 +137,11 @@ class ApiVersioningWebMvcTests {
     @Nested
     class UnsupportedVersion {
 
+        @BeforeEach
+        void callersAreActive() {
+            everyAccountIsActive(userRepository);
+        }
+
         @ParameterizedTest
         @ValueSource(strings = {"v2", "v0", "v1.5", "vx", "v"})
         void unsupportedOrMalformedVersionIsAnUntypedBadRequestPointingToVersionOne(String version) throws Exception {
@@ -214,6 +219,11 @@ class ApiVersioningWebMvcTests {
 
     @Nested
     class UnmappedPath {
+
+        @BeforeEach
+        void callersAreActive() {
+            everyAccountIsActive(userRepository);
+        }
 
         @ParameterizedTest
         @ValueSource(strings = {"/api/tasks", "/api/v1/unknown", "/api/v2/unknown", "/api/V1/tasks", "/api/", "/api"})
