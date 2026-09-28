@@ -7,11 +7,13 @@ import io.julienmetral.tasks.notification.dtos.UpdateWebhookEndpointDto;
 import io.julienmetral.tasks.notification.dtos.WebhookDeliveryResponseDto;
 import io.julienmetral.tasks.notification.dtos.WebhookEndpointResponseDto;
 import io.julienmetral.tasks.notification.dtos.WebhookSecretDto;
+import io.julienmetral.tasks.notification.dtos.WebhookTestResultDto;
 import io.julienmetral.tasks.notification.services.WebhookEndpointService;
 import io.julienmetral.tasks.notification.services.WebhookEndpointService.CreatedWebhookEndpoint;
 import io.julienmetral.tasks.notification.services.WebhookEndpointService.RotatedWebhookSecret;
 import io.julienmetral.tasks.shared.exceptions.ProblemType;
 import io.julienmetral.tasks.shared.openapi.DocumentedProblems;
+import io.julienmetral.tasks.shared.openapi.RateLimited;
 import io.julienmetral.tasks.shared.security.AllowedRolesOrSelfOnly;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -113,6 +115,34 @@ public class WebhookEndpointController {
         return new PagedModel<>(
                 webhookService.findDeliveries(id, webhookId, pageable).map(WebhookDeliveryResponseDto::new)
         );
+    }
+
+    @Operation(
+            summary = "Start a delivery over",
+            description = "The delivery is sent again with the full retry schedule and the same webhook-id, "
+                    + "whether it failed or was delivered."
+    )
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    @PostMapping("/{webhookId}/deliveries/{deliveryId}/redeliver")
+    @AllowedRolesOrSelfOnly(UserRole.ADMIN)
+    public WebhookDeliveryResponseDto redeliverWebhookDelivery(
+            @PathVariable UUID id,
+            @PathVariable UUID webhookId,
+            @PathVariable UUID deliveryId
+    ) {
+        return new WebhookDeliveryResponseDto(webhookService.redeliver(id, webhookId, deliveryId));
+    }
+
+    @Operation(
+            summary = "Send a test event to a webhook",
+            description = "Sends a signed webhook.test event at once, even to a paused webhook, and returns how the "
+                    + "receiver answered. Nothing is recorded."
+    )
+    @RateLimited
+    @PostMapping("/{webhookId}/test")
+    @AllowedRolesOrSelfOnly(UserRole.ADMIN)
+    public WebhookTestResultDto testWebhook(@PathVariable UUID id, @PathVariable UUID webhookId) {
+        return new WebhookTestResultDto(webhookService.sendTest(id, webhookId));
     }
 
     @Operation(

@@ -15,6 +15,7 @@ import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
 import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
 import io.julienmetral.tasks.ratelimit.exceptions.RateLimitExceededException;
+import io.julienmetral.tasks.notification.exceptions.WebhookDeliveryNotFoundException;
 import io.julienmetral.tasks.notification.exceptions.WebhookEndpointNotFoundException;
 import io.julienmetral.tasks.notification.exceptions.WebhookLimitReachedException;
 import io.julienmetral.tasks.notification.exceptions.WebhookUrlNotAllowedException;
@@ -72,7 +73,8 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
             TaskAttachmentNotFoundException.class,
             TaskCommentNotFoundException.class,
             UserNotFoundException.class,
-            WebhookEndpointNotFoundException.class
+            WebhookEndpointNotFoundException.class,
+            WebhookDeliveryNotFoundException.class
     })
     public ProblemDetail handleNotFound(RuntimeException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());

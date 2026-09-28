@@ -18,6 +18,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.Generated;
 
 import java.time.Instant;
@@ -25,8 +26,14 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
-/** An HTTPS endpoint of a user, which receives the task events it subscribes to, signed with its secret. */
+/**
+ * An HTTPS endpoint of a user, which receives the task events it subscribes to, signed with its secret.
+ * <p>
+ * {@code @DynamicUpdate}: a delivery records its outcome here while the owner may change the endpoint through the
+ * API, and writing every column would let each overwrite the other's change.
+ */
 @Entity
+@DynamicUpdate
 @Table(
         name = "webhook_endpoints",
         indexes = @Index(name = "webhook_endpoints_user_idIDX", columnList = "user_id")
@@ -75,6 +82,10 @@ public class WebhookEndpoint {
     @Enumerated(EnumType.STRING)
     private Set<WebhookEvent> events = new HashSet<>();
 
+    // When the first of the failed attempts since the last success happened; cleared by a success
+    @Column(name = "failing_since")
+    private Instant failingSince;
+
     @Column(name = "disabled_at")
     private Instant disabledAt;
 
@@ -95,6 +106,7 @@ public class WebhookEndpoint {
     public void enable() {
         disabledAt = null;
         disabledReason = null;
+        failingSince = null;
     }
 
     public void disable(WebhookDisabledReason reason, Instant now) {

@@ -18,11 +18,14 @@ public interface WebhookDeliveryRepository extends JpaRepository<WebhookDelivery
 
     Page<WebhookDelivery> findAllByEndpointId(UUID endpointId, Pageable pageable);
 
+    Optional<WebhookDelivery> findByIdAndEndpointId(UUID id, UUID endpointId);
+
     @EntityGraph(attributePaths = "endpoint", type = EntityGraph.EntityGraphType.LOAD)
     Optional<WebhookDelivery> findWithEndpointById(UUID id);
 
+    // Locks the delivery row only: Hibernate 7 locks the root table of a query, never a joined one
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT d FROM WebhookDelivery d JOIN FETCH d.endpoint WHERE d.id = :id")
+    @Query("SELECT d FROM WebhookDelivery d WHERE d.id = :id")
     Optional<WebhookDelivery> findForUpdateById(@Param("id") UUID id);
 
     @Modifying

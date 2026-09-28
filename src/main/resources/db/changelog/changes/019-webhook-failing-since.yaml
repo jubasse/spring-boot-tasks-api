@@ -1,0 +1,13 @@
+databaseChangeLog:
+- changeSet:
+    id: 019-add-webhook-endpoints-failing-since
+    author: julien-metral
+    comment: >
+      When an endpoint started failing every attempt, so it can be disabled after webhooks.disable-after.
+    changes:
+    - addColumn:
+        tableName: webhook_endpoints
+        columns:
+        - column:
+            name: failing_since
+            type: TIMESTAMP(6) WITH TIME ZONE

@@ -12,11 +12,13 @@ import io.julienmetral.tasks.notification.entities.WebhookDeliveryStatus;
 import io.julienmetral.tasks.notification.entities.WebhookEvent;
 import io.julienmetral.tasks.notification.repositories.WebhookDeliveryRepository;
 import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.Mailpit;
 import io.julienmetral.tasks.support.TestClock;
 import io.julienmetral.tasks.task.services.TaskReminderService;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tag;
+import mockwebserver3.Dispatcher;
 import mockwebserver3.MockResponse;
 import mockwebserver3.MockWebServer;
 import mockwebserver3.QueueDispatcher;
@@ -52,6 +54,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -87,6 +90,10 @@ class WebhookDeliveryTests {
 
     private static final String DELIVERIES = WEBHOOK + "/deliveries";
 
+    private static final String REDELIVER = DELIVERIES + "/{deliveryId}/redeliver";
+
+    private static final String TEST_EVENT = WEBHOOK + "/test";
+
     private static final String TASKS = "/api/v1/tasks";
 
     private static final String TITLE = "Renew the TLS certificates";
@@ -113,6 +120,18 @@ class WebhookDeliveryTests {
             Duration.ofHours(5),
             Duration.ofHours(10)
     );
+
+    private static final Duration DISABLE_AFTER = Duration.ofDays(3);
+
+    private static final Duration DELIVERY_RETENTION = Duration.ofDays(30);
+
+    // spring.http.serviceclient.webhooks.read-timeout in the test application.yaml
+    private static final Duration READ_TIMEOUT = Duration.ofSeconds(2);
+
+    private static final String DISABLED_EMAIL = "failed every attempt for 3 days";
+
+    // Emails leave through the outbox and RabbitMQ: "no email sent" can only be checked after a grace period
+    private static final Duration NO_MAIL_GRACE_PERIOD = Duration.ofSeconds(1);
 
     private record Endpoint(UUID id, String secret, String url, String[] events) {
     }
@@ -158,6 +177,9 @@ class WebhookDeliveryTests {
 
     @Autowired
     private MeterRegistry meterRegistry;
+
+    @Autowired
+    private Mailpit mailpit;
 
     private final MockWebServer receiver = new MockWebServer();
 
@@ -1107,6 +1129,545 @@ class WebhookDeliveryTests {
                 .andExpect(jsonPath("$.detail").value("Webhook not found with id: " + unknown));
     }
 
+    // Test events
+
+    @Test
+    void testEventReachesTheReceiverSignedWithTheEndpointsSecret() throws Exception {
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        answer(204);
+
+        sendTestEvent(owner, endpoint).andExpect(status().isOk());
+
+        RecordedRequest request = nextRequest();
+        assertThat(request.getMethod()).isEqualTo("POST");
+        assertThat(request.getUrl().encodedPath()).isEqualTo("/hooks");
+        assertThat(request.getHeaders().get("Content-Type")).startsWith(MediaType.APPLICATION_JSON_VALUE);
+        assertThat(request.getHeaders().get("webhook-signature")).matches("v1,[A-Za-z0-9+/]{43}=");
+        assertThatNoException().isThrownBy(() -> verify(endpoint.secret(), request));
+    }
+
+    @Test
+    void testEventPayloadNamesItsTypeTheTimeAndTheWebhook() throws Exception {
+        clock.set(NOW);
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        answer(204);
+
+        sendTestEvent(owner, endpoint).andExpect(status().isOk());
+
+        RecordedRequest request = nextRequest();
+        JsonNode payload = json(request);
+        assertThat(payload.propertyNames()).containsExactly("type", "timestamp", "data");
+        assertThat(payload).isEqualTo(jsonMapper.valueToTree(Map.of(
+                "type", "webhook.test",
+                "timestamp", NOW.toString(),
+                "data", Map.of("webhookId", endpoint.id().toString()))));
+        assertThat(request.getHeaders().get("webhook-timestamp")).isEqualTo(String.valueOf(NOW.getEpochSecond()));
+    }
+
+    @Test
+    void everyTestEventHasAWebhookIdOfItsOwn() throws Exception {
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        answer(204);
+        answer(204);
+
+        sendTestEvent(owner, endpoint).andExpect(status().isOk());
+        sendTestEvent(owner, endpoint).andExpect(status().isOk());
+
+        UUID first = UUID.fromString(nextRequest().getHeaders().get("webhook-id"));
+        UUID second = UUID.fromString(nextRequest().getHeaders().get("webhook-id"));
+        assertThat(first).isNotEqualTo(second);
+    }
+
+    @Test
+    void acceptedTestEventIsReportedDeliveredWithItsStatusAndDurationAndRecordsNoDelivery() throws Exception {
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        receiver.enqueue(new MockResponse.Builder().code(202).headersDelay(300, TimeUnit.MILLISECONDS).build());
+
+        JsonNode result = json(sendTestEvent(owner, endpoint)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.delivered").value(true))
+                .andExpect(jsonPath("$.statusCode").value(202))
+                .andExpect(jsonPath("$.error").value(nullValue())));
+
+        assertThat(result.get("durationMillis").asLong()).isBetween(300L, READ_TIMEOUT.toMillis());
+        nextRequest();
+        assertThat(deliveryIds(endpoint)).isEmpty();
+    }
+
+    @Test
+    void testEventReachesAPausedEndpointAndLeavesItPaused() throws Exception {
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        pause(owner, endpoint);
+        answer(200);
+
+        sendTestEvent(owner, endpoint)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.delivered").value(true))
+                .andExpect(jsonPath("$.statusCode").value(200));
+
+        RecordedRequest request = nextRequest();
+        assertThatNoException().isThrownBy(() -> verify(endpoint.secret(), request));
+        mockMvc.perform(get(WEBHOOK, owner.getId(), endpoint.id()).with(asUser(owner)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(false))
+                .andExpect(jsonPath("$.disabledReason").value("OWNER"));
+    }
+
+    @Test
+    void testEventDuringASecretRotationIsSignedWithBothSecrets() throws Exception {
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        String rotated = rotate(owner, endpoint);
+        answer(204);
+
+        sendTestEvent(owner, endpoint).andExpect(status().isOk());
+
+        RecordedRequest request = nextRequest();
+        assertThat(request.getHeaders().get("webhook-signature").split(" ")).hasSize(2);
+        assertThatNoException().isThrownBy(() -> verify(rotated, request));
+        assertThatNoException().isThrownBy(() -> verify(endpoint.secret(), request));
+    }
+
+    @Test
+    void rejectedTestEventIsReportedWithItsStatusAndDoesNotMarkTheEndpointFailing() throws Exception {
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        answer(500);
+
+        sendTestEvent(owner, endpoint)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.delivered").value(false))
+                .andExpect(jsonPath("$.statusCode").value(500))
+                .andExpect(jsonPath("$.error").value(nullValue()));
+
+        nextRequest();
+        assertThat(deliveryIds(endpoint)).isEmpty();
+        assertThat(failingSince(endpoint)).isNull();
+    }
+
+    @Test
+    void goneAnswerToATestEventLeavesTheEndpointEnabled() throws Exception {
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        answer(410);
+
+        sendTestEvent(owner, endpoint)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.delivered").value(false))
+                .andExpect(jsonPath("$.statusCode").value(410));
+
+        mockMvc.perform(get(WEBHOOK, owner.getId(), endpoint.id()).with(asUser(owner)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.disabledReason").value(nullValue()));
+    }
+
+    @Test
+    void testEventToASlowReceiverIsReportedAsATimeoutWithoutAStatus() throws Exception {
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        receiver.enqueue(new MockResponse.Builder().code(204).headersDelay(5, TimeUnit.SECONDS).build());
+
+        JsonNode result = json(sendTestEvent(owner, endpoint)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.delivered").value(false))
+                .andExpect(jsonPath("$.statusCode").value(nullValue()))
+                .andExpect(jsonPath("$.error").value("Timeout")));
+
+        assertThat(result.get("durationMillis").asLong()).isBetween(READ_TIMEOUT.toMillis(), 4_999L);
+    }
+
+    @Test
+    void testEventToAPrivateDestinationWrittenInTheDatabaseIsNotSent() throws Exception {
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        // 127.0.0.2 is loopback but outside the allowed 127.0.0.1/32: the URL policy would refuse it on the API
+        try (MockWebServer privateReceiver = new MockWebServer()) {
+            privateReceiver.start(address(127, 0, 0, 2), 0);
+            jdbcTemplate.update("UPDATE webhook_endpoints SET url = ? WHERE id = ?",
+                    "http://127.0.0.2:" + privateReceiver.getPort() + "/hooks", endpoint.id());
+
+            sendTestEvent(owner, endpoint)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.delivered").value(false))
+                    .andExpect(jsonPath("$.statusCode").value(nullValue()))
+                    .andExpect(jsonPath("$.error").value("DestinationNotAllowed"));
+
+            assertThat(privateReceiver.getRequestCount()).isZero();
+        }
+    }
+
+    @Test
+    void testEventToTheWebhookOfAnotherUserIsNotFoundAndSendsNothing() throws Exception {
+        User owner = createUser(UserRole.USER);
+        User intruder = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+
+        mockMvc.perform(post(TEST_EVENT, intruder.getId(), endpoint.id()).with(asUser(intruder)))
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value("Webhook not found with id: " + endpoint.id()));
+
+        assertThat(receiver.getRequestCount()).isZero();
+    }
+
+    // Redelivery
+
+    @Test
+    void redeliveringADeliveredDeliverySendsTheSameBodyAgainUnderTheSameWebhookId() throws Exception {
+        clock.set(NOW);
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        answer(204);
+        answer(204);
+        createTask(createUser(UserRole.ADMIN), owner);
+        UUID deliveryId = onlyDeliveryId(endpoint);
+        RecordedRequest first = nextRequest();
+        awaitAttempts(deliveryId, 1);
+        Instant later = NOW.plus(Duration.ofHours(1));
+        clock.set(later);
+
+        redeliver(owner, endpoint, deliveryId)
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.id").value(deliveryId.toString()))
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.attempts").value(0))
+                .andExpect(jsonPath("$.nextAttemptAt").value(later.plus(Duration.ofMinutes(5)).toString()))
+                .andExpect(jsonPath("$.deliveredAt").value(nullValue()));
+
+        RecordedRequest again = nextRequest();
+        assertThat(again.getHeaders().get("webhook-id")).isEqualTo(deliveryId.toString());
+        assertThat(again.getHeaders().get("webhook-timestamp")).isEqualTo(String.valueOf(later.getEpochSecond()));
+        assertThat(again.getBody()).isEqualTo(first.getBody());
+        WebhookDelivery delivered = awaitAttempts(deliveryId, 1);
+        assertThat(delivered.getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
+        assertThat(delivered.getDeliveredAt()).isEqualTo(later);
+        assertThat(deliveryIds(endpoint)).containsExactly(deliveryId);
+    }
+
+    @Test
+    void redeliveringADeliveryThatFailedStartsTheRetryScheduleOverUnderTheSameWebhookId() throws Exception {
+        clock.set(NOW);
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        answer(410);
+        createTask(createUser(UserRole.ADMIN), owner);
+        UUID deliveryId = onlyDeliveryId(endpoint);
+        RecordedRequest first = nextRequest();
+        assertThat(awaitFinished(deliveryId).getStatus()).isEqualTo(WebhookDeliveryStatus.FAILED);
+        enable(owner, endpoint);
+        answer(500);
+
+        redeliver(owner, endpoint, deliveryId)
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.attempts").value(0))
+                .andExpect(jsonPath("$.lastStatusCode").value(nullValue()))
+                .andExpect(jsonPath("$.lastError").value(nullValue()))
+                .andExpect(jsonPath("$.lastAttemptAt").value(nullValue()));
+
+        RecordedRequest again = nextRequest();
+        assertThat(again.getHeaders().get("webhook-id")).isEqualTo(deliveryId.toString());
+        assertThat(again.getBody()).isEqualTo(first.getBody());
+        WebhookDelivery pending = awaitAttempts(deliveryId, 1);
+        assertThat(pending.getStatus()).isEqualTo(WebhookDeliveryStatus.PENDING);
+        assertThat(pending.getAttempts()).isOne();
+        assertThat(pending.getLastStatusCode()).isEqualTo(500);
+        assertJittered(Duration.between(NOW, pending.getNextAttemptAt()), RETRY_SCHEDULE.getFirst());
+    }
+
+    @Test
+    void redeliveringAPendingDeliverySendsItWithoutWaitingForItsRetry() throws Exception {
+        clock.set(NOW);
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        answer(503);
+        answer(204);
+        createTask(createUser(UserRole.ADMIN), owner);
+        UUID deliveryId = onlyDeliveryId(endpoint);
+        nextRequest();
+        assertThat(awaitAttempts(deliveryId, 1).getStatus()).isEqualTo(WebhookDeliveryStatus.PENDING);
+
+        redeliver(owner, endpoint, deliveryId).andExpect(status().isAccepted());
+
+        assertThat(nextRequest().getHeaders().get("webhook-id")).isEqualTo(deliveryId.toString());
+        WebhookDelivery delivered = awaitAttempts(deliveryId, 1);
+        assertThat(delivered.getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
+        assertThat(delivered.getAttempts()).isOne();
+    }
+
+    @Test
+    void redeliveryToAPausedEndpointFailsWithoutARequest() throws Exception {
+        clock.set(NOW);
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        answer(204);
+        createTask(createUser(UserRole.ADMIN), owner);
+        UUID deliveryId = onlyDeliveryId(endpoint);
+        nextRequest();
+        awaitAttempts(deliveryId, 1);
+        pause(owner, endpoint);
+
+        redeliver(owner, endpoint, deliveryId).andExpect(status().isAccepted());
+
+        WebhookDelivery failed = awaitFinished(deliveryId);
+        assertThat(failed.getStatus()).isEqualTo(WebhookDeliveryStatus.FAILED);
+        assertThat(failed.getLastError()).isEqualTo("EndpointDisabled");
+        assertThat(failed.getAttempts()).isZero();
+        assertThat(receiver.getRequestCount()).isOne();
+    }
+
+    @Test
+    void redeliveringADeliveryOfAnotherWebhookIsNotFoundAndLeavesItAlone() throws Exception {
+        clock.set(NOW);
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        Endpoint other = createEndpoint(owner, "task.assigned");
+        UUID deliveryId = insertDelivery(other, WebhookDeliveryStatus.DELIVERED, NOW);
+
+        redeliver(owner, endpoint, deliveryId)
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value("Webhook delivery not found with id: " + deliveryId));
+
+        assertThat(delivery(deliveryId).getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
+    }
+
+    @Test
+    void redeliveringADeliveryOfAnotherUserUnderOnesOwnWebhookIsNotFound() throws Exception {
+        clock.set(NOW);
+        User owner = createUser(UserRole.USER);
+        User intruder = createUser(UserRole.USER);
+        UUID deliveryId = insertDelivery(createEndpoint(owner, "task.assigned"), WebhookDeliveryStatus.FAILED, NOW);
+        Endpoint intrudersEndpoint = createEndpoint(intruder, "task.assigned");
+
+        redeliver(intruder, intrudersEndpoint, deliveryId)
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value("Webhook delivery not found with id: " + deliveryId));
+
+        assertThat(delivery(deliveryId).getStatus()).isEqualTo(WebhookDeliveryStatus.FAILED);
+    }
+
+    @Test
+    void redeliveringAnUnknownDeliveryIsNotFound() throws Exception {
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        UUID unknown = UUID.randomUUID();
+
+        redeliver(owner, endpoint, unknown)
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value("Webhook delivery not found with id: " + unknown));
+    }
+
+    // Automatic disabling
+
+    @Test
+    void firstFailedAttemptMarksTheEndpointFailingAndLaterFailuresKeepThatTime() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+
+        attemptAt(NOW, 500, admin, owner, endpoint);
+        attemptAt(NOW.plus(Duration.ofDays(1)), 500, admin, owner, endpoint);
+
+        assertThat(failingSince(endpoint)).isEqualTo(NOW);
+    }
+
+    @Test
+    void endpointFailingForJustUnderThreeDaysStaysEnabled() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+
+        attemptAt(NOW, 500, admin, owner, endpoint);
+        attemptAt(NOW.plus(DISABLE_AFTER).minusMillis(1), 500, admin, owner, endpoint);
+
+        mockMvc.perform(get(WEBHOOK, owner.getId(), endpoint.id()).with(asUser(owner)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.disabledReason").value(nullValue()));
+    }
+
+    @Test
+    void endpointWhoseAttemptsAllFailedForThreeDaysIsDisabledForFailing() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+
+        attemptAt(NOW, 500, admin, owner, endpoint);
+        attemptAt(NOW.plus(DISABLE_AFTER), 500, admin, owner, endpoint);
+
+        mockMvc.perform(get(WEBHOOK, owner.getId(), endpoint.id()).with(asUser(owner)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(false))
+                .andExpect(jsonPath("$.disabledReason").value("FAILING"))
+                .andExpect(jsonPath("$.disabledAt").value(NOW.plus(DISABLE_AFTER).toString()));
+        createTask(admin, owner);
+        assertThat(deliveryIds(endpoint)).hasSize(2);
+    }
+
+    @Test
+    void ownerOfAnEndpointDisabledForFailingIsEmailedItsHostButNeitherItsPathNorItsQuery() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpointAt(owner,
+                receiverUrl("/hooks/T0001/B0002/path-secret?token=query-secret"), "task.assigned");
+
+        attemptAt(NOW, 500, admin, owner, endpoint);
+        attemptAt(NOW.plus(DISABLE_AFTER), 500, admin, owner, endpoint);
+
+        assertThat(mailpit.latestTextTo(owner.getEmail(), DISABLED_EMAIL))
+                .contains("Hello " + owner.getDisplayName())
+                .contains("Your webhook to 127.0.0.1 failed every attempt for 3 days, so it was disabled")
+                .doesNotContain(":" + receiver.getPort())
+                .doesNotContain("/hooks")
+                .doesNotContain("path-secret")
+                .doesNotContain("query-secret");
+    }
+
+    @Test
+    void attemptThatFailsOnceTheEndpointIsDisabledSendsNoSecondEmail() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        attemptAt(NOW, 500, admin, owner, endpoint);
+        clock.set(NOW.plus(DISABLE_AFTER));
+        // The first attempt waits for its answer while the second fails at once and disables the endpoint
+        receiver.enqueue(new MockResponse.Builder().code(500).headersDelay(1500, TimeUnit.MILLISECONDS).build());
+        createTask(admin, owner);
+        UUID slow = deliveryIds(endpoint).getLast();
+        nextRequest();
+        answer(500);
+
+        createTask(admin, owner);
+
+        awaitAttempts(deliveryIds(endpoint).getLast(), 1);
+        assertThat(delivery(slow).getAttempts()).as("attempts of the delivery still waiting for its answer").isZero();
+        assertThat(awaitAttempts(slow, 1).getLastStatusCode()).isEqualTo(500);
+        mailpit.latestTextTo(owner.getEmail(), DISABLED_EMAIL);
+        Thread.sleep(NO_MAIL_GRACE_PERIOD);
+        assertThat(mailpit.countTo(owner.getEmail(), DISABLED_EMAIL)).isOne();
+    }
+
+    @Test
+    void failuresRecordedAtTheSameTimeEmailTheOwnerOnce() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        attemptAt(NOW, 500, admin, owner, endpoint);
+        clock.set(NOW.plus(DISABLE_AFTER));
+        // Each request is answered once both arrived, within the read timeout, so both failures are recorded together
+        CountDownLatch bothArrived = new CountDownLatch(2);
+        receiver.setDispatcher(new Dispatcher() {
+            @Override
+            public MockResponse dispatch(RecordedRequest request) throws InterruptedException {
+                bothArrived.countDown();
+                bothArrived.await(1500, TimeUnit.MILLISECONDS);
+                return new MockResponse.Builder().code(500).build();
+            }
+        });
+
+        createTask(admin, owner);
+        createTask(admin, owner);
+
+        deliveryIds(endpoint).forEach(id -> awaitAttempts(id, 1));
+        assertThat(bothArrived.getCount()).isZero();
+        mailpit.latestTextTo(owner.getEmail(), DISABLED_EMAIL);
+        Thread.sleep(NO_MAIL_GRACE_PERIOD);
+        assertThat(mailpit.countTo(owner.getEmail(), DISABLED_EMAIL)).isOne();
+    }
+
+    @Test
+    void successInBetweenStartsTheThreeDaysOver() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        attemptAt(NOW, 500, admin, owner, endpoint);
+
+        attemptAt(NOW.plus(Duration.ofDays(2)), 204, admin, owner, endpoint);
+
+        assertThat(failingSince(endpoint)).isNull();
+        attemptAt(NOW.plus(DISABLE_AFTER), 500, admin, owner, endpoint);
+        attemptAt(NOW.plus(DISABLE_AFTER).plus(Duration.ofDays(1)), 500, admin, owner, endpoint);
+        assertThat(failingSince(endpoint)).isEqualTo(NOW.plus(DISABLE_AFTER));
+        mockMvc.perform(get(WEBHOOK, owner.getId(), endpoint.id()).with(asUser(owner)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(true));
+    }
+
+    @Test
+    void enablingAnEndpointDisabledForFailingStartsTheThreeDaysOver() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        attemptAt(NOW, 500, admin, owner, endpoint);
+        attemptAt(NOW.plus(DISABLE_AFTER), 500, admin, owner, endpoint);
+        clock.set(NOW.plus(DISABLE_AFTER).plus(Duration.ofHours(1)));
+
+        enable(owner, endpoint);
+
+        assertThat(failingSince(endpoint)).isNull();
+        Instant failedAgainAt = NOW.plus(DISABLE_AFTER).plus(Duration.ofHours(2));
+        attemptAt(failedAgainAt, 500, admin, owner, endpoint);
+        assertThat(failingSince(endpoint)).isEqualTo(failedAgainAt);
+        mockMvc.perform(get(WEBHOOK, owner.getId(), endpoint.id()).with(asUser(owner)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.disabledReason").value(nullValue()));
+    }
+
+    @Test
+    void replacingAnEnabledEndpointKeepsTheDaysAlreadyFailing() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        attemptAt(NOW, 500, admin, owner, endpoint);
+        clock.set(NOW.plus(Duration.ofHours(1)));
+
+        enable(owner, endpoint);
+
+        assertThat(failingSince(endpoint)).isEqualTo(NOW);
+    }
+
+    @Test
+    void goneAfterThreeDaysOfFailuresDisablesTheEndpointAsGoneWithoutAnEmail() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        attemptAt(NOW, 500, admin, owner, endpoint);
+
+        attemptAt(NOW.plus(DISABLE_AFTER), 410, admin, owner, endpoint);
+
+        mockMvc.perform(get(WEBHOOK, owner.getId(), endpoint.id()).with(asUser(owner)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(false))
+                .andExpect(jsonPath("$.disabledReason").value("GONE"));
+        Thread.sleep(NO_MAIL_GRACE_PERIOD);
+        assertThat(mailpit.countTo(owner.getEmail(), DISABLED_EMAIL)).isZero();
+    }
+
+    // Purge
+
+    @Test
+    void purgeDeletesTheDeliveriesCreatedBeforeTheRetentionWhateverTheirState() throws Exception {
+        clock.set(NOW);
+        Endpoint endpoint = createEndpoint(createUser(UserRole.USER), "task.assigned");
+        Instant cutoff = NOW.minus(DELIVERY_RETENTION);
+        insertDelivery(endpoint, WebhookDeliveryStatus.FAILED, cutoff.minus(Duration.ofDays(10)));
+        insertDelivery(endpoint, WebhookDeliveryStatus.PENDING, cutoff.minusSeconds(1));
+        insertDelivery(endpoint, WebhookDeliveryStatus.DELIVERED, cutoff.minusMillis(1));
+        UUID atTheCutoff = insertDelivery(endpoint, WebhookDeliveryStatus.DELIVERED, cutoff);
+        UUID recent = insertDelivery(endpoint, WebhookDeliveryStatus.FAILED, NOW.minus(Duration.ofDays(1)));
+
+        int deleted = deliveryService.purge();
+
+        assertThat(deleted).isGreaterThanOrEqualTo(3);
+        assertThat(deliveryIds(endpoint)).containsExactly(atTheCutoff, recent);
+    }
+
     // Deletion and erasure
 
     @Test
@@ -1207,6 +1768,46 @@ class WebhookDeliveryTests {
         return jsonMapper.valueToTree(Map.of("type", type, "timestamp", timestamp.toString(), "data", data));
     }
 
+    private ResultActions sendTestEvent(User owner, Endpoint endpoint) throws Exception {
+        return mockMvc.perform(post(TEST_EVENT, owner.getId(), endpoint.id()).with(asUser(owner)));
+    }
+
+    private ResultActions redeliver(User owner, Endpoint endpoint, UUID deliveryId) throws Exception {
+        return mockMvc.perform(post(REDELIVER, owner.getId(), endpoint.id(), deliveryId).with(asUser(owner)));
+    }
+
+    /** Assigns a new task to the owner at the given time, and waits until the receiver's answer is recorded. */
+    private UUID attemptAt(Instant at, int answer, User admin, User owner, Endpoint endpoint) throws Exception {
+        clock.set(at);
+        answer(answer);
+        createTask(admin, owner);
+        UUID deliveryId = deliveryIds(endpoint).getLast();
+        nextRequest();
+        awaitAttempts(deliveryId, 1);
+        return deliveryId;
+    }
+
+    private Instant failingSince(Endpoint endpoint) {
+        Timestamp failingSince = jdbcTemplate.queryForObject(
+                "SELECT failing_since FROM webhook_endpoints WHERE id = ?", Timestamp.class, endpoint.id());
+        return failingSince == null ? null : failingSince.toInstant();
+    }
+
+    private UUID insertDelivery(Endpoint endpoint, WebhookDeliveryStatus status, Instant createdAt) {
+        return jdbcTemplate.queryForObject(
+                """
+                        INSERT INTO webhook_deliveries (endpoint_id, event, payload, status, attempts, created_at)
+                        VALUES (?, 'TASK_ASSIGNED', ?, ?, 1, ?)
+                        RETURNING id
+                        """,
+                UUID.class,
+                endpoint.id(),
+                LOST_PAYLOAD,
+                status.name(),
+                Timestamp.from(createdAt)
+        );
+    }
+
     // A delivery without its outbox message, as if the message had been lost
     private UUID insertPendingDelivery(Endpoint endpoint, Instant nextAttemptAt) {
         return jdbcTemplate.queryForObject(
@@ -1290,6 +1891,16 @@ class WebhookDeliveryTests {
                         .content("{\"url\": \"%s\", \"events\": %s, \"enabled\": false}"
                                 .formatted(endpoint.url(), eventArray(endpoint.events()))))
                 .andExpect(status().isOk());
+    }
+
+    private void enable(User owner, Endpoint endpoint) throws Exception {
+        mockMvc.perform(put(WEBHOOK, owner.getId(), endpoint.id())
+                        .with(asUser(owner))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"url\": \"%s\", \"events\": %s, \"enabled\": true}"
+                                .formatted(endpoint.url(), eventArray(endpoint.events()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(true));
     }
 
     private String rotate(User owner, Endpoint endpoint) throws Exception {

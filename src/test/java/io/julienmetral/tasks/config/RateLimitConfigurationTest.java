@@ -41,7 +41,9 @@ class RateLimitConfigurationTest {
             Map.entry("rate-limit.password-reset-per-email.requests", "5"),
             Map.entry("rate-limit.password-reset-per-email.window", "5m"),
             Map.entry("rate-limit.verification-resend-per-user.requests", "6"),
-            Map.entry("rate-limit.verification-resend-per-user.window", "6m")
+            Map.entry("rate-limit.verification-resend-per-user.window", "6m"),
+            Map.entry("rate-limit.webhook-test-per-user.requests", "7"),
+            Map.entry("rate-limit.webhook-test-per-user.window", "7m")
     );
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
@@ -61,6 +63,7 @@ class RateLimitConfigurationTest {
             assertThat(properties.passwordResetPerIp()).isEqualTo(new Limit(4, Duration.ofMinutes(4)));
             assertThat(properties.passwordResetPerEmail()).isEqualTo(new Limit(5, Duration.ofMinutes(5)));
             assertThat(properties.verificationResendPerUser()).isEqualTo(new Limit(6, Duration.ofMinutes(6)));
+            assertThat(properties.webhookTestPerUser()).isEqualTo(new Limit(7, Duration.ofMinutes(7)));
         });
     }
 
@@ -90,6 +93,7 @@ class RateLimitConfigurationTest {
                     assertThat(properties.passwordResetPerIp()).isEqualTo(new Limit(20, Duration.ofHours(1)));
                     assertThat(properties.passwordResetPerEmail()).isEqualTo(new Limit(3, Duration.ofHours(1)));
                     assertThat(properties.verificationResendPerUser()).isEqualTo(new Limit(3, Duration.ofHours(1)));
+                    assertThat(properties.webhookTestPerUser()).isEqualTo(new Limit(10, Duration.ofHours(1)));
                     assertThat(context.getEnvironment().getProperty("server.forward-headers-strategy"))
                             .isEqualTo("none");
                 });
