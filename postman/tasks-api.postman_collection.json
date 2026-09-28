@@ -139,6 +139,10 @@
     {
       "key": "webhookId",
       "value": ""
+    },
+    {
+      "key": "slackWebhookId",
+      "value": ""
     }
   ],
   "item": [
@@ -2248,6 +2252,109 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status is one of [404]', () => pm.expect(pm.response.code).to.be.oneOf([404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Declare a Slack webhook (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/webhooks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{userId}}",
+                "webhooks"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The URL must start with https://hooks.slack.com/services/. It is a credential: responses show it masked.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kind\": \"SLACK\",\n  \"url\": \"https://hooks.slack.com/services/T0123/B0456/abcdef\",\n  \"events\": [\n    \"task.assigned\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [201]', () => pm.expect(pm.response.code).to.be.oneOf([201]));",
+                  "const body = pm.response.json();",
+                  "pm.test('is a Slack webhook', () => pm.expect(body.kind).to.eql('SLACK'));",
+                  "pm.test('never shows the Slack URL', () => pm.expect(body.url).to.eql('https://hooks.slack.com/services/****'));",
+                  "pm.test('has no secret', () => pm.expect(body.secret).to.be.oneOf([null, undefined]));",
+                  "pm.collectionVariables.set('slackWebhookId', body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete the Slack webhook (204)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/webhooks/{{slackWebhookId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{userId}}",
+                "webhooks",
+                "{{slackWebhookId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [204]', () => pm.expect(pm.response.code).to.be.oneOf([204]));"
                 ]
               }
             }
