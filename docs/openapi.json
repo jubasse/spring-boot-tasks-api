@@ -880,7 +880,7 @@
             "type" : "string"
           },
           "disabledReason" : {
-            "enum" : [ "OWNER", "GONE" ],
+            "enum" : [ "OWNER", "GONE", "FAILING" ],
             "type" : "string"
           },
           "enabled" : {
@@ -922,6 +922,29 @@
             "description" : "The new signing secret; it is never shown again",
             "example" : "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
             "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "WebhookTestResultDto" : {
+        "properties" : {
+          "delivered" : {
+            "description" : "Whether the receiver answered with a 2xx status",
+            "type" : "boolean"
+          },
+          "durationMillis" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "error" : {
+            "description" : "Why no answer came back",
+            "example" : "Timeout",
+            "type" : "string"
+          },
+          "statusCode" : {
+            "description" : "Status of the answer, absent when none came back",
+            "format" : "int32",
+            "type" : "integer"
           }
         },
         "type" : "object"
@@ -3583,6 +3606,66 @@
         "tags" : [ "Webhooks" ]
       }
     },
+    "/api/v1/users/{id}/webhooks/{webhookId}/deliveries/{deliveryId}/redeliver" : {
+      "post" : {
+        "description" : "The delivery is sent again with the full retry schedule and the same webhook-id, whether it failed or was delivered.\n\n**Access:** The user themselves, or the ADMIN role.",
+        "operationId" : "redeliverWebhookDelivery",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "webhookId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "deliveryId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "202" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WebhookDeliveryResponseDto"
+                }
+              }
+            },
+            "description" : "Accepted"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Start a delivery over",
+        "tags" : [ "Webhooks" ]
+      }
+    },
     "/api/v1/users/{id}/webhooks/{webhookId}/secret" : {
       "post" : {
         "description" : "The previous secret keeps signing deliveries, next to the new one, until previousSecretExpiresAt.\n\n**Access:** The user themselves, or the ADMIN role.",
@@ -3632,6 +3715,61 @@
           }
         },
         "summary" : "Replace a webhook's signing secret",
+        "tags" : [ "Webhooks" ]
+      }
+    },
+    "/api/v1/users/{id}/webhooks/{webhookId}/test" : {
+      "post" : {
+        "description" : "Sends a signed webhook.test event at once, even to a paused webhook, and returns how the receiver answered. Nothing is recorded.\n\n**Access:** The user themselves, or the ADMIN role.",
+        "operationId" : "testWebhook",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "webhookId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WebhookTestResultDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "429" : {
+            "$ref" : "#/components/responses/TooManyRequests"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Send a test event to a webhook",
         "tags" : [ "Webhooks" ]
       }
     }
