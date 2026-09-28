@@ -31,7 +31,7 @@ public class WebhookSecrets {
         byte[] key;
 
         try {
-            key = Base64.getDecoder().decode(base64Key);
+            key = base64Key == null ? new byte[0] : Base64.getDecoder().decode(base64Key);
         } catch (IllegalArgumentException notBase64) {
             key = new byte[0];
         }

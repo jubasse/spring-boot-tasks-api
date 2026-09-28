@@ -127,7 +127,10 @@ public class WebhookEndpointService {
         return new RotatedWebhookSecret(secret, previousSecretExpiresAt);
     }
 
+    // The account is read first: its endpoints stay in the database while it is soft-deleted, until the erasure
     private WebhookEndpoint find(UUID userId, UUID webhookId) {
+        userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
+
         return endpointRepository
                 .findByIdAndUserId(webhookId, userId)
                 .orElseThrow(() -> new WebhookEndpointNotFoundException(webhookId));
