@@ -470,6 +470,20 @@ class RateLimitTests {
         }
 
         @Test
+        void webhookTestOfAnUnknownWebhookDoesNotCountAgainstTheLimit() throws Exception {
+            UUID userId = signUpUser(uniqueEmail());
+            UUID webhookId = createWebhook(userId);
+
+            for (int attempt = 0; attempt <= WEBHOOK_TEST_PER_USER; attempt++) {
+                sendWebhookTest(userId, UUID.randomUUID(), caller(userId, "ROLE_USER"))
+                        .andExpect(status().isNotFound());
+            }
+
+            sendWebhookTest(userId, webhookId, caller(userId, "ROLE_USER"))
+                    .andExpect(status().isOk());
+        }
+
+        @Test
         void webhookTestsSentByAnAdminCountAgainstTheOwnersLimit() throws Exception {
             UUID userId = signUpUser(uniqueEmail());
             UUID webhookId = createWebhook(userId);

@@ -1365,7 +1365,10 @@ class WebhookDeliveryTests {
         redeliver(owner, endpoint, deliveryId)
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.status").value("PENDING"))
-                .andExpect(jsonPath("$.attempts").value(0));
+                .andExpect(jsonPath("$.attempts").value(0))
+                .andExpect(jsonPath("$.lastStatusCode").value(nullValue()))
+                .andExpect(jsonPath("$.lastError").value(nullValue()))
+                .andExpect(jsonPath("$.lastAttemptAt").value(nullValue()));
 
         RecordedRequest again = nextRequest();
         assertThat(again.getHeaders().get("webhook-id")).isEqualTo(deliveryId.toString());
@@ -1614,6 +1617,19 @@ class WebhookDeliveryTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.enabled").value(true))
                 .andExpect(jsonPath("$.disabledReason").value(nullValue()));
+    }
+
+    @Test
+    void replacingAnEnabledEndpointKeepsTheDaysAlreadyFailing() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        attemptAt(NOW, 500, admin, owner, endpoint);
+        clock.set(NOW.plus(Duration.ofHours(1)));
+
+        enable(owner, endpoint);
+
+        assertThat(failingSince(endpoint)).isEqualTo(NOW);
     }
 
     @Test
