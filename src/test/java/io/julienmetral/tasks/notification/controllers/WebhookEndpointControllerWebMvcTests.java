@@ -239,7 +239,7 @@ class WebhookEndpointControllerWebMvcTests {
     // Deliveries
 
     @Test
-    void deliveriesPassBothIdsAndDefaultToTenNewestFirst() throws Exception {
+    void deliveriesPassBothIdsAndDefaultToTenNewestFirstWithTheIdBreakingTies() throws Exception {
         UUID id = UUID.randomUUID();
         UUID webhookId = UUID.randomUUID();
         when(webhookService.findDeliveries(eq(id), eq(webhookId), any())).thenReturn(Page.empty());
@@ -250,7 +250,7 @@ class WebhookEndpointControllerWebMvcTests {
         Pageable pageable = requestedDeliveryPage(id, webhookId);
         assertThat(pageable.getPageNumber()).isZero();
         assertThat(pageable.getPageSize()).isEqualTo(10);
-        assertThat(pageable.getSort()).isEqualTo(Sort.by(Sort.Direction.DESC, "createdAt"));
+        assertThat(pageable.getSort()).isEqualTo(Sort.by(Sort.Direction.DESC, "createdAt", "id"));
     }
 
     @Test

@@ -760,12 +760,36 @@ class WebhookDeliveryTests {
         assertThat(receiver.getRequestCount()).isOne();
     }
 
+    @Test
+    void pendingDeliveryToAnAccountDisabledSinceFailsWithoutARequest() throws Exception {
+        clock.set(NOW);
+        User assignee = createUser(UserRole.USER);
+        User admin = createUser(UserRole.ADMIN);
+        Endpoint endpoint = createEndpoint(assignee, "task.assigned");
+        answer(500);
+        createTask(admin, assignee);
+        UUID deliveryId = onlyDeliveryId(endpoint);
+        clock.set(awaitAttempts(deliveryId, 1).getNextAttemptAt());
+        mockMvc.perform(post("/api/v1/users/{id}/disable", assignee.getId()).with(asAdmin(admin)))
+                .andExpect(status().isNoContent());
+
+        assertThat(deliveryService.enqueueDue()).isPositive();
+
+        WebhookDelivery failed = awaitFinished(deliveryId);
+        assertThat(failed.getStatus()).isEqualTo(WebhookDeliveryStatus.FAILED);
+        assertThat(failed.getLastError()).isEqualTo("AccountNotActive");
+        assertThat(failed.getAttempts()).isOne();
+        assertThat(receiver.getRequestCount()).isOne();
+    }
+
     @ParameterizedTest
     @CsvSource(delimiter = '|', value = {
             "429 | 120                           | PT2M  | PT2M",
             "503 | 86400                         | PT10H | PT10H",
             "503 | 1                             | PT4S  | PT6S",
-            "429 | Wed, 21 Oct 2015 07:28:00 GMT | PT4S  | PT6S"
+            "429 | Sat, 04 Mar 2000 05:00:00 GMT | PT4S  | PT6S",
+            "503 | Sat, 04 Mar 2000 07:06:07 GMT | PT2H  | PT2H",
+            "429 | Wed, 21 Oct 2015 07:28:00 GMT | PT10H | PT10H"
     })
     void retryAfterPostponesTheRetryOnlyWhenLongerThanTheScheduledDelay(
             int status,
@@ -841,7 +865,7 @@ class WebhookDeliveryTests {
     }
 
     @Test
-    void privateDestinationWrittenInTheDatabaseIsRefusedWithoutARequest() throws Exception {
+    void privateDestinationWrittenInTheDatabaseFailsAtOnceWithoutARequest() throws Exception {
         User assignee = createUser(UserRole.USER);
         Endpoint endpoint = createEndpoint(assignee, "task.assigned");
         // 127.0.0.2 is loopback but outside the allowed 127.0.0.1/32: the URL policy would refuse it on the API
@@ -852,10 +876,11 @@ class WebhookDeliveryTests {
 
             createTask(createUser(UserRole.ADMIN), assignee);
 
-            WebhookDelivery pending = awaitAttempts(onlyDeliveryId(endpoint), 1);
-            assertThat(pending.getStatus()).isEqualTo(WebhookDeliveryStatus.PENDING);
-            assertThat(pending.getLastError()).isEqualTo("DestinationNotAllowed");
-            assertThat(pending.getLastStatusCode()).isNull();
+            WebhookDelivery failed = awaitFinished(onlyDeliveryId(endpoint));
+            assertThat(failed.getStatus()).isEqualTo(WebhookDeliveryStatus.FAILED);
+            assertThat(failed.getLastError()).isEqualTo("DestinationNotAllowed");
+            assertThat(failed.getAttempts()).isOne();
+            assertThat(failed.getLastStatusCode()).isNull();
             assertThat(privateReceiver.getRequestCount()).isZero();
         }
     }
