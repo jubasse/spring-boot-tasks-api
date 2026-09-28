@@ -60,6 +60,9 @@ public class OpenApiConfiguration {
 
             **Limits.** Login, sign-up, verification email resend and password reset are rate limited: a 429 gives \
             the seconds to wait in `Retry-After`. A page holds at most 100 items.
+
+            **Evolution.** An enumeration in a response can gain values, such as a new status: treat a value you \
+            do not know as unknown rather than as an error. New optional fields can appear too.
             """;
 
     @Bean
