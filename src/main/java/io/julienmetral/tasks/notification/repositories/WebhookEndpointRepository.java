@@ -2,8 +2,10 @@ package io.julienmetral.tasks.notification.repositories;
 
 import io.julienmetral.tasks.notification.entities.WebhookEndpoint;
 import io.julienmetral.tasks.notification.entities.WebhookEvent;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -20,6 +22,10 @@ public interface WebhookEndpointRepository extends JpaRepository<WebhookEndpoint
     Optional<WebhookEndpoint> findByIdAndUserId(UUID id, UUID userId);
 
     long countByUserId(UUID userId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT e FROM WebhookEndpoint e WHERE e.id = :id")
+    Optional<WebhookEndpoint> findByIdForUpdate(@Param("id") UUID id);
 
     @Query("""
             SELECT e FROM WebhookEndpoint e

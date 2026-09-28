@@ -18,6 +18,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.Generated;
 
 import java.time.Instant;
@@ -25,8 +26,14 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
-/** An HTTPS endpoint of a user, which receives the task events it subscribes to, signed with its secret. */
+/**
+ * An HTTPS endpoint of a user, which receives the task events it subscribes to, signed with its secret.
+ * <p>
+ * {@code @DynamicUpdate}: a delivery records its outcome here while the owner may change the endpoint through the
+ * API, and writing every column would let each overwrite the other's change.
+ */
 @Entity
+@DynamicUpdate
 @Table(
         name = "webhook_endpoints",
         indexes = @Index(name = "webhook_endpoints_user_idIDX", columnList = "user_id")

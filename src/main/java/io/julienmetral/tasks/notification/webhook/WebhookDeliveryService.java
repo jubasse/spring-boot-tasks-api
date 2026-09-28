@@ -12,6 +12,7 @@ import io.julienmetral.tasks.notification.entities.WebhookEndpoint;
 import io.julienmetral.tasks.notification.entities.WebhookEvent;
 import io.julienmetral.tasks.notification.repositories.WebhookDeliveryQueries;
 import io.julienmetral.tasks.notification.repositories.WebhookDeliveryRepository;
+import io.julienmetral.tasks.notification.repositories.WebhookEndpointRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.http.client.FilteredHostException;
 import org.springframework.http.HttpStatus;
@@ -81,6 +82,7 @@ public class WebhookDeliveryService {
     }
 
     private final WebhookDeliveryRepository deliveryRepository;
+    private final WebhookEndpointRepository endpointRepository;
     private final WebhookDeliveryQueries deliveryQueries;
     private final UserRepository userRepository;
     private final MailService mailService;
@@ -96,6 +98,7 @@ public class WebhookDeliveryService {
 
     public WebhookDeliveryService(
             WebhookDeliveryRepository deliveryRepository,
+            WebhookEndpointRepository endpointRepository,
             WebhookDeliveryQueries deliveryQueries,
             UserRepository userRepository,
             MailService mailService,
@@ -110,6 +113,7 @@ public class WebhookDeliveryService {
             MeterRegistry meterRegistry
     ) {
         this.deliveryRepository = deliveryRepository;
+        this.endpointRepository = endpointRepository;
         this.deliveryQueries = deliveryQueries;
         this.userRepository = userRepository;
         this.mailService = mailService;
@@ -168,6 +172,9 @@ public class WebhookDeliveryService {
         delivery.setStatus(WebhookDeliveryStatus.PENDING);
         delivery.setAttempts(0);
         delivery.setNextAttemptAt(clock.instant().plus(properties.deliveryLease()));
+        delivery.setLastAttemptAt(null);
+        delivery.setLastStatusCode(null);
+        delivery.setLastError(null);
         delivery.setDeliveredAt(null);
 
         outbox.enqueue(WebhookQueues.DELIVER, new WebhookDeliveryRequested(delivery.getId()));
@@ -281,6 +288,10 @@ public class WebhookDeliveryService {
         if (delivery == null || delivery.getStatus() != WebhookDeliveryStatus.PENDING) {
             return;
         }
+
+        // The endpoint too, read under the lock: two failures of one endpoint recorded together both saw it enabled,
+        // both disabled it and both emailed its owner
+        endpointRepository.findByIdForUpdate(delivery.getEndpoint().getId());
 
         Instant now = clock.instant();
         delivery.setAttempts(delivery.getAttempts() + 1);

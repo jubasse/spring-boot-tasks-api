@@ -103,8 +103,11 @@ public class WebhookEndpointService {
 
         Instant now = clock.instant();
 
+        // Only a disabled endpoint is enabled again: enable() restarts the count of days without success
         if (dto.enabled()) {
-            endpoint.enable();
+            if (!endpoint.isEnabled()) {
+                endpoint.enable();
+            }
         } else {
             endpoint.disable(WebhookDisabledReason.OWNER, now);
         }
@@ -128,9 +131,11 @@ public class WebhookEndpointService {
      * owner, since each call is an HTTP request to a URL the user chose. Not transactional: the call can take seconds.
      */
     public WebhookTestResult sendTest(UUID userId, UUID webhookId) {
+        WebhookEndpoint endpoint = find(userId, webhookId);
+
         rateLimiter.webhookTest(userId);
 
-        return deliveryService.sendTest(find(userId, webhookId));
+        return deliveryService.sendTest(endpoint);
     }
 
     /** Starts a delivery over with the full retry schedule, under the same {@code webhook-id}. */
