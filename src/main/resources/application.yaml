@@ -134,6 +134,12 @@ webhooks:
   delivery-retention: 30d
   purge-enabled: ${WEBHOOK_PURGE_ENABLED:true}
   purge-cron: 0 45 3 * * *
+  circuit-breaker:
+    failure-rate-threshold: 50
+    minimum-calls: 5
+    window: 60s
+    open-duration: 1m
+  concurrent-calls-per-host: 2
 # Outgoing HTTP calls (webhooks) reach only public addresses; OutboundHttpConfiguration explains why. To try a
 # receiver on your machine, set OUTBOUND_HTTP_ALLOWED_ADDRESSES=127.0.0.1/32.
 outbound-http:

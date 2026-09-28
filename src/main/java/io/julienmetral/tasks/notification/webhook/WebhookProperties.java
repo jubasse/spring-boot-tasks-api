@@ -1,5 +1,7 @@
 package io.julienmetral.tasks.notification.webhook;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -27,6 +29,9 @@ import java.time.Duration;
  * @param deliveryRetention      how long deliveries stay listed; they hold names and comment excerpts
  * @param purgeEnabled           whether this instance deletes the deliveries older than the retention
  * @param purgeCron              when the old deliveries are deleted (Spring cron, six fields)
+ * @param circuitBreaker         the circuit breaker of each receiving host
+ * @param concurrentCallsPerHost deliveries one instance sends to the same host at once, so a slow receiver cannot
+ *                               hold every delivery consumer
  */
 @Validated
 @ConfigurationProperties(prefix = "webhooks")
@@ -43,6 +48,23 @@ public record WebhookProperties(
         @DefaultValue("3d") @NotNull Duration disableAfter,
         @DefaultValue("30d") @NotNull Duration deliveryRetention,
         @DefaultValue("true") boolean purgeEnabled,
-        @DefaultValue("0 45 3 * * *") String purgeCron
+        @DefaultValue("0 45 3 * * *") String purgeCron,
+        @DefaultValue @Valid @NotNull HostCircuitBreaker circuitBreaker,
+        @DefaultValue("2") @Min(1) int concurrentCallsPerHost
 ) {
+
+    /**
+     * @param failureRateThreshold percentage of failed calls, within the window, that opens the breaker
+     * @param minimumCalls         calls within the window before the rate counts, so one failure of a quiet host
+     *                             does not open it
+     * @param window               how far back calls count
+     * @param openDuration         how long an open breaker refuses calls before letting one through to test the host
+     */
+    public record HostCircuitBreaker(
+            @DefaultValue("50") @Min(1) @Max(100) int failureRateThreshold,
+            @DefaultValue("5") @Min(1) int minimumCalls,
+            @DefaultValue("60s") @NotNull Duration window,
+            @DefaultValue("1m") @NotNull Duration openDuration
+    ) {
+    }
 }
