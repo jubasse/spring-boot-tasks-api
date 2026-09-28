@@ -302,7 +302,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         }
 
         InvalidValue error = InvalidValue.inBody(
-                InvalidValue.expected(mismatch.getTargetType()),
+                InvalidValue.expectedInJson(mismatch.getTargetType()),
                 InvalidValue.jsonPath(mismatch)
         );
 
