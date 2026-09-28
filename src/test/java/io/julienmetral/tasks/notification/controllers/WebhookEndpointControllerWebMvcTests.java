@@ -7,12 +7,15 @@ import io.julienmetral.tasks.notification.entities.WebhookDelivery;
 import io.julienmetral.tasks.notification.entities.WebhookDeliveryStatus;
 import io.julienmetral.tasks.notification.entities.WebhookEndpoint;
 import io.julienmetral.tasks.notification.entities.WebhookEvent;
+import io.julienmetral.tasks.notification.exceptions.WebhookDeliveryNotFoundException;
 import io.julienmetral.tasks.notification.exceptions.WebhookEndpointNotFoundException;
 import io.julienmetral.tasks.notification.exceptions.WebhookLimitReachedException;
 import io.julienmetral.tasks.notification.exceptions.WebhookUrlNotAllowedException;
 import io.julienmetral.tasks.notification.services.WebhookEndpointService;
 import io.julienmetral.tasks.notification.services.WebhookEndpointService.CreatedWebhookEndpoint;
 import io.julienmetral.tasks.notification.services.WebhookEndpointService.RotatedWebhookSecret;
+import io.julienmetral.tasks.notification.webhook.WebhookTestResult;
+import io.julienmetral.tasks.ratelimit.exceptions.RateLimitExceededException;
 import io.julienmetral.tasks.support.UserProfiles;
 import io.julienmetral.tasks.support.WebLayerTest;
 import org.junit.jupiter.api.Test;
@@ -26,12 +29,14 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.EnumSet;
 import java.util.List;
@@ -72,6 +77,10 @@ class WebhookEndpointControllerWebMvcTests {
     private static final String SECRET = WEBHOOK + "/secret";
 
     private static final String DELIVERIES = WEBHOOK + "/deliveries";
+
+    private static final String REDELIVER = DELIVERIES + "/{deliveryId}/redeliver";
+
+    private static final String TEST = WEBHOOK + "/test";
 
     private static final String URL = "https://hooks.example.com/tasks";
 
@@ -356,6 +365,151 @@ class WebhookEndpointControllerWebMvcTests {
                 .andExpect(jsonPath("$.detail").value("Webhook not found with id: " + webhookId));
     }
 
+    // Redelivery
+
+    @Test
+    void redeliverPassesTheThreeIdsAndAnswersAcceptedWithTheRequeuedDelivery() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        WebhookDelivery requeued = delivery(WebhookDeliveryStatus.PENDING);
+        requeued.setAttempts(0);
+        requeued.setLastStatusCode(500);
+        when(webhookService.redeliver(id, webhookId, requeued.getId())).thenReturn(requeued);
+
+        mockMvc.perform(post(REDELIVER, id, webhookId, requeued.getId()).with(user(id)))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.id").value(requeued.getId().toString()))
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.attempts").value(0))
+                .andExpect(jsonPath("$.lastStatusCode").value(500))
+                .andExpect(jsonPath("$.nextAttemptAt").value(CREATED_AT.plusSeconds(310).toString()))
+                .andExpect(jsonPath("$.deliveredAt").value(nullValue()))
+                .andExpect(jsonPath("$.payload").doesNotExist())
+                .andExpect(jsonPath("$.endpoint").doesNotExist());
+
+        verify(webhookService).redeliver(id, webhookId, requeued.getId());
+    }
+
+    @Test
+    void adminPassesTheCheckToRedeliverForAnotherUser() throws Exception {
+        UUID other = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        WebhookDelivery requeued = delivery(WebhookDeliveryStatus.PENDING);
+        when(webhookService.redeliver(other, webhookId, requeued.getId())).thenReturn(requeued);
+
+        mockMvc.perform(post(REDELIVER, other, webhookId, requeued.getId()).with(admin(UUID.randomUUID())))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.id").value(requeued.getId().toString()));
+
+        verify(webhookService).redeliver(other, webhookId, requeued.getId());
+    }
+
+    @Test
+    void deliveryTheServiceCannotFindIsANotFoundProblem() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        UUID deliveryId = UUID.randomUUID();
+        when(webhookService.redeliver(id, webhookId, deliveryId))
+                .thenThrow(new WebhookDeliveryNotFoundException(deliveryId));
+
+        mockMvc.perform(post(REDELIVER, id, webhookId, deliveryId).with(user(id)))
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value("Webhook delivery not found with id: " + deliveryId));
+    }
+
+    @Test
+    void redeliveryUnderAWebhookTheServiceCannotFindIsANotFoundProblem() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        UUID deliveryId = UUID.randomUUID();
+        when(webhookService.redeliver(id, webhookId, deliveryId))
+                .thenThrow(new WebhookEndpointNotFoundException(webhookId));
+
+        mockMvc.perform(post(REDELIVER, id, webhookId, deliveryId).with(user(id)))
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value("Webhook not found with id: " + webhookId));
+    }
+
+    @Test
+    void deliveryIdThatIsNotAUuidIsAnInvalidParameter() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        mockMvc.perform(post(REDELIVER, id, UUID.randomUUID(), "not-a-uuid").with(user(id)))
+                .andExpect(invalidParameter("deliveryId", "must be a UUID"));
+
+        verifyNoInteractions(webhookService);
+    }
+
+    // Test events
+
+    @Test
+    void testPassesBothIdsAndReturnsHowTheReceiverAnswered() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        when(webhookService.sendTest(id, webhookId)).thenReturn(new WebhookTestResult(true, 204, null, 42));
+
+        mockMvc.perform(post(TEST, id, webhookId).with(user(id)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.delivered").value(true))
+                .andExpect(jsonPath("$.statusCode").value(204))
+                .andExpect(jsonPath("$.error").value(nullValue()))
+                .andExpect(jsonPath("$.durationMillis").value(42));
+
+        verify(webhookService).sendTest(id, webhookId);
+    }
+
+    @Test
+    void testWithoutAnAnswerShowsTheErrorAndNoStatus() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        when(webhookService.sendTest(id, webhookId))
+                .thenReturn(new WebhookTestResult(false, null, "Timeout", 15001));
+
+        mockMvc.perform(post(TEST, id, webhookId).with(user(id)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.delivered").value(false))
+                .andExpect(jsonPath("$.statusCode").value(nullValue()))
+                .andExpect(jsonPath("$.error").value("Timeout"))
+                .andExpect(jsonPath("$.durationMillis").value(15001));
+    }
+
+    @Test
+    void adminPassesTheCheckToTestAnotherUsersWebhook() throws Exception {
+        UUID other = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        when(webhookService.sendTest(other, webhookId)).thenReturn(new WebhookTestResult(false, 500, null, 7));
+
+        mockMvc.perform(post(TEST, other, webhookId).with(admin(UUID.randomUUID())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.delivered").value(false))
+                .andExpect(jsonPath("$.statusCode").value(500));
+
+        verify(webhookService).sendTest(other, webhookId);
+    }
+
+    @Test
+    void testPastTheRateLimitIsATooManyRequestsProblemWithRetryAfter() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        when(webhookService.sendTest(id, webhookId)).thenThrow(new RateLimitExceededException(Duration.ofMinutes(20)));
+
+        mockMvc.perform(post(TEST, id, webhookId).with(user(id)))
+                .andExpect(untypedProblem(429, "Too Many Requests"))
+                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1200"))
+                .andExpect(jsonPath("$.detail").value("Too many requests, try again in 1200 seconds"));
+    }
+
+    @Test
+    void testOfAWebhookTheServiceCannotFindIsANotFoundProblem() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        when(webhookService.sendTest(id, webhookId)).thenThrow(new WebhookEndpointNotFoundException(webhookId));
+
+        mockMvc.perform(post(TEST, id, webhookId).with(user(id)))
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value("Webhook not found with id: " + webhookId));
+    }
+
     // Validation
 
     @Test
@@ -456,6 +610,10 @@ class WebhookEndpointControllerWebMvcTests {
                 .andExpect(invalidParameter("webhookId", "must be a UUID"));
         mockMvc.perform(get(DELIVERIES, id, "not-a-uuid").with(user(id)))
                 .andExpect(invalidParameter("webhookId", "must be a UUID"));
+        mockMvc.perform(post(REDELIVER, id, "not-a-uuid", UUID.randomUUID()).with(user(id)))
+                .andExpect(invalidParameter("webhookId", "must be a UUID"));
+        mockMvc.perform(post(TEST, id, "not-a-uuid").with(user(id)))
+                .andExpect(invalidParameter("webhookId", "must be a UUID"));
 
         verifyNoInteractions(webhookService);
     }
@@ -552,7 +710,9 @@ class WebhookEndpointControllerWebMvcTests {
                 put(WEBHOOK, id, webhookId).contentType(MediaType.APPLICATION_JSON).content(UPDATE_BODY),
                 delete(WEBHOOK, id, webhookId),
                 post(SECRET, id, webhookId),
-                get(DELIVERIES, id, webhookId)
+                get(DELIVERIES, id, webhookId),
+                post(REDELIVER, id, webhookId, UUID.randomUUID()),
+                post(TEST, id, webhookId)
         );
     }
 
