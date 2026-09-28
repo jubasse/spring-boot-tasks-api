@@ -1,0 +1,83 @@
+databaseChangeLog:
+- changeSet:
+    id: 018-create-webhook-deliveries
+    author: julien-metral
+    comment: >
+      One event to send to one webhook endpoint, with its attempts; pending deliveries are retried when due.
+    changes:
+    - createTable:
+        tableName: webhook_deliveries
+        columns:
+        - column:
+            name: id
+            type: UUID
+            defaultValueComputed: uuidv7()
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: webhook_deliveriesPK
+        - column:
+            name: endpoint_id
+            type: UUID
+            constraints:
+              nullable: false
+        - column:
+            name: event
+            type: VARCHAR(50)
+            constraints:
+              nullable: false
+        - column:
+            name: payload
+            type: TEXT
+            constraints:
+              nullable: false
+        - column:
+            name: status
+            type: VARCHAR(20)
+            constraints:
+              nullable: false
+        - column:
+            name: attempts
+            type: INTEGER
+            constraints:
+              nullable: false
+        - column:
+            name: next_attempt_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            name: last_attempt_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            name: last_status_code
+            type: INTEGER
+        - column:
+            name: last_error
+            type: VARCHAR(100)
+        - column:
+            name: delivered_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            name: created_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+            constraints:
+              nullable: false
+    - addForeignKeyConstraint:
+        baseTableName: webhook_deliveries
+        baseColumnNames: endpoint_id
+        constraintName: webhook_deliveries_endpointFK
+        referencedTableName: webhook_endpoints
+        referencedColumnNames: id
+    - createIndex:
+        tableName: webhook_deliveries
+        indexName: webhook_deliveries_endpoint_idIDX
+        columns:
+        - column:
+            name: endpoint_id
+    - createIndex:
+        tableName: webhook_deliveries
+        indexName: webhook_deliveries_dueIDX
+        columns:
+        - column:
+            name: status
+        - column:
+            name: next_attempt_at
