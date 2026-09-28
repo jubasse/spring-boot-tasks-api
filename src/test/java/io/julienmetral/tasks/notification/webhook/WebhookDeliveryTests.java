@@ -154,6 +154,8 @@ class WebhookDeliveryTests {
 
     private static final Duration OPEN_DURATION = Duration.ofMinutes(1);
 
+    private static final Duration POSTPONEMENT = OPEN_DURATION.plusSeconds(1);
+
     // The delay of WebhookClient's @Retryable, to which the jitter only adds
     private static final Duration QUICK_RETRY_DELAY = Duration.ofMillis(200);
 
@@ -1709,7 +1711,7 @@ class WebhookDeliveryTests {
         WebhookDelivery postponed = awaitPostponed(deliveryIds(endpoint).getLast());
         assertThat(postponed.getStatus()).isEqualTo(WebhookDeliveryStatus.PENDING);
         assertThat(postponed.getAttempts()).isZero();
-        assertThat(postponed.getNextAttemptAt()).isEqualTo(NOW.plus(OPEN_DURATION));
+        assertThat(postponed.getNextAttemptAt()).isEqualTo(NOW.plus(POSTPONEMENT));
         assertThat(postponed.getLastAttemptAt()).isNull();
         assertThat(postponed.getLastStatusCode()).isNull();
         assertThat(receiver.getRequestCount()).isEqualTo(FAILURES_OPENING_A_BREAKER);
@@ -1778,7 +1780,7 @@ class WebhookDeliveryTests {
         assertThat(delivery(tested).getAttempts()).isOne();
         assertThat(delivery(tested).getLastStatusCode()).isEqualTo(503);
         assertThat(postponed.getAttempts()).isZero();
-        assertThat(postponed.getNextAttemptAt()).isEqualTo(clock.instant().plus(OPEN_DURATION));
+        assertThat(postponed.getNextAttemptAt()).isEqualTo(clock.instant().plus(POSTPONEMENT));
         assertThat(receiver.getRequestCount()).isEqualTo(FAILURES_OPENING_A_BREAKER + 1);
         assertThat(openBreakers()).isOne();
     }
@@ -1846,7 +1848,7 @@ class WebhookDeliveryTests {
         WebhookDelivery postponed = awaitPostponed(ids.getLast());
         thirdTurnedAway.countDown();
         assertThat(postponed.getAttempts()).isZero();
-        assertThat(postponed.getNextAttemptAt()).isEqualTo(NOW.plus(OPEN_DURATION));
+        assertThat(postponed.getNextAttemptAt()).isEqualTo(NOW.plus(POSTPONEMENT));
         assertThat(awaitAttempts(ids.get(0), 1).getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
         assertThat(awaitAttempts(ids.get(1), 1).getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
         assertThat(receiver.getRequestCount()).isEqualTo(2);

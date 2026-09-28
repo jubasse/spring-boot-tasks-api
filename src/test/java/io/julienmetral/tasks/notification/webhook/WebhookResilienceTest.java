@@ -70,15 +70,15 @@ class WebhookResilienceTest {
 
     @ParameterizedTest
     @NullSource
-    @ValueSource(ints = {500, 502, 503, 504, 522, 429})
-    void serverErrorsTooManyRequestsAndCallsWithoutAnAnswerAreFailures(Integer statusCode) {
+    @ValueSource(ints = {500, 502, 503, 504, 522})
+    void serverErrorsAndCallsWithoutAnAnswerAreFailures(Integer statusCode) {
         calls(HOST, statusCode, MINIMUM_CALLS);
 
         assertThat(letsACallThrough(HOST)).isFalse();
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {200, 202, 204, 307, 400, 401, 403, 404, 410, 422})
+    @ValueSource(ints = {200, 202, 204, 307, 400, 401, 403, 404, 410, 422, 429})
     void otherStatusesAreSuccessesThatWeighAgainstTheFailures(int statusCode) {
         calls(HOST, statusCode, 3);
         failures(HOST, 2);
