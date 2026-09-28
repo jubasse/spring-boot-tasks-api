@@ -73,6 +73,8 @@ class RateLimiterTest {
     private static final int PASSWORD_RESET_PER_EMAIL = 3;
     private static final int VERIFICATION_RESEND_PER_USER = 4;
 
+    private static final int WEBHOOK_TEST_PER_USER = 10;
+
     @Mock
     private RateLimitQueries queries;
 
@@ -365,7 +367,8 @@ class RateLimiterTest {
                 signUpPerIp,
                 new Limit(PASSWORD_RESET_PER_IP, Duration.ofHours(1)),
                 new Limit(PASSWORD_RESET_PER_EMAIL, Duration.ofHours(1)),
-                new Limit(VERIFICATION_RESEND_PER_USER, Duration.ofHours(1))
+                new Limit(VERIFICATION_RESEND_PER_USER, Duration.ofHours(1)),
+                new Limit(WEBHOOK_TEST_PER_USER, Duration.ofHours(1))
         );
     }
 }
