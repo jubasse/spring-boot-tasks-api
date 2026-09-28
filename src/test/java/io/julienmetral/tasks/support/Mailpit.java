@@ -34,6 +34,19 @@ public class Mailpit {
         return search(email).path("messages_count").asInt();
     }
 
+    /** Number of emails sent to this address whose plain-text body contains the given text. */
+    public int countTo(String email, String containing) {
+        int count = 0;
+
+        for (JsonNode summary : search(email).path("messages")) {
+            if (text(summary).contains(containing)) {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
     /** Plain-text body of the most recent email sent to this address, waiting up to 5 seconds for it. */
     public String latestTextTo(String email) {
         return latestTextTo(email, "");
@@ -70,7 +83,7 @@ public class Mailpit {
     private Optional<String> findLatestTextTo(String email, String containing) {
         // Search results are sorted newest first
         for (JsonNode summary : search(email).path("messages")) {
-            String text = read("/api/v1/message/{id}", summary.path("ID").asString()).path("Text").asString();
+            String text = text(summary);
 
             if (text.contains(containing)) {
                 return Optional.of(text);
@@ -78,6 +91,10 @@ public class Mailpit {
         }
 
         return Optional.empty();
+    }
+
+    private String text(JsonNode summary) {
+        return read("/api/v1/message/{id}", summary.path("ID").asString()).path("Text").asString();
     }
 
     /** The verification token contained in the most recent email sent to this address. */
