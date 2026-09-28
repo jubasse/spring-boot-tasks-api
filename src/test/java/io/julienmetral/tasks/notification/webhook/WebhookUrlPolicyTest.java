@@ -228,7 +228,15 @@ class WebhookUrlPolicyTest {
             "https://user:secret@hooks.slack.com/services/T0001/B0002/test-token",
             "https://user@hooks.slack.com/services/T0001/B0002/test-token",
             "https://hooks.slack.com:8443/services/T0001/B0002/test-token",
-            "https://hooks.slack.com:80/services/T0001/B0002/test-token"
+            "https://hooks.slack.com:80/services/T0001/B0002/test-token",
+            "https://hooks.slack.com/services/",
+            "https://hooks.slack.com/services/T0001",
+            "https://hooks.slack.com/services/****",
+            "https://hooks.slack.com/services/T0001/B0002/test-token#channel",
+            "https://hooks.slack.com/services/../api/T0001/B0002",
+            "https://hooks.slack.com/services/T0001/../B0002/test-token",
+            "https://hooks.slack.com/services/T0001/B0002/test%2Ftoken",
+            "https://hooks.slack.com/services/T0001/B0002/test-token/extra/segment"
     })
     void urlThatIsNotASlackIncomingWebhookIsRefused(String url) {
         assertSlackRefused(httpsOnly, url, NOT_SLACK);

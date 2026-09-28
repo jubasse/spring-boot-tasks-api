@@ -527,6 +527,15 @@ class WebhookEndpointApiTests {
     }
 
     @Test
+    void rotatingTheSecretOfASlackWebhookIsRefusedAsNotSigned() throws Exception {
+        User user = createUser(UserRole.USER);
+        UUID webhookId = createdSlackId(user, slackUrl(), "task.assigned");
+
+        mockMvc.perform(post(SECRET, user.getId(), webhookId).with(asUser(user)))
+                .andExpect(typedProblem(422, "webhook-not-signed", "Webhook not signed"));
+    }
+
+    @Test
     void createSlackWebhookStoresItsUrlEncrypted() throws Exception {
         User user = createUser(UserRole.USER);
         String url = slackUrl();

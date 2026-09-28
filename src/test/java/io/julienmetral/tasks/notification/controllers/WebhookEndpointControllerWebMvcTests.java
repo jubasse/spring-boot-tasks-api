@@ -690,11 +690,18 @@ class WebhookEndpointControllerWebMvcTests {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"\"TEAMS\"", "\"slack\"", "\"\"", "true", "{}"})
+    @ValueSource(strings = {"\"TEAMS\"", "\"slack\"", "\"\"", "true", "{}", "1", "0"})
     void createWithAnUnknownKindPointsToIt(String kind) throws Exception {
         expectCreateRejected("{\"kind\": " + kind + ", \"url\": \"" + URL + "\", \"events\": [\"task.assigned\"]}")
                 .andExpect(invalidBodyValue("#/kind", "must be one of WEBHOOK, SLACK"))
                 .andExpect(withoutJavaTypeNames());
+    }
+
+    @Test
+    void createWithTheIndexOfAnEventInsteadOfItsNamePointsToIt() throws Exception {
+        expectCreateRejected("{\"url\": \"" + URL + "\", \"events\": [1]}")
+                .andExpect(invalidBodyValue("#/events/0", "must be one of task.assigned, task.unassigned, "
+                        + "task.cancelled, task.deleted, task.commented, task.mentioned, task.due_soon, task.overdue"));
     }
 
     @Test
