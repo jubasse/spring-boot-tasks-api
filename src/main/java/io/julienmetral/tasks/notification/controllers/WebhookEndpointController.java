@@ -4,6 +4,7 @@ import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.notification.dtos.CreateWebhookEndpointDto;
 import io.julienmetral.tasks.notification.dtos.NewWebhookEndpointDto;
 import io.julienmetral.tasks.notification.dtos.UpdateWebhookEndpointDto;
+import io.julienmetral.tasks.notification.dtos.WebhookDeliveryResponseDto;
 import io.julienmetral.tasks.notification.dtos.WebhookEndpointResponseDto;
 import io.julienmetral.tasks.notification.dtos.WebhookSecretDto;
 import io.julienmetral.tasks.notification.services.WebhookEndpointService;
@@ -16,6 +17,11 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.data.web.PagedModel;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -92,6 +98,19 @@ public class WebhookEndpointController {
     @AllowedRolesOrSelfOnly(UserRole.ADMIN)
     public void deleteWebhook(@PathVariable UUID id, @PathVariable UUID webhookId) {
         webhookService.delete(id, webhookId);
+    }
+
+    @Operation(summary = "List the deliveries of a webhook, newest first by default")
+    @GetMapping("/{webhookId}/deliveries")
+    @AllowedRolesOrSelfOnly(UserRole.ADMIN)
+    public PagedModel<WebhookDeliveryResponseDto> listWebhookDeliveries(
+            @PathVariable UUID id,
+            @PathVariable UUID webhookId,
+            @ParameterObject @PageableDefault(sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
+    ) {
+        return new PagedModel<>(
+                webhookService.findDeliveries(id, webhookId, pageable).map(WebhookDeliveryResponseDto::new)
+        );
     }
 
     @Operation(

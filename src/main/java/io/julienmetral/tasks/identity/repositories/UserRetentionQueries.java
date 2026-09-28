@@ -75,13 +75,13 @@ public class UserRetentionQueries {
         if (!ids.isEmpty()) {
             MapSqlParameterSource users = new MapSqlParameterSource("ids", ids);
 
-            jdbc.update(
-                    """
-                            DELETE FROM webhook_endpoint_events
-                            WHERE endpoint_id IN (SELECT id FROM webhook_endpoints WHERE user_id IN (:ids))
-                            """,
-                    users
-            );
+            for (String table : List.of("webhook_deliveries", "webhook_endpoint_events")) {
+                jdbc.update(
+                        "DELETE FROM " + table
+                                + " WHERE endpoint_id IN (SELECT id FROM webhook_endpoints WHERE user_id IN (:ids))",
+                        users
+                );
+            }
 
             for (String table : List.of(
                     "webhook_endpoints",
