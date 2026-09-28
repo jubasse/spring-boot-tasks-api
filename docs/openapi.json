@@ -244,6 +244,11 @@
             "type" : "array",
             "uniqueItems" : true
           },
+          "kind" : {
+            "description" : "WEBHOOK (the default) for a signed JSON event, SLACK for a Slack incoming webhook message, whose URL must start with https://hooks.slack.com/services/",
+            "enum" : [ "WEBHOOK", "SLACK" ],
+            "type" : "string"
+          },
           "url" : {
             "example" : "https://hooks.example.com/tasks",
             "maxLength" : 2048,
@@ -308,12 +313,17 @@
             "format" : "uuid",
             "type" : "string"
           },
+          "kind" : {
+            "enum" : [ "WEBHOOK", "SLACK" ],
+            "type" : "string"
+          },
           "secret" : {
-            "description" : "Signing secret in the Standard Webhooks format; it is never shown again",
+            "description" : "Signing secret in the Standard Webhooks format; it is never shown again. Absent for a Slack webhook, whose messages are not signed",
             "example" : "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
             "type" : "string"
           },
           "url" : {
+            "description" : "Masked for a Slack webhook, whose URL is its credential",
             "type" : "string"
           }
         },
@@ -717,6 +727,7 @@
             "uniqueItems" : true
           },
           "url" : {
+            "description" : "For a Slack webhook, the masked URL of a response keeps the current one",
             "example" : "https://hooks.example.com/tasks",
             "maxLength" : 2048,
             "minLength" : 0,
@@ -897,6 +908,10 @@
             "format" : "uuid",
             "type" : "string"
           },
+          "kind" : {
+            "enum" : [ "WEBHOOK", "SLACK" ],
+            "type" : "string"
+          },
           "previousSecretExpiresAt" : {
             "format" : "date-time",
             "type" : "string"
@@ -906,6 +921,7 @@
             "type" : "string"
           },
           "url" : {
+            "description" : "Masked for a Slack webhook, whose URL is its credential",
             "type" : "string"
           }
         },
