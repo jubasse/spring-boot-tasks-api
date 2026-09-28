@@ -4,6 +4,7 @@ import io.julienmetral.tasks.identity.security.PublicEndpoints;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.PathItem;
+import io.swagger.v3.oas.models.Paths;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.responses.ApiResponses;
 import org.springdoc.core.customizers.OpenApiCustomizer;
@@ -40,10 +41,26 @@ class PathDocumentation implements OpenApiCustomizer {
 
     @Override
     public void customise(OpenAPI openApi) {
+        pinUnversionedPaths(openApi);
+
         openApi.getPaths().forEach((path, item) -> item.readOperationsMap().forEach((method, operation) ->
                 document(path, method, operation)));
 
         requirePageFields(openApi);
+    }
+
+    /**
+     * springdoc publishes the raw {@code /api/v{version}} prefix of a mapping without a version attribute, since it
+     * cannot know that such a mapping answers the current version: every path became {@code /api/v{version}/...},
+     * and the rules below read {@code {version}} as a resource id.
+     */
+    private static void pinUnversionedPaths(OpenAPI openApi) {
+        String unversioned = ApiVersioningConfiguration.API_PATH + "/";
+        String current = ApiVersioningConfiguration.CURRENT_PATH + "/";
+        Paths pinned = new Paths();
+
+        openApi.getPaths().forEach((path, item) -> pinned.addPathItem(path.replace(unversioned, current), item));
+        openApi.setPaths(pinned);
     }
 
     static boolean isPublic(PathItem.HttpMethod method, String path) {

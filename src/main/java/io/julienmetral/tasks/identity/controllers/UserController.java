@@ -29,7 +29,7 @@ import java.net.URI;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/users")
+@RequestMapping("/users")
 @RequiredArgsConstructor
 @Tag(name = "Users", description = "Accounts: sign-up, profile, profile photo, and the admin actions.")
 public class UserController {

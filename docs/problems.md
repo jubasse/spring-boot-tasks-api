@@ -121,7 +121,7 @@ These errors have no `type` member (RFC 9457 reads that as `about:blank`), and t
 
 | Status | When | What to do |
 |---|---|---|
-| 400 Bad Request | The body is not valid JSON or not the JSON object the endpoint expects, or an uploaded file is empty | Fix the request |
+| 400 Bad Request | The body is not valid JSON or not the JSON object the endpoint expects, or an uploaded file is empty, or the API version in the path is not supported (only `/api/v1` is) | Fix the request |
 | 401 Unauthorized | Wrong email or password, or an invalid refresh token. Without a valid access token, the response has no body and a `WWW-Authenticate` header | Sign in again |
 | 403 Forbidden | The account may not do this. The response has no body | Do not retry |
 | 404 Not Found | The task, comment, attachment or user does not exist, or no endpoint matches the path | Check the id or the path |

@@ -41,7 +41,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/users/{id}/webhooks")
+@RequestMapping("/users/{id}/webhooks")
 @RequiredArgsConstructor
 @Tag(
         name = "Webhooks",

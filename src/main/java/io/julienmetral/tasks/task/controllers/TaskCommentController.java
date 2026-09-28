@@ -30,7 +30,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/tasks/{id}/comments")
+@RequestMapping("/tasks/{id}/comments")
 @RequiredArgsConstructor
 @Tag(name = "Comments", description = "Comments on a task, with mentions and files.")
 public class TaskCommentController {

@@ -99,6 +99,8 @@ The role is part of the access token, so log in again afterwards.
 
 Open http://localhost:8080/swagger-ui.html. Every endpoint is listed with its parameters, responses and errors, and you can call it from the page: sign in with `POST /api/v1/auth/login`, copy the `accessToken`, then paste it in **Authorize**.
 
+Every path starts with the API version, `/api/v1`; a version the API does not support answers 400.
+
 The OpenAPI document behind the page is at http://localhost:8080/v3/api-docs, and a copy is kept in [docs/openapi.json](docs/openapi.json), so a change to the API shows in the diff of its pull request. To generate a client, use that file.
 
 ### Explore every endpoint with Postman

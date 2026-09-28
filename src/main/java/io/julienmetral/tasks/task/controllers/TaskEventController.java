@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/tasks/{taskId}/events")
+@RequestMapping("/tasks/{taskId}/events")
 @RequiredArgsConstructor
 @Tag(name = "History", description = "What happened to a task, and who did it.")
 public class TaskEventController {
