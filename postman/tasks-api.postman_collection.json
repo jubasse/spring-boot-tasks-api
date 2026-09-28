@@ -135,6 +135,10 @@
     {
       "key": "rateLimitedEmail",
       "value": ""
+    },
+    {
+      "key": "webhookId",
+      "value": ""
     }
   ],
   "item": [
@@ -1897,6 +1901,363 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "Declare a webhook (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/webhooks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{userId}}",
+                "webhooks"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "ADMIN or the user themselves. The URL must be HTTPS on port 443 and resolve to a public address. The response is the only one that shows the secret, besides a rotation.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://example.com/tasks-webhook\",\n  \"events\": [\n    \"task.assigned\",\n    \"task.commented\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [201]', () => pm.expect(pm.response.code).to.be.oneOf([201]));",
+                  "const body = pm.response.json();",
+                  "pm.test('points to the new webhook', () => pm.expect(pm.response.headers.get('Location')).to.include('/webhooks/' + body.id));",
+                  "pm.test('shows the signing secret once', () => pm.expect(body.secret).to.match(/^whsec_/));",
+                  "pm.test('keeps the chosen events', () => pm.expect(body.events).to.eql(['task.assigned', 'task.commented']));",
+                  "pm.collectionVariables.set('webhookId', body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List my webhooks (200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/webhooks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{userId}}",
+                "webhooks"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "const body = pm.response.json();",
+                  "pm.test('lists the webhook', () => pm.expect(body.map(webhook => webhook.id)).to.include(pm.collectionVariables.get('webhookId')));",
+                  "pm.test('never shows a secret', () => body.forEach(webhook => pm.expect(webhook).to.not.have.property('secret')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pause a webhook (200)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/webhooks/{{webhookId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{userId}}",
+                "webhooks",
+                "{{webhookId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://example.com/tasks-webhook\",\n  \"events\": [\n    \"task.assigned\"\n  ],\n  \"enabled\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "const body = pm.response.json();",
+                  "pm.test('is disabled by its owner', () => { pm.expect(body.enabled).to.be.false; pm.expect(body.disabledReason).to.eql('OWNER'); });",
+                  "pm.test('replaces the events', () => pm.expect(body.events).to.eql(['task.assigned']));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rotate the signing secret (200)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/webhooks/{{webhookId}}/secret",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{userId}}",
+                "webhooks",
+                "{{webhookId}}",
+                "secret"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The previous secret keeps signing deliveries, next to the new one, until previousSecretExpiresAt."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "const body = pm.response.json();",
+                  "pm.test('gives a new secret', () => pm.expect(body.secret).to.match(/^whsec_/));",
+                  "pm.test('keeps the previous secret for a while', () => pm.expect(Date.parse(body.previousSecretExpiresAt)).to.be.above(Date.now()));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refuse a private address (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/webhooks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{userId}}",
+                "webhooks"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://10.0.0.1/tasks-webhook\",\n  \"events\": [\n    \"task.assigned\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [422]', () => pm.expect(pm.response.code).to.be.oneOf([422]));",
+                  "pm.test('is a webhook-url-not-allowed problem', () => pm.expect(pm.response.json().type).to.match(/#webhook-url-not-allowed$/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete a webhook (204)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/webhooks/{{webhookId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{userId}}",
+                "webhooks",
+                "{{webhookId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [204]', () => pm.expect(pm.response.code).to.be.oneOf([204]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get a deleted webhook (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/webhooks/{{webhookId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{userId}}",
+                "webhooks",
+                "{{webhookId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [404]', () => pm.expect(pm.response.code).to.be.oneOf([404]));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Endpoints of an account that receive its task notifications. The declared URL must resolve to a public address, so running this folder needs network access."
     },
     {
       "name": "Tasks",

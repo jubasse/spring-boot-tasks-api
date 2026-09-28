@@ -45,6 +45,8 @@ Generate a changeset from entity changes. Run it against a database that already
 ```
 Then review the file, and give its changesets readable `id`s and a real `author`.
 
+Warning: compile before the diff, since it reads the entities from `target/classes`. Even then it compares indexes and foreign keys by table and columns, not by name: a renamed constraint or index is not reported (checked on 2026-09-27), so check names against the convention by hand. A missing constraint or a changed column is reported.
+
 Passwords are hashed with Argon2id (`SecurityConfiguration.passwordEncoder`, Bouncy Castle provides the implementation). BCrypt is registered only to verify legacy hashes, which `DatabaseUserDetailsService.updatePassword` upgrades to Argon2id on the next successful login. `{noop}` is not registered, so tests that store users directly must hash with the `PasswordEncoder` bean.
 
 ## Architecture
@@ -57,7 +59,7 @@ Package-by-feature under `io.julienmetral.tasks`, and each feature uses the same
 - `messaging`: the outbox through which every RabbitMQ message is published (see Outbox below).
 - `media`: stored files and their metadata (see Media storage below). Its sub-packages are `model` (entities, enums and value records), `services`, `repositories`, `controllers` and `exceptions`.
 - `config`: application-wide technical configuration, such as the storage drivers.
-- `notification`: task email notifications and their per-user settings.
+- `notification`: task email notifications, their per-user settings, and the webhook endpoints (see Webhooks below).
   - **Settings:** `GET`/`PUT /api/v1/users/{id}/notification-settings`, for the user or an admin. There is one switch per task event (plus `taskCommented`, `taskMentioned`, `taskDueSoon` and `taskOverdue`), and a user without a stored row gets `NotificationSettings.defaults` (everything enabled).
   - **Emails:** `TaskService` and `TaskCommentService` publish domain events (`task.events.TaskAssigned`, `TaskUnassigned`, `TaskCancelled`, `TaskDeleted`, `TaskCommentAdded`, `UsersMentionedInComment`), `TaskReminderService` publishes `TaskDueSoon` and `TaskOverdue`, and `notification.mail.TaskNotificationSender` turns them into emails. Only the concerned assignee (or mentioned user) receives one, never about their own action, only while their account is active, and only if the matching switch is on. The `task` package never depends on `notification`.
 - `shared`: the auditable base entity, the global `ApiExceptionHandler` (`@RestControllerAdvice` returning `ProblemDetail`), and the reusable security annotations.
@@ -160,6 +162,14 @@ Two Caffeine caches run on Spring Boot's cache manager. `CacheConfiguration` set
 
 In development, SMTP goes to the Mailpit service of `compose.yaml` (web UI on http://localhost:8025). Tests start RabbitMQ and Mailpit containers (`TestcontainersConfiguration`) and read the received emails with `support.Mailpit`. Sending is asynchronous, so use its waiting methods (`latestTextTo`, `latestVerificationTokenFor`).
 
+### Webhooks
+
+Users declare HTTPS endpoints that will receive their task notifications: `/api/v1/users/{id}/webhooks`, for the user or an admin.
+- **Secrets:** Standard Webhooks `whsec_` secrets of 32 random bytes, encrypted with AES-256-GCM by `WebhookSecrets` (`webhooks.encryption-key`, `WEBHOOK_ENCRYPTION_KEY`; the `v1:` prefix names the key). Only the creation and rotation responses show a secret. A rotation keeps the previous one for `webhooks.previous-secret-validity` (24 h), so receivers can switch. Warning: a new encryption key makes every stored secret unreadable.
+- **URLs:** `WebhookUrlPolicy` refuses, when a URL is declared or changed, anything but HTTPS on port 443 (`webhooks.require-https=false` only on a development machine), credentials in the URL, and hosts that resolve to a non-public address. The HTTP client checks the addresses again at every call (see Outgoing HTTP): a public host today can resolve to an internal address tomorrow.
+- **Events:** `WebhookEvent`, one per `TaskNotificationType`, named `task.assigned` and so on in the API and in the payloads.
+- **Limits and erasure:** 5 endpoints per user (`webhooks.max-per-user`); a creation locks the account row, so concurrent creations count each other. Erasing an account deletes its endpoints (`UserRetentionQueries`).
+
 ### Media storage
 
 - **Uploads:** they go through the API as multipart requests. `MediaService.store` rejects empty files (400) and files above the usage's size limit (413, `media.*-max-size`). It detects the real type from the bytes with Apache Tika, and the client's `Content-Type` and file extension never decide it; a type outside `MediaUsage`'s list gets 415. It then streams the file to object storage under `<usage>/<uuid>` (never the client's file name) and saves a `media` row with the SHA-256. If the caller's transaction rolls back, the object is deleted again.
@@ -220,7 +230,7 @@ The default configuration serves development and tests. `application-prod.yaml` 
 - **A setting with no safe production default** gets an empty default there (`${MAIL_HOST:}`) and an entry in `deployment.required-properties`. `RequiredPropertiesCheck` then stops the startup before any bean is created and names every missing setting. A localhost default would let a deployment start against nothing.
 - Warning: never set `spring.profiles.active` in a file of the jar, and never export `SPRING_PROFILES_ACTIVE` in a shell or an IDE: the tests would load the `prod` profile over `src/test/resources/config/application.yaml` and stop on the missing settings.
 - **Image** (`Dockerfile`): Maven builds the jar in a JDK stage, `jarmode=tools extract --layers` splits it, and it runs on the Temurin 25 JRE as uid 10001, with the `prod` profile set after the AOT training. Base images are pinned by digest. `.dockerignore` is an allowlist: a file the build needs must be added there.
-- **AOT cache:** a training run during the build (`-XX:AOTCacheOutput`, `-Dspring.context.exit=onRefresh`) records the classes loaded up to the context refresh; the start then takes about a third less time (median of five alternating starts: 8.1 s instead of 12.8 s). The training reaches no service: Liquibase and Hibernate's JDBC metadata access are off, with an explicit dialect. Warning: a bean that connects to a service while the context refreshes, rather than in an `ApplicationRunner` or a lifecycle `start`, fails the image build.
+- **AOT cache:** a training run during the build (`-XX:AOTCacheOutput`, `-Dspring.context.exit=onRefresh`) records the classes loaded up to the context refresh; the start then takes about a third less time (median of five alternating starts: 8.1 s instead of 12.8 s). The training reaches no service: Liquibase and Hibernate's JDBC metadata access are off, with an explicit dialect. Warning: a bean that connects to a service while the context refreshes, rather than in an `ApplicationRunner` or a lifecycle `start`, fails the image build, and so does a new setting that startup requires until the training `RUN` gets a throwaway value for it (as `JWT_SECRET` and `WEBHOOK_ENCRYPTION_KEY` have).
 - **`compose.production.yaml`** runs the image hardened, on its own copy of the services, as the project `tasks-prod` (README, Run the production image locally).
 
 ### Method-security annotations

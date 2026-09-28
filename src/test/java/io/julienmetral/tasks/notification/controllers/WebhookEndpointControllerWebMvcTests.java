@@ -1,0 +1,437 @@
+package io.julienmetral.tasks.notification.controllers;
+
+import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
+import io.julienmetral.tasks.notification.dtos.CreateWebhookEndpointDto;
+import io.julienmetral.tasks.notification.dtos.UpdateWebhookEndpointDto;
+import io.julienmetral.tasks.notification.entities.WebhookEndpoint;
+import io.julienmetral.tasks.notification.entities.WebhookEvent;
+import io.julienmetral.tasks.notification.exceptions.WebhookEndpointNotFoundException;
+import io.julienmetral.tasks.notification.exceptions.WebhookLimitReachedException;
+import io.julienmetral.tasks.notification.exceptions.WebhookUrlNotAllowedException;
+import io.julienmetral.tasks.notification.services.WebhookEndpointService;
+import io.julienmetral.tasks.notification.services.WebhookEndpointService.CreatedWebhookEndpoint;
+import io.julienmetral.tasks.notification.services.WebhookEndpointService.RotatedWebhookSecret;
+import io.julienmetral.tasks.support.UserProfiles;
+import io.julienmetral.tasks.support.WebLayerTest;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
+
+import java.time.Instant;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.UUID;
+
+import static io.julienmetral.tasks.support.Problems.invalidBodyValue;
+import static io.julienmetral.tasks.support.Problems.invalidParameter;
+import static io.julienmetral.tasks.support.Problems.typedProblem;
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
+import static io.julienmetral.tasks.support.Problems.validationError;
+import static io.julienmetral.tasks.support.Problems.withoutJavaTypeNames;
+import static io.julienmetral.tasks.support.WebCallers.admin;
+import static io.julienmetral.tasks.support.WebCallers.user;
+import static io.julienmetral.tasks.support.WebCallers.withoutUid;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.contains;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@WebLayerTest
+class WebhookEndpointControllerWebMvcTests {
+
+    private static final String WEBHOOKS = "/api/v1/users/{id}/webhooks";
+
+    private static final String WEBHOOK = WEBHOOKS + "/{webhookId}";
+
+    private static final String SECRET = WEBHOOK + "/secret";
+
+    private static final String URL = "https://hooks.example.com/tasks";
+
+    private static final String CREATE_BODY = """
+            {"url": "https://hooks.example.com/tasks", "events": ["task.overdue", "task.assigned"]}
+            """;
+
+    private static final String UPDATE_BODY = """
+            {"url": "https://hooks.example.com/tasks", "events": ["task.due_soon"], "enabled": false}
+            """;
+
+    private static final Instant CREATED_AT = Instant.parse("2026-05-06T07:08:09Z");
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private WebhookEndpointService webhookService;
+
+    // Authentication and access
+
+    @Test
+    void everyEndpointWithoutTokenReturnsUnauthorized() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+
+        for (MockHttpServletRequestBuilder request : everyEndpoint(id, webhookId)) {
+            mockMvc.perform(request).andExpect(status().isUnauthorized());
+        }
+
+        verifyNoInteractions(webhookService);
+    }
+
+    @Test
+    void userCannotReachAnyEndpointOfAnotherUser() throws Exception {
+        UUID caller = UUID.randomUUID();
+        UUID other = UUID.randomUUID();
+
+        for (MockHttpServletRequestBuilder request : everyEndpoint(other, UUID.randomUUID())) {
+            mockMvc.perform(request.with(user(caller))).andExpect(status().isForbidden());
+        }
+
+        verifyNoInteractions(webhookService);
+    }
+
+    @Test
+    void callerWithoutUidCannotReachAnyEndpoint() throws Exception {
+        for (MockHttpServletRequestBuilder request : everyEndpoint(UUID.randomUUID(), UUID.randomUUID())) {
+            mockMvc.perform(request.with(withoutUid())).andExpect(status().isForbidden());
+        }
+
+        verifyNoInteractions(webhookService);
+    }
+
+    @Test
+    void adminPassesTheCheckForAnotherUsersWebhooks() throws Exception {
+        UUID other = UUID.randomUUID();
+        when(webhookService.findAll(other)).thenReturn(List.of());
+
+        mockMvc.perform(get(WEBHOOKS, other).with(admin(UUID.randomUUID())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
+
+        verify(webhookService).findAll(other);
+    }
+
+    // Ids and bodies passed to the service, and the responses
+
+    @Test
+    void createPassesThePathIdAndTheParsedBody() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        when(webhookService.create(eq(id), any()))
+                .thenReturn(new CreatedWebhookEndpoint(endpoint(id, webhookId), "whsec_secret"));
+
+        mockMvc.perform(json(post(WEBHOOKS, id), user(id), CREATE_BODY))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Location", "/api/v1/users/" + id + "/webhooks/" + webhookId))
+                .andExpect(jsonPath("$.id").value(webhookId.toString()))
+                .andExpect(jsonPath("$.url").value(URL))
+                .andExpect(jsonPath("$.events").value(contains("task.assigned", "task.overdue")))
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.createdAt").value(CREATED_AT.toString()))
+                .andExpect(jsonPath("$.secret").value("whsec_secret"));
+
+        ArgumentCaptor<CreateWebhookEndpointDto> dto = ArgumentCaptor.forClass(CreateWebhookEndpointDto.class);
+        verify(webhookService).create(eq(id), dto.capture());
+        assertThat(dto.getValue().url()).isEqualTo(URL);
+        assertThat(dto.getValue().events())
+                .containsExactlyInAnyOrder(WebhookEvent.TASK_OVERDUE, WebhookEvent.TASK_ASSIGNED);
+    }
+
+    @Test
+    void listPassesThePathIdAndShowsNoSecret() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        when(webhookService.findAll(id)).thenReturn(List.of(endpoint(id, first), endpoint(id, second)));
+
+        mockMvc.perform(get(WEBHOOKS, id).with(user(id)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].id").value(contains(first.toString(), second.toString())))
+                .andExpect(jsonPath("$[0].secret").doesNotExist())
+                .andExpect(jsonPath("$[0].previousSecret").doesNotExist());
+    }
+
+    @Test
+    void getPassesBothIds() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        when(webhookService.get(id, webhookId)).thenReturn(endpoint(id, webhookId));
+
+        mockMvc.perform(get(WEBHOOK, id, webhookId).with(user(id)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(webhookId.toString()))
+                .andExpect(jsonPath("$.secret").doesNotExist());
+
+        verify(webhookService).get(id, webhookId);
+    }
+
+    @Test
+    void updatePassesBothIdsAndTheParsedBody() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        when(webhookService.update(eq(id), eq(webhookId), any())).thenReturn(endpoint(id, webhookId));
+
+        mockMvc.perform(json(put(WEBHOOK, id, webhookId), user(id), UPDATE_BODY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(webhookId.toString()))
+                .andExpect(jsonPath("$.secret").doesNotExist());
+
+        ArgumentCaptor<UpdateWebhookEndpointDto> dto = ArgumentCaptor.forClass(UpdateWebhookEndpointDto.class);
+        verify(webhookService).update(eq(id), eq(webhookId), dto.capture());
+        assertThat(dto.getValue().url()).isEqualTo(URL);
+        assertThat(dto.getValue().events()).containsExactly(WebhookEvent.TASK_DUE_SOON);
+        assertThat(dto.getValue().enabled()).isFalse();
+    }
+
+    @Test
+    void deletePassesBothIdsAndReturnsNoContent() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+
+        mockMvc.perform(delete(WEBHOOK, id, webhookId).with(user(id)))
+                .andExpect(status().isNoContent());
+
+        verify(webhookService).delete(id, webhookId);
+    }
+
+    @Test
+    void rotationPassesBothIdsAndReturnsTheNewSecretWithTheExpiry() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        Instant expiry = Instant.parse("2026-05-07T07:08:09Z");
+        when(webhookService.rotateSecret(id, webhookId)).thenReturn(new RotatedWebhookSecret("whsec_new", expiry));
+
+        mockMvc.perform(post(SECRET, id, webhookId).with(user(id)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.secret").value("whsec_new"))
+                .andExpect(jsonPath("$.previousSecretExpiresAt").value(expiry.toString()));
+
+        verify(webhookService).rotateSecret(id, webhookId);
+    }
+
+    // Validation
+
+    @Test
+    void createWithoutEventsPointsToThem() throws Exception {
+        expectCreateRejected("{\"url\": \"" + URL + "\"}")
+                .andExpect(invalidBodyValue("#/events", "must not be empty"));
+    }
+
+    @Test
+    void createWithAnEmptyEventListPointsToIt() throws Exception {
+        expectCreateRejected("{\"url\": \"" + URL + "\", \"events\": []}")
+                .andExpect(invalidBodyValue("#/events", "must not be empty"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\"task.exploded\"", "\"TASK_ASSIGNED\"", "\"assigned\"", "null"})
+    void createWithAnUnknownOrNullEventPointsToIt(String event) throws Exception {
+        expectCreateRejected("{\"url\": \"" + URL + "\", \"events\": [" + event + "]}")
+                .andExpect(validationError())
+                .andExpect(jsonPath("$.errors.length()").value(1))
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/events/0"))
+                .andExpect(withoutJavaTypeNames());
+    }
+
+    @Test
+    void createWithEventsThatAreNotAListPointsToThem() throws Exception {
+        expectCreateRejected("{\"url\": \"" + URL + "\", \"events\": 42}")
+                .andExpect(validationError())
+                .andExpect(jsonPath("$.errors[0].pointer").value("#/events"))
+                .andExpect(withoutJavaTypeNames());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\"\"", "\"   \"", "null"})
+    void createWithABlankUrlPointsToIt(String url) throws Exception {
+        expectCreateRejected("{\"url\": " + url + ", \"events\": [\"task.assigned\"]}")
+                .andExpect(invalidBodyValue("#/url", "must not be blank"));
+    }
+
+    @Test
+    void createWithoutUrlPointsToIt() throws Exception {
+        expectCreateRejected("{\"events\": [\"task.assigned\"]}")
+                .andExpect(invalidBodyValue("#/url", "must not be blank"));
+    }
+
+    @Test
+    void createWithAUrlLongerThan2048CharactersPointsToIt() throws Exception {
+        String url = "https://hooks.example.com/" + "a".repeat(2048);
+
+        expectCreateRejected("{\"url\": \"" + url + "\", \"events\": [\"task.assigned\"]}")
+                .andExpect(invalidBodyValue("#/url", "size must be between 0 and 2048"));
+    }
+
+    @Test
+    void createWithMalformedJsonReturnsBadRequest() throws Exception {
+        expectCreateRejected("{\"url\": ");
+    }
+
+    @Test
+    void updateWithoutEnabledPointsToIt() throws Exception {
+        expectUpdateRejected("{\"url\": \"" + URL + "\", \"events\": [\"task.assigned\"]}")
+                .andExpect(invalidBodyValue("#/enabled", "must not be null"));
+    }
+
+    @Test
+    void updateWithEnabledThatIsNotABooleanPointsToIt() throws Exception {
+        expectUpdateRejected("{\"url\": \"" + URL + "\", \"events\": [\"task.assigned\"], \"enabled\": \"maybe\"}")
+                .andExpect(invalidBodyValue("#/enabled", "must be true or false"));
+    }
+
+    @Test
+    void updateWithoutEventsPointsToThem() throws Exception {
+        expectUpdateRejected("{\"url\": \"" + URL + "\", \"events\": [], \"enabled\": true}")
+                .andExpect(invalidBodyValue("#/events", "must not be empty"));
+    }
+
+    @Test
+    void updateWithABlankUrlPointsToIt() throws Exception {
+        expectUpdateRejected("{\"url\": \" \", \"events\": [\"task.assigned\"], \"enabled\": true}")
+                .andExpect(invalidBodyValue("#/url", "must not be blank"));
+    }
+
+    @Test
+    void userIdThatIsNotAUuidIsAnInvalidParameter() throws Exception {
+        mockMvc.perform(get(WEBHOOKS, "not-a-uuid").with(admin(UUID.randomUUID())))
+                .andExpect(invalidParameter("id", "must be a UUID"));
+
+        verifyNoInteractions(webhookService);
+    }
+
+    @Test
+    void webhookIdThatIsNotAUuidIsAnInvalidParameter() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        mockMvc.perform(get(WEBHOOK, id, "not-a-uuid").with(user(id)))
+                .andExpect(invalidParameter("webhookId", "must be a UUID"));
+        mockMvc.perform(post(SECRET, id, "not-a-uuid").with(user(id)))
+                .andExpect(invalidParameter("webhookId", "must be a UUID"));
+
+        verifyNoInteractions(webhookService);
+    }
+
+    // Exception mapping
+
+    @Test
+    void webhookTheServiceCannotFindIsANotFoundProblem() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        when(webhookService.get(id, webhookId)).thenThrow(new WebhookEndpointNotFoundException(webhookId));
+
+        mockMvc.perform(get(WEBHOOK, id, webhookId).with(user(id)))
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value("Webhook not found with id: " + webhookId));
+    }
+
+    @Test
+    void userTheServiceCannotFindIsANotFoundProblem() throws Exception {
+        UUID unknown = UUID.randomUUID();
+        when(webhookService.findAll(unknown)).thenThrow(new UserNotFoundException(unknown));
+
+        mockMvc.perform(get(WEBHOOKS, unknown).with(admin(UUID.randomUUID())))
+                .andExpect(untypedProblem(404, "Not Found"))
+                .andExpect(jsonPath("$.detail").value("User not found with id: " + unknown));
+    }
+
+    @Test
+    void refusedUrlOnCreationIsAWebhookUrlNotAllowedProblem() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(webhookService.create(eq(id), any()))
+                .thenThrow(new WebhookUrlNotAllowedException("The URL must point to a public address"));
+
+        mockMvc.perform(json(post(WEBHOOKS, id), user(id), CREATE_BODY))
+                .andExpect(typedProblem(422, "webhook-url-not-allowed", "Webhook URL not allowed"))
+                .andExpect(jsonPath("$.detail").value("The URL must point to a public address"));
+    }
+
+    @Test
+    void refusedUrlOnUpdateIsAWebhookUrlNotAllowedProblem() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        when(webhookService.update(eq(id), eq(webhookId), any()))
+                .thenThrow(new WebhookUrlNotAllowedException("The URL must use HTTPS on port 443"));
+
+        mockMvc.perform(json(put(WEBHOOK, id, webhookId), user(id), UPDATE_BODY))
+                .andExpect(typedProblem(422, "webhook-url-not-allowed", "Webhook URL not allowed"))
+                .andExpect(jsonPath("$.detail").value("The URL must use HTTPS on port 443"));
+    }
+
+    @Test
+    void limitReachedIsAWebhookLimitReachedProblem() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(webhookService.create(eq(id), any())).thenThrow(new WebhookLimitReachedException(5));
+
+        mockMvc.perform(json(post(WEBHOOKS, id), user(id), CREATE_BODY))
+                .andExpect(typedProblem(422, "webhook-limit-reached", "Webhook limit reached"))
+                .andExpect(jsonPath("$.detail").value("A user can declare at most 5 webhooks"));
+    }
+
+    private ResultActions expectCreateRejected(String body) throws Exception {
+        UUID id = UUID.randomUUID();
+
+        ResultActions result = mockMvc.perform(json(post(WEBHOOKS, id), user(id), body))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(webhookService);
+        return result;
+    }
+
+    private ResultActions expectUpdateRejected(String body) throws Exception {
+        UUID id = UUID.randomUUID();
+
+        ResultActions result = mockMvc.perform(json(put(WEBHOOK, id, UUID.randomUUID()), user(id), body))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(webhookService);
+        return result;
+    }
+
+    private static MockHttpServletRequestBuilder json(
+            MockHttpServletRequestBuilder request,
+            RequestPostProcessor caller,
+            String body
+    ) {
+        return request.with(caller).contentType(MediaType.APPLICATION_JSON).content(body);
+    }
+
+    private static List<MockHttpServletRequestBuilder> everyEndpoint(UUID id, UUID webhookId) {
+        return List.of(
+                post(WEBHOOKS, id).contentType(MediaType.APPLICATION_JSON).content(CREATE_BODY),
+                get(WEBHOOKS, id),
+                get(WEBHOOK, id, webhookId),
+                put(WEBHOOK, id, webhookId).contentType(MediaType.APPLICATION_JSON).content(UPDATE_BODY),
+                delete(WEBHOOK, id, webhookId),
+                post(SECRET, id, webhookId)
+        );
+    }
+
+    private static WebhookEndpoint endpoint(UUID userId, UUID webhookId) {
+        WebhookEndpoint endpoint = new WebhookEndpoint();
+        endpoint.setId(webhookId);
+        endpoint.setUser(UserProfiles.reference(userId));
+        endpoint.setUrl(URL);
+        endpoint.setSecret("v1:encrypted");
+        endpoint.setPreviousSecret("v1:previous");
+        endpoint.setEvents(EnumSet.of(WebhookEvent.TASK_OVERDUE, WebhookEvent.TASK_ASSIGNED));
+        endpoint.setCreatedAt(CREATED_AT);
+        endpoint.setUpdatedAt(CREATED_AT);
+        return endpoint;
+    }
+}

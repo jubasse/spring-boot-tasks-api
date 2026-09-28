@@ -116,6 +116,14 @@ management:
 # rate limits comes from X-Forwarded-For; without a proxy, keep none, or clients could pick their own address
 server:
   forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
+# Endpoints users declare to receive their task notifications. The key encrypts their signing secrets in the
+# database: Base64 of at least 32 bytes (openssl rand -base64 32). Only a development machine turns requireHttps off,
+# with OUTBOUND_HTTP_ALLOWED_ADDRESSES, to reach a local receiver.
+webhooks:
+  encryption-key: ${WEBHOOK_ENCRYPTION_KEY:}
+  require-https: ${WEBHOOK_REQUIRE_HTTPS:true}
+  max-per-user: 5
+  previous-secret-validity: 24h
 # Outgoing HTTP calls (webhooks) reach only public addresses; OutboundHttpConfiguration explains why. To try a
 # receiver on your machine, set OUTBOUND_HTTP_ALLOWED_ADDRESSES=127.0.0.1/32.
 outbound-http:

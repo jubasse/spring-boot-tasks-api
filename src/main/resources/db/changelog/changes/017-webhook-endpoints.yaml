@@ -1,0 +1,90 @@
+databaseChangeLog:
+- changeSet:
+    id: 017-create-webhook-endpoints
+    author: julien-metral
+    comment: >
+      HTTPS endpoints of a user that receive the task events they subscribe to, signed with an encrypted secret.
+    changes:
+    - createTable:
+        tableName: webhook_endpoints
+        columns:
+        - column:
+            name: id
+            type: UUID
+            defaultValueComputed: uuidv7()
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: webhook_endpointsPK
+        - column:
+            name: user_id
+            type: UUID
+            constraints:
+              nullable: false
+        - column:
+            name: url
+            type: VARCHAR(2048)
+            constraints:
+              nullable: false
+        - column:
+            name: secret
+            type: VARCHAR(512)
+            constraints:
+              nullable: false
+        - column:
+            name: previous_secret
+            type: VARCHAR(512)
+        - column:
+            name: previous_secret_expires_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            name: disabled_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            name: disabled_reason
+            type: VARCHAR(50)
+        - column:
+            name: created_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+            constraints:
+              nullable: false
+        - column:
+            name: updated_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+            constraints:
+              nullable: false
+    - addForeignKeyConstraint:
+        baseTableName: webhook_endpoints
+        baseColumnNames: user_id
+        constraintName: webhook_endpoints_userFK
+        referencedTableName: user_profiles
+        referencedColumnNames: id
+    - createIndex:
+        tableName: webhook_endpoints
+        indexName: webhook_endpoints_user_idIDX
+        columns:
+        - column:
+            name: user_id
+    - createTable:
+        tableName: webhook_endpoint_events
+        columns:
+        - column:
+            name: endpoint_id
+            type: UUID
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: webhook_endpoint_eventsPK
+        - column:
+            name: event
+            type: VARCHAR(50)
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: webhook_endpoint_eventsPK
+    - addForeignKeyConstraint:
+        baseTableName: webhook_endpoint_events
+        baseColumnNames: endpoint_id
+        constraintName: webhook_endpoint_events_endpointFK
+        referencedTableName: webhook_endpoints
+        referencedColumnNames: id

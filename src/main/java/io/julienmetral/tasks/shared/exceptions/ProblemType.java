@@ -24,7 +24,9 @@ public enum ProblemType {
     ASSIGNEE_NOT_ACTIVE(HttpStatus.UNPROCESSABLE_CONTENT, "assignee-not-active", "Assignee not active"),
     INVALID_MENTION(HttpStatus.UNPROCESSABLE_CONTENT, "invalid-mention", "Invalid mention"),
     INFECTED_FILE(HttpStatus.UNPROCESSABLE_CONTENT, "infected-file", "File rejected by the antivirus"),
-    INVALID_IMAGE(HttpStatus.UNPROCESSABLE_CONTENT, "invalid-image", "Invalid image");
+    INVALID_IMAGE(HttpStatus.UNPROCESSABLE_CONTENT, "invalid-image", "Invalid image"),
+    WEBHOOK_URL_NOT_ALLOWED(HttpStatus.UNPROCESSABLE_CONTENT, "webhook-url-not-allowed", "Webhook URL not allowed"),
+    WEBHOOK_LIMIT_REACHED(HttpStatus.UNPROCESSABLE_CONTENT, "webhook-limit-reached", "Webhook limit reached");
 
     private static final String DOCUMENT =
             "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#";

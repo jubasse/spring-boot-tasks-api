@@ -47,8 +47,8 @@ public class UserRetentionQueries {
     /**
      * Erases users deleted before {@code cutoff}: their profile becomes a "Deleted user" without photo, which tasks,
      * comments and history keep pointing to, and the account itself is deleted with every row that only held its
-     * data (roles, settings, tokens). The email becomes free for a new sign-up. The photos' files go with the next
-     * media cleanup, once nothing references them.
+     * data (roles, settings, tokens, webhooks). The email becomes free for a new sign-up. The photos' files go with
+     * the next media cleanup, once nothing references them.
      *
      * @return the ids of the erased users
      */
@@ -75,7 +75,16 @@ public class UserRetentionQueries {
         if (!ids.isEmpty()) {
             MapSqlParameterSource users = new MapSqlParameterSource("ids", ids);
 
+            jdbc.update(
+                    """
+                            DELETE FROM webhook_endpoint_events
+                            WHERE endpoint_id IN (SELECT id FROM webhook_endpoints WHERE user_id IN (:ids))
+                            """,
+                    users
+            );
+
             for (String table : List.of(
+                    "webhook_endpoints",
                     "notification_settings",
                     "refresh_tokens",
                     "email_verification_tokens",

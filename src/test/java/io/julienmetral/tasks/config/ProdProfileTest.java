@@ -22,6 +22,7 @@ class ProdProfileTest {
 
     private static final List<String> REQUIRED_PROPERTIES = List.of(
             "security.jwt.secret",
+            "webhooks.encryption-key",
             "spring.datasource.url",
             "spring.datasource.username",
             "spring.datasource.password",

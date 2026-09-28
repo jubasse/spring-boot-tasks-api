@@ -30,8 +30,9 @@ ENV JAVA_TOOL_OPTIONS="-XX:+UseG1GC -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemo
 
 # AOT cache training run: the context starts up to its refresh, and the classes it loaded and linked are stored in
 # app.aot, which the real start maps instead of loading them again. It reaches no service: Liquibase and Hibernate's
-# database access are off, and the JWT key is a throwaway.
+# database access are off, and the keys are throwaways.
 RUN JWT_SECRET="$(head -c 32 /dev/urandom | base64)" \
+    WEBHOOK_ENCRYPTION_KEY="$(head -c 32 /dev/urandom | base64)" \
     java -XX:AOTCacheOutput=app.aot -Dspring.context.exit=onRefresh \
         -Dspring.datasource.url=jdbc:postgresql://localhost/training \
         -Dspring.liquibase.enabled=false \

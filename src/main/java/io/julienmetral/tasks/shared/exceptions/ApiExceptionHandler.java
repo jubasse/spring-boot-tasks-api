@@ -15,6 +15,9 @@ import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
 import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
 import io.julienmetral.tasks.ratelimit.exceptions.RateLimitExceededException;
+import io.julienmetral.tasks.notification.exceptions.WebhookEndpointNotFoundException;
+import io.julienmetral.tasks.notification.exceptions.WebhookLimitReachedException;
+import io.julienmetral.tasks.notification.exceptions.WebhookUrlNotAllowedException;
 import io.julienmetral.tasks.task.exceptions.AssigneeNotActiveException;
 import io.julienmetral.tasks.task.exceptions.InvalidMentionException;
 import io.julienmetral.tasks.task.exceptions.TaskAttachmentNotFoundException;
@@ -68,7 +71,8 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
             TaskNotFoundException.class,
             TaskAttachmentNotFoundException.class,
             TaskCommentNotFoundException.class,
-            UserNotFoundException.class
+            UserNotFoundException.class,
+            WebhookEndpointNotFoundException.class
     })
     public ProblemDetail handleNotFound(RuntimeException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
@@ -118,6 +122,16 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(AssigneeNotActiveException.class)
     public ProblemDetail handleAssigneeNotActive(AssigneeNotActiveException ex) {
         return ProblemType.ASSIGNEE_NOT_ACTIVE.problem(ex.getMessage());
+    }
+
+    @ExceptionHandler(WebhookUrlNotAllowedException.class)
+    public ProblemDetail handleWebhookUrlNotAllowed(WebhookUrlNotAllowedException ex) {
+        return ProblemType.WEBHOOK_URL_NOT_ALLOWED.problem(ex.getMessage());
+    }
+
+    @ExceptionHandler(WebhookLimitReachedException.class)
+    public ProblemDetail handleWebhookLimitReached(WebhookLimitReachedException ex) {
+        return ProblemType.WEBHOOK_LIMIT_REACHED.problem(ex.getMessage());
     }
 
     @ExceptionHandler(InvalidMentionException.class)
@@ -288,7 +302,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         }
 
         InvalidValue error = InvalidValue.inBody(
-                InvalidValue.expected(mismatch.getTargetType()),
+                InvalidValue.expectedInJson(mismatch.getTargetType()),
                 InvalidValue.jsonPath(mismatch)
         );
 

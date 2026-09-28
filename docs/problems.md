@@ -97,6 +97,18 @@ Check the file on your side before uploading it again.
 
 Upload a smaller image, or save it again in JPEG, PNG or WebP.
 
+## webhook-url-not-allowed
+
+**Status 422, title "Webhook URL not allowed".** The URL of a webhook cannot be used. The `detail` says why: it is not an absolute http or https URL, it contains credentials, it does not use HTTPS on port 443, its host cannot be resolved, or it points to a private, loopback or otherwise non-public address.
+
+Use a public HTTPS URL on the default port, without a user name or password.
+
+## webhook-limit-reached
+
+**Status 422, title "Webhook limit reached".** The account already has as many webhooks as it can declare (5 by default).
+
+Delete a webhook you no longer use, or send more events to an existing one.
+
 ## Errors without a type
 
 These errors have no `type` member (RFC 9457 reads that as `about:blank`), and their `title` is the status phrase. The status code tells you what to do.

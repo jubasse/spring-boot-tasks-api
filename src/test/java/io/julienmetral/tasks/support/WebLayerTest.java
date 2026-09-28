@@ -16,6 +16,7 @@ import io.julienmetral.tasks.identity.services.PasswordResetService;
 import io.julienmetral.tasks.identity.services.UserService;
 import io.julienmetral.tasks.media.services.MediaUrls;
 import io.julienmetral.tasks.notification.services.NotificationSettingsService;
+import io.julienmetral.tasks.notification.services.WebhookEndpointService;
 import io.julienmetral.tasks.ratelimit.services.RateLimiter;
 import io.julienmetral.tasks.task.security.TaskAttachmentAuthorization;
 import io.julienmetral.tasks.task.security.TaskAuthorization;
@@ -69,6 +70,7 @@ import java.lang.annotation.Target;
         UserService.class,
         AvatarService.class,
         NotificationSettingsService.class,
+        WebhookEndpointService.class,
         TaskService.class,
         TaskCommentService.class,
         TaskAttachmentService.class,
