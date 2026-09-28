@@ -56,7 +56,7 @@ class PathDocumentation implements OpenApiCustomizer {
      */
     private static void pinUnversionedPaths(OpenAPI openApi) {
         String unversioned = ApiVersioningConfiguration.API_PATH + "/";
-        String current = "/api/v" + ApiVersioningConfiguration.CURRENT_VERSION + "/";
+        String current = ApiVersioningConfiguration.CURRENT_PATH + "/";
         Paths pinned = new Paths();
 
         openApi.getPaths().forEach((path, item) -> pinned.addPathItem(path.replace(unversioned, current), item));
