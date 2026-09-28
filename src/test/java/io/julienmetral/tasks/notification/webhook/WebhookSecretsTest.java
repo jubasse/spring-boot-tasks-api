@@ -103,6 +103,11 @@ class WebhookSecretsTest {
         assertRefused(key(31, 1));
     }
 
+    @Test
+    void missingKeyIsRefusedWithHowToGenerateOne() {
+        assertRefused(null);
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"", " ", "   ", "\t"})
     void blankKeyIsRefusedWithHowToGenerateOne(String blank) {
