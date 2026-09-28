@@ -2,12 +2,11 @@ package io.julienmetral.tasks.notification.mail;
 
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserStatus;
-import io.julienmetral.tasks.identity.entities.UserProfile;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.mail.MailMessage;
 import io.julienmetral.tasks.mail.MailService;
 import io.julienmetral.tasks.notification.entities.TaskNotificationType;
+import io.julienmetral.tasks.notification.services.CommentExcerpts;
 import io.julienmetral.tasks.notification.services.NotificationSettingsService;
 import io.julienmetral.tasks.task.events.TaskAssigned;
 import io.julienmetral.tasks.task.events.TaskCancelled;
@@ -17,7 +16,6 @@ import io.julienmetral.tasks.task.events.TaskDueSoon;
 import io.julienmetral.tasks.task.events.TaskOverdue;
 import io.julienmetral.tasks.task.events.TaskUnassigned;
 import io.julienmetral.tasks.task.events.UsersMentionedInComment;
-import io.julienmetral.tasks.task.services.CommentMentions;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
@@ -25,10 +23,8 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * Emails the assignee concerned by a task change or a due-date reminder, and the users mentioned in a comment.
@@ -41,15 +37,13 @@ public class TaskNotificationSender {
 
     private static final String FOOTER = "\n\nYou can turn these emails off in your notification settings.\n";
 
-    private static final int MAX_EXCERPT_LENGTH = 1_000;
-
     // Users have no time zone yet, so dates are shown in UTC and say so
     private static final DateTimeFormatter DUE_DATE = DateTimeFormatter
             .ofPattern("yyyy-MM-dd HH:mm 'UTC'")
             .withZone(ZoneOffset.UTC);
 
     private final UserRepository userRepository;
-    private final UserProfileRepository userProfileRepository;
+    private final CommentExcerpts commentExcerpts;
     private final NotificationSettingsService settingsService;
     private final MailService mailService;
 
@@ -162,15 +156,7 @@ public class TaskNotificationSender {
     }
 
     private String excerpt(String body) {
-        Map<UUID, String> names = userProfileRepository
-                .findAllById(CommentMentions.parse(body))
-                .stream()
-                .collect(Collectors.toMap(UserProfile::getId, UserProfile::getDisplayName));
-        String rendered = CommentMentions.render(body, names::get);
-
-        return rendered.length() <= MAX_EXCERPT_LENGTH
-                ? rendered
-                : rendered.substring(0, MAX_EXCERPT_LENGTH) + "...";
+        return commentExcerpts.of(body);
     }
 
     private String actorName(UUID actorId) {

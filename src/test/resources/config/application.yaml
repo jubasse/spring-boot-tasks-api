@@ -9,6 +9,8 @@ webhooks:
   encryption-key: 3ZL0YDn5mPj4vJq3Z3qg6d7xk1W0bR8yLt2cVnHsQeU= # gitleaks:allow
   # Tests reach MockWebServer over plain HTTP on 127.0.0.1
   require-https: false
+  # Tests call WebhookDeliveryService.enqueueDue directly
+  retry-enabled: false
 outbound-http:
   allowed-addresses: 127.0.0.1/32
 task:
@@ -36,6 +38,12 @@ spring:
   testcontainers:
     beans:
       startup: parallel
+  http:
+    serviceclient:
+      webhooks:
+        # WebhookDeliveryTests answers slower than this to get a Timeout; the shipped 15 s would stall that test.
+        # Here rather than on the class, which would start another context.
+        read-timeout: 2s
   jpa:
     properties:
       # Counts the statements of a request in the query-count tests; records nothing unless a test asks for it

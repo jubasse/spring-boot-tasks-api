@@ -5,15 +5,19 @@ import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.notification.dtos.CreateWebhookEndpointDto;
 import io.julienmetral.tasks.notification.dtos.UpdateWebhookEndpointDto;
+import io.julienmetral.tasks.notification.entities.WebhookDelivery;
 import io.julienmetral.tasks.notification.entities.WebhookDisabledReason;
 import io.julienmetral.tasks.notification.entities.WebhookEndpoint;
 import io.julienmetral.tasks.notification.exceptions.WebhookEndpointNotFoundException;
 import io.julienmetral.tasks.notification.exceptions.WebhookLimitReachedException;
+import io.julienmetral.tasks.notification.repositories.WebhookDeliveryRepository;
 import io.julienmetral.tasks.notification.repositories.WebhookEndpointRepository;
 import io.julienmetral.tasks.notification.webhook.WebhookProperties;
 import io.julienmetral.tasks.notification.webhook.WebhookSecrets;
 import io.julienmetral.tasks.notification.webhook.WebhookUrlPolicy;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +38,7 @@ public class WebhookEndpointService {
     }
 
     private final WebhookEndpointRepository endpointRepository;
+    private final WebhookDeliveryRepository deliveryRepository;
     private final UserRepository userRepository;
     private final UserProfileRepository userProfileRepository;
     private final WebhookUrlPolicy urlPolicy;
@@ -103,9 +108,18 @@ public class WebhookEndpointService {
         return endpoint;
     }
 
+    /** Deletes the endpoint with its deliveries, pending ones included. */
     @Transactional
     public void delete(UUID userId, UUID webhookId) {
-        endpointRepository.delete(find(userId, webhookId));
+        WebhookEndpoint endpoint = find(userId, webhookId);
+
+        deliveryRepository.deleteAllByEndpointId(endpoint.getId());
+        endpointRepository.delete(endpoint);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<WebhookDelivery> findDeliveries(UUID userId, UUID webhookId, Pageable pageable) {
+        return deliveryRepository.findAllByEndpointId(find(userId, webhookId).getId(), pageable);
     }
 
     /**

@@ -1,5 +1,7 @@
 package io.julienmetral.tasks.notification.entities;
 
 public enum WebhookDisabledReason {
-    OWNER
+    OWNER,
+    // The receiver answered 410 Gone, the Standard Webhooks way of asking to stop
+    GONE
 }

@@ -120,6 +120,69 @@ The collection reads the verification and password reset emails from Mailpit, so
 
 Add `ANTIVIRUS_ENABLED=false` to `.env`. Uploads are then stored without being scanned, and the API logs a warning at startup. Use this only on a development machine.
 
+## Receive task notifications by webhook
+
+Besides email, an account can have its task notifications sent to an HTTPS endpoint of its own, such as an automation service or a chat integration. Each notification is a signed JSON `POST`.
+
+### Declare a webhook
+
+```bash
+curl -X POST http://localhost:8080/api/v1/users/$USER_ID/webhooks \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"url": "https://hooks.example.com/tasks", "events": ["task.assigned", "task.commented"]}'
+```
+
+The response carries the webhook's signing secret, `whsec_...`. Store it now: no later response shows it again.
+
+- **URL:** HTTPS on the default port, without a user name or password, and resolving to a public address. A refused URL answers 422 `webhook-url-not-allowed`.
+- **Events:** `task.assigned`, `task.unassigned`, `task.cancelled`, `task.deleted`, `task.commented`, `task.mentioned`, `task.due_soon` and `task.overdue`. You never receive an event about your own action, and nothing is sent while your account is disabled or its email is not verified.
+- **Limit:** 5 webhooks per account.
+
+### Read a notification
+
+```json
+{
+  "type": "task.assigned",
+  "timestamp": "2026-09-28T09:15:02.311Z",
+  "data": {
+    "task": {"id": "0199a3c4-6f1e-7b52-9d0a-2f6e8c1b4a77", "reference": "OPS-142", "title": "Renew the TLS certificate"},
+    "actor": {"id": "0199a3c1-2b7d-7e90-8a41-5c3d9e0f1b26", "displayName": "Alice Martin"}
+  }
+}
+```
+
+`task.cancelled` adds a `reason`, `task.commented` and `task.mentioned` add a `comment` with an `excerpt`, and `task.due_soon` and `task.overdue` add a `dueAt`. For due dates, `actor` is `null`.
+
+### Check the signature
+
+Each request carries three headers, from the [Standard Webhooks](https://www.standardwebhooks.com/) specification: `webhook-id`, `webhook-timestamp` (Unix seconds) and `webhook-signature`. Verify them before trusting the body, with one of the [Standard Webhooks libraries](https://github.com/standard-webhooks/standard-webhooks/tree/main/libraries) and your secret:
+
+```java
+new Webhook("whsec_...").verify(body, headers);
+```
+
+To do it yourself: Base64-decode the secret without its `whsec_` prefix, compute the HMAC-SHA256 of `{webhook-id}.{webhook-timestamp}.{body}`, and compare its Base64 with each `v1,` entry of `webhook-signature`. Refuse a timestamp more than 5 minutes old.
+
+### Answer, and what happens when you cannot
+
+Answer with any 2xx status within 15 seconds. Redirects are not followed.
+
+- **A failure** (another status, no answer in time, no connection) is retried after about 5 seconds, 5 minutes, 30 minutes, 2 hours, 5 hours and 10 hours; a `Retry-After` header you send is honoured. After the last retry, the notification is dropped.
+- **410 Gone** stops everything: the webhook is disabled, and no more notifications are sent to it.
+- **Duplicates:** a notification can arrive twice. Its `webhook-id` stays the same on every attempt, so ignore an id you have already processed.
+
+Each notification and its attempts are listed at `GET /api/v1/users/{id}/webhooks/{webhookId}/deliveries`, newest first.
+
+### Pause, change or rotate
+
+- `PUT /api/v1/users/{id}/webhooks/{webhookId}` replaces the URL and events, and pauses (`"enabled": false`) or resumes the webhook, also after a 410.
+- `POST /api/v1/users/{id}/webhooks/{webhookId}/secret` gives a new secret. For the next 24 hours, each request is signed with both the old and the new one, so you can switch without losing any.
+- `DELETE /api/v1/users/{id}/webhooks/{webhookId}` removes it with its delivery history.
+
+### Receive them on your machine
+
+In development, set `WEBHOOK_REQUIRE_HTTPS=false` and `OUTBOUND_HTTP_ALLOWED_ADDRESSES=127.0.0.1/32` in `.env`, then declare a URL such as `http://127.0.0.1:9090/hooks`.
+
 ## Commands
 
 | Command | What it does |

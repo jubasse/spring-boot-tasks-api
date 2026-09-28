@@ -1,8 +1,11 @@
 package io.julienmetral.tasks.notification.repositories;
 
 import io.julienmetral.tasks.notification.entities.WebhookEndpoint;
+import io.julienmetral.tasks.notification.entities.WebhookEvent;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -17,4 +20,10 @@ public interface WebhookEndpointRepository extends JpaRepository<WebhookEndpoint
     Optional<WebhookEndpoint> findByIdAndUserId(UUID id, UUID userId);
 
     long countByUserId(UUID userId);
+
+    @Query("""
+            SELECT e FROM WebhookEndpoint e
+            WHERE e.user.id = :userId AND e.disabledAt IS NULL AND :event MEMBER OF e.events
+            """)
+    List<WebhookEndpoint> findEnabledSubscribedTo(@Param("userId") UUID userId, @Param("event") WebhookEvent event);
 }
