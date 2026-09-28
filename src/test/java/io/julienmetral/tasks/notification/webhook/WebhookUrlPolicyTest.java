@@ -32,6 +32,8 @@ class WebhookUrlPolicyTest {
 
     private static final String NOT_PUBLIC = "The URL must point to a public address";
 
+    private static final String NOT_SLACK = "A Slack webhook URL must start with https://hooks.slack.com/services/";
+
     private final WebhookUrlPolicy httpsOnly = new WebhookUrlPolicy(InetAddressFilter.externalAddresses(), true);
 
     private final WebhookUrlPolicy localReceiverAllowed = new WebhookUrlPolicy(
@@ -191,10 +193,95 @@ class WebhookUrlPolicyTest {
         assertThat(checked).isEmpty();
     }
 
+    // Slack incoming webhooks
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "https://hooks.slack.com/services/T0001/B0002/test-token",
+            "https://hooks.slack.com:443/services/T0001/B0002/test-token",
+            "HTTPS://HOOKS.SLACK.COM/services/T0001/B0002/test-token"
+    })
+    void slackIncomingWebhookUrlIsAccepted(String url) {
+        assertThatCode(() -> httpsOnly.checkSlack(url)).as(url).doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "http://hooks.slack.com/services/T0001/B0002/test-token",
+            "ftp://hooks.slack.com/services/T0001/B0002/test-token",
+            "hooks.slack.com/services/T0001/B0002/test-token",
+            "//hooks.slack.com/services/T0001/B0002/test-token",
+            "https://evil.hooks.slack.com.example.com/services/T0001/B0002/test-token",
+            "https://hooks.slack.com.example.com/services/T0001/B0002/test-token",
+            "https://evil.hooks.slack.com/services/T0001/B0002/test-token",
+            "https://slack.com/services/T0001/B0002/test-token",
+            "https://hooks.slack.com./services/T0001/B0002/test-token",
+            "https://3.33.1.1/services/T0001/B0002/test-token",
+            "https://hooks.slack.com@evil.example.com/services/T0001/B0002/test-token",
+            "https://hooks.slack.com/workflows/T0001/B0002/test-token",
+            "https://hooks.slack.com/api/services/T0001/B0002/test-token",
+            "https://hooks.slack.com/services",
+            "https://hooks.slack.com/",
+            "https://hooks.slack.com",
+            "https://hooks.slack.com/services/T0001/B0002/test-token?channel=general",
+            "https://hooks.slack.com/services/T0001/B0002/test-token?",
+            "https://user:secret@hooks.slack.com/services/T0001/B0002/test-token",
+            "https://user@hooks.slack.com/services/T0001/B0002/test-token",
+            "https://hooks.slack.com:8443/services/T0001/B0002/test-token",
+            "https://hooks.slack.com:80/services/T0001/B0002/test-token"
+    })
+    void urlThatIsNotASlackIncomingWebhookIsRefused(String url) {
+        assertSlackRefused(httpsOnly, url, NOT_SLACK);
+    }
+
+    @Test
+    void slackUrlMustUseHttpsEvenWhenHttpsIsNotRequiredForOtherWebhooks() {
+        assertSlackRefused(localReceiverAllowed, "http://hooks.slack.com/services/T0001/B0002/test-token", NOT_SLACK);
+    }
+
+    @Test
+    void slackUrlOf256CharactersIsAcceptedAndOneOf257IsRefused() {
+        String prefix = "https://hooks.slack.com/services/T0001/B0002/";
+        String longest = prefix + "a".repeat(256 - prefix.length());
+
+        assertThatCode(() -> httpsOnly.checkSlack(longest)).doesNotThrowAnyException();
+        assertSlackRefused(httpsOnly, longest + "a", NOT_SLACK);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "https://hooks.slack.com/services/T0001/B0002/test token",
+            "https://hooks.slack.com/services/%zz",
+            "https://"
+    })
+    void slackUrlThatCannotBeParsedIsRefusedAsInvalid(String url) {
+        assertSlackRefused(httpsOnly, url, NOT_VALID);
+    }
+
+    @Test
+    void slackUrlIsNeitherResolvedNorFiltered() {
+        List<InetAddress> checked = new ArrayList<>();
+        WebhookUrlPolicy refusingEverything = new WebhookUrlPolicy(InetAddressFilter.adapt(address -> {
+            checked.add(address);
+            return false;
+        }), true);
+
+        assertThatCode(() -> refusingEverything.checkSlack("https://hooks.slack.com/services/T0001/B0002/test-token"))
+                .doesNotThrowAnyException();
+        assertThat(checked).isEmpty();
+    }
+
     private static void assertRefused(WebhookUrlPolicy policy, String url, String reason) {
         assertThatExceptionOfType(WebhookUrlNotAllowedException.class)
                 .as(url)
                 .isThrownBy(() -> policy.check(url))
+                .withMessage(reason);
+    }
+
+    private static void assertSlackRefused(WebhookUrlPolicy policy, String url, String reason) {
+        assertThatExceptionOfType(WebhookUrlNotAllowedException.class)
+                .as(url)
+                .isThrownBy(() -> policy.checkSlack(url))
                 .withMessage(reason);
     }
 }
