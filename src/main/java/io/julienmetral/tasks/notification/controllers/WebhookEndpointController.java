@@ -106,7 +106,9 @@ public class WebhookEndpointController {
     public PagedModel<WebhookDeliveryResponseDto> listWebhookDeliveries(
             @PathVariable UUID id,
             @PathVariable UUID webhookId,
-            @ParameterObject @PageableDefault(sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
+            // The id breaks ties: a comment mentioning the assignee creates two deliveries at the same instant
+            @ParameterObject @PageableDefault(sort = {"createdAt", "id"}, direction = Sort.Direction.DESC)
+            Pageable pageable
     ) {
         return new PagedModel<>(
                 webhookService.findDeliveries(id, webhookId, pageable).map(WebhookDeliveryResponseDto::new)

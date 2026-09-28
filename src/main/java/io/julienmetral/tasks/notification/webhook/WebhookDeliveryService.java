@@ -1,5 +1,7 @@
 package io.julienmetral.tasks.notification.webhook;
 
+import io.julienmetral.tasks.identity.entities.UserStatus;
+import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.messaging.services.Outbox;
 import io.julienmetral.tasks.notification.entities.WebhookDelivery;
 import io.julienmetral.tasks.notification.entities.WebhookDeliveryStatus;
@@ -26,6 +28,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -55,18 +60,22 @@ public class WebhookDeliveryService {
     // A Retry-After above this is capped: past it, the event has lost its value
     private static final Duration MAX_RETRY_AFTER = Duration.ofHours(10);
 
+    private static final String DESTINATION_NOT_ALLOWED = "DestinationNotAllowed";
+
     private record Attempt(UUID deliveryId, URI url, byte[] body, List<String> secrets) {
     }
 
     private record Outcome(Integer statusCode, String error, Duration retryAfter) {
 
+        // Not HttpStatus.valueOf, which throws on codes Spring has no constant for, such as 522 behind Cloudflare
         boolean delivered() {
-            return statusCode != null && HttpStatus.valueOf(statusCode).is2xxSuccessful();
+            return statusCode != null && statusCode / 100 == 2;
         }
     }
 
     private final WebhookDeliveryRepository deliveryRepository;
     private final WebhookDeliveryQueries deliveryQueries;
+    private final UserRepository userRepository;
     private final WebhookClient client;
     private final WebhookSigner signer;
     private final WebhookSecrets secrets;
@@ -79,6 +88,7 @@ public class WebhookDeliveryService {
     public WebhookDeliveryService(
             WebhookDeliveryRepository deliveryRepository,
             WebhookDeliveryQueries deliveryQueries,
+            UserRepository userRepository,
             WebhookClient client,
             WebhookSigner signer,
             WebhookSecrets secrets,
@@ -90,6 +100,7 @@ public class WebhookDeliveryService {
     ) {
         this.deliveryRepository = deliveryRepository;
         this.deliveryQueries = deliveryQueries;
+        this.userRepository = userRepository;
         this.client = client;
         this.signer = signer;
         this.secrets = secrets;
@@ -160,6 +171,12 @@ public class WebhookDeliveryService {
             return Optional.empty();
         }
 
+        // Retries run for about a day: an account disabled or deleted meanwhile stops receiving, as for new events
+        if (!isActive(endpoint.getUser().getId())) {
+            fail(delivery, "AccountNotActive");
+            return Optional.empty();
+        }
+
         List<String> signingSecrets = new ArrayList<>();
         signingSecrets.add(secrets.decrypt(endpoint.getSecret()));
 
@@ -184,7 +201,7 @@ public class WebhookDeliveryService {
 
             return new Outcome(response.getStatusCode().value(), null, retryAfter(response));
         } catch (FilteredHostException refused) {
-            return new Outcome(null, "DestinationNotAllowed", null);
+            return new Outcome(null, DESTINATION_NOT_ALLOWED, null);
         } catch (ResourceAccessException unreachable) {
             return new Outcome(null, unreachable.getCause() instanceof SocketTimeoutException
                     ? "Timeout"
@@ -195,7 +212,8 @@ public class WebhookDeliveryService {
     }
 
     private void record(UUID deliveryId, Outcome outcome) {
-        WebhookDelivery delivery = deliveryRepository.findWithEndpointById(deliveryId).orElse(null);
+        // Locked: two copies of one message could otherwise record their attempts over each other
+        WebhookDelivery delivery = deliveryRepository.findForUpdateById(deliveryId).orElse(null);
 
         if (delivery == null || delivery.getStatus() != WebhookDeliveryStatus.PENDING) {
             return;
@@ -214,6 +232,9 @@ public class WebhookDeliveryService {
             count("delivered");
         } else if (outcome.statusCode() != null && outcome.statusCode() == HttpStatus.GONE.value()) {
             delivery.getEndpoint().disable(WebhookDisabledReason.GONE, now);
+            fail(delivery, null);
+        } else if (DESTINATION_NOT_ALLOWED.equals(outcome.error())) {
+            // Not a passing failure: retrying would only probe the address again
             fail(delivery, null);
         } else if (delivery.getAttempts() > RETRY_DELAYS.size()) {
             fail(delivery, outcome.error());
@@ -243,20 +264,36 @@ public class WebhookDeliveryService {
         return retryAfter != null && retryAfter.compareTo(jittered) > 0 ? retryAfter : jittered;
     }
 
-    private static Duration retryAfter(ResponseEntity<Void> response) {
+    // Retry-After holds either seconds or an HTTP date
+    private Duration retryAfter(ResponseEntity<Void> response) {
         String value = response.getHeaders().getFirst("Retry-After");
 
         if (value == null) {
             return null;
         }
 
-        try {
-            Duration requested = Duration.ofSeconds(Long.parseLong(value.trim()));
+        Duration requested;
 
-            return requested.compareTo(MAX_RETRY_AFTER) > 0 ? MAX_RETRY_AFTER : requested;
-        } catch (NumberFormatException httpDate) {
+        try {
+            requested = Duration.ofSeconds(Long.parseLong(value.trim()));
+        } catch (NumberFormatException notSeconds) {
+            try {
+                requested = Duration.between(clock.instant(),
+                        ZonedDateTime.parse(value.trim(), DateTimeFormatter.RFC_1123_DATE_TIME).toInstant());
+            } catch (DateTimeParseException neither) {
+                return null;
+            }
+        }
+
+        if (requested.isNegative()) {
             return null;
         }
+
+        return requested.compareTo(MAX_RETRY_AFTER) > 0 ? MAX_RETRY_AFTER : requested;
+    }
+
+    private boolean isActive(UUID userId) {
+        return userRepository.findById(userId).map(UserStatus::of).orElse(null) == UserStatus.ACTIVE;
     }
 
     private void count(String outcome) {
