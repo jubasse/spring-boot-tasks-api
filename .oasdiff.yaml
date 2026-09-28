@@ -1,0 +1,4 @@
+# Read by oasdiff and by the oasdiff GitHub Action (API contract job).
+# Response enums can gain values: the API description asks clients to treat a value they do not know as unknown,
+# so adding one is not a breaking change here. Removing a value still is.
+severity-levels: .oasdiff-levels.txt
