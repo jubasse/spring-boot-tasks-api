@@ -18,6 +18,7 @@ import io.julienmetral.tasks.ratelimit.exceptions.RateLimitExceededException;
 import io.julienmetral.tasks.notification.exceptions.WebhookDeliveryNotFoundException;
 import io.julienmetral.tasks.notification.exceptions.WebhookEndpointNotFoundException;
 import io.julienmetral.tasks.notification.exceptions.WebhookLimitReachedException;
+import io.julienmetral.tasks.notification.exceptions.WebhookNotSignedException;
 import io.julienmetral.tasks.notification.exceptions.WebhookUrlNotAllowedException;
 import io.julienmetral.tasks.task.exceptions.AssigneeNotActiveException;
 import io.julienmetral.tasks.task.exceptions.InvalidMentionException;
@@ -134,6 +135,11 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(WebhookLimitReachedException.class)
     public ProblemDetail handleWebhookLimitReached(WebhookLimitReachedException ex) {
         return ProblemType.WEBHOOK_LIMIT_REACHED.problem(ex.getMessage());
+    }
+
+    @ExceptionHandler(WebhookNotSignedException.class)
+    public ProblemDetail handleWebhookNotSigned(WebhookNotSignedException ex) {
+        return ProblemType.WEBHOOK_NOT_SIGNED.problem(ex.getMessage());
     }
 
     @ExceptionHandler(InvalidMentionException.class)

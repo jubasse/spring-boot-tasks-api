@@ -9,6 +9,7 @@ import java.net.URISyntaxException;
 import java.net.UnknownHostException;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Checks a webhook URL when it is declared, so its owner gets a clear refusal. The HTTP client checks the resolved
@@ -18,6 +19,16 @@ import java.util.Set;
 public class WebhookUrlPolicy {
 
     private static final Set<String> SCHEMES = Set.of("http", "https");
+
+    private static final String SLACK_HOST = "hooks.slack.com";
+
+    private static final String SLACK_PREFIX = "/services/";
+
+    // The path of an incoming webhook, /services/T.../B.../..., with nothing that could be read another way: no dot
+    // segment, no encoded character, no mask
+    private static final Pattern SLACK_PATH = Pattern.compile("/services(/[A-Za-z0-9_-]+){2,3}");
+
+    private static final int MAX_SLACK_URL_LENGTH = 256;
 
     private final InetAddressFilter addressFilter;
 
@@ -49,6 +60,25 @@ public class WebhookUrlPolicy {
             if (!addressFilter.matches(address)) {
                 throw new WebhookUrlNotAllowedException("The URL must point to a public address");
             }
+        }
+    }
+
+    /** Only a Slack incoming webhook URL, which leaves no destination to choose: nothing to resolve or filter. */
+    public void checkSlack(String url) {
+        URI uri = parse(url);
+
+        // Real ones are about 80 characters; the bound keeps the encrypted form within the url column
+        if (url.length() > MAX_SLACK_URL_LENGTH
+                || !"https".equalsIgnoreCase(uri.getScheme())
+                || !SLACK_HOST.equalsIgnoreCase(uri.getHost())
+                || (uri.getPort() != -1 && uri.getPort() != 443)
+                || uri.getUserInfo() != null
+                || uri.getRawQuery() != null
+                || uri.getRawFragment() != null
+                || uri.getRawPath() == null
+                || !SLACK_PATH.matcher(uri.getRawPath()).matches()) {
+            throw new WebhookUrlNotAllowedException(
+                    "A Slack webhook URL must start with https://" + SLACK_HOST + SLACK_PREFIX);
         }
     }
 

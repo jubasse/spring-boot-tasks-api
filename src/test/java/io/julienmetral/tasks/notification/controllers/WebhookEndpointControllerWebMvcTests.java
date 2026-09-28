@@ -7,6 +7,7 @@ import io.julienmetral.tasks.notification.entities.WebhookDelivery;
 import io.julienmetral.tasks.notification.entities.WebhookDeliveryStatus;
 import io.julienmetral.tasks.notification.entities.WebhookEndpoint;
 import io.julienmetral.tasks.notification.entities.WebhookEvent;
+import io.julienmetral.tasks.notification.entities.WebhookKind;
 import io.julienmetral.tasks.notification.exceptions.WebhookDeliveryNotFoundException;
 import io.julienmetral.tasks.notification.exceptions.WebhookEndpointNotFoundException;
 import io.julienmetral.tasks.notification.exceptions.WebhookLimitReachedException;
@@ -53,6 +54,8 @@ import static io.julienmetral.tasks.support.WebCallers.user;
 import static io.julienmetral.tasks.support.WebCallers.withoutUid;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -63,6 +66,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -91,6 +95,16 @@ class WebhookEndpointControllerWebMvcTests {
     private static final String UPDATE_BODY = """
             {"url": "https://hooks.example.com/tasks", "events": ["task.due_soon"], "enabled": false}
             """;
+
+    private static final String SLACK_TOKEN = "slack-path-token";
+
+    private static final String SLACK_URL = "https://hooks.slack.com/services/T0001/B0002/" + SLACK_TOKEN;
+
+    private static final String SLACK_MASK = "https://hooks.slack.com/services/****";
+
+    private static final String SLACK_CREATE_BODY = """
+            {"kind": "SLACK", "url": "%s", "events": ["task.assigned"]}
+            """.formatted(SLACK_URL);
 
     private static final Instant CREATED_AT = Instant.parse("2026-05-06T07:08:09Z");
 
@@ -171,6 +185,118 @@ class WebhookEndpointControllerWebMvcTests {
         assertThat(dto.getValue().url()).isEqualTo(URL);
         assertThat(dto.getValue().events())
                 .containsExactlyInAnyOrder(WebhookEvent.TASK_OVERDUE, WebhookEvent.TASK_ASSIGNED);
+    }
+
+    @Test
+    void createPassesTheKindAndShowsASlackWebhookMaskedWithoutItsSecret() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        when(webhookService.create(eq(id), any()))
+                .thenReturn(new CreatedWebhookEndpoint(slackEndpoint(id, webhookId), "whsec_unused"));
+
+        mockMvc.perform(json(post(WEBHOOKS, id), user(id), SLACK_CREATE_BODY))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Location", "/api/v1/users/" + id + "/webhooks/" + webhookId))
+                .andExpect(jsonPath("$.id").value(webhookId.toString()))
+                .andExpect(jsonPath("$.kind").value("SLACK"))
+                .andExpect(jsonPath("$.url").value(SLACK_MASK))
+                .andExpect(jsonPath("$.secret").doesNotExist())
+                .andExpect(content().string(not(containsString(SLACK_TOKEN))))
+                .andExpect(content().string(not(containsString("whsec_unused"))));
+
+        ArgumentCaptor<CreateWebhookEndpointDto> dto = ArgumentCaptor.forClass(CreateWebhookEndpointDto.class);
+        verify(webhookService).create(eq(id), dto.capture());
+        assertThat(dto.getValue().kind()).isEqualTo(WebhookKind.SLACK);
+        assertThat(dto.getValue().url()).isEqualTo(SLACK_URL);
+    }
+
+    @Test
+    void createPassesTheWebhookKindWhenItIsNamed() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        when(webhookService.create(eq(id), any()))
+                .thenReturn(new CreatedWebhookEndpoint(endpoint(id, webhookId), "whsec_secret"));
+
+        mockMvc.perform(json(post(WEBHOOKS, id), user(id),
+                        "{\"kind\": \"WEBHOOK\", \"url\": \"" + URL + "\", \"events\": [\"task.assigned\"]}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.kind").value("WEBHOOK"))
+                .andExpect(jsonPath("$.url").value(URL))
+                .andExpect(jsonPath("$.secret").value("whsec_secret"));
+
+        ArgumentCaptor<CreateWebhookEndpointDto> dto = ArgumentCaptor.forClass(CreateWebhookEndpointDto.class);
+        verify(webhookService).create(eq(id), dto.capture());
+        assertThat(dto.getValue().kind()).isEqualTo(WebhookKind.WEBHOOK);
+    }
+
+    @Test
+    void createWithoutAKindLeavesTheDefaultToTheService() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(webhookService.create(eq(id), any()))
+                .thenReturn(new CreatedWebhookEndpoint(endpoint(id, UUID.randomUUID()), "whsec_secret"));
+
+        mockMvc.perform(json(post(WEBHOOKS, id), user(id), CREATE_BODY))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.kind").value("WEBHOOK"));
+
+        ArgumentCaptor<CreateWebhookEndpointDto> dto = ArgumentCaptor.forClass(CreateWebhookEndpointDto.class);
+        verify(webhookService).create(eq(id), dto.capture());
+        assertThat(dto.getValue().kind()).isNull();
+    }
+
+    @Test
+    void listAndGetShowTheKindAndMaskTheUrlOfASlackWebhook() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID slack = UUID.randomUUID();
+        UUID webhook = UUID.randomUUID();
+        when(webhookService.findAll(id)).thenReturn(List.of(slackEndpoint(id, slack), endpoint(id, webhook)));
+        when(webhookService.get(id, slack)).thenReturn(slackEndpoint(id, slack));
+
+        mockMvc.perform(get(WEBHOOKS, id).with(user(id)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].kind").value(contains("SLACK", "WEBHOOK")))
+                .andExpect(jsonPath("$[*].url").value(contains(SLACK_MASK, URL)))
+                .andExpect(content().string(not(containsString(SLACK_TOKEN))));
+        mockMvc.perform(get(WEBHOOK, id, slack).with(user(id)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.kind").value("SLACK"))
+                .andExpect(jsonPath("$.url").value(SLACK_MASK))
+                .andExpect(content().string(not(containsString(SLACK_TOKEN))));
+    }
+
+    @Test
+    void updateResponseMasksTheUrlOfASlackWebhook() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        when(webhookService.update(eq(id), eq(webhookId), any())).thenReturn(slackEndpoint(id, webhookId));
+
+        mockMvc.perform(json(put(WEBHOOK, id, webhookId), user(id),
+                        "{\"url\": \"" + SLACK_MASK + "\", \"events\": [\"task.assigned\"], \"enabled\": true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.kind").value("SLACK"))
+                .andExpect(jsonPath("$.url").value(SLACK_MASK))
+                .andExpect(content().string(not(containsString(SLACK_TOKEN))));
+
+        ArgumentCaptor<UpdateWebhookEndpointDto> dto = ArgumentCaptor.forClass(UpdateWebhookEndpointDto.class);
+        verify(webhookService).update(eq(id), eq(webhookId), dto.capture());
+        assertThat(dto.getValue().url()).isEqualTo(SLACK_MASK);
+    }
+
+    @Test
+    void kindInAnUpdateBodyIsIgnored() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID webhookId = UUID.randomUUID();
+        when(webhookService.update(eq(id), eq(webhookId), any())).thenReturn(slackEndpoint(id, webhookId));
+
+        mockMvc.perform(json(put(WEBHOOK, id, webhookId), user(id),
+                        "{\"kind\": \"WEBHOOK\", \"url\": \"" + URL + "\", \"events\": [\"task.assigned\"], "
+                                + "\"enabled\": true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.kind").value("SLACK"));
+
+        ArgumentCaptor<UpdateWebhookEndpointDto> dto = ArgumentCaptor.forClass(UpdateWebhookEndpointDto.class);
+        verify(webhookService).update(eq(id), eq(webhookId), dto.capture());
+        assertThat(dto.getValue().url()).isEqualTo(URL);
     }
 
     @Test
@@ -563,6 +689,21 @@ class WebhookEndpointControllerWebMvcTests {
                 .andExpect(invalidBodyValue("#/url", "size must be between 0 and 2048"));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"\"TEAMS\"", "\"slack\"", "\"\"", "true", "{}", "1", "0"})
+    void createWithAnUnknownKindPointsToIt(String kind) throws Exception {
+        expectCreateRejected("{\"kind\": " + kind + ", \"url\": \"" + URL + "\", \"events\": [\"task.assigned\"]}")
+                .andExpect(invalidBodyValue("#/kind", "must be one of WEBHOOK, SLACK"))
+                .andExpect(withoutJavaTypeNames());
+    }
+
+    @Test
+    void createWithTheIndexOfAnEventInsteadOfItsNamePointsToIt() throws Exception {
+        expectCreateRejected("{\"url\": \"" + URL + "\", \"events\": [1]}")
+                .andExpect(invalidBodyValue("#/events/0", "must be one of task.assigned, task.unassigned, "
+                        + "task.cancelled, task.deleted, task.commented, task.mentioned, task.due_soon, task.overdue"));
+    }
+
     @Test
     void createWithMalformedJsonReturnsBadRequest() throws Exception {
         expectCreateRejected("{\"url\": ");
@@ -732,6 +873,13 @@ class WebhookEndpointControllerWebMvcTests {
         delivery.setNextAttemptAt(CREATED_AT.plusSeconds(310));
         delivery.setCreatedAt(CREATED_AT);
         return delivery;
+    }
+
+    private static WebhookEndpoint slackEndpoint(UUID userId, UUID webhookId) {
+        WebhookEndpoint endpoint = endpoint(userId, webhookId);
+        endpoint.setKind(WebhookKind.SLACK);
+        endpoint.setUrl(SLACK_URL);
+        return endpoint;
     }
 
     private static WebhookEndpoint endpoint(UUID userId, UUID webhookId) {

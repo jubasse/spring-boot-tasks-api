@@ -138,6 +138,21 @@ The response carries the webhook's signing secret, `whsec_...`. Store it now: no
 - **Events:** `task.assigned`, `task.unassigned`, `task.cancelled`, `task.deleted`, `task.commented`, `task.mentioned`, `task.due_soon` and `task.overdue`. You never receive an event about your own action, and nothing is sent while your account is disabled or its email is not verified.
 - **Limit:** 5 webhooks per account.
 
+### Send them to Slack
+
+Create an [incoming webhook](https://api.slack.com/messaging/webhooks) in your Slack workspace, then declare its URL with `"kind": "SLACK"`:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/users/$USER_ID/webhooks \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"kind": "SLACK", "url": "https://hooks.slack.com/services/T0123/B0456/abcdef", "events": ["task.assigned", "task.mentioned"]}'
+```
+
+- Each notification arrives as a short message in the webhook's channel, such as "*Alice Martin* assigned you *OPS-142*: Renew the TLS certificate".
+- The URL must start with `https://hooks.slack.com/services/`. It works like a password, so responses show it masked; to keep it in a `PUT`, send the masked value back.
+- Slack messages are not signed, and there is no secret.
+- If Slack reports that the webhook was revoked or its channel deleted or archived, the webhook is disabled.
+
 ### Read a notification
 
 ```json

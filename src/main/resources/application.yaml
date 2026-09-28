@@ -141,6 +141,12 @@ outbound-http:
 spring:
   config:
     import: optional:file:.env[.properties]
+  # An enum in a request is one of its documented names: Jackson otherwise reads a number as the constant at that
+  # index, so "kind": 1 created a Slack webhook
+  jackson:
+    datatype:
+      enum:
+        fail-on-numbers-for-enums: true
   # Apache HttpClient explicitly: it would otherwise be picked only because the AWS SDK brings it, and its address
   # filtering also holds against DNS rebinding
   http:

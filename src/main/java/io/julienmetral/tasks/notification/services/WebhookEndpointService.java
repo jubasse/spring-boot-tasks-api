@@ -8,9 +8,11 @@ import io.julienmetral.tasks.notification.dtos.UpdateWebhookEndpointDto;
 import io.julienmetral.tasks.notification.entities.WebhookDelivery;
 import io.julienmetral.tasks.notification.entities.WebhookDisabledReason;
 import io.julienmetral.tasks.notification.entities.WebhookEndpoint;
+import io.julienmetral.tasks.notification.entities.WebhookKind;
 import io.julienmetral.tasks.notification.exceptions.WebhookDeliveryNotFoundException;
 import io.julienmetral.tasks.notification.exceptions.WebhookEndpointNotFoundException;
 import io.julienmetral.tasks.notification.exceptions.WebhookLimitReachedException;
+import io.julienmetral.tasks.notification.exceptions.WebhookNotSignedException;
 import io.julienmetral.tasks.notification.repositories.WebhookDeliveryRepository;
 import io.julienmetral.tasks.notification.repositories.WebhookEndpointRepository;
 import io.julienmetral.tasks.notification.webhook.WebhookDeliveryService;
@@ -18,6 +20,7 @@ import io.julienmetral.tasks.notification.webhook.WebhookProperties;
 import io.julienmetral.tasks.notification.webhook.WebhookSecrets;
 import io.julienmetral.tasks.notification.webhook.WebhookTestResult;
 import io.julienmetral.tasks.notification.webhook.WebhookUrlPolicy;
+import io.julienmetral.tasks.notification.webhook.WebhookUrls;
 import io.julienmetral.tasks.ratelimit.services.RateLimiter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -62,14 +65,14 @@ public class WebhookEndpointService {
             throw new WebhookLimitReachedException(properties.maxPerUser());
         }
 
-        urlPolicy.check(dto.url());
-
+        WebhookKind kind = dto.kind() == null ? WebhookKind.WEBHOOK : dto.kind();
         Instant now = clock.instant();
         String secret = secrets.generate();
 
         WebhookEndpoint endpoint = new WebhookEndpoint();
         endpoint.setUser(userProfileRepository.getReferenceById(userId));
-        endpoint.setUrl(dto.url());
+        endpoint.setKind(kind);
+        endpoint.setUrl(checkedUrl(kind, dto.url()));
         endpoint.setSecret(secrets.encrypt(secret));
         endpoint.setEvents(EnumSet.copyOf(dto.events()));
         endpoint.setCreatedAt(now);
@@ -94,9 +97,8 @@ public class WebhookEndpointService {
     public WebhookEndpoint update(UUID userId, UUID webhookId, UpdateWebhookEndpointDto dto) {
         WebhookEndpoint endpoint = find(userId, webhookId);
 
-        if (!endpoint.getUrl().equals(dto.url())) {
-            urlPolicy.check(dto.url());
-            endpoint.setUrl(dto.url());
+        if (!dto.url().equals(currentUrl(endpoint)) && !isSlackMask(endpoint, dto.url())) {
+            endpoint.setUrl(checkedUrl(endpoint.getKind(), dto.url()));
         }
 
         endpoint.setEvents(EnumSet.copyOf(dto.events()));
@@ -163,6 +165,11 @@ public class WebhookEndpointService {
     @Transactional
     public RotatedWebhookSecret rotateSecret(UUID userId, UUID webhookId) {
         WebhookEndpoint endpoint = find(userId, webhookId);
+
+        if (endpoint.getKind() == WebhookKind.SLACK) {
+            throw new WebhookNotSignedException();
+        }
+
         Instant now = clock.instant();
         Instant previousSecretExpiresAt = now.plus(properties.previousSecretValidity());
         String secret = secrets.generate();
@@ -173,6 +180,28 @@ public class WebhookEndpointService {
         endpoint.setUpdatedAt(now);
 
         return new RotatedWebhookSecret(secret, previousSecretExpiresAt);
+    }
+
+    // A Slack URL is its credential: it is stored encrypted, like the signing secrets
+    private String checkedUrl(WebhookKind kind, String url) {
+        if (kind == WebhookKind.SLACK) {
+            urlPolicy.checkSlack(url);
+
+            return secrets.encrypt(url);
+        }
+
+        urlPolicy.check(url);
+
+        return url;
+    }
+
+    private String currentUrl(WebhookEndpoint endpoint) {
+        return endpoint.getKind() == WebhookKind.SLACK ? secrets.decrypt(endpoint.getUrl()) : endpoint.getUrl();
+    }
+
+    // A client that sends back the URL of a response, masked for Slack, keeps the current one
+    private static boolean isSlackMask(WebhookEndpoint endpoint, String url) {
+        return endpoint.getKind() == WebhookKind.SLACK && WebhookUrls.SLACK_MASK.equals(url);
     }
 
     // The account is read first: its endpoints stay in the database while it is soft-deleted, until the erasure

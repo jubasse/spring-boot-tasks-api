@@ -3,6 +3,9 @@ package io.julienmetral.tasks.notification.dtos;
 import io.julienmetral.tasks.notification.entities.WebhookDisabledReason;
 import io.julienmetral.tasks.notification.entities.WebhookEndpoint;
 import io.julienmetral.tasks.notification.entities.WebhookEvent;
+import io.julienmetral.tasks.notification.entities.WebhookKind;
+import io.julienmetral.tasks.notification.webhook.WebhookUrls;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.Instant;
 import java.util.List;
@@ -10,6 +13,9 @@ import java.util.UUID;
 
 public record WebhookEndpointResponseDto(
         UUID id,
+        WebhookKind kind,
+
+        @Schema(description = "Masked for a Slack webhook, whose URL is its credential")
         String url,
         List<WebhookEvent> events,
         boolean enabled,
@@ -23,7 +29,8 @@ public record WebhookEndpointResponseDto(
     public WebhookEndpointResponseDto(WebhookEndpoint endpoint) {
         this(
                 endpoint.getId(),
-                endpoint.getUrl(),
+                endpoint.getKind(),
+                WebhookUrls.shown(endpoint),
                 endpoint.getEvents().stream().sorted().toList(),
                 endpoint.isEnabled(),
                 endpoint.getDisabledReason(),

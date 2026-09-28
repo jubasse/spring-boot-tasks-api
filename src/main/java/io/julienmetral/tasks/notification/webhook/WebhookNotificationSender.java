@@ -6,6 +6,7 @@ import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.notification.entities.WebhookEndpoint;
 import io.julienmetral.tasks.notification.entities.WebhookEvent;
+import io.julienmetral.tasks.notification.entities.WebhookKind;
 import io.julienmetral.tasks.notification.repositories.WebhookEndpointRepository;
 import io.julienmetral.tasks.notification.services.CommentExcerpts;
 import io.julienmetral.tasks.task.events.TaskAssigned;
@@ -34,7 +35,8 @@ import java.util.UUID;
  * emails: nobody hears about their own action, and only an active account receives anything. The endpoint's events
  * replace the email switches. Runs inside the publisher's transaction.
  * <p>
- * The payload follows the Standard Webhooks shape: {@code {"type", "timestamp", "data"}}.
+ * The payload follows the Standard Webhooks shape, {@code {"type", "timestamp", "data"}}, or is a Slack message for a
+ * Slack endpoint.
  */
 @Component
 @RequiredArgsConstructor
@@ -45,6 +47,7 @@ public class WebhookNotificationSender {
     private final WebhookEndpointRepository endpointRepository;
     private final WebhookDeliveryService deliveryService;
     private final CommentExcerpts commentExcerpts;
+    private final SlackMessages slackMessages;
     private final JsonMapper jsonMapper;
     private final Clock clock;
 
@@ -130,7 +133,13 @@ public class WebhookNotificationSender {
         payload.put("timestamp", Instant.now(clock).toString());
         payload.put("data", data);
 
-        deliveryService.schedule(endpoints, event, jsonMapper.writeValueAsString(payload));
+        String standardPayload = jsonMapper.writeValueAsString(payload);
+
+        for (WebhookEndpoint endpoint : endpoints) {
+            deliveryService.schedule(endpoint, event, endpoint.getKind() == WebhookKind.SLACK
+                    ? slackMessages.render(event, data)
+                    : standardPayload);
+        }
     }
 
     // The account itself, never the status cache: its entry can lag behind a disabling by up to its time to live

@@ -150,6 +150,7 @@ public class WebhookEndpointController {
             description = "The previous secret keeps signing deliveries, next to the new one, until "
                     + "previousSecretExpiresAt."
     )
+    @DocumentedProblems(ProblemType.WEBHOOK_NOT_SIGNED)
     @PostMapping("/{webhookId}/secret")
     @AllowedRolesOrSelfOnly(UserRole.ADMIN)
     public WebhookSecretDto rotateWebhookSecret(@PathVariable UUID id, @PathVariable UUID webhookId) {

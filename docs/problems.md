@@ -109,6 +109,12 @@ Use a public HTTPS URL on the default port, without a user name or password.
 
 Delete a webhook you no longer use, or send more events to an existing one.
 
+## webhook-not-signed
+
+**Status 422, title "Webhook not signed".** The webhook sends Slack messages, which are not signed, so it has no signing secret to replace.
+
+Nothing to do: a Slack webhook's URL is its only credential. To change it, replace the URL.
+
 ## Errors without a type
 
 These errors have no `type` member (RFC 9457 reads that as `about:blank`), and their `title` is the status phrase. The status code tells you what to do.

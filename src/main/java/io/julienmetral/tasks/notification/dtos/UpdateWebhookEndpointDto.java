@@ -10,7 +10,8 @@ import jakarta.validation.constraints.Size;
 import java.util.Set;
 
 public record UpdateWebhookEndpointDto(
-        @Schema(example = "https://hooks.example.com/tasks")
+        @Schema(example = "https://hooks.example.com/tasks",
+                description = "For a Slack webhook, the masked URL of a response keeps the current one")
         @NotBlank @Size(max = 2048) String url,
 
         @NotEmpty Set<@NotNull WebhookEvent> events,
