@@ -88,6 +88,7 @@ public class WebhookDeliveryService {
     private final UserRepository userRepository;
     private final MailService mailService;
     private final SlackMessages slackMessages;
+    private final WebhookResilience resilience;
     private final JsonMapper jsonMapper;
     private final WebhookClient client;
     private final WebhookSigner signer;
@@ -105,6 +106,7 @@ public class WebhookDeliveryService {
             UserRepository userRepository,
             MailService mailService,
             SlackMessages slackMessages,
+            WebhookResilience resilience,
             JsonMapper jsonMapper,
             WebhookClient client,
             WebhookSigner signer,
@@ -121,6 +123,7 @@ public class WebhookDeliveryService {
         this.userRepository = userRepository;
         this.mailService = mailService;
         this.slackMessages = slackMessages;
+        this.resilience = resilience;
         this.jsonMapper = jsonMapper;
         this.client = client;
         this.signer = signer;
@@ -225,11 +228,45 @@ public class WebhookDeliveryService {
     public void deliver(UUID deliveryId) {
         Optional<Attempt> attempt = transactions.execute(status -> prepare(deliveryId));
 
-        if (attempt != null && attempt.isPresent()) {
-            Outcome outcome = send(attempt.get());
-
-            transactions.executeWithoutResult(status -> record(deliveryId, outcome));
+        if (attempt == null || attempt.isEmpty()) {
+            return;
         }
+
+        Optional<WebhookResilience.Permit> permit = resilience.tryAcquire(attempt.get().url().getHost());
+
+        if (permit.isEmpty()) {
+            transactions.executeWithoutResult(status -> postpone(deliveryId));
+            return;
+        }
+
+        Outcome outcome = null;
+
+        try {
+            outcome = send(attempt.get());
+        } finally {
+            resilience.release(permit.get(), outcome == null ? null : outcome.statusCode(),
+                    outcome != null && DESTINATION_NOT_ALLOWED.equals(outcome.error()));
+        }
+
+        Outcome recorded = outcome;
+        transactions.executeWithoutResult(status -> record(deliveryId, recorded));
+    }
+
+    /**
+     * The host's breaker is open, or as many calls as allowed are in flight to it: the delivery waits without using
+     * one of its attempts, and the retry job tries it again once the breaker may let a call through.
+     */
+    private void postpone(UUID deliveryId) {
+        deliveryRepository.findForUpdateById(deliveryId)
+                .filter(delivery -> delivery.getStatus() == WebhookDeliveryStatus.PENDING)
+                .ifPresent(delivery -> {
+                    // A second past the open duration: the breaker lets a call through only once it has elapsed
+                    delivery.setNextAttemptAt(clock.instant()
+                            .plus(properties.circuitBreaker().openDuration())
+                            .plusSeconds(1));
+                    delivery.setLastError("HostUnavailable");
+                    count("postponed");
+                });
     }
 
     private Optional<Attempt> prepare(UUID deliveryId) {

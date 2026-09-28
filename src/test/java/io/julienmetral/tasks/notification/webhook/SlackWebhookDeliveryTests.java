@@ -18,6 +18,7 @@ import mockwebserver3.RecordedRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -65,6 +66,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * pointed at a MockWebServer on 127.0.0.1, encrypted with {@link WebhookSecrets} as the service stores it.
  */
 @IntegrationTest
+@ExtendWith(ForgetWebhookHostsBeforeEach.class)
 class SlackWebhookDeliveryTests {
 
     private static final String WEBHOOKS = "/api/v1/users/{id}/webhooks";

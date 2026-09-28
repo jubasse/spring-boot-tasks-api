@@ -1,15 +1,20 @@
 package io.julienmetral.tasks.notification.webhook;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.http.client.InetAddressFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.resilience.annotation.EnableResilientMethods;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.web.client.support.RestClientHttpServiceGroupConfigurer;
 import org.springframework.web.service.registry.ImportHttpServices;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.time.Clock;
+
 @Configuration
+@EnableResilientMethods
 @EnableConfigurationProperties(WebhookProperties.class)
 @ImportHttpServices(group = WebhookConfiguration.CLIENT_GROUP, types = WebhookClient.class)
 public class WebhookConfiguration {
@@ -25,6 +30,11 @@ public class WebhookConfiguration {
     @Bean
     SlackMessages slackMessages(JsonMapper jsonMapper) {
         return new SlackMessages(jsonMapper);
+    }
+
+    @Bean
+    WebhookResilience webhookResilience(WebhookProperties properties, Clock clock, MeterRegistry meterRegistry) {
+        return new WebhookResilience(properties, clock, meterRegistry);
     }
 
     @Bean
