@@ -143,7 +143,7 @@ class DataExportServiceTest {
         private final TaskExportFilters filters = new TaskExportFilters(TaskStatus.DONE, UUID.randomUUID(), false);
 
         @Test
-        void locksTheOwnerThenSavesAQueuedExportAndQueuesItsRun() {
+        void locksTheOwnerThenSavesAQueuedExportWithALeaseAndQueuesItsRun() {
             UserProfile owner = reference(OWNER_ID);
             when(userProfileRepository.getReferenceById(OWNER_ID)).thenReturn(owner);
             when(repository.save(any(DataExport.class))).then(invocation -> {
@@ -166,6 +166,7 @@ class DataExportServiceTest {
             assertThat(export.getStatus()).isEqualTo(DataExportStatus.QUEUED);
             assertThat(export.getTaskFilters()).isEqualTo(filters);
             assertThat(export.getCreatedAt()).isEqualTo(NOW);
+            assertThat(export.getLeaseUntil()).isEqualTo(NOW.plus(LEASE));
             assertThat(export.getAttempts()).isZero();
             assertThat(export.getMedia()).isNull();
         }
@@ -396,52 +397,93 @@ class DataExportServiceTest {
     @Nested
     class RequeueInterrupted {
 
-        private DataExport interrupted(int attempts) {
-            DataExport export = export(DataExportStatus.RUNNING);
+        private DataExport leaseRanOut(DataExportStatus status, int attempts) {
+            DataExport export = export(status);
             export.setId(UUID.randomUUID());
             export.setAttempts(attempts);
             export.setLeaseUntil(NOW.minusSeconds(1));
             return export;
         }
 
+        private void leaseRanOutFor(DataExport... exports) {
+            when(repository.findByStatusInAndLeaseUntilBefore(DataExportStatus.ACTIVE, NOW))
+                    .thenReturn(List.of(exports));
+        }
+
         @Test
-        void exportsWithAttemptsLeftAreQueuedAgain() {
-            DataExport first = interrupted(1);
-            DataExport second = interrupted(MAX_ATTEMPTS - 1);
-            when(repository.findByStatusAndLeaseUntilBefore(DataExportStatus.RUNNING, NOW))
-                    .thenReturn(List.of(first, second));
+        void runningExportsWithAttemptsLeftAreQueuedAgainWithANewLease() {
+            DataExport first = leaseRanOut(DataExportStatus.RUNNING, 1);
+            DataExport second = leaseRanOut(DataExportStatus.RUNNING, MAX_ATTEMPTS - 1);
+            leaseRanOutFor(first, second);
 
             assertThat(service.requeueInterrupted()).isEqualTo(2);
 
             for (DataExport export : List.of(first, second)) {
                 assertThat(export.getStatus()).isEqualTo(DataExportStatus.QUEUED);
-                assertThat(export.getLeaseUntil()).isNull();
+                assertThat(export.getLeaseUntil()).isEqualTo(NOW.plus(LEASE));
                 verify(outbox).enqueue(ExportQueues.RUN, new DataExportRequested(export.getId()));
             }
             verifyNoInteractions(eventPublisher);
         }
 
         @Test
-        void exportThatUsedEveryAttemptFailsAndItsOwnerIsTold() {
-            DataExport exhausted = interrupted(MAX_ATTEMPTS);
-            when(repository.findByStatusAndLeaseUntilBefore(DataExportStatus.RUNNING, NOW))
-                    .thenReturn(List.of(exhausted));
+        void queuedExportWhoseMessageWasLostIsSentAgainWithANewLease() {
+            DataExport lost = leaseRanOut(DataExportStatus.QUEUED, 0);
+            leaseRanOutFor(lost);
+
+            assertThat(service.requeueInterrupted()).isOne();
+
+            assertThat(lost.getStatus()).isEqualTo(DataExportStatus.QUEUED);
+            assertThat(lost.getLeaseUntil()).isEqualTo(NOW.plus(LEASE));
+            assertThat(lost.getAttempts()).isZero();
+            verify(outbox).enqueue(ExportQueues.RUN, new DataExportRequested(lost.getId()));
+        }
+
+        // Only a run counts as an attempt: a queued export is sent again whatever its attempts
+        @Test
+        void queuedExportIsSentAgainEvenAfterItsLastAttempt() {
+            DataExport lost = leaseRanOut(DataExportStatus.QUEUED, MAX_ATTEMPTS);
+            leaseRanOutFor(lost);
+
+            assertThat(service.requeueInterrupted()).isOne();
+
+            assertThat(lost.getStatus()).isEqualTo(DataExportStatus.QUEUED);
+            verify(outbox).enqueue(ExportQueues.RUN, new DataExportRequested(lost.getId()));
+            verifyNoInteractions(eventPublisher);
+        }
+
+        @Test
+        void runningExportThatUsedEveryAttemptFailsAndItsOwnerIsTold() {
+            DataExport exhausted = leaseRanOut(DataExportStatus.RUNNING, MAX_ATTEMPTS);
+            leaseRanOutFor(exhausted);
             when(repository.findById(exhausted.getId())).thenReturn(Optional.of(exhausted));
 
             assertThat(service.requeueInterrupted()).isZero();
 
             assertThat(exhausted.getStatus()).isEqualTo(DataExportStatus.FAILED);
             assertThat(exhausted.getFailure()).isEqualTo("Interrupted");
+            assertThat(exhausted.getLeaseUntil()).isNull();
             verifyNoInteractions(outbox);
             verify(eventPublisher).publishEvent(
                     new DataExportFailed(exhausted.getId(), OWNER_ID, DataExportType.TASKS_CSV));
         }
 
         @Test
-        void withoutInterruptedExportNothingIsQueued() {
+        void withoutLeaseThatRanOutNothingIsQueued() {
             assertThat(service.requeueInterrupted()).isZero();
 
             verifyNoInteractions(outbox, eventPublisher);
+        }
+    }
+
+    @Nested
+    class RenewLease {
+
+        @Test
+        void leaseOfARunningExportIsPushedToALeaseFromNow() {
+            service.renewLease(EXPORT_ID);
+
+            verify(repository).renewLease(EXPORT_ID, NOW.plus(LEASE), DataExportStatus.RUNNING);
         }
     }
 

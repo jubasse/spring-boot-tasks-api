@@ -109,17 +109,50 @@ class DataExportRepositoryTests {
     }
 
     @Test
-    void interruptedExportsAreTheRunningOnesWhoseLeaseRanOut() {
+    void exportsToQueueAgainAreTheQueuedAndRunningOnesWhoseLeaseRanOut() {
         UserProfile owner = persistOwner();
         DataExport interrupted = persistExport(owner, DataExportStatus.RUNNING,
                 export -> export.setLeaseUntil(NOW.minusSeconds(1)));
+        DataExport lostMessage = persistExport(owner, DataExportStatus.QUEUED,
+                export -> export.setLeaseUntil(NOW.minusSeconds(1)));
         DataExport stillRunning = persistExport(owner, DataExportStatus.RUNNING,
                 export -> export.setLeaseUntil(NOW.plusSeconds(1)));
-        DataExport queued = persistExport(owner, DataExportStatus.QUEUED, export -> { });
+        DataExport stillQueued = persistExport(owner, DataExportStatus.QUEUED,
+                export -> export.setLeaseUntil(NOW.plusSeconds(1)));
+        DataExport failed = persistExport(owner, DataExportStatus.FAILED,
+                export -> export.setLeaseUntil(NOW.minusSeconds(1)));
 
-        List<UUID> found = ids(repository.findByStatusAndLeaseUntilBefore(DataExportStatus.RUNNING, NOW));
+        List<UUID> found = ids(repository.findByStatusInAndLeaseUntilBefore(DataExportStatus.ACTIVE, NOW));
 
-        assertThat(found).contains(interrupted.getId()).doesNotContain(stillRunning.getId(), queued.getId());
+        assertThat(found)
+                .contains(interrupted.getId(), lostMessage.getId())
+                .doesNotContain(stillRunning.getId(), stillQueued.getId(), failed.getId());
+    }
+
+    @Test
+    void renewingTheLeaseOfARunningExportPushesItForward() {
+        DataExport running = persistExport(persistOwner(), DataExportStatus.RUNNING, export -> {
+            export.setAttempts(1);
+            export.setLeaseUntil(NOW.minusSeconds(1));
+        });
+
+        assertThat(repository.renewLease(running.getId(), LEASE_UNTIL, DataExportStatus.RUNNING)).isOne();
+
+        DataExport renewed = reload(running);
+        assertThat(renewed.getLeaseUntil()).isEqualTo(LEASE_UNTIL);
+        assertThat(renewed.getStatus()).isEqualTo(DataExportStatus.RUNNING);
+        assertThat(renewed.getAttempts()).isOne();
+    }
+
+    // A run that ended, or was queued again by the recovery, must not take its lease back
+    @ParameterizedTest
+    @EnumSource(value = DataExportStatus.class, names = "RUNNING", mode = EnumSource.Mode.EXCLUDE)
+    void renewingTheLeaseOfAnExportThatIsNotRunningChangesNothing(DataExportStatus status) {
+        DataExport notRunning = persistExport(persistOwner(), status,
+                export -> export.setLeaseUntil(NOW.minusSeconds(1)));
+
+        assertThat(repository.renewLease(notRunning.getId(), LEASE_UNTIL, DataExportStatus.RUNNING)).isZero();
+        assertThat(reload(notRunning).getLeaseUntil()).isEqualTo(NOW.minusSeconds(1));
     }
 
     @Test
