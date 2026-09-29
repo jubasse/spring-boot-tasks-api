@@ -215,7 +215,7 @@ In development, set `WEBHOOK_REQUIRE_HTTPS=false` and `OUTBOUND_HTTP_ALLOWED_ADD
 
 ## Export data
 
-Tasks and, for an admin, users can be exported as CSV files. An export runs in the background: the request returns at once, and an email tells you when the file is ready.
+Tasks and, for an admin, users can be exported as CSV files, and every account can export its own personal data. An export runs in the background: the request returns at once, and an email tells you when the file is ready.
 
 ```bash
 curl -i -X POST http://localhost:8080/api/v1/exports/tasks \
@@ -230,10 +230,22 @@ curl http://localhost:8080/api/v1/exports/$EXPORT_ID -H "Authorization: Bearer $
 ```
 
 - **Download:** a completed export carries a `downloadUrl`, valid a few minutes; ask for the export again to get a new one. The file stays available 7 days, then its `status` becomes `EXPIRED`.
-- **Kinds:** `POST /api/v1/exports/tasks` takes the filters of the task list (`status`, `assigneeId`, `archived`), for any active account. `POST /api/v1/exports/users` lists every account with its email and roles, for admins only.
+- **Kinds:** `POST /api/v1/exports/tasks` takes the filters of the task list (`status`, `assigneeId`, `archived`), for any active account. `POST /api/v1/exports/users` lists every account with its email and roles, for admins only. `POST /api/v1/exports/my-data` exports the caller's personal data (see below).
 - **One at a time:** while an export is queued or running, asking for another of the same kind answers 409 `export-in-progress`.
 - **Your exports only:** `GET /api/v1/exports` lists yours, and `DELETE /api/v1/exports/{id}` deletes one with its file. Another account's export answers 404.
 - **Files:** UTF-8 with a byte order mark, so that Excel reads accents; comma-separated, every value quoted, dates in UTC (ISO 8601). A text that a spreadsheet would run as a formula starts with an apostrophe.
+
+### Export your personal data
+
+`POST /api/v1/exports/my-data` produces a ZIP archive of everything the API holds about your account, as the GDPR's rights of access and portability (articles 15 and 20) ask:
+
+| File | Content |
+|---|---|
+| `my-data.json` | Everything, for software: your account, email notification settings, webhooks, the tasks you created or are assigned to (deleted ones included, with their deletion date), your comments, the files you attached, what you did on tasks, and your exports. `version` identifies the format |
+| `my-data.pdf` | The same, for a person to read; each section shows its first 1000 rows |
+| `profile-photo.jpg` (or `.png`, `.webp`) | Your profile photo, when you have one |
+
+Other people appear by display name only, never by email. Secrets never appear: no password, no token, no webhook signing secret, and a Slack webhook URL is masked.
 
 ## Commands
 

@@ -55,7 +55,7 @@ Package-by-feature under `io.julienmetral.tasks`, and each feature uses the same
 
 - `identity`: users, login, JWT and refresh tokens, email verification, user-level authorization.
 - `task`: tasks, their event log and their attachments (`/api/v1/tasks/{id}/attachments`: added by an admin or the assignee, listed by any active user, removed by an admin or the uploader; additions and removals are history events) and their comments (see Task comments below).
-- `export`: CSV exports of tasks and users, produced by Spring Batch jobs (see Exports below).
+- `export`: CSV exports of tasks and users, and each account's personal data export, produced by Spring Batch jobs (see Exports below).
 - `mail`: the cross-cutting mail service (see Mail below).
 - `messaging`: the outbox through which every RabbitMQ message is published (see Outbox below).
 - `media`: stored files and their metadata (see Media storage below). Its sub-packages are `model` (entities, enums and value records), `services`, `repositories`, `controllers` and `exceptions`.
@@ -234,6 +234,9 @@ Every message for RabbitMQ goes through `messaging.services.Outbox.enqueue`, nev
   - The only job parameter is the export's id; the filters are read from the row, so no personal data lands in Batch's tables.
   - The readers page by id (UUIDv7) over their query made a subquery, with `PostgresPagingQueryProvider` given: detecting it reads the database's metadata. Native SQL sees soft-deleted rows, so each query writes `deleted_at IS NULL`.
   - `CsvLineAggregator` quotes every value and neutralises formulas (OWASP CSV injection); Batch's `DelimitedLineAggregator` neither quotes nor escapes. The header callback writes a UTF-8 byte order mark for Excel.
+- **Personal data** (`POST /api/v1/exports/my-data`, `batch.PersonalDataJob`): three tasklet steps, each reading what the step before wrote. `my-data.json` (complete, `version` for its format) from `PersonalDataQueries` (native SQL: the account's soft-deleted tasks are its data too; other people by display name only; no secret, a Slack URL masked); `my-data.pdf` from it, by `PersonalDataPdf` (a plain Thymeleaf `TemplateEngine` in XML mode, `templates/exports/personal-data.xhtml`, rendered by openhtmltopdf); then a ZIP with the profile photo. The files of a run live in `ExportFiles`' directory of the export, deleted when the job ends.
+  - Warning: the PDF renderer refuses every external resource (`useExternalResourceAccessControl`, before and after resolving): the server would otherwise fetch any URL a template referenced. Values go through `th:text` only, never `th:utext`.
+  - Noto Sans is embedded (`fonts/`, with its OFL licence): the PDF standard fonts cover Western European letters only.
 - **Interrupted runs:** `DataExportRecoveryJob` queues again, up to `exports.max-attempts`, a RUNNING export whose lease ran out. `DataExportRunner` then recovers its Batch execution left STARTED (`JobOperator.recover`), and the job instance restarts; both steps run again (`allowStartIfComplete`), since the file stayed on the instance that stopped.
 - **Retention:** `DataExportPurgeJob` deletes the files past `exports.retention` (7 days; the row stays as EXPIRED), then expired and failed exports and Batch executions older than `history-retention` (`BatchMetadataQueries`: Batch never deletes its history). The media cleanup leaves alone the media an export points to.
 - **Batch setup:** `spring-boot-starter-batch-jdbc`, `spring.batch.job.enabled=false` (jobs start on request only), the schema from Liquibase (changeset 023, a copy of Batch 6's `schema-postgresql.sql`, excluded from `liquibase:diff` in `pom.xml`), and executions created at read committed: serializable failed concurrent starts on Postgres.
