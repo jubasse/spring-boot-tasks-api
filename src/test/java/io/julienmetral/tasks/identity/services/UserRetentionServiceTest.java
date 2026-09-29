@@ -63,21 +63,7 @@ class UserRetentionServiceTest {
     }
 
     @Test
-    void runIsSkippedWhenAnotherInstanceHoldsTheLock() {
-        when(queries.tryLock()).thenReturn(false);
-
-        UserRetentionReport report = service.apply();
-
-        assertThat(report).isEqualTo(UserRetentionReport.skippedRun());
-        verify(queries).tryLock();
-        verifyNoMoreInteractions(queries);
-        verifyNoInteractions(userService, eventPublisher);
-    }
-
-    @Test
     void cutoffsAreComputedFromTheClockAndTheProperties() {
-        when(queries.tryLock()).thenReturn(true);
-
         service.apply();
 
         verify(queries).anonymizeUsersDeletedBefore(Instant.parse("2030-05-16T04:00:00Z"), NOW);
@@ -86,15 +72,13 @@ class UserRetentionServiceTest {
     }
 
     @Test
-    void lockIsTakenBeforeAnyWorkAndDeletedAccountsAreAnonymizedOnlyByALaterRun() {
+    void deletedAccountsAreAnonymizedOnlyByALaterRun() {
         UUID expired = UUID.randomUUID();
-        when(queries.tryLock()).thenReturn(true);
         when(queries.usersWarnedBefore(any())).thenReturn(List.of(expired));
 
         service.apply();
 
         InOrder order = inOrder(queries, userService);
-        order.verify(queries).tryLock();
         order.verify(queries).anonymizeUsersDeletedBefore(any(), any());
         order.verify(queries).usersWarnedBefore(any());
         order.verify(userService).delete(expired);
@@ -105,7 +89,6 @@ class UserRetentionServiceTest {
     void expiredAccountsAreDeletedThroughTheUserService() {
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();
-        when(queries.tryLock()).thenReturn(true);
         when(queries.usersWarnedBefore(any())).thenReturn(List.of(first, second));
 
         service.apply();
@@ -117,7 +100,6 @@ class UserRetentionServiceTest {
 
     @Test
     void eachWarnedUserGetsOneWarningAnnouncingTheDeletionDate() {
-        when(queries.tryLock()).thenReturn(true);
         when(queries.warnUsersInactiveSince(any(), any())).thenReturn(List.of(
                 new InactiveUser(UUID.randomUUID(), "jane@example.com", "Jane Doe", true),
                 new InactiveUser(UUID.randomUUID(), "john@example.com", "John Roe", true)
@@ -136,7 +118,6 @@ class UserRetentionServiceTest {
 
     @Test
     void disabledAccountIsWarnedWithoutAnEmail() {
-        when(queries.tryLock()).thenReturn(true);
         when(queries.warnUsersInactiveSince(any(), any())).thenReturn(List.of(
                 new InactiveUser(UUID.randomUUID(), "disabled@example.com", "Disabled", false),
                 new InactiveUser(UUID.randomUUID(), "jane@example.com", "Jane Doe", true)
@@ -153,7 +134,6 @@ class UserRetentionServiceTest {
 
     @Test
     void reportCountsAnonymizedWarnedAndDeletedAccounts() {
-        when(queries.tryLock()).thenReturn(true);
         when(queries.anonymizeUsersDeletedBefore(any(), any()))
                 .thenReturn(List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()));
         when(queries.usersWarnedBefore(any())).thenReturn(List.of(UUID.randomUUID()));
@@ -164,16 +144,14 @@ class UserRetentionServiceTest {
 
         UserRetentionReport report = service.apply();
 
-        assertThat(report).isEqualTo(new UserRetentionReport(false, 3, 2, 1));
+        assertThat(report).isEqualTo(new UserRetentionReport(3, 2, 1));
     }
 
     @Test
     void runWithNothingToDoDeletesNothingAndSendsNothing() {
-        when(queries.tryLock()).thenReturn(true);
-
         UserRetentionReport report = service.apply();
 
-        assertThat(report).isEqualTo(new UserRetentionReport(false, 0, 0, 0));
+        assertThat(report).isEqualTo(new UserRetentionReport(0, 0, 0));
         verify(userService, never()).delete(any());
         verifyNoInteractions(eventPublisher);
     }

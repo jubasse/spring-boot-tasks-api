@@ -4,7 +4,6 @@ import io.julienmetral.tasks.support.JdbcSliceTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
 
 import java.sql.Timestamp;
 import java.time.Duration;
@@ -12,7 +11,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
-import static io.julienmetral.tasks.support.Transactions.inNewTransaction;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @JdbcSliceTest
@@ -33,9 +31,6 @@ class MediaCleanupQueriesTests {
 
     @Autowired
     private JdbcTemplate jdbc;
-
-    @Autowired
-    private PlatformTransactionManager transactionManager;
 
     // Attachments of deleted tasks
 
@@ -181,13 +176,6 @@ class MediaCleanupQueriesTests {
     @Test
     void existingStorageKeysOfNoKeyIsEmpty() {
         assertThat(queries.existingStorageKeys(List.of())).isEmpty();
-    }
-
-    @Test
-    void lockIsHeldByOneTransactionAtATimeAndReleasedWhenItEnds() {
-        assertThat(inNewTransaction(transactionManager, queries::tryLock)).isTrue();
-        assertThat(queries.tryLock()).isTrue();
-        assertThat(inNewTransaction(transactionManager, queries::tryLock)).isFalse();
     }
 
     private UUID insertUser(Instant deletedAt) {

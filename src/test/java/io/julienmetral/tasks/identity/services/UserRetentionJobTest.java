@@ -23,23 +23,12 @@ class UserRetentionJobTest {
 
     @Test
     void logsTheCountsOfACompletedRun(CapturedOutput output) {
-        when(retentionService.apply()).thenReturn(new UserRetentionReport(false, 2, 3, 4));
+        when(retentionService.apply()).thenReturn(new UserRetentionReport(2, 3, 4));
 
         job.run();
 
         verify(retentionService).apply();
         assertThat(output).contains(
                 "User retention: 2 deleted users anonymized, 3 inactive accounts warned, 4 deleted");
-        assertThat(output).doesNotContain("User retention skipped");
-    }
-
-    @Test
-    void logsASkippedRunWithoutCounts(CapturedOutput output) {
-        when(retentionService.apply()).thenReturn(UserRetentionReport.skippedRun());
-
-        job.run();
-
-        assertThat(output).contains("User retention skipped: another instance is running it");
-        assertThat(output).doesNotContain("deleted users anonymized");
     }
 }

@@ -24,23 +24,12 @@ class MediaCleanupJobTest {
 
     @Test
     void logsTheCountsOfACompletedRun(CapturedOutput output) {
-        when(cleanupService.cleanUp()).thenReturn(new MediaCleanupReport(false, 2, 3, 4, 5));
+        when(cleanupService.cleanUp()).thenReturn(new MediaCleanupReport(2, 3, 4, 5));
 
         job.run();
 
         verify(cleanupService).cleanUp();
         assertThat(output).contains(
                 "Media cleanup: 2 attachments and 3 avatars detached, 4 media rows and 5 orphan objects deleted");
-        assertThat(output).doesNotContain("Media cleanup skipped");
-    }
-
-    @Test
-    void logsASkippedRunWithoutCounts(CapturedOutput output) {
-        when(cleanupService.cleanUp()).thenReturn(MediaCleanupReport.skippedRun());
-
-        job.run();
-
-        assertThat(output).contains("Media cleanup skipped: another instance is running it");
-        assertThat(output).doesNotContain("attachments and");
     }
 }

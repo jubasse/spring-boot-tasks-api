@@ -4,17 +4,9 @@ import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.model.MediaCleanupReport;
 import io.julienmetral.tasks.media.model.MediaUsage;
-import io.julienmetral.tasks.media.repositories.MediaCleanupQueries;
 import io.julienmetral.tasks.support.IntegrationTest;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.test.util.ReflectionTestUtils;
 
-import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.UUID;
 
@@ -22,11 +14,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @IntegrationTest
 class MediaCleanupTests extends AbstractMediaCleanupTests {
-
-    private static final long LOCK_KEY = (long) ReflectionTestUtils.getField(MediaCleanupQueries.class, "LOCK_KEY");
-
-    @Autowired
-    private DataSource dataSource;
 
     @Test
     void attachmentsOfTaskDeletedBeyondRetentionArePurgedWithTheirObjects() {
@@ -40,7 +27,6 @@ class MediaCleanupTests extends AbstractMediaCleanupTests {
 
         MediaCleanupReport report = cleanupService.cleanUp();
 
-        assertThat(report.skipped()).isFalse();
         assertThat(report.detachedAttachments()).isGreaterThanOrEqualTo(2);
         assertThat(report.deletedMedia()).isGreaterThanOrEqualTo(2);
         for (Media media : new Media[]{first, second}) {
@@ -249,9 +235,8 @@ class MediaCleanupTests extends AbstractMediaCleanupTests {
                 Timestamp.from(clock.instant().minus(BEYOND_GRACE_PERIOD))
         );
 
-        MediaCleanupReport report = cleanupService.cleanUp();
+        cleanupService.cleanUp();
 
-        assertThat(report.skipped()).isFalse();
         assertThat(jdbcTemplate.queryForObject(
                 "select exists (select 1 from media where id = ?)",
                 Boolean.class,
@@ -282,71 +267,10 @@ class MediaCleanupTests extends AbstractMediaCleanupTests {
         cleanupService.cleanUp();
         MediaCleanupReport second = cleanupService.cleanUp();
 
-        assertThat(second).isEqualTo(new MediaCleanupReport(false, 0, 0, 0, 0));
+        assertThat(second).isEqualTo(new MediaCleanupReport(0, 0, 0, 0));
         assertThat(mediaExists(expiredAttachment)).isFalse();
         assertKeptAsAttachment(keptAttachment);
         assertKeptAsAvatar(user, keptAvatar);
-    }
-
-    @Test
-    void runIsSkippedWhileAnotherTransactionHoldsTheLock() throws SQLException {
-        User user = createUser();
-        UUID taskId = createTask(user);
-        Media attachment = attachedToTask(taskId, user);
-        backdateMedia(attachment, BEYOND_RETENTION);
-        softDeleteTask(taskId, BEYOND_RETENTION);
-        Media orphan = storeAttachment(user);
-        backdateMedia(orphan, BEYOND_GRACE_PERIOD);
-
-        try (Connection otherInstance = dataSource.getConnection()) {
-            otherInstance.setAutoCommit(false);
-            try {
-                assertThat(tryLock(otherInstance)).isTrue();
-
-                assertThat(cleanupService.cleanUp()).isEqualTo(MediaCleanupReport.skippedRun());
-            } finally {
-                otherInstance.rollback();
-                otherInstance.setAutoCommit(true);
-            }
-        }
-
-        assertKeptAsAttachment(attachment);
-        assertThat(mediaExists(orphan)).isTrue();
-        assertThat(objectExists(orphan.getStorageKey())).isTrue();
-
-        MediaCleanupReport afterRelease = cleanupService.cleanUp();
-
-        assertThat(afterRelease.skipped()).isFalse();
-        assertThat(isAttached(attachment)).isFalse();
-        assertThat(mediaExists(attachment)).isFalse();
-        assertThat(mediaExists(orphan)).isFalse();
-        assertThat(objectExists(orphan.getStorageKey())).isFalse();
-    }
-
-    @Test
-    void lockIsReleasedWhenTheRunCommits() throws SQLException {
-        cleanupService.cleanUp();
-
-        assertThat(jdbcTemplate.queryForObject(
-                """
-                        select exists (
-                            select 1 from pg_locks
-                            where locktype = 'advisory' and ((classid::bigint << 32) | objid::bigint) = ?
-                        )
-                        """,
-                Boolean.class,
-                LOCK_KEY
-        )).isFalse();
-
-        try (Connection otherInstance = dataSource.getConnection()) {
-            otherInstance.setAutoCommit(false);
-            try {
-                assertThat(tryLock(otherInstance)).isTrue();
-            } finally {
-                otherInstance.rollback();
-                otherInstance.setAutoCommit(true);
-            }
-        }
     }
 
     @Test
@@ -359,7 +283,7 @@ class MediaCleanupTests extends AbstractMediaCleanupTests {
         softDeleteUser(user, BEYOND_RETENTION);
 
         transactionTemplate.executeWithoutResult(status -> {
-            assertThat(cleanupService.cleanUp().skipped()).isFalse();
+            assertThat(cleanupService.cleanUp().deletedMedia()).isGreaterThanOrEqualTo(2);
             status.setRollbackOnly();
         });
 
@@ -384,15 +308,5 @@ class MediaCleanupTests extends AbstractMediaCleanupTests {
         assertThat(pendingAvatarMediaIdOf(user)).isEqualTo(upload.getId());
         assertThat(mediaExists(upload)).isTrue();
         assertThat(objectExists(upload.getStorageKey())).isTrue();
-    }
-
-    private static boolean tryLock(Connection connection) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement("select pg_try_advisory_xact_lock(?)")) {
-            statement.setLong(1, LOCK_KEY);
-            try (ResultSet result = statement.executeQuery()) {
-                result.next();
-                return result.getBoolean(1);
-            }
-        }
     }
 }
