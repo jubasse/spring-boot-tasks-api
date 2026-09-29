@@ -58,6 +58,7 @@ public class PersonalDataJob {
     private final PlatformTransactionManager transactionManager;
     private final DataExportService exportService;
     private final DataExportJobListener jobListener;
+    private final DataExportLeaseRenewal leaseRenewal;
     private final PersonalDataQueries queries;
     private final PersonalDataPdf pdf;
     private final ObjectStorage objectStorage;
@@ -78,6 +79,7 @@ public class PersonalDataJob {
     private Step step(String name, Tasklet tasklet) {
         return new StepBuilder(name, jobRepository)
                 .allowStartIfComplete(true)
+                .listener(leaseRenewal)
                 .tasklet(tasklet, transactionManager)
                 .build();
     }
