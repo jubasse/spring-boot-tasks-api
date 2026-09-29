@@ -40,7 +40,8 @@ import java.util.UUID;
 
 @Tag(
         name = "Exports",
-        description = "Files of tasks, users or your personal data, produced in the background and downloadable for a while."
+        description = "Files of tasks, users or your personal data, produced in the background and downloadable "
+                + "for a while."
 )
 @RestController
 @RequestMapping("/exports")
@@ -93,7 +94,9 @@ public class DataExportController {
     @Operation(
             summary = "Export your personal data",
             description = """
-                    Everything the API holds about your account, as a ZIP archive: my-data.json, complete and meant                     for software, my-data.pdf, for a person to read, and your profile photo. Tasks, comments and                     history of other accounts appear only where you took part, and other people by display name."""
+                    Everything the API holds about your account, as a ZIP archive: my-data.json, complete and meant \
+                    for software, my-data.pdf, for a person to read, and your profile photo. Tasks, comments and \
+                    history of other accounts appear only where you took part, and other people by display name."""
     )
     @ResponseStatus(HttpStatus.ACCEPTED)
     @ApiResponse(responseCode = "202", description = QUEUED, headers = @Header(
