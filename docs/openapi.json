@@ -1327,6 +1327,53 @@
         "tags" : [ "Identicons" ]
       }
     },
+    "/api/v1/notifications/stream" : {
+      "get" : {
+        "description" : "The events are the webhook notifications of the caller (`task.assigned`, `task.commented`...), whatever their email settings: each has an `id`, the event name, and as data the webhook payload, `{\"type\", \"timestamp\", \"data\"}`. A comment is sent after 20 seconds without events.\n\nThe stream ends when the access token expires, or after 15 minutes. Reconnect with a fresh token and the `Last-Event-ID` header: the events missed meanwhile follow, or a `resync` event when they are no longer kept, after which reload what you show. An event can come twice: ignore an id you already have. Browsers' `EventSource` cannot send the token: use a client built on `fetch`.",
+        "operationId" : "streamNotifications",
+        "parameters" : [ {
+          "in" : "header",
+          "name" : "Last-Event-ID",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "text/event-stream" : {
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "The stream, open until the token expires."
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "429" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Too many streams are open for this account: close one first."
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Stream your task notifications as server-sent events",
+        "tags" : [ "Notifications" ]
+      }
+    },
     "/api/v1/tasks" : {
       "get" : {
         "operationId" : "listTasks",
@@ -3834,6 +3881,9 @@
   }, {
     "description" : "Accounts: sign-up, profile, profile photo, and the admin actions.",
     "name" : "Users"
+  }, {
+    "description" : "The caller's task notifications, as they happen.",
+    "name" : "Notifications"
   }, {
     "description" : "Tasks, their status, assignee and archive.",
     "name" : "Tasks"
