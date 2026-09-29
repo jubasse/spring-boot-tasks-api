@@ -3,6 +3,7 @@ package io.julienmetral.tasks.realtime.messaging;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.entities.UserStatus;
+import io.julienmetral.tasks.identity.events.AccountStateChanged;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.security.UserStatusLookup;
 import io.julienmetral.tasks.messaging.entities.OutboxMessage;
@@ -16,6 +17,7 @@ import org.springframework.amqp.core.FanoutExchange;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -23,6 +25,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
@@ -71,6 +74,9 @@ class RealtimeBroadcastTests {
     @Autowired
     private CacheManager cacheManager;
 
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
+
     @Test
     void taskNotificationIsBroadcastThroughAnOutboxRowForTheExchangeWhichIsMarkedPublished() throws Exception {
         User assignee = createUser(UserRole.USER);
@@ -103,6 +109,29 @@ class RealtimeBroadcastTests {
         assertThat(row.getExchange()).isEqualTo("tasks.realtime");
         assertThat(row.getQueue()).isNull();
         assertThat(row.getAttempts()).isZero();
+    }
+
+    @Test
+    void accountChangePublishedOutsideATransactionIsBroadcastInATransactionOfItsOwn() {
+        User user = createUser(UserRole.USER);
+        assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+
+        eventPublisher.publishEvent(new AccountStateChanged(user.getId()));
+
+        OutboxMessage row = awaitPublished(onlyBroadcastRow(AccountStatusChanged.class, "userId", user));
+        assertThat(row.getExchange()).isEqualTo("tasks.realtime");
+    }
+
+    @Test
+    void accountChangeOfARolledBackTransactionIsNotBroadcast() {
+        User user = createUser(UserRole.USER);
+
+        transactionTemplate.executeWithoutResult(transaction -> {
+            eventPublisher.publishEvent(new AccountStateChanged(user.getId()));
+            transaction.setRollbackOnly();
+        });
+
+        assertThat(broadcastRows(AccountStatusChanged.class, "userId", user)).isEmpty();
     }
 
     @Test
@@ -142,16 +171,20 @@ class RealtimeBroadcastTests {
     }
 
     private UUID onlyBroadcastRow(Class<?> type, String payloadKey, User user) {
-        List<UUID> ids = jdbcTemplate.queryForList(
+        List<UUID> ids = broadcastRows(type, payloadKey, user);
+
+        assertThat(ids).hasSize(1);
+        return ids.getFirst();
+    }
+
+    private List<UUID> broadcastRows(Class<?> type, String payloadKey, User user) {
+        return jdbcTemplate.queryForList(
                 "SELECT id FROM outbox_messages WHERE exchange = 'tasks.realtime' AND type = ? AND payload ->> ? = ?",
                 UUID.class,
                 type.getName(),
                 payloadKey,
                 user.getId().toString()
         );
-
-        assertThat(ids).hasSize(1);
-        return ids.getFirst();
     }
 
     // The relay publishes on an async thread after commit, and sets published_at once the broker confirmed
