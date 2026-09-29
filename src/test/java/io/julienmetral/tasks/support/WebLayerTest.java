@@ -18,6 +18,7 @@ import io.julienmetral.tasks.media.services.MediaUrls;
 import io.julienmetral.tasks.notification.services.NotificationSettingsService;
 import io.julienmetral.tasks.notification.services.WebhookEndpointService;
 import io.julienmetral.tasks.ratelimit.services.RateLimiter;
+import io.julienmetral.tasks.realtime.sse.NotificationStreams;
 import io.julienmetral.tasks.task.security.TaskAttachmentAuthorization;
 import io.julienmetral.tasks.task.security.TaskAuthorization;
 import io.julienmetral.tasks.task.security.TaskCommentAuthorization;
@@ -71,6 +72,7 @@ import java.lang.annotation.Target;
         AvatarService.class,
         NotificationSettingsService.class,
         WebhookEndpointService.class,
+        NotificationStreams.class,
         TaskService.class,
         TaskCommentService.class,
         TaskAttachmentService.class,
