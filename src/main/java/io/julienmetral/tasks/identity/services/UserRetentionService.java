@@ -28,14 +28,10 @@ public class UserRetentionService {
      * Anonymizes users deleted for longer than {@code anonymize-after}, warns accounts inactive for
      * {@code inactivity-period} (email after commit, enabled accounts only), and deletes the warned accounts still inactive after
      * {@code deletion-notice}, which revokes their sessions. Deleted accounts are anonymized by a later run.
+     * {@link UserRetentionJob}'s scheduler lock keeps it to one instance at a time.
      */
     @Transactional
     public UserRetentionReport apply() {
-        // Several instances may run the schedule: only the one holding the lock works
-        if (!queries.tryLock()) {
-            return UserRetentionReport.skippedRun();
-        }
-
         Instant now = clock.instant();
 
         List<UUID> anonymized = queries.anonymizeUsersDeletedBefore(now.minus(properties.anonymizeAfter()), now);
@@ -54,6 +50,6 @@ public class UserRetentionService {
                         new InactiveAccountWarned(user.email(), user.displayName(), deletionAt)
                 ));
 
-        return new UserRetentionReport(false, anonymized.size(), warned.size(), expired.size());
+        return new UserRetentionReport(anonymized.size(), warned.size(), expired.size());
     }
 }

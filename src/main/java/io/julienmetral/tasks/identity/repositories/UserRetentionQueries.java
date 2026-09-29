@@ -15,9 +15,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class UserRetentionQueries {
 
-    // Any stable number, distinct from the other jobs' locks: every instance must use the same one
-    private static final long LOCK_KEY = 5_118_640_279_033_417L;
-
     private static final String ACTIVITY = "COALESCE(u.last_active_at, u.last_login_at, u.created_at)";
 
     // Admins are never warned nor deleted for inactivity: deleting the last one would lock everybody out of
@@ -33,15 +30,6 @@ public class UserRetentionQueries {
             String displayName,
             boolean enabled
     ) {
-    }
-
-    /** Transaction-scoped lock, released on commit or rollback; false when another instance holds it. */
-    public boolean tryLock() {
-        return Boolean.TRUE.equals(jdbc.queryForObject(
-                "SELECT pg_try_advisory_xact_lock(:key)",
-                new MapSqlParameterSource("key", LOCK_KEY),
-                Boolean.class
-        ));
     }
 
     /**

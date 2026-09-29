@@ -3,7 +3,6 @@ package io.julienmetral.tasks.identity.services;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.identity.repositories.UserRetentionQueries;
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
 import io.julienmetral.tasks.support.TestClock;
@@ -14,17 +13,12 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -55,8 +49,6 @@ class UserRetentionTests {
 
     private static final String PASSWORD = "password123";
 
-    private static final long LOCK_KEY = (long) ReflectionTestUtils.getField(UserRetentionQueries.class, "LOCK_KEY");
-
     @Autowired
     private UserRetentionService retentionService;
 
@@ -80,9 +72,6 @@ class UserRetentionTests {
 
     @Autowired
     private JsonMapper jsonMapper;
-
-    @Autowired
-    private DataSource dataSource;
 
     @Autowired
     private Mailpit mailpit;
@@ -486,28 +475,6 @@ class UserRetentionTests {
         assertThat(deletedAt(user)).isNull();
     }
 
-    // Locking
-
-    @Test
-    void runIsSkippedWhileAnotherInstanceHoldsTheLock() throws Exception {
-        User user = createUser(UserRole.USER);
-        setDate(user, "last_active_at", NOW.minus(Duration.ofDays(800)));
-
-        try (Connection otherInstance = dataSource.getConnection()) {
-            executeWithLockKey(otherInstance, "SELECT pg_advisory_lock(?)");
-            try {
-                assertThat(retentionService.apply()).isEqualTo(UserRetentionReport.skippedRun());
-            } finally {
-                executeWithLockKey(otherInstance, "SELECT pg_advisory_unlock(?)");
-            }
-        }
-
-        assertThat(warnedAt(user)).isNull();
-
-        assertThat(retentionService.apply().skipped()).isFalse();
-        assertThat(warnedAt(user)).isEqualTo(NOW);
-    }
-
     private User createUser(UserRole role) {
         User user = new User();
         user.setEmail(uniqueEmail());
@@ -662,12 +629,5 @@ class UserRetentionTests {
     // Mail is dispatched asynchronously after commit: "nothing sent" can only be checked after a grace period
     private static void waitForAsyncDispatch() throws InterruptedException {
         Thread.sleep(Duration.ofMillis(800));
-    }
-
-    private static void executeWithLockKey(Connection connection, String sql) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setLong(1, LOCK_KEY);
-            statement.execute();
-        }
     }
 }

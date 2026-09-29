@@ -374,6 +374,7 @@ Metrics worth alerting on:
 | `outbox_publish_failures_total` | It increases steadily |
 | `cache_gets_total{cache="userStatus",result=...}` | The share of `hit` falls: every task request reads the account from the database again |
 | `tasks_scheduled_execution_seconds_count{outcome="FAILURE"}` | A background job failed |
+| `shedlock_lock_acquired_total{lock_name=...}` | It did not increase for longer than the job's period (25 hours for a daily job): no instance ran the job, for example because of a stuck lock |
 | `webhook_deliveries_total{outcome="failed"}` | It increases steadily: webhook notifications are being dropped after all their retries |
 | `webhook_circuit_breakers_open` | Above 0 for long: some webhook receivers are down, and notifications to them wait |
 
@@ -410,16 +411,28 @@ Work that must not slow down a request, or must survive a failure, goes through 
 |---|---|
 | `mail.send` | Sends the email over SMTP |
 | `avatar.process` | Crops and re-encodes an uploaded profile photo |
+| `webhook.deliver` | Sends a task notification to a webhook endpoint (its retries are scheduled in the database) |
 
 A failed message is retried with a growing delay, then moved to the queue's `.dead-letter` queue, where you can inspect it from the RabbitMQ console.
 
-Scheduled jobs run inside the API. Each job takes a PostgreSQL lock first, so only one instance runs it when several are deployed:
+Scheduled jobs run inside the API. When several instances are deployed, a job that must run once per schedule first takes its row in the `scheduler_locks` table (ShedLock), and the other instances skip that run. The two pollers run on every instance and share the work instead:
 
-| Job | Default schedule | What it does |
-|---|---|---|
-| Due-date reminders | every 15 minutes | Emails assignees about tasks due within 24 hours or just overdue |
-| Media cleanup | daily at 03:30 | Deletes the files of tasks and accounts deleted more than 30 days ago, and orphan files |
-| Personal data retention | daily at 04:00 | Anonymizes deleted accounts and handles inactive ones |
+| Job | Default schedule | Runs on | What it does |
+|---|---|---|---|
+| Due-date reminders | every 15 minutes | one instance | Emails assignees about tasks due within 24 hours or just overdue |
+| Media cleanup | daily at 03:30 | one instance | Deletes the files of tasks and accounts deleted more than 30 days ago, and orphan files |
+| Webhook deliveries purge | daily at 03:45 | one instance | Deletes delivery records older than 30 days |
+| Personal data retention | daily at 04:00 | one instance | Anonymizes deleted accounts and handles inactive ones |
+| Outbox purge | hourly | one instance | Deletes messages published more than 7 days ago |
+| Rate limit purge | hourly, at 20 minutes past | one instance | Deletes expired request counters |
+| Outbox poller | every 5 seconds | every instance | Publishes the messages RabbitMQ could not take right after their commit |
+| Webhook retries | every 30 seconds | every instance | Queues the webhook deliveries due for another attempt |
+
+A lock is released when its job ends, but held at least 30 seconds to 5 minutes, so an instance whose clock is slightly late does not run the job again. If an instance crashes during a job, its lock expires after the job's maximum duration (from 14 minutes to 2 hours). To release a stuck lock earlier, set its `lock_until` to the current time; never delete the row, or the instances that already know it skip the job until they restart:
+
+```sql
+UPDATE scheduler_locks SET lock_until = timezone('utc', now()) WHERE name = 'media-cleanup';
+```
 
 ## Technologies
 

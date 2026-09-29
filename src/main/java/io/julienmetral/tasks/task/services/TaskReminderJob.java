@@ -1,7 +1,9 @@
 package io.julienmetral.tasks.task.services;
 
+import io.julienmetral.tasks.config.ScheduledJobLocks;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -15,13 +17,9 @@ public class TaskReminderJob {
     private final TaskReminderService reminderService;
 
     @Scheduled(cron = "${task.reminders.cron}")
+    @SchedulerLock(name = ScheduledJobLocks.TASK_REMINDERS, lockAtMostFor = "PT14M", lockAtLeastFor = "PT30S")
     public void run() {
         TaskReminderReport report = reminderService.sendDueReminders();
-
-        if (report.skipped()) {
-            log.info("Task reminders skipped: another instance is sending them");
-            return;
-        }
 
         if (report.dueSoon() > 0 || report.overdue() > 0) {
             log.info("Task reminders: {} due soon, {} overdue", report.dueSoon(), report.overdue());

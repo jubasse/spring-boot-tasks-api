@@ -83,7 +83,7 @@ class MediaCleanupOrphanObjectTests extends AbstractMediaCleanupTests {
         cleanupService.cleanUp();
         MediaCleanupReport second = cleanupService.cleanUp();
 
-        assertThat(second).isEqualTo(new MediaCleanupReport(false, 0, 0, 0, 0));
+        assertThat(second).isEqualTo(new MediaCleanupReport(0, 0, 0, 0));
         assertThat(objectExists(orphanKey)).isFalse();
         assertThat(mediaExists(unreferenced)).isFalse();
         assertThat(mediaExists(attachment)).isTrue();

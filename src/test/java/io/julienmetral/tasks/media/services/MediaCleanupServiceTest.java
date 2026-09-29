@@ -30,7 +30,6 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
@@ -68,22 +67,7 @@ class MediaCleanupServiceTest {
     }
 
     @Test
-    void skipsTheRunWhenAnotherInstanceHoldsTheLock() {
-        when(queries.tryLock()).thenReturn(false);
-
-        MediaCleanupReport report = service.cleanUp();
-
-        assertThat(report).isEqualTo(MediaCleanupReport.skippedRun());
-        assertThat(report.skipped()).isTrue();
-        verify(queries).tryLock();
-        verifyNoMoreInteractions(queries);
-        verifyNoInteractions(objectStorage);
-        assertThat(TransactionSynchronizationManager.getSynchronizations()).isEmpty();
-    }
-
-    @Test
     void purgesWithCutoffsComputedFromTheClockAndTheProperties() {
-        lockAcquired();
         when(queries.detachAttachmentsOfTasksDeletedBefore(RETENTION_CUTOFF))
                 .thenReturn(List.of(UUID.randomUUID(), UUID.randomUUID()));
         when(queries.detachAvatarsOfUsersDeletedBefore(RETENTION_CUTOFF)).thenReturn(List.of(UUID.randomUUID()));
@@ -95,9 +79,8 @@ class MediaCleanupServiceTest {
 
         MediaCleanupReport report = service.cleanUp();
 
-        assertThat(report).isEqualTo(new MediaCleanupReport(false, 2, 1, 3, 1));
+        assertThat(report).isEqualTo(new MediaCleanupReport(2, 1, 3, 1));
         InOrder order = inOrder(queries, objectStorage);
-        order.verify(queries).tryLock();
         order.verify(queries).detachAttachmentsOfTasksDeletedBefore(RETENTION_CUTOFF);
         order.verify(queries).detachAvatarsOfUsersDeletedBefore(RETENTION_CUTOFF);
         order.verify(queries).deleteUnreferencedMediaCreatedBefore(GRACE_CUTOFF);
@@ -107,7 +90,6 @@ class MediaCleanupServiceTest {
 
     @Test
     void deletesObjectsOnlyAfterCommit() {
-        lockAcquired();
         when(queries.deleteUnreferencedMediaCreatedBefore(GRACE_CUTOFF)).thenReturn(List.of("avatar/unreferenced"));
         when(objectStorage.listKeysModifiedBefore(GRACE_CUTOFF)).thenReturn(List.of("avatar/orphan"));
         when(queries.existingStorageKeys(List.of("avatar/orphan"))).thenReturn(Set.of());
@@ -123,21 +105,19 @@ class MediaCleanupServiceTest {
 
     @Test
     void neverDeletesObjectsStillReferencedByAMediaRow() {
-        lockAcquired();
         List<String> oldObjects = List.of("avatar/referenced", "task-attachment/referenced");
         when(objectStorage.listKeysModifiedBefore(GRACE_CUTOFF)).thenReturn(oldObjects);
         when(queries.existingStorageKeys(oldObjects)).thenReturn(Set.copyOf(oldObjects));
 
         MediaCleanupReport report = service.cleanUp();
 
-        assertThat(report).isEqualTo(new MediaCleanupReport(false, 0, 0, 0, 0));
+        assertThat(report).isEqualTo(new MediaCleanupReport(0, 0, 0, 0));
         assertThat(TransactionSynchronizationManager.getSynchronizations()).isEmpty();
         verify(objectStorage, never()).delete(any());
     }
 
     @Test
     void anOrphanObjectOfADeletedMediaRowIsDeletedAndCountedOnce() {
-        lockAcquired();
         when(queries.deleteUnreferencedMediaCreatedBefore(GRACE_CUTOFF)).thenReturn(List.of("avatar/shared"));
         List<String> oldObjects = List.of("avatar/shared", "avatar/orphan");
         when(objectStorage.listKeysModifiedBefore(GRACE_CUTOFF)).thenReturn(oldObjects);
@@ -156,19 +136,17 @@ class MediaCleanupServiceTest {
 
     @Test
     void registersNoSynchronizationWhenThereIsNothingToDelete() {
-        lockAcquired();
         when(objectStorage.listKeysModifiedBefore(GRACE_CUTOFF)).thenReturn(List.of());
         when(queries.existingStorageKeys(List.of())).thenReturn(Set.of());
 
         MediaCleanupReport report = service.cleanUp();
 
-        assertThat(report).isEqualTo(new MediaCleanupReport(false, 0, 0, 0, 0));
+        assertThat(report).isEqualTo(new MediaCleanupReport(0, 0, 0, 0));
         assertThat(TransactionSynchronizationManager.getSynchronizations()).isEmpty();
     }
 
     @Test
     void aFailingObjectDeleteIsLoggedAndDoesNotStopTheOthers(CapturedOutput output) {
-        lockAcquired();
         when(queries.deleteUnreferencedMediaCreatedBefore(GRACE_CUTOFF))
                 .thenReturn(List.of("avatar/first", "avatar/failing", "avatar/last"));
         when(objectStorage.listKeysModifiedBefore(GRACE_CUTOFF)).thenReturn(List.of());
@@ -184,10 +162,6 @@ class MediaCleanupServiceTest {
         verify(objectStorage).delete("avatar/last");
         assertThat(output).contains("Could not delete object avatar/failing during media cleanup");
         assertThat(output).doesNotContain("Could not delete object avatar/first");
-    }
-
-    private void lockAcquired() {
-        when(queries.tryLock()).thenReturn(true);
     }
 
     private static void commit() {

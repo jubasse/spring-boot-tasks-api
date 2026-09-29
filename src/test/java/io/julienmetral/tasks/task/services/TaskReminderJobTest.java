@@ -23,29 +23,17 @@ class TaskReminderJobTest {
 
     @Test
     void logsTheCountsOfARunThatRecordedReminders(CapturedOutput output) {
-        when(reminderService.sendDueReminders()).thenReturn(new TaskReminderReport(false, 2, 3));
+        when(reminderService.sendDueReminders()).thenReturn(new TaskReminderReport(2, 3));
 
         job.run();
 
         verify(reminderService).sendDueReminders();
         assertThat(output).contains("Task reminders: 2 due soon, 3 overdue");
-        assertThat(output).doesNotContain("Task reminders skipped");
-    }
-
-    @Test
-    void logsASkippedRunWithoutCounts(CapturedOutput output) {
-        when(reminderService.sendDueReminders()).thenReturn(TaskReminderReport.skippedRun());
-
-        job.run();
-
-        verify(reminderService).sendDueReminders();
-        assertThat(output).contains("Task reminders skipped: another instance is sending them");
-        assertThat(output).doesNotContain("due soon,");
     }
 
     @Test
     void logsARunThatRecordedOnlyOverdueReminders(CapturedOutput output) {
-        when(reminderService.sendDueReminders()).thenReturn(new TaskReminderReport(false, 0, 1));
+        when(reminderService.sendDueReminders()).thenReturn(new TaskReminderReport(0, 1));
 
         job.run();
 
@@ -54,7 +42,7 @@ class TaskReminderJobTest {
 
     @Test
     void logsNothingWhenNoReminderWasDue(CapturedOutput output) {
-        when(reminderService.sendDueReminders()).thenReturn(new TaskReminderReport(false, 0, 0));
+        when(reminderService.sendDueReminders()).thenReturn(new TaskReminderReport(0, 0));
 
         job.run();
 

@@ -1,7 +1,9 @@
 package io.julienmetral.tasks.ratelimit.services;
 
+import io.julienmetral.tasks.config.ScheduledJobLocks;
 import io.julienmetral.tasks.ratelimit.repositories.RateLimitQueries;
 import lombok.RequiredArgsConstructor;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -19,6 +21,7 @@ public class RateLimitCleanupJob {
     private final Clock clock;
 
     @Scheduled(cron = "${rate-limit.purge-cron}")
+    @SchedulerLock(name = ScheduledJobLocks.RATE_LIMIT_PURGE, lockAtMostFor = "PT30M", lockAtLeastFor = "PT1M")
     public void deleteOldWindows() {
         queries.deleteWindowsStartedBefore(clock.instant().minus(KEEP));
     }

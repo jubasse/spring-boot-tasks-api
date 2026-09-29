@@ -4,26 +4,18 @@ import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.task.entities.TaskReminderKind;
 import io.julienmetral.tasks.task.events.TaskDueSoon;
 import io.julienmetral.tasks.task.events.TaskOverdue;
-import io.julienmetral.tasks.task.repositories.TaskReminderQueries;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
-import org.springframework.test.util.ReflectionTestUtils;
 
-import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,13 +24,8 @@ import static org.assertj.core.api.Assertions.tuple;
 @RecordApplicationEvents
 class TaskReminderTests extends AbstractTaskReminderTests {
 
-    private static final long LOCK_KEY = (long) ReflectionTestUtils.getField(TaskReminderQueries.class, "LOCK_KEY");
-
     @Autowired
     private ApplicationEvents events;
-
-    @Autowired
-    private DataSource dataSource;
 
     @Test
     void taskDueWithinTheLeadTimeIsRemindedDueSoonOnce() throws Exception {
@@ -47,16 +34,14 @@ class TaskReminderTests extends AbstractTaskReminderTests {
 
         TaskReminderReport first = reminderService.sendDueReminders();
 
-        assertThat(first.skipped()).isFalse();
         assertThat(first.dueSoon()).isGreaterThanOrEqualTo(1);
         assertThat(dueSoonEventsFor(task)).containsExactly(new TaskDueSoon(
                 task.id(), task.reference(), TITLE, NOW.plus(Duration.ofHours(12)), assignee.getId()
         ));
         assertThat(overdueEventsFor(task)).isEmpty();
 
-        TaskReminderReport second = reminderService.sendDueReminders();
+        reminderService.sendDueReminders();
 
-        assertThat(second.skipped()).isFalse();
         assertThat(dueSoonEventsFor(task)).hasSize(1);
         assertThat(remindersOf(task)).hasSize(1);
     }
@@ -405,53 +390,6 @@ class TaskReminderTests extends AbstractTaskReminderTests {
     }
 
     @Test
-    void runIsSkippedWhileAnotherInstanceHoldsTheLock() throws Exception {
-        CreatedTask task = createTask(createAdmin(), createAssignee(), NOW.plus(Duration.ofHours(1)));
-
-        try (Connection otherInstance = dataSource.getConnection()) {
-            execute(otherInstance, "select pg_advisory_lock(?)");
-            try {
-                assertThat(reminderService.sendDueReminders()).isEqualTo(TaskReminderReport.skippedRun());
-            } finally {
-                execute(otherInstance, "select pg_advisory_unlock(?)");
-            }
-        }
-
-        assertNeverReminded(task);
-
-        TaskReminderReport afterRelease = reminderService.sendDueReminders();
-
-        assertThat(afterRelease.skipped()).isFalse();
-        assertThat(kindsOf(task)).containsExactly(TaskReminderKind.DUE_SOON);
-    }
-
-    @Test
-    void runIsSkippedWhileAnotherRunIsInProgress() throws Exception {
-        CreatedTask task = createTask(createAdmin(), createAssignee(), NOW.plus(Duration.ofHours(1)));
-        CountDownLatch firstRunRecorded = new CountDownLatch(1);
-        CountDownLatch releaseFirstRun = new CountDownLatch(1);
-
-        try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
-            // The first run keeps its transaction, and so the lock, open until the second run is done
-            Future<TaskReminderReport> firstRun = executor.submit(() -> transactionTemplate.execute(status -> {
-                TaskReminderReport report = reminderService.sendDueReminders();
-                firstRunRecorded.countDown();
-                await(releaseFirstRun);
-                return report;
-            }));
-            assertThat(firstRunRecorded.await(10, TimeUnit.SECONDS)).isTrue();
-
-            TaskReminderReport secondRun = reminderService.sendDueReminders();
-            releaseFirstRun.countDown();
-
-            assertThat(secondRun).isEqualTo(TaskReminderReport.skippedRun());
-            assertThat(firstRun.get(10, TimeUnit.SECONDS).skipped()).isFalse();
-        }
-
-        assertThat(kindsOf(task)).containsExactly(TaskReminderKind.DUE_SOON);
-    }
-
-    @Test
     void concurrentRunsRecordEachReminderOnce() throws Exception {
         CreatedTask task = createTask(createAdmin(), createAssignee(), NOW.plus(Duration.ofHours(1)));
         CyclicBarrier start = new CyclicBarrier(2);
@@ -462,31 +400,10 @@ class TaskReminderTests extends AbstractTaskReminderTests {
                     CompletableFuture.supplyAsync(() -> runAfter(start), executor)
             );
 
-            List<TaskReminderReport> reports = runs.stream().map(CompletableFuture::join).toList();
-
-            assertThat(reports).anyMatch(report -> !report.skipped());
+            runs.forEach(CompletableFuture::join);
         }
 
         assertThat(kindsOf(task)).containsExactly(TaskReminderKind.DUE_SOON);
-    }
-
-    @Test
-    void lockIsReleasedWhenTheRunCommits() throws Exception {
-        reminderService.sendDueReminders();
-
-        try (Connection otherInstance = dataSource.getConnection()) {
-            otherInstance.setAutoCommit(false);
-            try (PreparedStatement statement = otherInstance.prepareStatement("select pg_try_advisory_xact_lock(?)")) {
-                statement.setLong(1, LOCK_KEY);
-                try (var result = statement.executeQuery()) {
-                    result.next();
-                    assertThat(result.getBoolean(1)).isTrue();
-                }
-            } finally {
-                otherInstance.rollback();
-                otherInstance.setAutoCommit(true);
-            }
-        }
     }
 
     @Test
@@ -494,7 +411,7 @@ class TaskReminderTests extends AbstractTaskReminderTests {
         CreatedTask task = createTask(createAdmin(), createAssignee(), NOW.plus(Duration.ofHours(1)));
 
         transactionTemplate.executeWithoutResult(status -> {
-            assertThat(reminderService.sendDueReminders().skipped()).isFalse();
+            assertThat(reminderService.sendDueReminders().dueSoon()).isGreaterThanOrEqualTo(1);
             status.setRollbackOnly();
         });
 
@@ -530,21 +447,5 @@ class TaskReminderTests extends AbstractTaskReminderTests {
             throw new IllegalStateException(exception);
         }
         return reminderService.sendDueReminders();
-    }
-
-    private static void await(CountDownLatch latch) {
-        try {
-            assertThat(latch.await(10, TimeUnit.SECONDS)).isTrue();
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException(exception);
-        }
-    }
-
-    private static void execute(Connection connection, String sql) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setLong(1, LOCK_KEY);
-            statement.execute();
-        }
     }
 }
