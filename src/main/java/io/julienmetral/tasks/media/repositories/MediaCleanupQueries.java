@@ -21,19 +21,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class MediaCleanupQueries {
 
-    // Any stable number: every instance must use the same one
-    private static final long LOCK_KEY = 7_411_203_588_104_229L;
-
     private final NamedParameterJdbcTemplate jdbc;
-
-    /** Transaction-scoped lock, released on commit or rollback; false when another instance holds it. */
-    public boolean tryLock() {
-        return Boolean.TRUE.equals(jdbc.queryForObject(
-                "SELECT pg_try_advisory_xact_lock(:key)",
-                new MapSqlParameterSource("key", LOCK_KEY),
-                Boolean.class
-        ));
-    }
 
     /** @return the media ids that were attached */
     public List<UUID> detachAttachmentsOfTasksDeletedBefore(Instant cutoff) {
