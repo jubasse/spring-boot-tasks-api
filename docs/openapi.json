@@ -36,7 +36,7 @@
         "description" : "A file is larger than its limit."
       },
       "Forbidden" : {
-        "description" : "The account may not do this. Task operations need an active account (verified email, not disabled); other rules are in the operation's description.",
+        "description" : "The account may not do this. Task and notification operations need an active account (verified email, not disabled); other rules are in the operation's description.",
         "headers" : {
           "WWW-Authenticate" : {
             "description" : "Bearer error=\"insufficient_scope\".",
@@ -1350,11 +1350,11 @@
             },
             "description" : "The stream, open until the token expires."
           },
-          "400" : {
-            "$ref" : "#/components/responses/BadRequest"
-          },
           "401" : {
             "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
           },
           "429" : {
             "content" : {
