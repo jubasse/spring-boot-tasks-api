@@ -49,7 +49,15 @@ public interface DataExportRepository extends JpaRepository<DataExport, UUID> {
             @Param("running") DataExportStatus running
     );
 
-    List<DataExport> findByStatusAndLeaseUntilBefore(DataExportStatus status, Instant cutoff);
+    @Modifying
+    @Query("UPDATE DataExport e SET e.leaseUntil = :leaseUntil WHERE e.id = :id AND e.status = :running")
+    int renewLease(
+            @Param("id") UUID id,
+            @Param("leaseUntil") Instant leaseUntil,
+            @Param("running") DataExportStatus running
+    );
+
+    List<DataExport> findByStatusInAndLeaseUntilBefore(Collection<DataExportStatus> statuses, Instant cutoff);
 
     @EntityGraph(attributePaths = "media", type = EntityGraph.EntityGraphType.LOAD)
     List<DataExport> findByStatusAndExpiresAtBefore(DataExportStatus status, Instant cutoff);

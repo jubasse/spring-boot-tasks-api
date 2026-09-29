@@ -65,6 +65,7 @@ public class DataExportService {
         export.setStatus(DataExportStatus.QUEUED);
         export.setTaskFilters(taskFilters);
         export.setCreatedAt(clock.instant());
+        export.setLeaseUntil(clock.instant().plus(properties.lease()));
 
         DataExport saved = repository.save(export);
         outbox.enqueue(ExportQueues.RUN, new DataExportRequested(saved.getId()));
@@ -115,6 +116,12 @@ public class DataExportService {
         return claimed == 1 ? repository.findById(id) : Optional.empty();
     }
 
+    /** Pushes a running export's lease forward, so that a long run is not taken for an interrupted one. */
+    @Transactional
+    public void renewLease(UUID id) {
+        repository.renewLease(id, clock.instant().plus(properties.lease()), DataExportStatus.RUNNING);
+    }
+
     /**
      * The last step of a successful run: stores the file and makes it downloadable until the retention ends. The
      * owner is emailed after the commit.
@@ -156,23 +163,25 @@ public class DataExportService {
     }
 
     /**
-     * Queues again the exports whose instance stopped while running them (their lease ran out), or fails those that
-     * used every attempt.
+     * Queues again the exports whose lease ran out: a running one whose instance stopped (or fails it once every
+     * attempt is used), and a queued one whose message was lost. A lost message used to leave its export queued for
+     * good, blocking its owner's next export of that type. A duplicate message does nothing: the run claims first.
      *
      * @return how many were queued again
      */
     @Transactional
     public int requeueInterrupted() {
+        Instant now = clock.instant();
         int requeued = 0;
 
-        for (DataExport export : repository.findByStatusAndLeaseUntilBefore(DataExportStatus.RUNNING, clock.instant())) {
-            if (export.getAttempts() >= properties.maxAttempts()) {
+        for (DataExport export : repository.findByStatusInAndLeaseUntilBefore(DataExportStatus.ACTIVE, now)) {
+            if (export.getStatus() == DataExportStatus.RUNNING && export.getAttempts() >= properties.maxAttempts()) {
                 fail(export.getId(), "Interrupted");
                 continue;
             }
 
             export.setStatus(DataExportStatus.QUEUED);
-            export.setLeaseUntil(null);
+            export.setLeaseUntil(now.plus(properties.lease()));
             outbox.enqueue(ExportQueues.RUN, new DataExportRequested(export.getId()));
             requeued++;
         }

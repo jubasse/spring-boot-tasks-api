@@ -82,6 +82,7 @@ public class CsvExportJobs {
     private final ExportProperties properties;
     private final DataExportService exportService;
     private final DataExportJobListener jobListener;
+    private final DataExportLeaseRenewal leaseRenewal;
     private final Clock clock;
 
     @Bean(TASKS_JOB)
@@ -99,6 +100,7 @@ public class CsvExportJobs {
         return new StepBuilder(TASKS_WRITE, jobRepository)
                 .allowStartIfComplete(true)
                 .<TaskCsvRow, TaskCsvRow>chunk(properties.chunkSize())
+                .listener(leaseRenewal)
                 .reader(tasksCsvReader)
                 .writer(tasksCsvWriter)
                 .transactionManager(transactionManager)
@@ -110,6 +112,7 @@ public class CsvExportJobs {
         return new StepBuilder(USERS_WRITE, jobRepository)
                 .allowStartIfComplete(true)
                 .<UserCsvRow, UserCsvRow>chunk(properties.chunkSize())
+                .listener(leaseRenewal)
                 .reader(usersCsvReader)
                 .writer(usersCsvWriter)
                 .transactionManager(transactionManager)
@@ -189,6 +192,7 @@ public class CsvExportJobs {
     private Job csvJob(String name, Step write, String writeStepName, String filenamePrefix) {
         Step publish = new StepBuilder(name + "Publish", jobRepository)
                 .allowStartIfComplete(true)
+                .listener(leaseRenewal)
                 .tasklet(new PublishExport(exportService, clock, writeStepName, filenamePrefix), transactionManager)
                 .build();
 

@@ -77,7 +77,8 @@ public class DataExport {
     @Column(name = "failure", length = 100)
     private String failure;
 
-    // While running: when the run counts as interrupted, if the instance running it stopped
+    // While queued: when its run message is sent again, in case it was lost. While running: when the run counts as
+    // interrupted, if the instance running it stopped; the run renews it as it goes
     @Column(name = "lease_until")
     private Instant leaseUntil;
 
