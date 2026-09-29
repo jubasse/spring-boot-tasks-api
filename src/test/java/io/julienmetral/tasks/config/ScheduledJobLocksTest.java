@@ -49,7 +49,8 @@ class ScheduledJobLocksTest {
     @Test
     void scanFindsTheScheduledJobs() {
         assertThat(scheduledMethods()).extracting(ScheduledJobLocksTest::nameOf)
-                .contains("RateLimitCleanupJob.deleteOldWindows", "WebhookDeliveryPurgeJob.purgeOldDeliveries")
+                .contains("RateLimitCleanupJob.deleteOldWindows", "WebhookDeliveryPurgeJob.purgeOldDeliveries",
+                        "DataExportPurgeJob.purge", "DataExportRecoveryJob.requeueInterrupted")
                 .containsAll(UNLOCKED_POLLERS);
     }
 

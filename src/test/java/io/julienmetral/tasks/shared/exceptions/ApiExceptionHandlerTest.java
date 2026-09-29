@@ -1,5 +1,7 @@
 package io.julienmetral.tasks.shared.exceptions;
 
+import io.julienmetral.tasks.export.exceptions.DataExportInProgressException;
+import io.julienmetral.tasks.export.exceptions.DataExportNotFoundException;
 import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.identity.exceptions.EmailAlreadyVerifiedException;
 import io.julienmetral.tasks.identity.exceptions.InvalidCredentialsException;
@@ -100,6 +102,14 @@ class ApiExceptionHandlerTest {
     }
 
     @Test
+    void dataExportNotFoundMapsToAnUntyped404() {
+        ProblemDetail problem = handler.handleNotFound(new DataExportNotFoundException(ID));
+
+        assertUntyped(problem, 404, "Not Found");
+        assertThat(problem.getDetail()).isEqualTo("Export not found: " + ID);
+    }
+
+    @Test
     void mentionOfUnknownUserIsAnInvalidMention() {
         ProblemDetail problem = handler.handleInvalidMention(InvalidMentionException.unknownUser(ID));
 
@@ -142,6 +152,15 @@ class ApiExceptionHandlerTest {
 
         assertTyped(problem, 409, "email-taken", "Email already in use");
         assertThat(problem.getDetail()).isEqualTo("User already exists with email: a@b.c");
+    }
+
+    @Test
+    void dataExportInProgressIsExportInProgress() {
+        ProblemDetail problem = handler.handleExportInProgress(new DataExportInProgressException());
+
+        assertTyped(problem, 409, "export-in-progress", "Export already in progress");
+        assertThat(problem.getDetail())
+                .isEqualTo("An export of the same kind is already queued or running: wait for it to finish");
     }
 
     @Test
