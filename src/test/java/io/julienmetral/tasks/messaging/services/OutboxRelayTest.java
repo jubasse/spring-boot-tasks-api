@@ -406,6 +406,96 @@ class OutboxRelayTest {
         assertThat(meterRegistry.getMeters()).isEmpty();
     }
 
+    @Test
+    void broadcastIsSentToItsExchangeWithAnEmptyRoutingKey() {
+        OutboxMessage row = broadcastRow();
+        when(repository.lockUnpublished(List.of(row.getId()))).thenReturn(List.of(row));
+        brokerConfirms();
+
+        relay.publishNow(List.of(row.getId()));
+
+        ArgumentCaptor<Message> sent = ArgumentCaptor.forClass(Message.class);
+        verify(rabbitTemplate).send(eq("tasks.realtime"), eq(""), sent.capture(), any(CorrelationData.class));
+        MessageProperties properties = sent.getValue().getMessageProperties();
+        assertThat(properties.getMessageId()).isEqualTo(row.getId().toString());
+        assertThat(properties.<String>getHeader("__TypeId__"))
+                .isEqualTo("io.julienmetral.tasks.realtime.messaging.AccountStatusChanged");
+        assertThat(jsonMapper.readTree(sent.getValue().getBody()).path("userId").asString())
+                .isEqualTo(row.getPayload().get("userId"));
+        assertThat(row.getPublishedAt()).isEqualTo(NOW);
+    }
+
+    @Test
+    void broadcastReturnedAsUnroutableIsMarkedPublishedSinceNoInstanceListens() {
+        OutboxMessage row = broadcastRow();
+        when(repository.lockUnpublished(List.of(row.getId()))).thenReturn(List.of(row));
+        brokerAnswers(correlation -> {
+            correlation.setReturned(new ReturnedMessage(new Message(new byte[0]), 312, "NO_ROUTE", "tasks.realtime", ""));
+            correlation.getFuture().complete(new CorrelationData.Confirm(true, null));
+        });
+
+        relay.publishNow(List.of(row.getId()));
+
+        assertThat(row.getPublishedAt()).isEqualTo(NOW);
+        assertThat(row.getAttempts()).isZero();
+        assertThat(row.getLastError()).isNull();
+        assertThat(publishedCount("tasks.realtime")).isEqualTo(1.0);
+        assertThat(meterRegistry.find("outbox.publish.failures").counters()).isEmpty();
+    }
+
+    @Test
+    void broadcastRefusedByTheBrokerIsRetriedLikeAQueuedMessage() {
+        OutboxMessage row = broadcastRow();
+        when(repository.lockUnpublished(List.of(row.getId()))).thenReturn(List.of(row));
+        brokerAnswers(correlation -> correlation.getFuture().complete(new CorrelationData.Confirm(false, "no exchange")));
+
+        relay.publishNow(List.of(row.getId()));
+
+        assertThat(row.getPublishedAt()).isNull();
+        assertThat(row.getAttempts()).isEqualTo(1);
+        assertThat(row.getLastError()).isEqualTo("Refused by the broker: no exchange");
+        assertThat(row.getNextAttemptAt()).isEqualTo(NOW.plusSeconds(5));
+    }
+
+    @Test
+    void broadcastThatCannotReachTheBrokerIsCountedAsAFailureForItsExchange() {
+        OutboxMessage row = broadcastRow();
+        when(repository.lockUnpublished(List.of(row.getId()))).thenReturn(List.of(row));
+        brokerIsUnreachable();
+
+        relay.publishNow(List.of(row.getId()));
+
+        assertThat(failureCount("tasks.realtime")).isEqualTo(1.0);
+        assertThat(row.getAttempts()).isEqualTo(1);
+    }
+
+    @Test
+    void failedBroadcastIsLoggedWithItsExchange(CapturedOutput output) {
+        OutboxMessage row = broadcastRow();
+        when(repository.lockUnpublished(List.of(row.getId()))).thenReturn(List.of(row));
+        brokerIsUnreachable();
+
+        relay.publishNow(List.of(row.getId()));
+
+        assertThat(output).contains(
+                "Could not publish outbox message " + row.getId() + " to tasks.realtime (attempt 1), retrying in PT5S");
+    }
+
+    @Test
+    void queuedMessagesAndBroadcastsAreCountedEachUnderTheirOwnDestination() {
+        OutboxMessage mail = mailRow();
+        OutboxMessage broadcast = broadcastRow();
+        when(repository.lockDue(NOW, BATCH_SIZE)).thenReturn(List.of(mail, broadcast));
+        brokerConfirms();
+
+        relay.publishDue();
+
+        assertThat(publishedCount("mail.send")).isEqualTo(1.0);
+        assertThat(publishedCount("tasks.realtime")).isEqualTo(1.0);
+        verify(rabbitTemplate).send(eq(""), eq("mail.send"), any(Message.class), any(CorrelationData.class));
+        verify(rabbitTemplate).send(eq("tasks.realtime"), eq(""), any(Message.class), any(CorrelationData.class));
+    }
+
     private double publishedCount(String queue) {
         return count("outbox.messages.published", queue);
     }
@@ -447,6 +537,13 @@ class OutboxRelayTest {
     private static OutboxMessage mailRow() {
         return row("mail.send", "io.julienmetral.tasks.mail.MailMessage",
                 Map.of("to", UUID.randomUUID() + "@example.com", "subject", "Subject", "text", "Body"));
+    }
+
+    private static OutboxMessage broadcastRow() {
+        OutboxMessage row = row(null, "io.julienmetral.tasks.realtime.messaging.AccountStatusChanged",
+                Map.of("userId", UUID.randomUUID().toString()));
+        row.setExchange("tasks.realtime");
+        return row;
     }
 
     private static OutboxMessage row(String queue, String type, Map<String, Object> payload) {

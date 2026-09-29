@@ -10,10 +10,12 @@ import io.julienmetral.tasks.task.entities.TaskComment;
 import io.julienmetral.tasks.task.entities.TaskEvent;
 import io.julienmetral.tasks.task.entities.TaskEventType;
 import io.julienmetral.tasks.task.entities.TaskStatus;
+import io.julienmetral.tasks.task.events.TaskEventRecorded;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.repositories.TaskEventRepository;
 import io.julienmetral.tasks.task.repositories.TaskRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -36,6 +38,7 @@ public class TaskEventService {
     private final UserProfileRepository userProfileRepository;
     private final CurrentUser currentUser;
     private final JsonMapper jsonMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void created(Task task) {
@@ -177,14 +180,19 @@ public class TaskEventService {
             Object payload
     ) {
         TaskEvent event = new TaskEvent();
+        UUID actorId = getCurrentActor().getId();
 
         event.setTask(task);
-        event.setActor(userProfileRepository.getReferenceById(getCurrentActor().getId()));
+        event.setActor(userProfileRepository.getReferenceById(actorId));
         event.setType(type);
         event.setOccurredAt(Instant.now());
         event.setPayload(serialize(payload));
 
         taskEventRepository.save(event);
+
+        eventPublisher.publishEvent(new TaskEventRecorded(
+                task.getId(), event.getId(), type, actorId, event.getOccurredAt()
+        ));
     }
 
     private User getCurrentActor() {

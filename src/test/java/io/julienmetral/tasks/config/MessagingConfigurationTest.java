@@ -3,16 +3,21 @@ package io.julienmetral.tasks.config;
 import io.julienmetral.tasks.export.messaging.DataExportRequested;
 import io.julienmetral.tasks.identity.messaging.AvatarUploaded;
 import io.julienmetral.tasks.mail.MailMessage;
+import io.julienmetral.tasks.realtime.messaging.AccountStatusChanged;
+import io.julienmetral.tasks.realtime.messaging.UserNotification;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.support.converter.MessageConverter;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -129,6 +134,35 @@ class MessagingConfigurationTest {
         assertThatThrownBy(() -> converter.fromMessage(message))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("is not in the trusted packages");
+    }
+
+    @Test
+    void userNotificationStoredByTheOutboxRoundTripsThroughItsTypeHeader() {
+        UserNotification notification = new UserNotification(
+                UUID.fromString("00000000-0000-0000-0000-000000000001"),
+                "task.assigned",
+                Instant.parse("2026-03-04T05:06:07Z"),
+                Map.of("task", Map.of("id", "00000000-0000-0000-0000-00000000000a", "reference", "OPS-12"),
+                        "actor", Map.of("displayName", "Ada"))
+        );
+
+        assertThat(converter.fromMessage(asRelayed(notification))).isEqualTo(notification);
+    }
+
+    @Test
+    void accountStatusChangedStoredByTheOutboxRoundTripsThroughItsTypeHeader() {
+        AccountStatusChanged change = new AccountStatusChanged(UUID.fromString("00000000-0000-0000-0000-000000000001"));
+
+        assertThat(converter.fromMessage(asRelayed(change))).isEqualTo(change);
+    }
+
+    // The real-time listener is declared on its class, so no parameter type guides the conversion: the type header
+    // alone does, and the body is what OutboxRelay sends, the payload map the outbox stored
+    private Message asRelayed(Object message) {
+        Map<String, Object> payload = jsonMapper.convertValue(message, new TypeReference<Map<String, Object>>() {
+        });
+
+        return jsonMessage(message.getClass().getName(), jsonMapper.writeValueAsString(payload));
     }
 
     private static Message jsonMessage(String typeId, String json) {

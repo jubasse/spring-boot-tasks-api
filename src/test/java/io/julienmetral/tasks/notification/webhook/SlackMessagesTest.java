@@ -224,7 +224,7 @@ class SlackMessagesTest {
         return body.get("text").asString();
     }
 
-    // The shape WebhookNotificationSender builds: task, then actor, then the details of the event
+    // The shape TaskNotificationPublisher builds: task, then actor, then the details of the event
     private static Map<String, Object> data() {
         Map<String, Object> task = new LinkedHashMap<>();
         task.put("id", UUID.randomUUID());

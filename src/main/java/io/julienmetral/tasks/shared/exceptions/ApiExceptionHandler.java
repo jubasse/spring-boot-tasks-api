@@ -17,6 +17,7 @@ import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
 import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
 import io.julienmetral.tasks.ratelimit.exceptions.RateLimitExceededException;
+import io.julienmetral.tasks.realtime.exceptions.TooManyNotificationStreamsException;
 import io.julienmetral.tasks.notification.exceptions.WebhookDeliveryNotFoundException;
 import io.julienmetral.tasks.notification.exceptions.WebhookEndpointNotFoundException;
 import io.julienmetral.tasks.notification.exceptions.WebhookLimitReachedException;
@@ -206,6 +207,11 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(StorageUnavailableException.class)
     public ProblemDetail handleStorageUnavailable(StorageUnavailableException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+    }
+
+    @ExceptionHandler(TooManyNotificationStreamsException.class)
+    public ProblemDetail handleTooManyNotificationStreams(TooManyNotificationStreamsException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
     }
 
     @ExceptionHandler(RateLimitExceededException.class)

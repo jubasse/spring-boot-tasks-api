@@ -12,6 +12,7 @@ import io.julienmetral.tasks.task.entities.TaskComment;
 import io.julienmetral.tasks.task.entities.TaskEvent;
 import io.julienmetral.tasks.task.entities.TaskEventType;
 import io.julienmetral.tasks.task.entities.TaskStatus;
+import io.julienmetral.tasks.task.events.TaskEventRecorded;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.repositories.TaskEventRepository;
 import io.julienmetral.tasks.task.repositories.TaskRepository;
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -37,6 +39,7 @@ import static io.julienmetral.tasks.support.UserProfiles.reference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -45,6 +48,10 @@ import static org.mockito.Mockito.when;
 class TaskEventServiceTest {
 
     private static final UUID ACTOR_ID = UUID.fromString("00000000-0000-0000-0000-0000000000a1");
+
+    private static final UUID TASK_ID = UUID.fromString("00000000-0000-0000-0000-0000000000b1");
+
+    private static final UUID EVENT_ID = UUID.fromString("00000000-0000-0000-0000-0000000000c1");
 
     @Mock
     private TaskRepository taskRepository;
@@ -61,6 +68,9 @@ class TaskEventServiceTest {
     @Mock
     private CurrentUser currentUser;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     private TaskEventService service;
 
     private final Task task = new Task();
@@ -75,9 +85,11 @@ class TaskEventServiceTest {
                 userRepository,
                 userProfileRepository,
                 currentUser,
-                JsonMapper.builder().build()
+                JsonMapper.builder().build(),
+                eventPublisher
         );
         actor.setId(ACTOR_ID);
+        task.setId(TASK_ID);
     }
 
     private void stubActor() {
@@ -181,6 +193,40 @@ class TaskEventServiceTest {
                 .containsEntry("reason", "duplicate");
     }
 
+    @Test
+    void recordingPublishesTheRowsIdTypeActorAndTimeAfterSavingIt() {
+        stubActor();
+        // The database generates the id on insert, which the mocked repository stands in for
+        when(taskEventRepository.save(any(TaskEvent.class))).thenAnswer(invocation -> {
+            TaskEvent saved = invocation.getArgument(0);
+            saved.setId(EVENT_ID);
+            return saved;
+        });
+
+        service.statusChanged(task, TaskStatus.TO_DO, TaskStatus.DONE);
+
+        ArgumentCaptor<TaskEvent> saved = ArgumentCaptor.forClass(TaskEvent.class);
+        verify(taskEventRepository).save(saved.capture());
+        verify(eventPublisher).publishEvent(new TaskEventRecorded(
+                TASK_ID, EVENT_ID, TaskEventType.STATUS_CHANGED, ACTOR_ID, saved.getValue().getOccurredAt()
+        ));
+    }
+
+    @Test
+    void everyRecordedRowIsPublishedOnce() {
+        stubActor();
+
+        service.created(task);
+        service.commentAdded(task, comment(UUID.randomUUID()));
+        service.archived(task);
+
+        ArgumentCaptor<TaskEventRecorded> published = ArgumentCaptor.forClass(TaskEventRecorded.class);
+        verify(eventPublisher, times(3)).publishEvent(published.capture());
+        assertThat(published.getAllValues())
+                .extracting(TaskEventRecorded::type)
+                .containsExactly(TaskEventType.CREATED, TaskEventType.COMMENT_ADDED, TaskEventType.ARCHIVED);
+    }
+
     private static TaskAttachment attachment(UUID id, String filename) {
         Media media = new Media();
         media.setOriginalFilename(filename);
@@ -266,7 +312,7 @@ class TaskEventServiceTest {
         assertThatThrownBy(() -> service.created(task))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("No authenticated user");
-        verifyNoInteractions(taskEventRepository, userRepository, userProfileRepository);
+        verifyNoInteractions(taskEventRepository, userRepository, userProfileRepository, eventPublisher);
     }
 
     @Test
@@ -277,7 +323,7 @@ class TaskEventServiceTest {
         assertThatThrownBy(() -> service.updated(task))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Authenticated user not found");
-        verifyNoInteractions(taskEventRepository, userProfileRepository);
+        verifyNoInteractions(taskEventRepository, userProfileRepository, eventPublisher);
     }
 
     @Test

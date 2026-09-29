@@ -154,6 +154,25 @@ webhooks:
     window: 60s
     open-duration: 1m
   concurrent-calls-per-host: 2
+# Real-time events. Task notifications are streamed to their recipient (GET /api/v1/notifications/stream); every
+# instance receives every event on a queue of its own, which keeps at most queue-max-length of them.
+realtime:
+  queue-max-length: 10000
+  streams:
+    heartbeat: 20s
+    max-duration: 15m
+    max-per-user: 5
+    reconnect-delay: 3s
+    replay-window: 5m
+    replay-size: 10000
+    buffer-size: 100
+  # Task rooms over STOMP on /ws. Pages of other origins need them listed, comma-separated, as patterns such as
+  # https://*.example.com; empty allows the API's own origin only.
+  rooms:
+    allowed-origins: ${REALTIME_ALLOWED_ORIGINS:}
+    heartbeat: 10s
+    message-size-limit: 16KB
+    time-to-first-message: 10s
 # Outgoing HTTP calls (webhooks) reach only public addresses; OutboundHttpConfiguration explains why. To try a
 # receiver on your machine, set OUTBOUND_HTTP_ALLOWED_ADDRESSES=127.0.0.1/32.
 outbound-http:
