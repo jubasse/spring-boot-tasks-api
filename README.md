@@ -105,7 +105,7 @@ The OpenAPI document behind the page is at http://localhost:8080/v3/api-docs, an
 
 ### Explore every endpoint with Postman
 
-`postman/tasks-api.postman_collection.json` covers every endpoint, with test scripts. Import it into Postman, or run it with newman:
+`postman/tasks-api.postman_collection.json` covers every endpoint, with test scripts, but the notification stream, which never ends, and the task rooms, which are not HTTP (see their sections below). Import it into Postman, or run it with newman:
 
 1. Run the `0. Setup` folder, which signs up a user, an admin and an unverified user:
 
