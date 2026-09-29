@@ -259,6 +259,61 @@
         "required" : [ "events", "url" ],
         "type" : "object"
       },
+      "DataExportResponseDto" : {
+        "properties" : {
+          "completedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "downloadUrl" : {
+            "type" : "string"
+          },
+          "expiresAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "filters" : {
+            "$ref" : "#/components/schemas/TaskExportFilters"
+          },
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "rowCount" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "status" : {
+            "enum" : [ "QUEUED", "RUNNING", "COMPLETED", "FAILED", "EXPIRED" ],
+            "type" : "string"
+          },
+          "type" : {
+            "enum" : [ "TASKS_CSV", "USERS_CSV" ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ExportTasksDto" : {
+        "properties" : {
+          "archived" : {
+            "type" : "boolean"
+          },
+          "assigneeId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "status" : {
+            "enum" : [ "TO_DO", "IN_PROGRESS", "IN_REVIEW", "BLOCKED", "DONE", "ARCHIVED", "CANCELLED" ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "InvalidValue" : {
         "description" : "One invalid value of a request.",
         "properties" : {
@@ -379,6 +434,21 @@
           }
         },
         "required" : [ "number", "size", "totalElements", "totalPages" ],
+        "type" : "object"
+      },
+      "PagedModelDataExportResponseDto" : {
+        "properties" : {
+          "content" : {
+            "items" : {
+              "$ref" : "#/components/schemas/DataExportResponseDto"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "$ref" : "#/components/schemas/PageMetadata"
+          }
+        },
+        "required" : [ "content", "page" ],
         "type" : "object"
       },
       "PagedModelTaskCommentResponseDto" : {
@@ -609,6 +679,22 @@
           },
           "type" : {
             "enum" : [ "CREATED", "UPDATED", "ASSIGNED", "UNASSIGNED", "STATUS_CHANGED", "CANCELLED", "ARCHIVED", "UNARCHIVED", "ATTACHMENT_ADDED", "ATTACHMENT_REMOVED", "COMMENT_ADDED", "COMMENT_EDITED", "COMMENT_DELETED" ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "TaskExportFilters" : {
+        "properties" : {
+          "archived" : {
+            "type" : "boolean"
+          },
+          "assigneeId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "status" : {
+            "enum" : [ "TO_DO", "IN_PROGRESS", "IN_REVIEW", "BLOCKED", "DONE", "ARCHIVED", "CANCELLED" ],
             "type" : "string"
           }
         },
@@ -1290,6 +1376,298 @@
         },
         "summary" : "Send the verification email again",
         "tags" : [ "Authentication" ]
+      }
+    },
+    "/api/v1/exports" : {
+      "get" : {
+        "operationId" : "listExports",
+        "parameters" : [ {
+          "description" : "Zero-based page index (0..N)",
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "default" : 0,
+            "minimum" : 0,
+            "type" : "integer"
+          }
+        }, {
+          "description" : "The size of the page to be returned",
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "default" : 10,
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        }, {
+          "description" : "Sorting criteria in the format: property,(asc|desc). Default sort order is ascending. Multiple sort criteria are supported.",
+          "in" : "query",
+          "name" : "sort",
+          "required" : false,
+          "schema" : {
+            "default" : [ "createdAt,DESC" ],
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedModelDataExportResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "List your exports, newest first",
+        "tags" : [ "Exports" ]
+      }
+    },
+    "/api/v1/exports/tasks" : {
+      "post" : {
+        "description" : "Every task matching the filters of the task list, as a CSV file in UTF-8.",
+        "operationId" : "exportTasks",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ExportTasksDto"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "202" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DataExportResponseDto"
+                }
+              }
+            },
+            "description" : "Queued: follow it at the Location URL. The owner is emailed once the file is ready, or if it could not be produced.",
+            "headers" : {
+              "Location" : {
+                "description" : "URL of the export.",
+                "schema" : {
+                  "format" : "uri-reference",
+                  "type" : "string"
+                },
+                "style" : "simple"
+              }
+            }
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "export-in-progress" : {
+                    "summary" : "Export already in progress",
+                    "value" : {
+                      "status" : 409,
+                      "title" : "Export already in progress",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#export-in-progress"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Conflict: Export already in progress."
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Export tasks as CSV",
+        "tags" : [ "Exports" ]
+      }
+    },
+    "/api/v1/exports/users" : {
+      "post" : {
+        "description" : "Every account that is not deleted, with its email and roles, as a CSV file in UTF-8.\n\n**Access:** Requires the ADMIN role.",
+        "operationId" : "exportUsers",
+        "responses" : {
+          "202" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DataExportResponseDto"
+                }
+              }
+            },
+            "description" : "Queued: follow it at the Location URL. The owner is emailed once the file is ready, or if it could not be produced.",
+            "headers" : {
+              "Location" : {
+                "description" : "URL of the export.",
+                "schema" : {
+                  "format" : "uri-reference",
+                  "type" : "string"
+                },
+                "style" : "simple"
+              }
+            }
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "export-in-progress" : {
+                    "summary" : "Export already in progress",
+                    "value" : {
+                      "status" : 409,
+                      "title" : "Export already in progress",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#export-in-progress"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Conflict: Export already in progress."
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Export users as CSV",
+        "tags" : [ "Exports" ]
+      }
+    },
+    "/api/v1/exports/{id}" : {
+      "delete" : {
+        "operationId" : "deleteExport",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "export-in-progress" : {
+                    "summary" : "Export already in progress",
+                    "value" : {
+                      "status" : 409,
+                      "title" : "Export already in progress",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#export-in-progress"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Conflict: Export already in progress."
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Delete one of your exports and its file",
+        "tags" : [ "Exports" ]
+      },
+      "get" : {
+        "operationId" : "getExport",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DataExportResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Get one of your exports, with a download link once it is completed",
+        "tags" : [ "Exports" ]
       }
     },
     "/api/v1/identicons/{id}" : {
@@ -3834,6 +4212,9 @@
   }, {
     "description" : "Accounts: sign-up, profile, profile photo, and the admin actions.",
     "name" : "Users"
+  }, {
+    "description" : "Files of tasks or users, produced in the background and downloadable for a while.",
+    "name" : "Exports"
   }, {
     "description" : "Tasks, their status, assignee and archive.",
     "name" : "Tasks"
