@@ -4,10 +4,15 @@ import io.julienmetral.tasks.config.StorageProperties;
 import io.julienmetral.tasks.export.AbstractDataExportTests;
 import io.julienmetral.tasks.export.batch.CsvExportJobs;
 import io.julienmetral.tasks.export.batch.PublishExport;
+import io.julienmetral.tasks.export.entities.DataExportType;
+import io.julienmetral.tasks.export.messaging.ExportQueues;
 import io.julienmetral.tasks.export.repositories.BatchMetadataQueries;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
+import io.julienmetral.tasks.support.SqlStatementCounter;
 import org.junit.jupiter.api.Test;
+import org.springframework.amqp.core.Message;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.job.JobExecution;
 import org.springframework.batch.core.job.JobInstance;
@@ -25,20 +30,34 @@ import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** The scheduled work of the exports, called directly: the purge and the recovery of interrupted runs. */
+/**
+ * The scheduled work of the exports, called directly: the purge, and the recovery of interrupted runs and of lost run
+ * messages, which relies on the lease a run renews.
+ */
 class DataExportLifecycleTests extends AbstractDataExportTests {
 
     private static final Instant LONG_AGO = Instant.parse("2000-01-01T00:00:00Z");
 
+    private static final Pattern LEASE_RENEWAL = Pattern.compile("(?i)^update data_exports \\S+ set lease_until=\\?");
+
     @Autowired
     private DataExportService exportService;
+
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
 
     @Autowired
     private DataExportRunner runner;
@@ -207,6 +226,94 @@ class DataExportLifecycleTests extends AbstractDataExportTests {
     }
 
     @Test
+    void queuedExportWhoseRunMessageWasLostIsSentAgainOnceItsLeaseRanOutAndCompletes() throws Exception {
+        User owner = createUser(UserRole.USER);
+        String reference = insertTask(TaskRow.assignedTo(owner));
+        String body = "{\"assigneeId\": \"%s\"}".formatted(owner.getId());
+        List<UUID> queued = new ArrayList<>();
+
+        withExportListenerStopped(() -> {
+            queued.add(exportIdOf(requestTasksExport(owner, body)));
+
+            // Taken off the queue, as the listener does when it dead-letters a message it cannot handle
+            Message lost = rabbitTemplate.receive(ExportQueues.RUN, RUN_TIMEOUT.toMillis());
+            assertThat(lost).isNotNull();
+            assertThat(new String(lost.getBody(), UTF_8)).contains(queued.getFirst().toString());
+        });
+        UUID exportId = queued.getFirst();
+        Instant leaseUntil = leaseOf(exportId);
+
+        exportService.requeueInterrupted();
+        assertThat(statusOf(exportId)).isEqualTo("QUEUED");
+        assertThat(leaseOf(exportId)).isEqualTo(leaseUntil);
+
+        testClock.set(leaseUntil.plusSeconds(1));
+        assertThat(exportService.requeueInterrupted()).isPositive();
+        awaitCompleted(exportId);
+
+        assertThat(downloadCsv(owner, exportId).column("reference")).containsExactly(reference);
+        mockMvc.perform(delete(EXPORTS + "/{id}", exportId).with(as(owner)))
+                .andExpect(status().isNoContent());
+        awaitCompleted(exportIdOf(requestTasksExport(owner, body)));
+    }
+
+    // Statements of the test thread only: the run is started here rather than by the listener. The steps renew through
+    // DataExportService.renewLease, the only update of data_exports that sets the lease alone
+    @Test
+    void runRenewsItsLeaseAsEachStepStartsAndAfterEachChunk() throws Exception {
+        User owner = createUser(UserRole.USER);
+        String prefix = insertTasksAssignedTo(owner, 1001);
+        UUID exportId = insertQueuedExport(owner, DataExportType.TASKS_CSV);
+
+        try {
+            List<String> statements = SqlStatementCounter.statementsDuring(() -> runner.run(exportId));
+
+            assertThat(statusOf(exportId)).isEqualTo("COMPLETED");
+            // The write step starts, writes chunks of 500, 500 and 1 rows, then the publish step starts
+            assertThat(statements).filteredOn(sql -> LEASE_RENEWAL.matcher(sql).find()).hasSize(5);
+        } finally {
+            jdbcTemplate.update("DELETE FROM tasks WHERE assigned_to_id = ? AND reference LIKE ?",
+                    owner.getId(), prefix + "-%");
+        }
+    }
+
+    // Every account of the shared database, so at least one chunk: without the listener on its write step, the only
+    // renewal would be the one of the publish step
+    @Test
+    void usersExportRenewsItsLeaseAfterTheChunksOfItsWriteStepToo() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        UUID exportId = insertQueuedExport(admin, DataExportType.USERS_CSV);
+
+        List<String> statements = SqlStatementCounter.statementsDuring(() -> runner.run(exportId));
+
+        assertThat(statusOf(exportId)).isEqualTo("COMPLETED");
+        assertThat(statements).filteredOn(sql -> LEASE_RENEWAL.matcher(sql).find()).hasSizeGreaterThanOrEqualTo(3);
+        mockMvc.perform(delete(EXPORTS + "/{id}", exportId).with(as(admin)))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void runThatRenewsItsLeaseIsNotQueuedAgainWhileAStoppedOneIs() {
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
+        testClock.set(now);
+        UUID longRun = insertInterruptedExport(createUser(UserRole.USER), 1, now.minus(Duration.ofMinutes(1)));
+        UUID stopped = insertInterruptedExport(createUser(UserRole.USER), 1, now.minus(Duration.ofMinutes(1)));
+
+        try {
+            exportService.renewLease(longRun);
+            exportService.requeueInterrupted();
+
+            assertThat(statusOf(longRun)).isEqualTo("RUNNING");
+            assertThat(leaseOf(longRun)).isEqualTo(now.plus(Duration.ofMinutes(15)));
+            assertThat(jdbcTemplate.queryForObject(
+                    "SELECT attempts FROM data_exports WHERE id = ?", Integer.class, longRun)).isOne();
+            awaitCompleted(stopped);
+        } finally {
+            jdbcTemplate.update("DELETE FROM data_exports WHERE id = ?", longRun);
+        }
+    }
+
+    @Test
     void secondRunMessageForACompletedExportStartsNoNewRun() throws Exception {
         User owner = createUser(UserRole.USER);
         UUID exportId = exportTasksOf(owner, owner, "");
@@ -218,6 +325,47 @@ class DataExportLifecycleTests extends AbstractDataExportTests {
         assertThat(statusOf(exportId)).isEqualTo("COMPLETED");
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT attempts FROM data_exports WHERE id = ?", Integer.class, exportId)).isOne();
+    }
+
+    private Instant leaseOf(UUID exportId) {
+        return jdbcTemplate.queryForObject(
+                "SELECT lease_until FROM data_exports WHERE id = ?", Timestamp.class, exportId).toInstant();
+    }
+
+    /**
+     * An export as a request leaves it, without its run message: of the owner's own tasks, or of every user.
+     */
+    private UUID insertQueuedExport(User owner, DataExportType type) {
+        Instant now = Instant.now();
+        boolean tasks = type == DataExportType.TASKS_CSV;
+
+        return jdbcTemplate.queryForObject(
+                """
+                        INSERT INTO data_exports (owner_id, type, status, filter_assignee_id, filter_archived,
+                                                  attempts, lease_until, created_at)
+                        VALUES (?, ?, 'QUEUED', ?, ?, 0, ?, ?)
+                        RETURNING id
+                        """,
+                UUID.class,
+                owner.getId(), type.name(), tasks ? owner.getId() : null, tasks ? false : null,
+                Timestamp.from(now.plus(Duration.ofMinutes(15))), Timestamp.from(now)
+        );
+    }
+
+    /** @return the prefix of their references */
+    private String insertTasksAssignedTo(User assignee, int count) {
+        String prefix = "LSE-" + UUID.randomUUID().toString().substring(0, 8);
+
+        jdbcTemplate.update(
+                """
+                        INSERT INTO tasks (reference, title, status, priority, assigned_to_id, created_at, updated_at,
+                                           version)
+                        SELECT ? || '-' || n, 'Leased task ' || n, 'TO_DO', 'LOW', ?, now(), now(), 0
+                        FROM generate_series(1, ?) AS n
+                        """,
+                prefix, assignee.getId(), count
+        );
+        return prefix;
     }
 
     private static JobParameters parametersOf(UUID exportId) {
