@@ -54,7 +54,8 @@ class StompAuthentication implements ChannelInterceptor {
         // Out of the frame before anything logs it: debug logs print native headers
         accessor.removeNativeHeader(HttpHeaders.AUTHORIZATION);
 
-        if (authorization == null || !authorization.startsWith(BEARER)) {
+        // The scheme is case-insensitive (RFC 9110), as the HTTP API's resolver treats it
+        if (authorization == null || !authorization.regionMatches(true, 0, BEARER, 0, BEARER.length())) {
             throw new BadCredentialsException("A bearer access token is required");
         }
 
@@ -63,13 +64,27 @@ class StompAuthentication implements ChannelInterceptor {
         UUID userId = currentUser.getId(authentication)
                 .orElseThrow(() -> new BadCredentialsException("No user id in the access token"));
 
-        // The account, not the status cache: a connection can last as long as its token
-        if (!isActive(userId)) {
+        // Registered before the account is read, from the account rather than the status cache: a change committed
+        // after this read is broadcast, and closes the session once it arrives. Read first, a disabling that landed
+        // between the read and the registration found no session to close, which then lasted until its token expired.
+        String sessionId = accessor.getSessionId();
+        stompSessions.connected(sessionId, userId, jwt.getExpiresAt());
+
+        boolean active;
+
+        try {
+            active = isActive(userId);
+        } catch (RuntimeException readFailed) {
+            stompSessions.forget(sessionId);
+            throw readFailed;
+        }
+
+        if (!active) {
+            stompSessions.forget(sessionId);
             throw new AccessDeniedException("The account is not active");
         }
 
         accessor.setUser(authentication);
-        stompSessions.connected(accessor.getSessionId(), userId, jwt.getExpiresAt());
 
         return message;
     }

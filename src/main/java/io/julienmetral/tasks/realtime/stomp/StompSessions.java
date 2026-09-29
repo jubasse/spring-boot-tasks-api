@@ -102,7 +102,7 @@ public class StompSessions {
         }
     }
 
-    private void forget(String sessionId) {
+    void forget(String sessionId) {
         Connected session = connected.remove(sessionId);
 
         if (session != null) {
