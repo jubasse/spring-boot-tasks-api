@@ -3,6 +3,8 @@ package io.julienmetral.tasks.export.personaldata;
 import com.openhtmltopdf.outputdevice.helper.BaseRendererBuilder.FontStyle;
 import com.openhtmltopdf.outputdevice.helper.ExternalResourceControlPriority;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
+import com.openhtmltopdf.slf4j.Slf4jLogger;
+import com.openhtmltopdf.util.XRLog;
 import io.julienmetral.tasks.export.ExportProperties;
 import org.springframework.stereotype.Component;
 import org.thymeleaf.TemplateEngine;
@@ -32,6 +34,12 @@ import java.util.Map;
 public class PersonalDataPdf {
 
     private static final String FONT = "Noto Sans";
+
+    // openhtmltopdf logs through its own logger, straight to the console: in the prod profile's structured logs, its
+    // lines came out as plain text
+    static {
+        XRLog.setLoggerImpl(new Slf4jLogger());
+    }
 
     private final TemplateEngine templates = new TemplateEngine();
     private final int maxRowsPerSection;

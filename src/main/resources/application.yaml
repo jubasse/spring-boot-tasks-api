@@ -270,3 +270,9 @@ springdoc:
   # A stable output for the committed docs/openapi.json
   writer-with-order-by-keys: true
   writer-with-default-pretty-printer: true
+# Rendering a personal data PDF: openhtmltopdf logs every step at info, and PDFBox warns each time that it falls back
+# to LiberationSans for the base font Symbol, which no page uses (the PDF embeds Noto Sans)
+logging:
+  level:
+    com.openhtmltopdf: warn
+    org.apache.pdfbox.pdmodel.font.PDType1Font: error
