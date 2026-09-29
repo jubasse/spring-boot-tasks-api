@@ -266,6 +266,10 @@ class DataExportApiTests extends AbstractDataExportTests {
             awaitCompleted(unfiltered);
 
             assertThat(downloadCsv(owner, unfiltered).column("reference")).containsAll(references);
+
+            // It holds every task of the shared database: its file does not stay in the reused bucket
+            mockMvc.perform(delete(EXPORTS + "/{id}", unfiltered).with(as(owner)))
+                    .andExpect(status().isNoContent());
         } finally {
             jdbcTemplate.update("DELETE FROM tasks WHERE assigned_to_id = ? AND reference LIKE ?",
                     owner.getId(), prefix + "-%");
