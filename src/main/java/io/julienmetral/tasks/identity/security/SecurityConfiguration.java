@@ -170,8 +170,9 @@ public class SecurityConfiguration {
                             .permitAll()
                             .requestMatchers(HttpMethod.GET, PROBES)
                             .permitAll()
-                            // Tasks are reserved to enabled users with a verified email, whatever the API version
-                            .requestMatchers("/api/*/tasks/**")
+                            // Tasks and exports are reserved to enabled users with a verified email, whatever the
+                            // API version
+                            .requestMatchers("/api/*/tasks/**", "/api/*/exports/**")
                             .access(activeUserAuthorizationManager)
                             .anyRequest()
                             .authenticated();

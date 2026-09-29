@@ -30,7 +30,8 @@ ENV JAVA_TOOL_OPTIONS="-XX:+UseG1GC -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemo
 
 # AOT cache training run: the context starts up to its refresh, and the classes it loaded and linked are stored in
 # app.aot, which the real start maps instead of loading them again. It reaches no service: Liquibase and Hibernate's
-# database access are off, and the keys are throwaways.
+# database access are off, the keys are throwaways, and Spring Batch keeps its job repository in memory (its JDBC
+# repository reads the database's metadata while the context refreshes).
 RUN JWT_SECRET="$(head -c 32 /dev/urandom | base64)" \
     WEBHOOK_ENCRYPTION_KEY="$(head -c 32 /dev/urandom | base64)" \
     java -XX:AOTCacheOutput=app.aot -Dspring.context.exit=onRefresh \
@@ -40,6 +41,7 @@ RUN JWT_SECRET="$(head -c 32 /dev/urandom | base64)" \
         -Dspring.jpa.properties.hibernate.boot.allow_jdbc_metadata_access=false \
         -Dspring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect \
         -Dstorage.driver=aws-s3 \
+        -Dspring.autoconfigure.exclude=org.springframework.boot.batch.jdbc.autoconfigure.BatchJdbcAutoConfiguration \
         -jar application.jar
 
 # After the training run, which must not ask for the production settings. An image started without it would take the

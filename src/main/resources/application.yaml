@@ -120,6 +120,19 @@ server:
 # Endpoints users declare to receive their task notifications. The key encrypts their signing secrets in the
 # database: Base64 of at least 32 bytes (openssl rand -base64 32). Only a development machine turns requireHttps off,
 # with OUTBOUND_HTTP_ALLOWED_ADDRESSES, to reach a local receiver.
+# Exports produced by Spring Batch jobs in the background (POST /api/v1/exports/...). The ready email links to
+# download-page-url?id=..., a page of the front end that asks GET /api/v1/exports/{id} for the download link.
+exports:
+  download-page-url: ${EXPORT_DOWNLOAD_URL:http://localhost:3000/exports}
+  retention: 7d
+  history-retention: 30d
+  chunk-size: 500
+  lease: 15m
+  max-attempts: 3
+  purge-enabled: ${EXPORT_PURGE_ENABLED:true}
+  purge-cron: 0 30 4 * * *
+  recovery-enabled: ${EXPORT_RECOVERY_ENABLED:true}
+  recovery-interval: 5m
 webhooks:
   encryption-key: ${WEBHOOK_ENCRYPTION_KEY:}
   require-https: ${WEBHOOK_REQUIRE_HTTPS:true}
@@ -217,6 +230,15 @@ spring:
   mail:
     host: ${MAIL_HOST:localhost}
     port: ${MAIL_PORT:1025}
+
+  # Jobs start only when an export asks for one; Liquibase creates Batch's tables (changeset 023). Executions are
+  # created at read committed: serializable made concurrent starts fail on Postgres.
+  batch:
+    job:
+      enabled: false
+    jdbc:
+      initialize-schema: never
+      isolation-level-for-create: read-committed
 
   jpa:
     hibernate:

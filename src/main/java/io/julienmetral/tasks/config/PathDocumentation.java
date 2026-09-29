@@ -34,7 +34,8 @@ class PathDocumentation implements OpenApiCustomizer {
         this.maxPageSize = maxPageSize;
     }
 
-    private static final String TASKS = "/api/v1/tasks";
+    // The paths SecurityConfiguration reserves to active accounts
+    private static final List<String> ACTIVE_ACCOUNT_PATHS = List.of("/api/v1/tasks", "/api/v1/exports");
 
     // An identicon exists for every id, so an unknown one is not a 404
     private static final String IDENTICONS = "/api/v1/identicons";
@@ -81,7 +82,7 @@ class PathDocumentation implements OpenApiCustomizer {
             responses.putIfAbsent("401", reference(UNAUTHORIZED));
         }
 
-        if (path.startsWith(TASKS)) {
+        if (ACTIVE_ACCOUNT_PATHS.stream().anyMatch(path::startsWith)) {
             responses.putIfAbsent("403", reference(FORBIDDEN));
         }
 

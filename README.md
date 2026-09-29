@@ -242,6 +242,7 @@ The API reads its configuration from `src/main/resources/application.yaml`, whic
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | set in `.env.example` | Database of the local PostgreSQL service |
 | `MAIL_FROM` | `no-reply@tasks.local` | Sender address of every email |
 | `EMAIL_VERIFICATION_URL`, `PASSWORD_RESET_URL` | `http://localhost:3000/...` | Front-end pages that the emailed links open, with `?token=...` |
+| `EXPORT_DOWNLOAD_URL` | `http://localhost:3000/exports` | Front-end page that the export ready email opens, with `?id=...` |
 | `STORAGE_DRIVER` | `rustfs` | `rustfs` for the local service, `aws-s3` for Amazon S3 (credentials from the standard AWS variables or an IAM role) |
 | `ANTIVIRUS_ENABLED` | `true` | `false` stores uploads without scanning them |
 | `RATE_LIMIT_ENABLED` | `true` | `false` turns off the request limits on the public endpoints |
@@ -279,6 +280,7 @@ Required variables:
 | `MAIL_HOST` | SMTP server. `SPRING_MAIL_USERNAME` and `SPRING_MAIL_PASSWORD` hold its credentials | `smtp.example.com` |
 | `MAIL_FROM` | Sender address of every email | `no-reply@example.com` |
 | `EMAIL_VERIFICATION_URL`, `PASSWORD_RESET_URL` | Front-end pages that the emailed links open | `https://app.example.com/verify-email` |
+| `EXPORT_DOWNLOAD_URL` | Front-end page that the export ready email opens | `https://app.example.com/exports` |
 | `S3_BUCKET` | Bucket of the uploaded files. `AWS_REGION` (default `eu-west-3`) and the standard AWS credentials, variables or IAM role, give access to it | `tasks-media` |
 | `CLAMAV_HOST` | Host of the ClamAV daemon, on `CLAMAV_PORT` (default `3310`) | `clamav.internal` |
 

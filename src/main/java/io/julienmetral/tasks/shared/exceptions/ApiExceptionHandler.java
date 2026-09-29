@@ -1,5 +1,7 @@
 package io.julienmetral.tasks.shared.exceptions;
 
+import io.julienmetral.tasks.export.exceptions.DataExportInProgressException;
+import io.julienmetral.tasks.export.exceptions.DataExportNotFoundException;
 import io.julienmetral.tasks.identity.exceptions.EmailAlreadyVerifiedException;
 import io.julienmetral.tasks.identity.exceptions.InvalidCredentialsException;
 import io.julienmetral.tasks.identity.exceptions.InvalidEmailVerificationTokenException;
@@ -75,7 +77,8 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
             TaskCommentNotFoundException.class,
             UserNotFoundException.class,
             WebhookEndpointNotFoundException.class,
-            WebhookDeliveryNotFoundException.class
+            WebhookDeliveryNotFoundException.class,
+            DataExportNotFoundException.class
     })
     public ProblemDetail handleNotFound(RuntimeException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
@@ -130,6 +133,11 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(WebhookUrlNotAllowedException.class)
     public ProblemDetail handleWebhookUrlNotAllowed(WebhookUrlNotAllowedException ex) {
         return ProblemType.WEBHOOK_URL_NOT_ALLOWED.problem(ex.getMessage());
+    }
+
+    @ExceptionHandler(DataExportInProgressException.class)
+    public ProblemDetail handleExportInProgress(DataExportInProgressException ex) {
+        return ProblemType.EXPORT_IN_PROGRESS.problem(ex.getMessage());
     }
 
     @ExceptionHandler(WebhookLimitReachedException.class)

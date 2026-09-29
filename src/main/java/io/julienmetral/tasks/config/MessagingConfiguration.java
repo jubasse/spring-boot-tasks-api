@@ -1,5 +1,6 @@
 package io.julienmetral.tasks.config;
 
+import io.julienmetral.tasks.export.messaging.ExportQueues;
 import io.julienmetral.tasks.identity.messaging.AvatarQueues;
 import io.julienmetral.tasks.mail.MailQueues;
 import io.julienmetral.tasks.messaging.services.DeadLetterQueueMetrics;
@@ -34,13 +35,15 @@ public class MessagingConfiguration {
                 jsonMapper,
                 "io.julienmetral.tasks.mail",
                 "io.julienmetral.tasks.identity.messaging",
-                "io.julienmetral.tasks.notification.webhook"
+                "io.julienmetral.tasks.notification.webhook",
+                "io.julienmetral.tasks.export.messaging"
         );
     }
 
     @Bean
     DeadLetterQueueMetrics deadLetterQueueMetrics(AmqpAdmin amqpAdmin) {
-        return new DeadLetterQueueMetrics(amqpAdmin, List.of(MailQueues.DEAD_LETTER, AvatarQueues.DEAD_LETTER, WebhookQueues.DEAD_LETTER));
+        return new DeadLetterQueueMetrics(amqpAdmin, List.of(
+                MailQueues.DEAD_LETTER, AvatarQueues.DEAD_LETTER, WebhookQueues.DEAD_LETTER, ExportQueues.DEAD_LETTER));
     }
 
     /**

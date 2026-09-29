@@ -1,0 +1,98 @@
+databaseChangeLog:
+- changeSet:
+    id: 024-create-data-exports
+    author: julien-metral
+    comment: >
+      Exports a user asked for: produced by a Spring Batch job, then kept as a media until they expire. The media
+      cleanup leaves alone the media an export points to.
+    changes:
+    - createTable:
+        tableName: data_exports
+        columns:
+        - column:
+            name: id
+            type: UUID
+            defaultValueComputed: uuidv7()
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: data_exportsPK
+        - column:
+            name: owner_id
+            type: UUID
+            constraints:
+              nullable: false
+        - column:
+            name: type
+            type: VARCHAR(30)
+            constraints:
+              nullable: false
+        - column:
+            name: status
+            type: VARCHAR(20)
+            constraints:
+              nullable: false
+        - column:
+            name: filter_status
+            type: VARCHAR(50)
+        - column:
+            name: filter_assignee_id
+            type: UUID
+        - column:
+            name: filter_archived
+            type: BOOLEAN
+        - column:
+            name: media_id
+            type: UUID
+        - column:
+            name: row_count
+            type: BIGINT
+        - column:
+            name: attempts
+            type: INTEGER
+            constraints:
+              nullable: false
+        - column:
+            name: failure
+            type: VARCHAR(100)
+        - column:
+            name: lease_until
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            name: created_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+            constraints:
+              nullable: false
+        - column:
+            name: started_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            name: completed_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+        - column:
+            name: expires_at
+            type: TIMESTAMP(6) WITH TIME ZONE
+    - addUniqueConstraint:
+        tableName: data_exports
+        columnNames: media_id
+        constraintName: data_exports_media_idUQ
+    - addForeignKeyConstraint:
+        baseTableName: data_exports
+        baseColumnNames: owner_id
+        referencedTableName: user_profiles
+        referencedColumnNames: id
+        constraintName: data_exports_ownerFK
+    - addForeignKeyConstraint:
+        baseTableName: data_exports
+        baseColumnNames: media_id
+        referencedTableName: media
+        referencedColumnNames: id
+        constraintName: data_exports_mediaFK
+    - createIndex:
+        tableName: data_exports
+        indexName: data_exports_owner_idIDX
+        columns:
+        - column:
+            name: owner_id
+        - column:
+            name: created_at
