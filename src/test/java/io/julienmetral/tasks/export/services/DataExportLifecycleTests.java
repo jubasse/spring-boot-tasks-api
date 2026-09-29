@@ -292,6 +292,18 @@ class DataExportLifecycleTests extends AbstractDataExportTests {
                 .andExpect(status().isNoContent());
     }
 
+    // Tasklet steps have no chunk to renew after: the lease is renewed as each of the three steps starts
+    @Test
+    void personalDataRunRenewsItsLeaseAsEachOfItsStepsStarts() throws Exception {
+        User owner = createUser(UserRole.USER);
+        UUID exportId = insertQueuedExport(owner, DataExportType.PERSONAL_DATA);
+
+        List<String> statements = SqlStatementCounter.statementsDuring(() -> runner.run(exportId));
+
+        assertThat(statusOf(exportId)).isEqualTo("COMPLETED");
+        assertThat(statements).filteredOn(sql -> LEASE_RENEWAL.matcher(sql).find()).hasSize(3);
+    }
+
     @Test
     void runThatRenewsItsLeaseIsNotQueuedAgainWhileAStoppedOneIs() {
         Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
@@ -333,7 +345,7 @@ class DataExportLifecycleTests extends AbstractDataExportTests {
     }
 
     /**
-     * An export as a request leaves it, without its run message: of the owner's own tasks, or of every user.
+     * An export as a request leaves it, without its run message: of the owner's own tasks, or without filters.
      */
     private UUID insertQueuedExport(User owner, DataExportType type) {
         Instant now = Instant.now();
