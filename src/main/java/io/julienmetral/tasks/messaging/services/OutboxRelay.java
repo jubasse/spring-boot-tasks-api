@@ -69,10 +69,10 @@ public class OutboxRelay {
             try {
                 send(message);
                 message.setPublishedAt(clock.instant());
-                meterRegistry.counter("outbox.messages.published", "queue", message.getQueue()).increment();
+                meterRegistry.counter("outbox.messages.published", "queue", message.destination()).increment();
                 published++;
             } catch (RuntimeException exception) {
-                meterRegistry.counter("outbox.publish.failures", "queue", message.getQueue()).increment();
+                meterRegistry.counter("outbox.publish.failures", "queue", message.destination()).increment();
                 scheduleRetry(message, exception);
             }
         }
@@ -83,7 +83,7 @@ public class OutboxRelay {
     // Waits for the broker's confirm: only a confirmed message is marked published. If the transaction then fails
     // to commit, the message is published again later, hence at least once. Sent as mandatory, because RabbitMQ also
     // confirms a message it cannot route: without the return check, a message for a missing queue was marked
-    // published and lost.
+    // published and lost. A broadcast nobody receives has no instance to reach, so its return is not a failure.
     private void send(OutboxMessage message) {
         MessageProperties messageProperties = new MessageProperties();
 
@@ -95,7 +95,11 @@ public class OutboxRelay {
         Message amqpMessage = new Message(jsonMapper.writeValueAsBytes(message.getPayload()), messageProperties);
         CorrelationData correlation = new CorrelationData(message.getId().toString());
 
-        rabbitTemplate.send("", message.getQueue(), amqpMessage, correlation);
+        if (message.isBroadcast()) {
+            rabbitTemplate.send(message.getExchange(), "", amqpMessage, correlation);
+        } else {
+            rabbitTemplate.send("", message.getQueue(), amqpMessage, correlation);
+        }
 
         CorrelationData.Confirm confirm = awaitConfirm(correlation);
 
@@ -105,7 +109,7 @@ public class OutboxRelay {
 
         ReturnedMessage returned = correlation.getReturned();
 
-        if (returned != null) {
+        if (returned != null && !message.isBroadcast()) {
             throw new AmqpException("No queue " + message.getQueue() + " to route to: " + returned.getReplyText());
         }
     }
@@ -132,7 +136,7 @@ public class OutboxRelay {
         message.setLastError(error.length() > MAX_ERROR_LENGTH ? error.substring(0, MAX_ERROR_LENGTH) : error);
 
         log.warn("Could not publish outbox message {} to {} (attempt {}), retrying in {}",
-                message.getId(), message.getQueue(), attempts, delay, exception);
+                message.getId(), message.destination(), attempts, delay, exception);
     }
 
     private Duration retryDelay(int attempts) {
