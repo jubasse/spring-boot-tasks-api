@@ -232,7 +232,7 @@ Jobs run with `@Scheduled` inside the API. A job that must run once per schedule
 - **Not locked on purpose:** the outbox poller and the webhook retries. Every instance polls and `FOR UPDATE SKIP LOCKED` shares the backlog; a lock would leave it to one instance.
 - **Durations:** `lockAtMostFor` releases a crashed instance's lock, so it stays well above the longest run, and below the period of a frequent job. `lockAtLeastFor` keeps a quick run's lock for a while, so an instance whose clock fires late does not run the job again.
 - **Times:** `usingDbTime()` takes every time from the database clock. The columns have no time zone on purpose: ShedLock writes UTC wall-clock values, which a `timestamptz` column would read in each session's zone.
-- **A new job** needs a name in `ScheduledJobLocks` (its metrics are registered at startup), or a place on the pollers' allowlist: `ScheduledJobLockTest` fails otherwise.
+- **A new job** needs a name in `ScheduledJobLocks` (its metrics are registered at startup), or a place on the pollers' allowlist: `ScheduledJobLocksTest` fails otherwise.
 - They replaced three hand-written advisory locks, which held only while their transaction ran and did not stop an instance firing a moment later from running the job again.
 - Warning: put `@SchedulerLock` on the job method, never on a `@Transactional` one: the lock is written in its own transaction and would be released before the work commits. The method must be public.
 - Warning: never delete a row of `scheduler_locks` to free a stuck lock. ShedLock remembers the rows it inserted and then only updates them, so every later run is skipped until a restart. Set `lock_until` to the current time instead (README, Background work).
