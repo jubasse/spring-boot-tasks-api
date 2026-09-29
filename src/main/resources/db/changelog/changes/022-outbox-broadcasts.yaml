@@ -1,0 +1,18 @@
+databaseChangeLog:
+- changeSet:
+    id: 022-outbox-broadcasts
+    author: julien-metral
+    comment: >
+      A message goes either to a queue, through the default exchange, or to an exchange that copies it to every
+      instance's queue (a broadcast, for real-time events): exactly one of queue and exchange is set.
+    changes:
+    - addColumn:
+        tableName: outbox_messages
+        columns:
+        - column:
+            name: exchange
+            type: VARCHAR(255)
+    - dropNotNullConstraint:
+        tableName: outbox_messages
+        columnName: queue
+        columnDataType: VARCHAR(255)

@@ -31,8 +31,12 @@ public class OutboxMessage {
     @Column(name = "id", nullable = false, updatable = false)
     private UUID id;
 
-    @Column(name = "queue", nullable = false, updatable = false)
+    // Exactly one of queue and exchange is set: a queue through the default exchange, or a broadcast exchange
+    @Column(name = "queue", updatable = false)
     private String queue;
+
+    @Column(name = "exchange", updatable = false)
+    private String exchange;
 
     // Class name sent as the __TypeId__ header, which the consumers' message converter reads
     @Column(name = "type", nullable = false, updatable = false)
@@ -57,4 +61,13 @@ public class OutboxMessage {
 
     @Column(name = "published_at")
     private Instant publishedAt;
+
+    public boolean isBroadcast() {
+        return exchange != null;
+    }
+
+    /** The queue or the broadcast exchange, for metrics and logs. */
+    public String destination() {
+        return isBroadcast() ? exchange : queue;
+    }
 }

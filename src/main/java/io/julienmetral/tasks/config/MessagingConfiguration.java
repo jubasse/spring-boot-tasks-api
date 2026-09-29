@@ -34,7 +34,8 @@ public class MessagingConfiguration {
                 jsonMapper,
                 "io.julienmetral.tasks.mail",
                 "io.julienmetral.tasks.identity.messaging",
-                "io.julienmetral.tasks.notification.webhook"
+                "io.julienmetral.tasks.notification.webhook",
+                "io.julienmetral.tasks.realtime.messaging"
         );
     }
 
