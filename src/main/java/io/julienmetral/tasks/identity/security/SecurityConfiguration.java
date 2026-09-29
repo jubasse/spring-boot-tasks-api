@@ -123,8 +123,9 @@ public class SecurityConfiguration {
         return authenticationConverter;
     }
 
-    // Public endpoints, probes and the WebSocket handshake ignore the Authorization header: a client that kept its expired access token got a
-    // 401 from login and refresh, the very endpoints that give it a new one, and a probe would fail the same way
+    // Public endpoints, probes and the WebSocket handshake ignore the Authorization header: a client that kept its
+    // expired access token got a 401 from login and refresh, the very endpoints that give it a new one, and a probe
+    // would fail the same way
     @Bean
     BearerTokenResolver bearerTokenResolver() {
         DefaultBearerTokenResolver resolver = new DefaultBearerTokenResolver();

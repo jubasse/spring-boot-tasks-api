@@ -36,8 +36,6 @@ public class RealtimeBroadcasts {
         ));
     }
 
-    // A change published outside a transaction is already done: its broadcast gets a transaction of its own. The
-    // outbox refuses to run without one, which made such a publisher fail.
     @EventListener
     public void onTaskEventRecorded(TaskEventRecorded event) {
         outbox.broadcast(RealtimeConfiguration.EXCHANGE, new TaskRoomEvent(
@@ -53,6 +51,8 @@ public class RealtimeBroadcasts {
         ));
     }
 
+    // A change published outside a transaction is already done: its broadcast gets a transaction of its own. The
+    // outbox refuses to run without one, which made such a publisher fail.
     @EventListener
     public void onAccountStateChanged(AccountStateChanged change) {
         AccountStatusChanged message = new AccountStatusChanged(change.userId());
