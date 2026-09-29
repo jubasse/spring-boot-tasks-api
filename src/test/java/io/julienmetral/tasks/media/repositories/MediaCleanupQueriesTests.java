@@ -153,6 +153,25 @@ class MediaCleanupQueriesTests {
     }
 
     @Test
+    void deletingUnreferencedMediaSparesTheFileOfAnExport() {
+        UUID file = insertMedia(LONG_AGO);
+        insertExport(insertUser(null), file);
+
+        assertThat(queries.deleteUnreferencedMediaCreatedBefore(GRACE_CUTOFF)).doesNotContain(storageKeyOf(file));
+        assertThat(count("SELECT count(*) FROM media WHERE id = ?", file)).isOne();
+    }
+
+    @Test
+    void fileOfAnExportThatNoLongerPointsToItIsDeletedWithTheUnreferencedMedia() {
+        UUID file = insertMedia(LONG_AGO);
+        UUID export = insertExport(insertUser(null), file);
+        String storageKey = storageKeyOf(file);
+        jdbc.update("UPDATE data_exports SET media_id = NULL, status = 'EXPIRED' WHERE id = ?", export);
+
+        assertThat(queries.deleteUnreferencedMediaCreatedBefore(GRACE_CUTOFF)).contains(storageKey);
+    }
+
+    @Test
     void mediaDetachedFromADeletedTaskIsDeletedWithTheUnreferencedMedia() {
         UUID attachment = insertMedia(LONG_AGO);
         attach(insertTask(RETENTION_CUTOFF.minusSeconds(1)), attachment);
@@ -223,6 +242,18 @@ class MediaCleanupQueriesTests {
                         """,
                 UUID.class,
                 "task-attachment/" + UUID.randomUUID(), timestamp(createdAt)
+        );
+    }
+
+    private UUID insertExport(UUID owner, UUID media) {
+        return jdbc.queryForObject(
+                """
+                        INSERT INTO data_exports (owner_id, type, status, media_id, attempts, created_at)
+                        VALUES (?, 'TASKS_CSV', 'COMPLETED', ?, 1, ?)
+                        RETURNING id
+                        """,
+                UUID.class,
+                owner, media, timestamp(LONG_AGO)
         );
     }
 
