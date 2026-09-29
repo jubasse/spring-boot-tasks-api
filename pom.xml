@@ -38,6 +38,7 @@
 		<mockwebserver.version>5.5.0</mockwebserver.version>
 		<standardwebhooks.version>1.2.0</standardwebhooks.version>
 		<shedlock.version>7.10.1</shedlock.version>
+		<openhtmltopdf.version>1.1.87</openhtmltopdf.version>
 		<!-- Above the versions Spring Boot 4.1.1 manages, which have fixed vulnerabilities: Tomcat 11.0.24 three critical
 		     (GHSA-9xv2-5v5q-p794, GHSA-gcx9-497g-6cp6, GHSA-h3x4-894j-xpx5), amqp-client 5.30.0 four high. Remove both
 		     once Spring Boot manages these versions or later. -->
@@ -71,6 +72,17 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-batch-jdbc</artifactId>
+		</dependency>
+		<!-- The PDF of a personal data export: a Thymeleaf template (plain, no Spring MVC view) rendered by
+		     openhtmltopdf, the maintained fork (LGPL 2.1 or later, on PDFBox 3) -->
+		<dependency>
+			<groupId>org.thymeleaf</groupId>
+			<artifactId>thymeleaf</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>io.github.openhtmltopdf</groupId>
+			<artifactId>openhtmltopdf-pdfbox</artifactId>
+			<version>${openhtmltopdf.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
