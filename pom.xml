@@ -67,6 +67,11 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-actuator</artifactId>
 		</dependency>
+		<!-- Exports run as Spring Batch jobs, with their metadata in Postgres -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-batch-jdbc</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-cache</artifactId>
@@ -264,6 +269,17 @@
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-batch-jdbc-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-csv</artifactId>
+			<version>1.14.1</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc-test</artifactId>
 			<scope>test</scope>
 		</dependency>
@@ -391,6 +407,8 @@
 					<searchPath>${project.basedir}/src/main/resources</searchPath>
 					<propertyFile>liquibase.properties</propertyFile>
 					<changeLogFile>db/changelog/db.changelog-master.yaml</changeLogFile>
+					<!-- Spring Batch's tables have no entity: without this, the diff proposes to drop them -->
+					<diffExcludeObjects>table:batch_.*, sequence:batch_.*</diffExcludeObjects>
 				</configuration>
 				<dependencies>
 					<dependency>
