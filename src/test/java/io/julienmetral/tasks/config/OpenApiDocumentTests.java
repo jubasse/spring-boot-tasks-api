@@ -42,6 +42,8 @@ class OpenApiDocumentTests {
 
     private static final String TASKS = "/api/v1/tasks";
 
+    private static final String EXPORTS = "/api/v1/exports";
+
     private static final String IDENTICONS = "/api/v1/identicons";
 
     @Autowired
@@ -102,10 +104,14 @@ class OpenApiDocumentTests {
     }
 
     @Test
-    void everyTaskOperationDocumentsTheForbiddenResponseOfAnInactiveAccount() {
-        assertThat(operations(operation -> operation.path().startsWith(TASKS))).isNotEmpty().allSatisfy(operation ->
-                assertThat(responseReferenceOf(operation, "403")).as("403 of %s", operation)
-                        .isEqualTo(responseReference(FORBIDDEN)));
+    void everyTaskAndExportOperationDocumentsTheForbiddenResponseOfAnInactiveAccount() {
+        for (String reservedToActiveAccounts : List.of(TASKS, EXPORTS)) {
+            assertThat(operations(operation -> operation.path().startsWith(reservedToActiveAccounts)))
+                    .isNotEmpty()
+                    .allSatisfy(operation -> assertThat(responseReferenceOf(operation, "403"))
+                            .as("403 of %s", operation)
+                            .isEqualTo(responseReference(FORBIDDEN)));
+        }
     }
 
     // Matched as SecurityConfiguration matches them, not as PathDocumentation does, so that the two cannot share a bug
