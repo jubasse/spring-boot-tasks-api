@@ -13,8 +13,10 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.server.observation.ServerRequestObservationContext;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.util.unit.DataSize;
 
 import java.time.Duration;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -41,7 +43,7 @@ class RealtimeConfigurationTest {
 
     @Test
     void queueOfTheInstanceIsExclusiveAutoDeleteAndBoundedByTheConfiguredLength() {
-        AnonymousQueue queue = configuration.realtimeQueue(new RealtimeProperties(42, streams()));
+        AnonymousQueue queue = configuration.realtimeQueue(new RealtimeProperties(42, streams(), rooms()));
 
         assertThat(queue.getName()).startsWith("tasks.realtime.");
         assertThat(queue.isExclusive()).isTrue();
@@ -81,7 +83,15 @@ class RealtimeConfigurationTest {
             assertThat(properties.streams()).isEqualTo(new RealtimeProperties.Streams(
                     Duration.ofSeconds(20), Duration.ofMinutes(15), 5, Duration.ofSeconds(3),
                     Duration.ofMinutes(5), 10_000, 100));
+            assertThat(properties.rooms()).isEqualTo(rooms());
         });
+    }
+
+    @Test
+    void allowedOriginsOfTheRoomsAreReadAsACommaSeparatedList() {
+        runner.withPropertyValues("realtime.rooms.allowed-origins=https://app.example.com,https://*.example.org")
+                .run(context -> assertThat(context.getBean(RealtimeProperties.class).rooms().allowedOrigins())
+                        .containsExactly("https://app.example.com", "https://*.example.org"));
     }
 
     @ParameterizedTest
@@ -92,7 +102,9 @@ class RealtimeConfigurationTest {
             "realtime.streams.max-per-user=0",
             "realtime.streams.reconnect-delay=50ms",
             "realtime.streams.replay-size=0",
-            "realtime.streams.buffer-size=0"
+            "realtime.streams.buffer-size=0",
+            "realtime.rooms.heartbeat=500ms",
+            "realtime.rooms.time-to-first-message=0s"
     })
     void outOfRangeSettingStopsTheStartup(String setting) {
         runner.withPropertyValues(setting).run(context -> assertThat(context).hasFailed());
@@ -101,6 +113,11 @@ class RealtimeConfigurationTest {
     private static RealtimeProperties.Streams streams() {
         return new RealtimeProperties.Streams(Duration.ofSeconds(20), Duration.ofMinutes(15), 5, Duration.ofSeconds(3),
                 Duration.ofMinutes(5), 10_000, 100);
+    }
+
+    private static RealtimeProperties.Rooms rooms() {
+        return new RealtimeProperties.Rooms(List.of(), Duration.ofSeconds(10), DataSize.ofKilobytes(16),
+                Duration.ofSeconds(10));
     }
 
     private static ServerRequestObservationContext serverRequest(String uri) {

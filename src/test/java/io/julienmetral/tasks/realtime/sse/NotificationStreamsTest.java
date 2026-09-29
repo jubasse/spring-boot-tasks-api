@@ -18,6 +18,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.util.unit.DataSize;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -92,6 +93,8 @@ class NotificationStreamsTest {
                         Duration.ofMinutes(5),
                         100,
                         BUFFER_SIZE
+                ), new RealtimeProperties.Rooms(
+                        List.of(), Duration.ofSeconds(10), DataSize.ofKilobytes(16), Duration.ofSeconds(10)
                 )),
                 userRepository,
                 jsonMapper,

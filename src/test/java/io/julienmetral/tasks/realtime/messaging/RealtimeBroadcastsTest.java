@@ -4,6 +4,9 @@ import io.julienmetral.tasks.identity.events.AccountStateChanged;
 import io.julienmetral.tasks.messaging.services.Outbox;
 import io.julienmetral.tasks.notification.entities.WebhookEvent;
 import io.julienmetral.tasks.notification.events.TaskNotificationCreated;
+import io.julienmetral.tasks.task.entities.TaskEventType;
+import io.julienmetral.tasks.task.events.TaskDeleted;
+import io.julienmetral.tasks.task.events.TaskEventRecorded;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +38,8 @@ class RealtimeBroadcastsTest {
 
     private static final UUID USER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
+    private static final UUID TASK_ID = UUID.fromString("00000000-0000-0000-0000-0000000000b1");
+
     @Mock
     private Outbox outbox;
 
@@ -61,6 +66,27 @@ class RealtimeBroadcastsTest {
         broadcasts.onTaskNotification(new TaskNotificationCreated(WebhookEvent.TASK_DUE_SOON, USER_ID, data));
 
         verify(outbox).broadcast("tasks.realtime", new UserNotification(USER_ID, "task.due_soon", NOW, data));
+    }
+
+    @Test
+    void recordedTaskEventIsBroadcastToTheTaskRoomWithItsRowTypeActorAndTime() {
+        UUID eventId = UUID.fromString("00000000-0000-0000-0000-0000000000c1");
+        Instant occurredAt = Instant.parse("2026-03-04T05:00:00Z");
+
+        broadcasts.onTaskEventRecorded(
+                new TaskEventRecorded(TASK_ID, eventId, TaskEventType.COMMENT_ADDED, USER_ID, occurredAt));
+
+        verify(outbox).broadcast("tasks.realtime",
+                new TaskRoomEvent(TASK_ID, eventId, "COMMENT_ADDED", USER_ID, occurredAt));
+        verifyNoInteractions(transactionManager);
+    }
+
+    @Test
+    void deletedTaskIsBroadcastToItsRoomWithoutAHistoryRowAtTheCurrentTime() {
+        broadcasts.onTaskDeleted(new TaskDeleted(TASK_ID, "OPS-12", "Rotate the keys", UUID.randomUUID(), USER_ID));
+
+        verify(outbox).broadcast("tasks.realtime", new TaskRoomEvent(TASK_ID, null, "DELETED", USER_ID, NOW));
+        verifyNoInteractions(transactionManager);
     }
 
     @Test

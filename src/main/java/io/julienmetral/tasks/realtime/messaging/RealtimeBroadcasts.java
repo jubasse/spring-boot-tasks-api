@@ -4,6 +4,8 @@ import io.julienmetral.tasks.identity.events.AccountStateChanged;
 import io.julienmetral.tasks.messaging.services.Outbox;
 import io.julienmetral.tasks.notification.events.TaskNotificationCreated;
 import io.julienmetral.tasks.realtime.RealtimeConfiguration;
+import io.julienmetral.tasks.task.events.TaskDeleted;
+import io.julienmetral.tasks.task.events.TaskEventRecorded;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
@@ -31,6 +33,21 @@ public class RealtimeBroadcasts {
                 notification.event().type(),
                 clock.instant(),
                 notification.data()
+        ));
+    }
+
+    @EventListener
+    public void onTaskEventRecorded(TaskEventRecorded event) {
+        outbox.broadcast(RealtimeConfiguration.EXCHANGE, new TaskRoomEvent(
+                event.taskId(), event.eventId(), event.type().name(), event.actorId(), event.occurredAt()
+        ));
+    }
+
+    // A deletion writes no history row
+    @EventListener
+    public void onTaskDeleted(TaskDeleted event) {
+        outbox.broadcast(RealtimeConfiguration.EXCHANGE, new TaskRoomEvent(
+                event.taskId(), null, TaskRoomEvent.DELETED, event.actorId(), clock.instant()
         ));
     }
 

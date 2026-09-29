@@ -2,6 +2,8 @@ package io.julienmetral.tasks.realtime.messaging;
 
 import io.julienmetral.tasks.identity.security.UserStatusCacheEviction;
 import io.julienmetral.tasks.realtime.sse.NotificationStreams;
+import io.julienmetral.tasks.realtime.stomp.StompSessions;
+import io.julienmetral.tasks.realtime.stomp.TaskRooms;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,13 +31,19 @@ class RealtimeListenerTest {
     private NotificationStreams notificationStreams;
 
     @Mock
+    private TaskRooms taskRooms;
+
+    @Mock
+    private StompSessions stompSessions;
+
+    @Mock
     private UserStatusCacheEviction userStatusCacheEviction;
 
     private RealtimeListener listener;
 
     @BeforeEach
     void createListener() {
-        listener = new RealtimeListener(notificationStreams, userStatusCacheEviction);
+        listener = new RealtimeListener(notificationStreams, taskRooms, stompSessions, userStatusCacheEviction);
     }
 
     @Test
@@ -46,17 +54,31 @@ class RealtimeListenerTest {
         listener.onNotification(notification, messageId.toString());
 
         verify(notificationStreams).deliver(messageId, notification);
-        verifyNoInteractions(userStatusCacheEviction);
+        verifyNoInteractions(userStatusCacheEviction, taskRooms);
     }
 
     @Test
-    void accountChangeEvictsTheCachedStatusThenClosesTheStreamsItNoLongerAllows() {
+    void taskRoomEventGoesToTheRoomsUnderItsMessageId() {
+        UUID messageId = UUID.fromString("00000000-0000-0000-0000-0000000000e2");
+        TaskRoomEvent event = new TaskRoomEvent(UUID.randomUUID(), UUID.randomUUID(), "UPDATED", USER_ID,
+                Instant.parse("2026-03-04T05:06:07Z"));
+
+        listener.onTaskRoomEvent(event, messageId.toString());
+
+        verify(taskRooms).publish(messageId, event);
+        verifyNoInteractions(notificationStreams, stompSessions, userStatusCacheEviction);
+    }
+
+    @Test
+    void accountChangeEvictsTheCachedStatusThenClosesTheStreamsAndSessionsItNoLongerAllows() {
         listener.onAccountStatusChanged(new AccountStatusChanged(USER_ID));
 
         InOrder inOrder = inOrder(userStatusCacheEviction, notificationStreams);
         inOrder.verify(userStatusCacheEviction).evict(USER_ID);
         inOrder.verify(notificationStreams).closeIfNoLongerActive(USER_ID);
-        verifyNoMoreInteractions(notificationStreams);
+        verify(stompSessions).closeIfNoLongerActive(USER_ID);
+        verifyNoMoreInteractions(notificationStreams, stompSessions);
+        verifyNoInteractions(taskRooms);
     }
 
     @Test
