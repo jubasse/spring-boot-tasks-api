@@ -87,7 +87,19 @@ class DataExportEmailSenderTest {
                 .startsWith("Hello Jane Doe,")
                 .contains("Your export of tasks is ready. Download it from this page:")
                 .contains(DOWNLOAD_PAGE + "?id=" + EXPORT_ID)
-                .contains("It stays available until 2030-01-08T10:00:00Z, then it is deleted.");
+                .contains("It stays available until 2030-01-08 10:00 UTC, then it is deleted.");
+    }
+
+    @Test
+    void expiryIsShownToTheMinuteInUtcWhateverItsFractionOfASecond() {
+        ownerExists();
+
+        sender.onCompleted(new DataExportCompleted(EXPORT_ID, OWNER_ID, DataExportType.TASKS_CSV,
+                Instant.parse("2030-01-08T23:59:59.999999999Z")));
+
+        assertThat(sentMessage().text())
+                .contains("It stays available until 2030-01-08 23:59 UTC, then it is deleted.")
+                .doesNotContain("59.999", "T23:59");
     }
 
     @Test

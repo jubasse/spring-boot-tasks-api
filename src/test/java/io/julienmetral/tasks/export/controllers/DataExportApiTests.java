@@ -19,6 +19,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -45,6 +46,9 @@ class DataExportApiTests extends AbstractDataExportTests {
     private static final List<String> USER_COLUMNS = List.of(
             "id", "email", "display_name", "status", "roles", "email_verified_at", "created_at", "last_active_at"
     );
+
+    private static final DateTimeFormatter EMAIL_EXPIRY =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'").withZone(ZoneOffset.UTC);
 
     @Autowired
     private S3Client s3Client;
@@ -296,12 +300,12 @@ class DataExportApiTests extends AbstractDataExportTests {
 
         UUID exportId = exportTasksOf(owner, owner, "");
 
-        String expiresAt = exportJson(owner, exportId).path("expiresAt").asString();
+        Instant expiresAt = Instant.parse(exportJson(owner, exportId).path("expiresAt").asString());
         assertThat(mailpit.latestTextTo(owner.getEmail(), "is ready"))
                 .startsWith("Hello " + owner.getDisplayName() + ",")
                 .contains("Your export of tasks is ready.")
                 .contains("http://localhost:3000/exports?id=" + exportId)
-                .contains("It stays available until " + expiresAt.substring(0, 16))
+                .contains("It stays available until " + EMAIL_EXPIRY.format(expiresAt) + ", then it is deleted.")
                 .doesNotContain(storageKeyOf(exportId));
     }
 
