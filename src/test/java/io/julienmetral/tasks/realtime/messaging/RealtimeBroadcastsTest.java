@@ -4,11 +4,17 @@ import io.julienmetral.tasks.identity.events.AccountStateChanged;
 import io.julienmetral.tasks.messaging.services.Outbox;
 import io.julienmetral.tasks.notification.entities.WebhookEvent;
 import io.julienmetral.tasks.notification.events.TaskNotificationCreated;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.SimpleTransactionStatus;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -16,7 +22,11 @@ import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class RealtimeBroadcastsTest {
@@ -28,11 +38,20 @@ class RealtimeBroadcastsTest {
     @Mock
     private Outbox outbox;
 
+    @Mock
+    private PlatformTransactionManager transactionManager;
+
     private RealtimeBroadcasts broadcasts;
 
     @BeforeEach
     void createBroadcasts() {
-        broadcasts = new RealtimeBroadcasts(outbox, Clock.fixed(NOW, ZoneOffset.UTC));
+        broadcasts = new RealtimeBroadcasts(outbox, new TransactionTemplate(transactionManager),
+                Clock.fixed(NOW, ZoneOffset.UTC));
+    }
+
+    @AfterEach
+    void leaveTheTransaction() {
+        TransactionSynchronizationManager.setActualTransactionActive(false);
     }
 
     @Test
@@ -45,9 +64,25 @@ class RealtimeBroadcastsTest {
     }
 
     @Test
-    void accountChangeIsBroadcastToEveryInstance() {
+    void accountChangeInsideATransactionIsBroadcastInThatTransaction() {
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+
         broadcasts.onAccountStateChanged(new AccountStateChanged(USER_ID));
 
         verify(outbox).broadcast("tasks.realtime", new AccountStatusChanged(USER_ID));
+        verifyNoInteractions(transactionManager);
+    }
+
+    @Test
+    void accountChangePublishedOutsideATransactionIsBroadcastInATransactionOfItsOwn() {
+        SimpleTransactionStatus transaction = new SimpleTransactionStatus();
+        when(transactionManager.getTransaction(any())).thenReturn(transaction);
+
+        broadcasts.onAccountStateChanged(new AccountStateChanged(USER_ID));
+
+        InOrder inOrder = inOrder(transactionManager, outbox);
+        inOrder.verify(transactionManager).getTransaction(any());
+        inOrder.verify(outbox).broadcast("tasks.realtime", new AccountStatusChanged(USER_ID));
+        inOrder.verify(transactionManager).commit(transaction);
     }
 }

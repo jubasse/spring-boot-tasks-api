@@ -17,16 +17,21 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import static io.julienmetral.tasks.realtime.sse.StreamEventTest.text;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.awaitility.Awaitility.await;
+import static org.hamcrest.Matchers.notNullValue;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -110,8 +115,8 @@ class NotificationStreamTest {
         stream.send(notification());
 
         assertThat(stream.isClosed()).isTrue();
-        verify(emitter).complete();
         assertThat(released).containsExactly(stream);
+        verify(emitter, timeout(WRITE_TIMEOUT.toMillis())).complete();
     }
 
     @Test
@@ -121,8 +126,47 @@ class NotificationStreamTest {
         stream.close();
         stream.close();
 
-        verify(emitter).complete();
         assertThat(released).containsExactly(stream);
+        verify(emitter, after(NOTHING_WRITTEN_GRACE_PERIOD.toMillis()).times(1)).complete();
+    }
+
+    @Test
+    void responseIsCompletedOffTheThreadThatClosesTheStream() {
+        AtomicReference<Thread> completing = new AtomicReference<>();
+        doAnswer(invocation -> {
+            completing.set(Thread.currentThread());
+            return null;
+        }).when(emitter).complete();
+        NotificationStream stream = stream(10, NO_HEARTBEAT);
+
+        stream.close();
+
+        await().atMost(WRITE_TIMEOUT).untilAtomic(completing, notNullValue());
+        assertThat(completing.get()).isNotSameAs(Thread.currentThread());
+        assertThat(completing.get().isVirtual()).isTrue();
+        assertThat(completing.get().getName()).isEqualTo("notification-stream-close");
+    }
+
+    @Test
+    void closeReturnsWhileTheWriterIsBlockedInAWriteToAClientThatStoppedReading() throws Exception {
+        SseEmitter realEmitter = new SseEmitter();
+        NotificationStream stream = new NotificationStream(USER_ID, realEmitter, 10, NO_HEARTBEAT, released::add);
+        SseClient.StallingResponse response = new SseClient.StallingResponse();
+        SseClient client = SseClient.connect(realEmitter, response);
+        stream.start();
+        response.stall();
+        stream.send(notification());
+        assertThat(response.awaitBlockedWrite(WRITE_TIMEOUT)).as("the writer blocked in a write").isTrue();
+
+        try {
+            // Completing the response waits for the blocked write; closing must not
+            assertTimeoutPreemptively(Duration.ofSeconds(2), stream::close);
+            assertThat(released).containsExactly(stream);
+        } finally {
+            response.resume();
+        }
+
+        await().atMost(WRITE_TIMEOUT).until(client::closed);
     }
 
     @Test
@@ -163,7 +207,7 @@ class NotificationStreamTest {
 
         await().atMost(WRITE_TIMEOUT).until(stream::isClosed);
         assertThat(released).containsExactly(stream);
-        verify(emitter, never()).complete();
+        verify(emitter, after(NOTHING_WRITTEN_GRACE_PERIOD.toMillis()).never()).complete();
     }
 
     @Test
@@ -188,7 +232,7 @@ class NotificationStreamTest {
 
         assertThat(stream.isClosed()).isTrue();
         assertThat(released).containsExactly(stream);
-        verify(emitter, never()).complete();
+        verify(emitter, after(NOTHING_WRITTEN_GRACE_PERIOD.toMillis()).never()).complete();
     }
 
     @Test
@@ -200,7 +244,7 @@ class NotificationStreamTest {
 
         assertThat(stream.isClosed()).isTrue();
         assertThat(released).containsExactly(stream);
-        verify(emitter, never()).complete();
+        verify(emitter, after(NOTHING_WRITTEN_GRACE_PERIOD.toMillis()).never()).complete();
     }
 
     @Test
@@ -212,16 +256,28 @@ class NotificationStreamTest {
 
         assertThat(stream.isClosed()).isTrue();
         assertThat(released).containsExactly(stream);
-        verify(emitter).complete();
+        verify(emitter, timeout(WRITE_TIMEOUT.toMillis())).complete();
     }
 
     @Test
     void completingAResponseTheClientLeftAtTheSameMomentIsNotAnError() {
         doThrow(new IllegalStateException("Already completed")).when(emitter).complete();
-        NotificationStream stream = stream(10, NO_HEARTBEAT);
+        List<Throwable> uncaught = new CopyOnWriteArrayList<>();
+        Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((thread, exception) -> uncaught.add(exception));
 
-        assertThatNoException().isThrownBy(stream::close);
-        assertThat(released).containsExactly(stream);
+        try {
+            NotificationStream stream = stream(10, NO_HEARTBEAT);
+
+            assertThatNoException().isThrownBy(stream::close);
+
+            assertThat(released).containsExactly(stream);
+            verify(emitter, timeout(WRITE_TIMEOUT.toMillis())).complete();
+            await().during(NOTHING_WRITTEN_GRACE_PERIOD).atMost(NOTHING_WRITTEN_GRACE_PERIOD.multipliedBy(2))
+                    .until(uncaught::isEmpty);
+        } finally {
+            Thread.setDefaultUncaughtExceptionHandler(previous);
+        }
     }
 
     private NotificationStream stream(int bufferSize, Duration heartbeat) {
