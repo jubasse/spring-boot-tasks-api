@@ -37,6 +37,7 @@
 		<resilience4j.version>2.4.0</resilience4j.version>
 		<mockwebserver.version>5.5.0</mockwebserver.version>
 		<standardwebhooks.version>1.2.0</standardwebhooks.version>
+		<shedlock.version>7.10.1</shedlock.version>
 		<!-- Above the versions Spring Boot 4.1.1 manages, which have fixed vulnerabilities: Tomcat 11.0.24 three critical
 		     (GHSA-9xv2-5v5q-p794, GHSA-gcx9-497g-6cp6, GHSA-h3x4-894j-xpx5), amqp-client 5.30.0 four high. Remove both
 		     once Spring Boot manages these versions or later. -->
@@ -49,6 +50,13 @@
 				<groupId>software.amazon.awssdk</groupId>
 				<artifactId>bom</artifactId>
 				<version>${aws-sdk.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+			<dependency>
+				<groupId>net.javacrumbs.shedlock</groupId>
+				<artifactId>shedlock-bom</artifactId>
+				<version>${shedlock.version}</version>
 				<type>pom</type>
 				<scope>import</scope>
 			</dependency>
@@ -121,6 +129,19 @@
 			<groupId>io.github.resilience4j</groupId>
 			<artifactId>resilience4j-bulkhead</artifactId>
 			<version>${resilience4j.version}</version>
+		</dependency>
+		<!-- One run of each single-instance job across the cluster, locked in the scheduler_locks table -->
+		<dependency>
+			<groupId>net.javacrumbs.shedlock</groupId>
+			<artifactId>shedlock-spring</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>net.javacrumbs.shedlock</groupId>
+			<artifactId>shedlock-provider-jdbc-template</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>net.javacrumbs.shedlock</groupId>
+			<artifactId>shedlock-micrometer</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.springdoc</groupId>
