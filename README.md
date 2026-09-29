@@ -241,7 +241,7 @@ curl http://localhost:8080/api/v1/exports/$EXPORT_ID -H "Authorization: Bearer $
 
 | File | Content |
 |---|---|
-| `my-data.json` | Everything, for software: your account, email notification settings, webhooks, the tasks you created or are assigned to (deleted ones included, with their deletion date), your comments, the files you attached, what you did on tasks, and your exports. `version` identifies the format |
+| `my-data.json` | Everything, for software: your account, your sessions (dates only), email notification settings, webhooks and their recent deliveries, the tasks you created or are assigned to (deleted ones included, with their deletion date), your comments and the mentions of you, the reminders sent to you, the files you attached, what you did on tasks, and your exports. `version` identifies the format |
 | `my-data.pdf` | The same, for a person to read; each section shows its first 1000 rows |
 | `profile-photo.jpg` (or `.png`, `.webp`) | Your profile photo, when you have one |
 

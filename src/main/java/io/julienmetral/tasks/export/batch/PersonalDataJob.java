@@ -95,9 +95,13 @@ public class PersonalDataJob {
         data.put("exported_at", clock.instant());
         data.put("account", queries.account(ownerId));
         data.put("notification_settings", queries.notificationSettings(ownerId));
+        data.put("sessions", queries.sessions(ownerId));
         data.put("webhooks", queries.webhooks(ownerId));
+        data.put("webhook_deliveries", queries.webhookDeliveries(ownerId));
         data.put("tasks", queries.tasks(ownerId));
         data.put("comments", queries.comments(ownerId));
+        data.put("mentions", queries.mentions(ownerId));
+        data.put("reminders", queries.reminders(ownerId));
         data.put("attachments", queries.attachments(ownerId));
         data.put("history", queries.history(ownerId));
         data.put("exports", queries.exports(ownerId));

@@ -51,6 +51,20 @@
     <tr><th>Overdue</th><td th:text="${settings.task_overdue} ? 'On' : 'Off'"/></tr>
 </table>
 
+<h2>Sessions</h2>
+<p class="note">Each sign-in starts a session, renewed as you use it; the dates only, never a token.</p>
+<p th:if="${#lists.isEmpty(data.sessions)}">None.</p>
+<table th:unless="${#lists.isEmpty(data.sessions)}">
+    <tr><th>Started</th><th>Ends</th><th>Ended</th></tr>
+    <tr th:each="session, row : ${data.sessions}" th:if="${row.index lt limit}">
+        <td th:text="${session.created_at}"/>
+        <td th:text="${session.expires_at}"/>
+        <td th:text="${session.revoked_at}"/>
+    </tr>
+</table>
+<p class="note" th:if="${#lists.size(data.sessions) gt limit}"
+   th:text="|And ${#lists.size(data.sessions) - limit} more in my-data.json.|"/>
+
 <h2>Webhooks</h2>
 <p th:if="${#lists.isEmpty(data.webhooks)}">None.</p>
 <table th:unless="${#lists.isEmpty(data.webhooks)}">
@@ -62,6 +76,20 @@
         <td th:text="${webhook.created_at}"/>
     </tr>
 </table>
+
+<h2>Webhook deliveries</h2>
+<p th:if="${#lists.isEmpty(data.webhook_deliveries)}">None.</p>
+<table th:unless="${#lists.isEmpty(data.webhook_deliveries)}">
+    <tr><th>Event</th><th>Status</th><th>Attempts</th><th>Created</th></tr>
+    <tr th:each="delivery, row : ${data.webhook_deliveries}" th:if="${row.index lt limit}">
+        <td th:text="${delivery.event}"/>
+        <td th:text="${delivery.status}"/>
+        <td th:text="${delivery.attempts}"/>
+        <td th:text="${delivery.created_at}"/>
+    </tr>
+</table>
+<p class="note" th:if="${#lists.size(data.webhook_deliveries) gt limit}"
+   th:text="|And ${#lists.size(data.webhook_deliveries) - limit} more in my-data.json.|"/>
 
 <h2>Tasks you created or are assigned to</h2>
 <p th:if="${#lists.isEmpty(data.tasks)}">None.</p>
@@ -90,6 +118,33 @@
 </table>
 <p class="note" th:if="${#lists.size(data.comments) gt limit}"
    th:text="|And ${#lists.size(data.comments) - limit} more in my-data.json.|"/>
+
+<h2>Mentions of you</h2>
+<p th:if="${#lists.isEmpty(data.mentions)}">None.</p>
+<table th:unless="${#lists.isEmpty(data.mentions)}">
+    <tr><th>Task</th><th>By</th><th>When</th></tr>
+    <tr th:each="mention, row : ${data.mentions}" th:if="${row.index lt limit}">
+        <td th:text="${mention.task_reference}"/>
+        <td th:text="${mention.author}"/>
+        <td th:text="${mention.created_at}"/>
+    </tr>
+</table>
+<p class="note" th:if="${#lists.size(data.mentions) gt limit}"
+   th:text="|And ${#lists.size(data.mentions) - limit} more in my-data.json.|"/>
+
+<h2>Reminders sent to you</h2>
+<p th:if="${#lists.isEmpty(data.reminders)}">None.</p>
+<table th:unless="${#lists.isEmpty(data.reminders)}">
+    <tr><th>Task</th><th>Kind</th><th>Due</th><th>Sent</th></tr>
+    <tr th:each="reminder, row : ${data.reminders}" th:if="${row.index lt limit}">
+        <td th:text="${reminder.task_reference}"/>
+        <td th:text="${reminder.kind}"/>
+        <td th:text="${reminder.due_at}"/>
+        <td th:text="${reminder.sent_at}"/>
+    </tr>
+</table>
+<p class="note" th:if="${#lists.size(data.reminders) gt limit}"
+   th:text="|And ${#lists.size(data.reminders) - limit} more in my-data.json.|"/>
 
 <h2>Files you attached</h2>
 <p th:if="${#lists.isEmpty(data.attachments)}">None.</p>

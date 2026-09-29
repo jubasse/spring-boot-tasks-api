@@ -107,6 +107,51 @@ public class PersonalDataQueries {
                 """, userId);
     }
 
+    /** Mentions of the account in comments, others' included: who, where and when, not their text. */
+    public List<Map<String, Object>> mentions(UUID userId) {
+        return list("""
+                SELECT c.id AS comment_id, t.reference AS task_reference, a.display_name AS author, c.created_at
+                FROM task_comment_mentions m
+                JOIN task_comments c ON c.id = m.comment_id
+                JOIN tasks t ON t.id = c.task_id
+                LEFT JOIN user_profiles a ON a.id = c.author_id
+                WHERE m.user_id = :userId
+                ORDER BY c.created_at
+                """, userId);
+    }
+
+    public List<Map<String, Object>> reminders(UUID userId) {
+        return list("""
+                SELECT t.reference AS task_reference, r.kind, r.due_at, r.sent_at
+                FROM task_reminders r
+                JOIN tasks t ON t.id = r.task_id
+                WHERE r.recipient_id = :userId
+                ORDER BY r.sent_at
+                """, userId);
+    }
+
+    /** One row per refresh token, never its hash: when each session started, and when it ended or will end. */
+    public List<Map<String, Object>> sessions(UUID userId) {
+        return list("""
+                SELECT family_id, created_at, expires_at, revoked_at
+                FROM refresh_tokens
+                WHERE user_id = :userId
+                ORDER BY created_at
+                """, userId);
+    }
+
+    /** Deliveries to the account's webhooks, still kept (see webhooks.delivery-retention); not their payloads. */
+    public List<Map<String, Object>> webhookDeliveries(UUID userId) {
+        return list("""
+                SELECT d.id, d.endpoint_id, lower(regexp_replace(d.event, '^TASK_', 'task.')) AS event, d.status, d.attempts, d.last_status_code, d.created_at,
+                       d.delivered_at
+                FROM webhook_deliveries d
+                JOIN webhook_endpoints w ON w.id = d.endpoint_id
+                WHERE w.user_id = :userId
+                ORDER BY d.created_at
+                """, userId);
+    }
+
     public List<Map<String, Object>> exports(UUID userId) {
         return list("""
                 SELECT id, type, status, row_count, created_at, completed_at, expires_at
