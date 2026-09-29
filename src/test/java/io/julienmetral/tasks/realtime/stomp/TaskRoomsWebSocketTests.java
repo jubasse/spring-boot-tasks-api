@@ -147,14 +147,18 @@ class TaskRoomsWebSocketTests {
                 .algorithm(MacAlgorithm.HS256)
                 .build();
 
-        Connection connection = connect(token(otherEncoder, createUser(UserRole.USER), Instant.now().plus(Duration.ofMinutes(15))));
+        Instant expiresAt = Instant.now().plus(Duration.ofMinutes(15));
+
+        Connection connection = connect(token(otherEncoder, createUser(UserRole.USER), expiresAt));
 
         assertThat(connection.awaitError().getFirst("message")).isEqualTo("Invalid access token");
     }
 
     @Test
     void connectWithAnExpiredTokenIsRefused() throws Exception {
-        Connection connection = connect(token(jwtEncoder, createUser(UserRole.USER), Instant.now().minus(Duration.ofMinutes(5))));
+        Instant expiresAt = Instant.now().minus(Duration.ofMinutes(5));
+
+        Connection connection = connect(token(jwtEncoder, createUser(UserRole.USER), expiresAt));
 
         assertThat(connection.awaitError().getFirst("message")).isEqualTo("Invalid access token");
     }
@@ -183,6 +187,15 @@ class TaskRoomsWebSocketTests {
     @Test
     void activeAccountConnects() throws Exception {
         Connection connection = connect(login(createUser(UserRole.USER)));
+
+        assertThat(connection.awaitConnected().isConnected()).isTrue();
+    }
+
+    @Test
+    void bearerSchemeInLowerCaseIsAccepted() throws Exception {
+        String token = login(createUser(UserRole.USER));
+
+        Connection connection = connectWithAuthorization("bearer " + token, new WebSocketHttpHeaders());
 
         assertThat(connection.awaitConnected().isConnected()).isTrue();
     }
@@ -341,17 +354,25 @@ class TaskRoomsWebSocketTests {
     }
 
     private Connection connect(String accessToken, WebSocketHttpHeaders handshake) {
+        return connectWithAuthorization(accessToken == null ? null : "Bearer " + accessToken, handshake);
+    }
+
+    private Connection connectWithAuthorization(String authorization, WebSocketHttpHeaders handshake) {
         Connection connection = new Connection();
         WebSocketStompClient client = new WebSocketStompClient(new CloseRecordingWebSocketClient(connection.closed));
         client.setMessageConverter(new JacksonJsonMessageConverter());
         client.setDefaultHeartbeat(new long[] {0, 0});
         StompHeaders connectHeaders = new StompHeaders();
-        if (accessToken != null) {
-            connectHeaders.add(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken);
+        if (authorization != null) {
+            connectHeaders.add(HttpHeaders.AUTHORIZATION, authorization);
         }
 
         connection.session = client.connectAsync(
-                URI.create("ws://localhost:" + port + StompConfiguration.ENDPOINT), handshake, connectHeaders, connection);
+                URI.create("ws://localhost:" + port + StompConfiguration.ENDPOINT),
+                handshake,
+                connectHeaders,
+                connection
+        );
         connections.add(connection);
 
         return connection;
@@ -401,7 +422,8 @@ class TaskRoomsWebSocketTests {
 
     private UUID broadcastIdOfHistoryRow(UUID historyRowId) {
         return jdbcTemplate.queryForObject(
-                "SELECT id FROM outbox_messages WHERE exchange = 'tasks.realtime' AND type = ? AND payload ->> 'eventId' = ?",
+                "SELECT id FROM outbox_messages WHERE exchange = 'tasks.realtime' AND type = ?"
+                        + " AND payload ->> 'eventId' = ?",
                 UUID.class, TaskRoomEvent.class.getName(), historyRowId.toString());
     }
 
