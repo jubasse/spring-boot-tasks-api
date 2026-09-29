@@ -10,14 +10,17 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.messaging.support.MessageHeaderAccessor;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.GrantedAuthority;
@@ -27,14 +30,25 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.WebSocketHandler;
+import org.springframework.web.socket.WebSocketSession;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -107,6 +121,33 @@ class StompAuthenticationTest {
         authentication.preSend(connect("Bearer " + TOKEN), channel);
 
         verify(stompSessions).connected(SESSION_ID, USER_ID, EXPIRES_AT);
+        verify(stompSessions, never()).forget(any());
+    }
+
+    @Test
+    void connectRegistersTheSessionBeforeReadingTheAccount() {
+        when(jwtDecoder.decode(TOKEN)).thenReturn(jwt(USER_ID.toString()));
+        when(userRepository.findAccountStateById(USER_ID))
+                .thenReturn(Optional.of(new AccountState(true, ISSUED_AT)));
+
+        authentication.preSend(connect("Bearer " + TOKEN), channel);
+
+        InOrder inOrder = inOrder(stompSessions, userRepository);
+        inOrder.verify(stompSessions).connected(SESSION_ID, USER_ID, EXPIRES_AT);
+        inOrder.verify(userRepository).findAccountStateById(USER_ID);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"bearer ", "BEARER ", "bEaReR "})
+    void bearerSchemeIsAcceptedInAnyCase(String scheme) {
+        when(jwtDecoder.decode(TOKEN)).thenReturn(jwt(USER_ID.toString()));
+        when(userRepository.findAccountStateById(USER_ID))
+                .thenReturn(Optional.of(new AccountState(true, ISSUED_AT)));
+
+        Message<?> connected = authentication.preSend(connect(scheme + TOKEN), channel);
+
+        assertThat(accessorOf(connected).getUser()).isInstanceOf(JwtAuthenticationToken.class);
+        verify(stompSessions).connected(SESSION_ID, USER_ID, EXPIRES_AT);
     }
 
     @Test
@@ -140,7 +181,7 @@ class StompAuthenticationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"Basic dXNlcjpwYXNzd29yZA==", TOKEN})
+    @ValueSource(strings = {"Basic dXNlcjpwYXNzd29yZA==", TOKEN, "Bearer" + TOKEN, "Bearer", "Bear " + TOKEN})
     void connectWithAnotherAuthorizationThanABearerTokenIsRefusedAsBadCredentials(String authorization) {
         assertThatThrownBy(() -> authentication.preSend(connect(authorization), channel))
                 .isInstanceOf(BadCredentialsException.class)
@@ -174,7 +215,7 @@ class StompAuthenticationTest {
 
     @ParameterizedTest
     @EnumSource(InactiveAccount.class)
-    void connectOfAnAccountThatIsNotActiveIsRefused(InactiveAccount account) {
+    void connectOfAnAccountThatIsNotActiveIsRefusedAndItsSessionForgotten(InactiveAccount account) {
         when(jwtDecoder.decode(TOKEN)).thenReturn(jwt(USER_ID.toString()));
         when(userRepository.findAccountStateById(USER_ID)).thenReturn(Optional.of(account.state));
         Message<byte[]> connect = connect("Bearer " + TOKEN);
@@ -183,18 +224,79 @@ class StompAuthenticationTest {
                 .isInstanceOf(AccessDeniedException.class)
                 .hasMessage("The account is not active");
         assertThat(accessorOf(connect).getUser()).isNull();
-        verifyNoInteractions(stompSessions);
+        InOrder inOrder = inOrder(stompSessions);
+        inOrder.verify(stompSessions).connected(SESSION_ID, USER_ID, EXPIRES_AT);
+        inOrder.verify(stompSessions).forget(SESSION_ID);
     }
 
     @Test
-    void connectOfADeletedAccountIsRefused() {
+    void connectOfADeletedAccountIsRefusedAndItsSessionForgotten() {
         when(jwtDecoder.decode(TOKEN)).thenReturn(jwt(USER_ID.toString()));
         when(userRepository.findAccountStateById(USER_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> authentication.preSend(connect("Bearer " + TOKEN), channel))
                 .isInstanceOf(AccessDeniedException.class)
                 .hasMessage("The account is not active");
-        verifyNoInteractions(stompSessions);
+        verify(stompSessions).forget(SESSION_ID);
+    }
+
+    @Test
+    void failedAccountReadForgetsTheSessionAndPropagates() {
+        DataAccessResourceFailureException databaseDown = new DataAccessResourceFailureException("Connection refused");
+        when(jwtDecoder.decode(TOKEN)).thenReturn(jwt(USER_ID.toString()));
+        when(userRepository.findAccountStateById(USER_ID)).thenThrow(databaseDown);
+        Message<byte[]> connect = connect("Bearer " + TOKEN);
+
+        assertThatThrownBy(() -> authentication.preSend(connect, channel)).isSameAs(databaseDown);
+        assertThat(accessorOf(connect).getUser()).isNull();
+        verify(stompSessions).forget(SESSION_ID);
+    }
+
+    @Test
+    void disablingWhoseBroadcastArrivesJustAfterTheAccountReadClosesTheNewSession() throws Exception {
+        TrackedSession tracked = trackedSession();
+        AtomicBoolean broadcastDelivered = new AtomicBoolean();
+        // The CONNECT reads ACTIVE; the disabling commits and its broadcast arrives before the CONNECT completes
+        when(userRepository.findAccountStateById(USER_ID)).thenAnswer(invocation -> {
+            if (broadcastDelivered.compareAndSet(false, true)) {
+                tracked.sessions().closeIfNoLongerActive(USER_ID);
+                return Optional.of(new AccountState(true, ISSUED_AT));
+            }
+            return Optional.of(new AccountState(false, ISSUED_AT));
+        });
+
+        tracked.authentication().preSend(connect("Bearer " + TOKEN), channel);
+
+        verify(tracked.socket()).close(new CloseStatus(1008, "Account not active"));
+    }
+
+    @Test
+    void refusedConnectLeavesNoSessionToExpireOrToClose() throws Exception {
+        TrackedSession tracked = trackedSession();
+        when(userRepository.findAccountStateById(USER_ID)).thenReturn(Optional.of(new AccountState(false, ISSUED_AT)));
+
+        assertThatThrownBy(() -> tracked.authentication().preSend(connect("Bearer " + TOKEN), channel))
+                .isInstanceOf(AccessDeniedException.class);
+        tracked.sessions().closeIfNoLongerActive(USER_ID);
+
+        verify(tracked.expiry()).cancel(false);
+        verify(userRepository, times(1)).findAccountStateById(USER_ID);
+        verify(tracked.socket(), never()).close(any());
+    }
+
+    @Test
+    void connectWhoseAccountReadFailedLeavesNoSessionToExpireOrToClose() throws Exception {
+        TrackedSession tracked = trackedSession();
+        when(userRepository.findAccountStateById(USER_ID))
+                .thenThrow(new DataAccessResourceFailureException("Connection refused"));
+
+        assertThatThrownBy(() -> tracked.authentication().preSend(connect("Bearer " + TOKEN), channel))
+                .isInstanceOf(DataAccessResourceFailureException.class);
+        tracked.sessions().closeIfNoLongerActive(USER_ID);
+
+        verify(tracked.expiry()).cancel(false);
+        verify(userRepository, times(1)).findAccountStateById(USER_ID);
+        verify(tracked.socket(), never()).close(any());
     }
 
     @ParameterizedTest
@@ -207,6 +309,31 @@ class StompAuthenticationTest {
 
         assertThat(authentication.preSend(frame, channel)).isSameAs(frame);
         verifyNoInteractions(jwtDecoder, userRepository, stompSessions);
+    }
+
+    private record TrackedSession(
+            StompAuthentication authentication,
+            StompSessions sessions,
+            WebSocketSession socket,
+            ScheduledFuture<?> expiry
+    ) {
+    }
+
+    // The instance's real sessions, with the connection SESSION_ID open and a valid token of USER_ID
+    private TrackedSession trackedSession() throws Exception {
+        TaskScheduler scheduler = mock(TaskScheduler.class);
+        ScheduledFuture<?> expiry = mock(ScheduledFuture.class);
+        doReturn(expiry).when(scheduler).schedule(any(Runnable.class), any(Instant.class));
+        StompSessions sessions = new StompSessions(userRepository, scheduler);
+        WebSocketSession socket = mock(WebSocketSession.class);
+        when(socket.getId()).thenReturn(SESSION_ID);
+        sessions.track(mock(WebSocketHandler.class)).afterConnectionEstablished(socket);
+        when(jwtDecoder.decode(TOKEN)).thenReturn(jwt(USER_ID.toString()));
+
+        return new TrackedSession(
+                new StompAuthentication(jwtDecoder, jwtAuthenticationConverter(), new CurrentUser(), userRepository,
+                        sessions),
+                sessions, socket, expiry);
     }
 
     private static Message<byte[]> connect(String authorization) {
