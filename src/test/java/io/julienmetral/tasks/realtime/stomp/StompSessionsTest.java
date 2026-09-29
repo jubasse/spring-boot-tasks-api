@@ -99,6 +99,26 @@ class StompSessionsTest {
     }
 
     @Test
+    void forgottenSessionLosesItsExpiryAndIsNoLongerClosedByAnAccountChange() throws Exception {
+        WebSocketSession session = open("s1");
+        doReturn(expiry).when(scheduler).schedule(any(Runnable.class), eq(EXPIRES_AT));
+        sessions.connected("s1", USER_ID, EXPIRES_AT);
+
+        sessions.forget("s1");
+        sessions.closeIfNoLongerActive(USER_ID);
+
+        verify(expiry).cancel(false);
+        verifyNoInteractions(userRepository);
+        verify(session, never()).close(any());
+    }
+
+    @Test
+    void forgettingASessionThatNeverConnectedChangesNothing() {
+        assertThatNoException().isThrownBy(() -> sessions.forget("never-connected"));
+        verifyNoInteractions(scheduler);
+    }
+
+    @Test
     void expiryOfAConnectionAlreadyClosedClosesNothing() throws Exception {
         WebSocketSession session = open("s1");
         doReturn(expiry).when(scheduler).schedule(any(Runnable.class), eq(EXPIRES_AT));
