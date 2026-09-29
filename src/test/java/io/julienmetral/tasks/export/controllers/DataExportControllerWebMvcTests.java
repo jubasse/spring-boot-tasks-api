@@ -66,6 +66,8 @@ class DataExportControllerWebMvcTests {
 
     private static final String USERS_EXPORT = EXPORTS + "/users";
 
+    private static final String MY_DATA_EXPORT = EXPORTS + "/my-data";
+
     private static final String EXPORT = EXPORTS + "/{id}";
 
     private static final Instant CREATED_AT = Instant.parse("2030-01-01T08:00:00Z");
@@ -94,6 +96,7 @@ class DataExportControllerWebMvcTests {
         return List.of(
                 post(TASKS_EXPORT),
                 post(USERS_EXPORT),
+                post(MY_DATA_EXPORT),
                 get(EXPORTS),
                 get(EXPORT, exportId),
                 delete(EXPORT, exportId)
@@ -289,6 +292,54 @@ class DataExportControllerWebMvcTests {
 
             verifyNoInteractions(exportService);
             return result;
+        }
+    }
+
+    @Nested
+    class PersonalDataExport {
+
+        @BeforeEach
+        void callersAreActive() {
+            everyAccountIsActive(userRepository);
+        }
+
+        @Test
+        void requestOfAMemberIsAcceptedForTheCallerWithTheQueuedExportAndItsLocation() throws Exception {
+            when(exportService.request(caller, DataExportType.PERSONAL_DATA, null))
+                    .thenReturn(export(DataExportType.PERSONAL_DATA, DataExportStatus.QUEUED, null));
+
+            mockMvc.perform(post(MY_DATA_EXPORT).with(user(caller)))
+                    .andExpect(status().isAccepted())
+                    .andExpect(header().string(HttpHeaders.LOCATION, "/api/v1/exports/" + exportId))
+                    .andExpect(jsonPath("$.id").value(exportId.toString()))
+                    .andExpect(jsonPath("$.type").value("PERSONAL_DATA"))
+                    .andExpect(jsonPath("$.status").value("QUEUED"))
+                    .andExpect(jsonPath("$.filters").value(nullValue()))
+                    .andExpect(jsonPath("$.rowCount").value(nullValue()))
+                    .andExpect(jsonPath("$.downloadUrl").value(nullValue()));
+
+            verify(exportService).request(caller, DataExportType.PERSONAL_DATA, null);
+        }
+
+        @Test
+        void requestOfAnAdminIsForTheAdminOnly() throws Exception {
+            when(exportService.request(caller, DataExportType.PERSONAL_DATA, null))
+                    .thenReturn(export(DataExportType.PERSONAL_DATA, DataExportStatus.QUEUED, null));
+
+            mockMvc.perform(post(MY_DATA_EXPORT).with(admin(caller)))
+                    .andExpect(status().isAccepted());
+
+            verify(exportService).request(caller, DataExportType.PERSONAL_DATA, null);
+        }
+
+        @Test
+        void personalDataExportInProgressIsATypedConflict() throws Exception {
+            when(exportService.request(caller, DataExportType.PERSONAL_DATA, null))
+                    .thenThrow(new DataExportInProgressException());
+
+            mockMvc.perform(post(MY_DATA_EXPORT).with(user(caller)))
+                    .andExpect(typedProblem(409, "export-in-progress", "Export already in progress"))
+                    .andExpect(header().doesNotExist(HttpHeaders.LOCATION));
         }
     }
 
