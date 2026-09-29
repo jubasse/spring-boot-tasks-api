@@ -5063,9 +5063,7 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": {
-              "raw": "{{exportDownloadUrl}}"
-            },
+            "url": "{{exportDownloadUrl}}",
             "auth": {
               "type": "noauth"
             },
@@ -5078,9 +5076,10 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
-                  "const csv = pm.response.text();",
-                  "pm.test('starts with a UTF-8 byte order mark', () => pm.expect(csv.charCodeAt(0)).to.eql(0xFEFF));",
-                  "pm.test('has the header row', () => pm.expect(csv.slice(1)).to.match(/^\"id\",\"reference\",\"title\"/));"
+                  "// The text of a response is decoded without its byte order mark: the raw bytes keep it",
+                  "const bytes = pm.response.stream;",
+                  "pm.test('starts with a UTF-8 byte order mark', () => pm.expect([bytes[0], bytes[1], bytes[2]]).to.eql([0xEF, 0xBB, 0xBF]));",
+                  "pm.test('has the header row', () => pm.expect(pm.response.text().replace(/^\\uFEFF/, '')).to.match(/^\"id\",\"reference\",\"title\"/));"
                 ]
               }
             }
@@ -5368,9 +5367,7 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": {
-              "raw": "{{myDataDownloadUrl}}"
-            },
+            "url": "{{myDataDownloadUrl}}",
             "auth": {
               "type": "noauth"
             }
