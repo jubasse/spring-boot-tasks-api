@@ -274,7 +274,7 @@ The API reads its configuration from `src/main/resources/application.yaml`, whic
 | `WEBHOOK_REQUIRE_HTTPS` | `true` | `false` accepts plain HTTP webhook URLs on any port, for a receiver on your machine. Use it only in development |
 | `OUTBOUND_HTTP_ALLOWED_ADDRESSES` | empty | Private address ranges, in CIDR notation, that webhooks may reach besides public addresses, such as `127.0.0.1/32` for a receiver on your machine. Keep it empty in production |
 | `API_DOCS_ENABLED`, `SWAGGER_UI_ENABLED` | `true`, and `false` under the `prod` profile | `false` stops serving the OpenAPI document and Swagger UI |
-| `IDENTITY_STATUS_CACHE_TTL` | `30s` | How long an account's status is reused before it is read again, from 1 second to 1 minute. With several instances, it is also how long an account disabled on one instance can keep working through the others |
+| `IDENTITY_STATUS_CACHE_TTL` | `30s` | How long an account's status is reused before it is read again, from 1 second to 1 minute. With several instances, the others forget it as soon as RabbitMQ relays the change; while RabbitMQ is down, it is how long an account disabled on one instance can keep working through the others |
 
 `.env.example` lists the other options, and `application.yaml` holds the fixed settings, such as the upload size limits and the schedules of the background jobs.
 
