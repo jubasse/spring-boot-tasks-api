@@ -155,6 +155,10 @@ public class SecurityConfiguration {
                     // Securing that dispatch turned every 400 of a public endpoint (malformed JSON on login or
                     // sign-up, an invalid identicon id) into a 401.
                     auth.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
+                    // The dispatch that ends an asynchronous response (a notification stream) belongs to a request
+                    // authorized when it started: checked again, a stream closed because its account was disabled
+                    // would end on a refusal
+                    auth.dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll();
 
                     PublicEndpoints.ALL.forEach(endpoint ->
                             auth.requestMatchers(endpoint.method(), endpoint.pattern()).permitAll());
@@ -170,8 +174,9 @@ public class SecurityConfiguration {
                             .permitAll()
                             .requestMatchers(HttpMethod.GET, PROBES)
                             .permitAll()
-                            // Tasks are reserved to enabled users with a verified email, whatever the API version
-                            .requestMatchers("/api/*/tasks/**")
+                            // Tasks and their notifications are reserved to enabled users with a verified email,
+                            // whatever the API version
+                            .requestMatchers("/api/*/tasks/**", "/api/*/notifications/**")
                             .access(activeUserAuthorizationManager)
                             .anyRequest()
                             .authenticated();

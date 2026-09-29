@@ -10,6 +10,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
+import java.util.UUID;
+
 @Component
 @RequiredArgsConstructor
 public class UserStatusCacheEviction {
@@ -23,10 +25,14 @@ public class UserStatusCacheEviction {
     @Order(Ordered.HIGHEST_PRECEDENCE)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void evict(AccountStateChanged event) {
+        evict(event.userId());
+    }
+
+    public void evict(UUID userId) {
         Cache cache = cacheManager.getCache(UserStatusLookup.CACHE);
 
         if (cache != null) {
-            cache.evictIfPresent(event.userId());
+            cache.evictIfPresent(userId);
         }
     }
 }
