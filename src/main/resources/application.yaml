@@ -130,6 +130,7 @@ exports:
   purge-cron: 0 30 4 * * *
   recovery-enabled: ${EXPORT_RECOVERY_ENABLED:true}
   recovery-interval: 5m
+  pdf-max-rows-per-section: 1000
 # Endpoints users declare to receive their task notifications. The key encrypts their signing secrets in the
 # database: Base64 of at least 32 bytes (openssl rand -base64 32). Only a development machine turns requireHttps off,
 # with OUTBOUND_HTTP_ALLOWED_ADDRESSES, to reach a local receiver.

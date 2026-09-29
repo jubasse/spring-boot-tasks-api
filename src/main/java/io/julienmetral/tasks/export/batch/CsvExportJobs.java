@@ -239,7 +239,7 @@ public class CsvExportJobs {
     ) {
         return new FlatFileItemWriterBuilder<T>()
                 .name(name)
-                .resource(new FileSystemResource(ExportFiles.of(exportId, "csv")))
+                .resource(new FileSystemResource(ExportFiles.of(exportId, PublishExport.CSV_FILE)))
                 .encoding(StandardCharsets.UTF_8.name())
                 .lineSeparator("\r\n")
                 // The byte order mark makes Excel read the file as UTF-8

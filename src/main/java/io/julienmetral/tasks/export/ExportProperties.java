@@ -23,6 +23,7 @@ import java.time.Duration;
  * @param purgeCron        when they are deleted (Spring cron, six fields)
  * @param recoveryEnabled  whether this instance resumes the exports of an instance that stopped
  * @param recoveryInterval how often interrupted exports are looked for
+ * @param pdfMaxRowsPerSection rows of each section in the PDF of a personal data export, which its JSON holds in full
  */
 @Validated
 @ConfigurationProperties(prefix = "exports")
@@ -36,6 +37,7 @@ public record ExportProperties(
         @DefaultValue("true") boolean purgeEnabled,
         @DefaultValue("0 30 4 * * *") String purgeCron,
         @DefaultValue("true") boolean recoveryEnabled,
-        @DefaultValue("5m") @NotNull @DurationMin(minutes = 1) Duration recoveryInterval
+        @DefaultValue("5m") @NotNull @DurationMin(minutes = 1) Duration recoveryInterval,
+        @DefaultValue("1000") @Min(1) int pdfMaxRowsPerSection
 ) {
 }

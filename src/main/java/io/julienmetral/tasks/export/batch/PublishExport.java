@@ -17,6 +17,8 @@ public class PublishExport implements Tasklet {
 
     public static final String EXPORT_ID = "exportId";
 
+    static final String CSV_FILE = "export.csv";
+
     private final DataExportService exportService;
     private final Clock clock;
     private final String writeStepName;
@@ -40,7 +42,7 @@ public class PublishExport implements Tasklet {
 
         exportService.complete(
                 exportId,
-                ExportFiles.of(exportId, "csv"),
+                ExportFiles.of(exportId, CSV_FILE),
                 filenamePrefix + "-" + LocalDate.now(clock) + ".csv",
                 "text/csv",
                 rows

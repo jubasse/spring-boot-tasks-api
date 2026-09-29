@@ -69,6 +69,7 @@ public class DataExportEmailSender {
         return switch (type) {
             case TASKS_CSV -> "tasks";
             case USERS_CSV -> "users";
+            case PERSONAL_DATA -> "your personal data";
         };
     }
 }

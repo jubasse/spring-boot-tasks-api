@@ -127,7 +127,7 @@ public class DataExportService {
      * owner is emailed after the commit.
      */
     @Transactional
-    public void complete(UUID id, Path file, String filename, String contentType, long rowCount) {
+    public void complete(UUID id, Path file, String filename, String contentType, Long rowCount) {
         DataExport export = repository.findById(id).orElseThrow(() -> new DataExportNotFoundException(id));
         Instant now = clock.instant();
 

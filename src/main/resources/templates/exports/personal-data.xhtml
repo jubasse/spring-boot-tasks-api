@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The readable half of a personal data export (PersonalDataPdf). data is the content of my-data.json; limit caps
+     the rows of each section, which my-data.json always holds in full. Values only ever go through th:text. -->
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Your data</title>
+    <style>
+        @page { size: A4; margin: 18mm 15mm; }
+        body { font-family: 'Noto Sans'; font-size: 9pt; color: #1f2328; }
+        h1 { font-size: 18pt; margin: 0 0 4mm 0; }
+        h2 { font-size: 12pt; margin: 7mm 0 2mm 0; border-bottom: 1px solid #d0d7de; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        th, td { text-align: left; vertical-align: top; padding: 1mm 1.5mm; border-bottom: 1px solid #eaeef2;
+                 word-wrap: break-word; }
+        th { font-weight: 700; background: #f6f8fa; }
+        .fields th { width: 35%; background: none; }
+        .note { color: #59636e; }
+    </style>
+</head>
+<body>
+<h1>Your data in Tasks</h1>
+<p class="note">
+    Exported <span th:text="${data.exported_at}">date</span>. The file my-data.json, next to this one, holds the same
+    data in full, in a form other software can read.
+</p>
+
+<h2>Account</h2>
+<table class="fields" th:with="account=${data.account}">
+    <tr><th>Id</th><td th:text="${account.id}"/></tr>
+    <tr><th>Email</th><td th:text="${account.email}"/></tr>
+    <tr><th>Display name</th><td th:text="${account.display_name}"/></tr>
+    <tr><th>Status</th><td th:text="${account.status}"/></tr>
+    <tr><th>Roles</th><td th:text="${account.roles}"/></tr>
+    <tr><th>Profile photo</th><td th:text="${account.has_profile_photo} ? 'Yes, in the archive' : 'None'"/></tr>
+    <tr><th>Created</th><td th:text="${account.created_at}"/></tr>
+    <tr><th>Email verified</th><td th:text="${account.email_verified_at}"/></tr>
+    <tr><th>Last sign-in</th><td th:text="${account.last_login_at}"/></tr>
+    <tr><th>Last activity</th><td th:text="${account.last_active_at}"/></tr>
+</table>
+
+<h2>Email notifications</h2>
+<p th:if="${data.notification_settings == null}">Default settings: every notification is on.</p>
+<table class="fields" th:if="${data.notification_settings != null}" th:with="settings=${data.notification_settings}">
+    <tr><th>Task assigned</th><td th:text="${settings.task_assigned} ? 'On' : 'Off'"/></tr>
+    <tr><th>Task unassigned</th><td th:text="${settings.task_unassigned} ? 'On' : 'Off'"/></tr>
+    <tr><th>Task cancelled</th><td th:text="${settings.task_cancelled} ? 'On' : 'Off'"/></tr>
+    <tr><th>Task deleted</th><td th:text="${settings.task_deleted} ? 'On' : 'Off'"/></tr>
+    <tr><th>Comment on your task</th><td th:text="${settings.task_commented} ? 'On' : 'Off'"/></tr>
+    <tr><th>Mention</th><td th:text="${settings.task_mentioned} ? 'On' : 'Off'"/></tr>
+    <tr><th>Due soon</th><td th:text="${settings.task_due_soon} ? 'On' : 'Off'"/></tr>
+    <tr><th>Overdue</th><td th:text="${settings.task_overdue} ? 'On' : 'Off'"/></tr>
+</table>
+
+<h2>Webhooks</h2>
+<p th:if="${#lists.isEmpty(data.webhooks)}">None.</p>
+<table th:unless="${#lists.isEmpty(data.webhooks)}">
+    <tr><th>Kind</th><th style="width: 45%">URL</th><th>Events</th><th>Created</th></tr>
+    <tr th:each="webhook, row : ${data.webhooks}" th:if="${row.index lt limit}">
+        <td th:text="${webhook.kind}"/>
+        <td th:text="${webhook.url}"/>
+        <td th:text="${webhook.events}"/>
+        <td th:text="${webhook.created_at}"/>
+    </tr>
+</table>
+
+<h2>Tasks you created or are assigned to</h2>
+<p th:if="${#lists.isEmpty(data.tasks)}">None.</p>
+<table th:unless="${#lists.isEmpty(data.tasks)}">
+    <tr><th>Reference</th><th style="width: 40%">Title</th><th>Status</th><th>Created</th><th>Deleted</th></tr>
+    <tr th:each="task, row : ${data.tasks}" th:if="${row.index lt limit}">
+        <td th:text="${task.reference}"/>
+        <td th:text="${task.title}"/>
+        <td th:text="${task.status}"/>
+        <td th:text="${task.created_at}"/>
+        <td th:text="${task.deleted_at}"/>
+    </tr>
+</table>
+<p class="note" th:if="${#lists.size(data.tasks) gt limit}"
+   th:text="|And ${#lists.size(data.tasks) - limit} more in my-data.json.|"/>
+
+<h2>Your comments</h2>
+<p th:if="${#lists.isEmpty(data.comments)}">None.</p>
+<table th:unless="${#lists.isEmpty(data.comments)}">
+    <tr><th>Task</th><th style="width: 60%">Comment</th><th>Written</th></tr>
+    <tr th:each="comment, row : ${data.comments}" th:if="${row.index lt limit}">
+        <td th:text="${comment.task_reference}"/>
+        <td th:text="${comment.body}"/>
+        <td th:text="${comment.created_at}"/>
+    </tr>
+</table>
+<p class="note" th:if="${#lists.size(data.comments) gt limit}"
+   th:text="|And ${#lists.size(data.comments) - limit} more in my-data.json.|"/>
+
+<h2>Files you attached</h2>
+<p th:if="${#lists.isEmpty(data.attachments)}">None.</p>
+<table th:unless="${#lists.isEmpty(data.attachments)}">
+    <tr><th>Task</th><th style="width: 45%">File</th><th>Size (bytes)</th><th>Added</th></tr>
+    <tr th:each="attachment, row : ${data.attachments}" th:if="${row.index lt limit}">
+        <td th:text="${attachment.task_reference}"/>
+        <td th:text="${attachment.original_filename}"/>
+        <td th:text="${attachment.size_bytes}"/>
+        <td th:text="${attachment.created_at}"/>
+    </tr>
+</table>
+<p class="note" th:if="${#lists.size(data.attachments) gt limit}"
+   th:text="|And ${#lists.size(data.attachments) - limit} more in my-data.json.|"/>
+
+<h2>What you did on tasks</h2>
+<p th:if="${#lists.isEmpty(data.history)}">Nothing.</p>
+<table th:unless="${#lists.isEmpty(data.history)}">
+    <tr><th>Task</th><th>Action</th><th>When</th></tr>
+    <tr th:each="event, row : ${data.history}" th:if="${row.index lt limit}">
+        <td th:text="${event.task_reference}"/>
+        <td th:text="${event.type}"/>
+        <td th:text="${event.occurred_at}"/>
+    </tr>
+</table>
+<p class="note" th:if="${#lists.size(data.history) gt limit}"
+   th:text="|And ${#lists.size(data.history) - limit} more in my-data.json.|"/>
+
+<h2>Your exports</h2>
+<table>
+    <tr><th>Kind</th><th>Status</th><th>Asked</th><th>Completed</th></tr>
+    <tr th:each="export, row : ${data.exports}" th:if="${row.index lt limit}">
+        <td th:text="${export.type}"/>
+        <td th:text="${export.status}"/>
+        <td th:text="${export.created_at}"/>
+        <td th:text="${export.completed_at}"/>
+    </tr>
+</table>
+</body>
+</html>

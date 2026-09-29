@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.export.services;
 
 import io.julienmetral.tasks.export.batch.CsvExportJobs;
+import io.julienmetral.tasks.export.batch.PersonalDataJob;
 import io.julienmetral.tasks.export.batch.PublishExport;
 import io.julienmetral.tasks.export.entities.DataExport;
 import io.julienmetral.tasks.export.entities.DataExportType;
@@ -34,12 +35,17 @@ public class DataExportRunner {
             JobOperator jobOperator,
             JobRepository jobRepository,
             @Qualifier(CsvExportJobs.TASKS_JOB) Job tasksCsvExport,
-            @Qualifier(CsvExportJobs.USERS_JOB) Job usersCsvExport
+            @Qualifier(CsvExportJobs.USERS_JOB) Job usersCsvExport,
+            @Qualifier(PersonalDataJob.JOB) Job personalDataExport
     ) {
         this.exportService = exportService;
         this.jobOperator = jobOperator;
         this.jobRepository = jobRepository;
-        this.jobs = Map.of(DataExportType.TASKS_CSV, tasksCsvExport, DataExportType.USERS_CSV, usersCsvExport);
+        this.jobs = Map.of(
+                DataExportType.TASKS_CSV, tasksCsvExport,
+                DataExportType.USERS_CSV, usersCsvExport,
+                DataExportType.PERSONAL_DATA, personalDataExport
+        );
     }
 
     /**

@@ -38,7 +38,10 @@ import org.springframework.web.bind.annotation.RestController;
 import java.net.URI;
 import java.util.UUID;
 
-@Tag(name = "Exports", description = "Files of tasks or users, produced in the background and downloadable for a while.")
+@Tag(
+        name = "Exports",
+        description = "Files of tasks, users or your personal data, produced in the background and downloadable for a while."
+)
 @RestController
 @RequestMapping("/exports")
 @RequiredArgsConstructor
@@ -85,6 +88,23 @@ public class DataExportController {
     @PostMapping("/users")
     public ResponseEntity<DataExportResponseDto> exportUsers() {
         return accepted(exportService.request(callerId(), DataExportType.USERS_CSV, null));
+    }
+
+    @Operation(
+            summary = "Export your personal data",
+            description = """
+                    Everything the API holds about your account, as a ZIP archive: my-data.json, complete and meant                     for software, my-data.pdf, for a person to read, and your profile photo. Tasks, comments and                     history of other accounts appear only where you took part, and other people by display name."""
+    )
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    @ApiResponse(responseCode = "202", description = QUEUED, headers = @Header(
+            name = "Location",
+            description = "URL of the export.",
+            schema = @Schema(type = "string", format = "uri-reference")
+    ), content = @Content(schema = @Schema(implementation = DataExportResponseDto.class)))
+    @DocumentedProblems(ProblemType.EXPORT_IN_PROGRESS)
+    @PostMapping("/my-data")
+    public ResponseEntity<DataExportResponseDto> exportMyData() {
+        return accepted(exportService.request(callerId(), DataExportType.PERSONAL_DATA, null));
     }
 
     @Operation(summary = "List your exports, newest first")
