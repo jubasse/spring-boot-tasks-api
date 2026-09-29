@@ -3,7 +3,7 @@
     "_postman_id": "f17dee61-bebc-4ffb-bf70-185dcbc8970a",
     "name": "Tasks API",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Spring Boot `tasks` API (http://localhost:8080).\n\n## First run\n1. **0. Setup**: creates the `userEmail`, `adminEmail` and `unverifiedEmail` accounts (all get the USER role).\n2. Grant ADMIN to the second account (no admin is created automatically):\n   ```sql\n   INSERT INTO user_roles (user_id, role) VALUES ('<adminId>', 'ADMIN');\n   ```\n   `adminId` is stored in the collection variables after sign-up.\n3. **Auth**: run \"Login — user\" and \"Login — admin\". Access tokens expire after 15 minutes: run \"Refresh — user\" to get a new one without logging in again.\n4. **Email verification**: needs the Mailpit service of `compose.yaml` (web UI on http://localhost:8025).\n5. Then run *Tasks*, *Task events* and *Cleanup* in order (or use the Collection Runner).\n\nTask endpoints are reserved to enabled users with a verified email: the *Email verification* folder verifies the user and the admin.\n\n## Authentication\nBearer JWT. Each request uses `{{userToken}}` or `{{adminToken}}` depending on the role it needs. Requests suffixed with (401), (403) or (404) check error cases.\n"
+    "description": "Spring Boot `tasks` API (http://localhost:8080).\n\n## First run\n1. **0. Setup**: creates the `userEmail`, `adminEmail` and `unverifiedEmail` accounts (all get the USER role).\n2. Grant ADMIN to the second account (no admin is created automatically):\n   ```sql\n   INSERT INTO user_roles (user_id, role) VALUES ('<adminId>', 'ADMIN');\n   ```\n   `adminId` is stored in the collection variables after sign-up.\n3. **Auth**: run \"Login — user\" and \"Login — admin\". Access tokens expire after 15 minutes: run \"Refresh — user\" to get a new one without logging in again.\n4. **Email verification**: needs the Mailpit service of `compose.yaml` (web UI on http://localhost:8025).\n5. Then run *Tasks*, *Task events*, *Exports* and *Cleanup* in order (or use the Collection Runner).\n\nTask endpoints are reserved to enabled users with a verified email: the *Email verification* folder verifies the user and the admin.\n\n## Authentication\nBearer JWT. Each request uses `{{userToken}}` or `{{adminToken}}` depending on the role it needs. Requests suffixed with (401), (403) or (404) check error cases.\n"
   },
   "auth": {
     "type": "bearer",
@@ -142,6 +142,26 @@
     },
     {
       "key": "slackWebhookId",
+      "value": ""
+    },
+    {
+      "key": "exportId",
+      "value": ""
+    },
+    {
+      "key": "exportDownloadUrl",
+      "value": ""
+    },
+    {
+      "key": "myDataExportId",
+      "value": ""
+    },
+    {
+      "key": "myDataDownloadUrl",
+      "value": ""
+    },
+    {
+      "key": "exportPolls",
       "value": ""
     }
   ],
@@ -4901,6 +4921,549 @@
                   "const body = pm.response.json();",
                   "pm.collectionVariables.set('userToken', body.accessToken);",
                   "pm.collectionVariables.set('userRefreshToken', body.refreshToken);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Exports",
+      "description": "Needs 0. Setup, Auth and Email verification first: exports are for active accounts. Each export runs in the background; the Get requests poll until it has run.",
+      "item": [
+        {
+          "name": "Export tasks (202)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/exports/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "tasks"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"archived\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Any active account; the filters of the task list, all optional. The export runs in the background: follow it at the Location URL. One export of each type at a time per account (409 export-in-progress)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [202]', () => pm.expect(pm.response.code).to.be.oneOf([202]));",
+                  "const body = pm.response.json();",
+                  "pm.test('points to the export', () => pm.expect(pm.response.headers.get('Location')).to.eql('/api/v1/exports/' + body.id));",
+                  "pm.test('is a tasks export with its filters', () => { pm.expect(body.type).to.eql('TASKS_CSV'); pm.expect(body.filters.archived).to.eql(false); });",
+                  "pm.test('has no download link yet', () => pm.expect(body.downloadUrl).to.be.null);",
+                  "pm.collectionVariables.set('exportId', body.id);",
+                  "pm.collectionVariables.set('exportPolls', 0);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get the tasks export until it has run (200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/exports/{{exportId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "{{exportId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The owner only (404 for anyone else). Once COMPLETED, downloadUrl is a presigned link valid a few minutes: ask again for a new one."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Polled until the export has run: wait a little before every attempt but the first",
+                  "const polls = Number(pm.collectionVariables.get('exportPolls') || 0);",
+                  "pm.collectionVariables.set('exportPolls', polls + 1);",
+                  "if (polls > 0) { setTimeout(() => {}, 500); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "const body = pm.response.json();",
+                  "const running = ['QUEUED', 'RUNNING'].includes(body.status);",
+                  "if (running && Number(pm.collectionVariables.get('exportPolls')) < 40) {",
+                  "    postman.setNextRequest(pm.info.requestName);",
+                  "} else {",
+                  "    pm.collectionVariables.set('exportPolls', 0);",
+                  "    pm.test('completed', () => pm.expect(body.status).to.eql('COMPLETED'));",
+                  "    pm.test('is a TASKS_CSV export', () => pm.expect(body.type).to.eql('TASKS_CSV'));",
+                  "    pm.test('has a download link', () => pm.expect(body.downloadUrl).to.be.a('string'));",
+                  "    pm.test('expires later', () => pm.expect(new Date(body.expiresAt) > new Date()).to.be.true);",
+                  "    pm.collectionVariables.set('exportDownloadUrl', body.downloadUrl);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Download the tasks export",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{exportDownloadUrl}}"
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Straight from the object storage, without a token: the link is signed."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "const csv = pm.response.text();",
+                  "pm.test('starts with a UTF-8 byte order mark', () => pm.expect(csv.charCodeAt(0)).to.eql(0xFEFF));",
+                  "pm.test('has the header row', () => pm.expect(csv.slice(1)).to.match(/^\"id\",\"reference\",\"title\"/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List my exports (200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/exports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "const body = pm.response.json();",
+                  "pm.test('lists the export', () => pm.expect(body.content.map(export_ => export_.id)).to.include(pm.collectionVariables.get('exportId')));",
+                  "pm.test('is a page', () => pm.expect(body.page).to.have.property('totalElements'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get another account's export (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/exports/{{exportId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "{{exportId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "An export of someone else answers as if it did not exist, even for an admin."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [404]', () => pm.expect(pm.response.code).to.be.oneOf([404]));",
+                  "pm.test('is a problem', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Export users as a member (403)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/exports/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "users"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [403]', () => pm.expect(pm.response.code).to.be.oneOf([403]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Export users (202, admin)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/exports/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "users"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "ADMIN only: every account that is not deleted, with its email and roles."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [202]', () => pm.expect(pm.response.code).to.be.oneOf([202]));",
+                  "const body = pm.response.json();",
+                  "pm.test('is a users export', () => pm.expect(body.type).to.eql('USERS_CSV'));",
+                  "pm.test('has no task filters', () => pm.expect(body.filters).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Export my personal data (202)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/exports/my-data",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "my-data"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The caller's own data (GDPR access and portability): my-data.json, my-data.pdf and the profile photo in a ZIP."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [202]', () => pm.expect(pm.response.code).to.be.oneOf([202]));",
+                  "const body = pm.response.json();",
+                  "pm.test('is a personal data export', () => pm.expect(body.type).to.eql('PERSONAL_DATA'));",
+                  "pm.collectionVariables.set('myDataExportId', body.id);",
+                  "pm.collectionVariables.set('exportPolls', 0);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get my personal data export until it has run (200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/exports/{{myDataExportId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "{{myDataExportId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Polled until the export has run: wait a little before every attempt but the first",
+                  "const polls = Number(pm.collectionVariables.get('exportPolls') || 0);",
+                  "pm.collectionVariables.set('exportPolls', polls + 1);",
+                  "if (polls > 0) { setTimeout(() => {}, 500); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "const body = pm.response.json();",
+                  "const running = ['QUEUED', 'RUNNING'].includes(body.status);",
+                  "if (running && Number(pm.collectionVariables.get('exportPolls')) < 40) {",
+                  "    postman.setNextRequest(pm.info.requestName);",
+                  "} else {",
+                  "    pm.collectionVariables.set('exportPolls', 0);",
+                  "    pm.test('completed', () => pm.expect(body.status).to.eql('COMPLETED'));",
+                  "    pm.test('is a PERSONAL_DATA export', () => pm.expect(body.type).to.eql('PERSONAL_DATA'));",
+                  "    pm.test('has a download link', () => pm.expect(body.downloadUrl).to.be.a('string'));",
+                  "    pm.test('expires later', () => pm.expect(new Date(body.expiresAt) > new Date()).to.be.true);",
+                  "    pm.collectionVariables.set('myDataDownloadUrl', body.downloadUrl);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Download my personal data",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{myDataDownloadUrl}}"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.test('is a ZIP archive', () => pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/zip'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete the tasks export (204)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/exports/{{exportId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "{{exportId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Deletes the export and its file; 409 while it is queued or running."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [204]', () => pm.expect(pm.response.code).to.be.oneOf([204]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get a deleted export (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/exports/{{exportId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "{{exportId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is one of [404]', () => pm.expect(pm.response.code).to.be.oneOf([404]));"
                 ]
               }
             }
