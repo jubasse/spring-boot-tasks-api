@@ -11,6 +11,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+
 /**
  * Tells the owner when an export is ready, with a link to the page that downloads it, never the download link
  * itself: that one expires within minutes. Runs in the transaction of the run, so the email leaves once it commits.
@@ -18,6 +21,9 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class DataExportEmailSender {
+
+    private static final DateTimeFormatter EXPIRY = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'")
+            .withZone(ZoneOffset.UTC);
 
     private final MailService mailService;
     private final UserRepository userRepository;
@@ -40,7 +46,7 @@ public class DataExportEmailSender {
                         subject(event.type()),
                         properties.downloadPageUrl(),
                         event.exportId(),
-                        event.expiresAt()
+                        EXPIRY.format(event.expiresAt())
                 )
         )));
     }

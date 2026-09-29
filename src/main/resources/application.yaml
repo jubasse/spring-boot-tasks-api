@@ -117,9 +117,6 @@ management:
 # rate limits comes from X-Forwarded-For; without a proxy, keep none, or clients could pick their own address
 server:
   forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
-# Endpoints users declare to receive their task notifications. The key encrypts their signing secrets in the
-# database: Base64 of at least 32 bytes (openssl rand -base64 32). Only a development machine turns requireHttps off,
-# with OUTBOUND_HTTP_ALLOWED_ADDRESSES, to reach a local receiver.
 # Exports produced by Spring Batch jobs in the background (POST /api/v1/exports/...). The ready email links to
 # download-page-url?id=..., a page of the front end that asks GET /api/v1/exports/{id} for the download link.
 exports:
@@ -133,6 +130,9 @@ exports:
   purge-cron: 0 30 4 * * *
   recovery-enabled: ${EXPORT_RECOVERY_ENABLED:true}
   recovery-interval: 5m
+# Endpoints users declare to receive their task notifications. The key encrypts their signing secrets in the
+# database: Base64 of at least 32 bytes (openssl rand -base64 32). Only a development machine turns requireHttps off,
+# with OUTBOUND_HTTP_ALLOWED_ADDRESSES, to reach a local receiver.
 webhooks:
   encryption-key: ${WEBHOOK_ENCRYPTION_KEY:}
   require-https: ${WEBHOOK_REQUIRE_HTTPS:true}
