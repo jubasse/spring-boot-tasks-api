@@ -235,6 +235,34 @@ data:{"type":"task.assigned","timestamp":"2026-09-29T05:43:01.651Z","data":{"tas
 - **Limit:** 5 open streams per account on each instance; one more answers 429.
 - **Behind a proxy:** turn response buffering off for this path (the API sends `X-Accel-Buffering: no` for nginx), and keep read timeouts above 20 seconds: an idle stream sends a comment line every 20 seconds.
 
+## Follow a task live
+
+A page that shows a task can follow its changes over a WebSocket, with the [STOMP](https://stomp.github.io/) protocol: every change made through the API, by anyone, comes as a message in the task's room.
+
+1. Open a WebSocket to `ws://localhost:8080/ws` (`wss://` in production), with the `v12.stomp` subprotocol.
+2. Send a `CONNECT` frame with an `Authorization: Bearer <access token>` header: browsers cannot add headers to the WebSocket request itself.
+3. Subscribe to `/topic/tasks/<task id>`.
+
+With [@stomp/stompjs](https://github.com/stomp-js/stompjs):
+
+```js
+const client = new Client({
+  brokerURL: "wss://tasks.example.com/ws",
+  beforeConnect: async () => { client.connectHeaders = { Authorization: `Bearer ${await freshAccessToken()}` }; },
+  onConnect: () => client.subscribe(`/topic/tasks/${taskId}`, (message) => {
+    const event = JSON.parse(message.body);   // {"taskId", "eventId", "type", "actorId", "occurredAt"}
+    reloadTask(taskId);
+  }),
+});
+client.activate();
+```
+
+- **Messages:** `type` is the history event (`UPDATED`, `STATUS_CHANGED`, `COMMENT_ADDED`...), or `DELETED` when the task is deleted. A message does not carry the new state: read the task again, and its history (`GET /api/v1/tasks/{id}/events`) for the details. An `event-id` header identifies the message: ignore one you already have.
+- **Access:** an active account, as for the task endpoints. A refused `CONNECT` or `SUBSCRIBE` answers an `ERROR` frame with the reason, then the connection closes.
+- **Sessions:** the connection closes when the access token expires, or as soon as the account is disabled or deleted. `beforeConnect` above reconnects with a fresh token. Changes made while disconnected are not replayed: reload the task after reconnecting.
+- **Other origins:** a page served from another origin needs it in `REALTIME_ALLOWED_ORIGINS` (patterns such as `https://*.example.com`); by default only the API's own origin may connect.
+- **Behind a proxy:** forward the WebSocket upgrade headers on `/ws`, and keep idle timeouts above 10 seconds: both sides send heartbeats every 10 seconds.
+
 ## Commands
 
 | Command | What it does |
@@ -273,6 +301,7 @@ The API reads its configuration from `src/main/resources/application.yaml`, whic
 | `MANAGEMENT_PORT` | `8081` | Port of the health and metrics endpoints |
 | `WEBHOOK_REQUIRE_HTTPS` | `true` | `false` accepts plain HTTP webhook URLs on any port, for a receiver on your machine. Use it only in development |
 | `OUTBOUND_HTTP_ALLOWED_ADDRESSES` | empty | Private address ranges, in CIDR notation, that webhooks may reach besides public addresses, such as `127.0.0.1/32` for a receiver on your machine. Keep it empty in production |
+| `REALTIME_ALLOWED_ORIGINS` | empty | Origins of the pages that may open the task rooms' WebSocket, comma-separated patterns such as `https://*.example.com`. Empty allows the API's own origin only |
 | `API_DOCS_ENABLED`, `SWAGGER_UI_ENABLED` | `true`, and `false` under the `prod` profile | `false` stops serving the OpenAPI document and Swagger UI |
 | `IDENTITY_STATUS_CACHE_TTL` | `30s` | How long an account's status is reused before it is read again, from 1 second to 1 minute. With several instances, the others forget it as soon as RabbitMQ relays the change; while RabbitMQ is down, it is how long an account disabled on one instance can keep working through the others |
 
@@ -409,7 +438,7 @@ The code lives under `src/main/java/io/julienmetral/tasks`, organized by feature
 | `identity` | Accounts, login, access and refresh tokens, email verification, password reset, profile photos, personal data retention |
 | `task` | Tasks, their history, attachments, comments and due-date reminders |
 | `notification` | Task emails, webhooks and each user's notification settings |
-| `realtime` | Events relayed to every instance, and the streams of notifications that clients keep open |
+| `realtime` | Events relayed to every instance, the notification streams and the live task rooms |
 | `media` | Stored files: type and size checks, antivirus, object storage, download links, cleanup |
 | `mail` | Sending emails, used by every feature |
 | `messaging` | Outbox that saves messages for RabbitMQ with the change that triggers them, and publishes them |
