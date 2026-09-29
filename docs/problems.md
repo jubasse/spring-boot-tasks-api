@@ -73,6 +73,12 @@ Nothing to do: the account can already work on tasks.
 
 Load the task again, check that your change still makes sense, and send it again.
 
+## export-in-progress
+
+**Status 409, title "Export already in progress".** You asked for an export while one of the same kind is still queued or running, or you tried to delete an export that is running.
+
+Wait for the export in progress to finish (follow it with `GET /api/v1/exports/{id}`), then ask again or delete it.
+
 ## assignee-not-active
 
 **Status 422, title "Assignee not active".** A task was assigned to an account that cannot work on tasks: its email is not verified, or the account is disabled or deleted.
@@ -124,7 +130,7 @@ These errors have no `type` member (RFC 9457 reads that as `about:blank`), and t
 | 400 Bad Request | The body is not valid JSON or not the JSON object the endpoint expects, or an uploaded file is empty, or the API version in the path is not supported (only `/api/v1` is) | Fix the request |
 | 401 Unauthorized | Wrong email or password, or an invalid refresh token. Without a valid access token, the response has no body and a `WWW-Authenticate` header | Sign in again |
 | 403 Forbidden | The account may not do this. The response has no body | Do not retry |
-| 404 Not Found | The task, comment, attachment or user does not exist, or no endpoint matches the path | Check the id or the path |
+| 404 Not Found | The task, comment, attachment, export or user does not exist (an export of someone else counts as missing), or no endpoint matches the path | Check the id or the path |
 | 405 Method Not Allowed | The endpoint does not accept this HTTP method | Check the method |
 | 409 Conflict | The request conflicts with data that changed at the same moment | Load the data again and retry |
 | 413 Content Too Large | A file is larger than its limit | Upload a smaller file |

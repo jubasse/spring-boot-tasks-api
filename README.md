@@ -213,6 +213,28 @@ When no answer came back, `statusCode` is absent and `error` says why: `Timeout`
 
 In development, set `WEBHOOK_REQUIRE_HTTPS=false` and `OUTBOUND_HTTP_ALLOWED_ADDRESSES=127.0.0.1/32` in `.env`, then declare a URL such as `http://127.0.0.1:9090/hooks`.
 
+## Export data
+
+Tasks and, for an admin, users can be exported as CSV files. An export runs in the background: the request returns at once, and an email tells you when the file is ready.
+
+```bash
+curl -i -X POST http://localhost:8080/api/v1/exports/tasks \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"status": "IN_PROGRESS", "archived": false}'
+```
+
+The answer is `202 Accepted`, with the export in the body and its URL in the `Location` header. Follow it until its `status` is `COMPLETED`:
+
+```bash
+curl http://localhost:8080/api/v1/exports/$EXPORT_ID -H "Authorization: Bearer $TOKEN"
+```
+
+- **Download:** a completed export carries a `downloadUrl`, valid a few minutes; ask for the export again to get a new one. The file stays available 7 days, then its `status` becomes `EXPIRED`.
+- **Kinds:** `POST /api/v1/exports/tasks` takes the filters of the task list (`status`, `assigneeId`, `archived`), for any active account. `POST /api/v1/exports/users` lists every account with its email and roles, for admins only.
+- **One at a time:** while an export is queued or running, asking for another of the same kind answers 409 `export-in-progress`.
+- **Your exports only:** `GET /api/v1/exports` lists yours, and `DELETE /api/v1/exports/{id}` deletes one with its file. Another account's export answers 404.
+- **Files:** UTF-8 with a byte order mark, so that Excel reads accents; comma-separated, every value quoted, dates in UTC (ISO 8601). A text that a spreadsheet would run as a formula starts with an apostrophe.
+
 ## Commands
 
 | Command | What it does |
@@ -389,6 +411,7 @@ The code lives under `src/main/java/io/julienmetral/tasks`, organized by feature
 | `identity` | Accounts, login, access and refresh tokens, email verification, password reset, profile photos, personal data retention |
 | `task` | Tasks, their history, attachments, comments and due-date reminders |
 | `notification` | Task emails and each user's notification settings |
+| `export` | CSV exports, produced by Spring Batch jobs in the background |
 | `media` | Stored files: type and size checks, antivirus, object storage, download links, cleanup |
 | `mail` | Sending emails, used by every feature |
 | `messaging` | Outbox that saves messages for RabbitMQ with the change that triggers them, and publishes them |
@@ -414,6 +437,7 @@ Work that must not slow down a request, or must survive a failure, goes through 
 | `mail.send` | Sends the email over SMTP |
 | `avatar.process` | Crops and re-encodes an uploaded profile photo |
 | `webhook.deliver` | Sends a task notification to a webhook endpoint (its retries are scheduled in the database) |
+| `export.run` | Runs the Spring Batch job of an export, one at a time per instance |
 
 A failed message is retried with a growing delay, then moved to the queue's `.dead-letter` queue, where you can inspect it from the RabbitMQ console.
 
@@ -425,12 +449,14 @@ Scheduled jobs run inside the API. When several instances are deployed, a job th
 | Media cleanup | daily at 03:30 | one instance | Deletes the files of tasks and accounts deleted more than 30 days ago, and orphan files |
 | Webhook deliveries purge | daily at 03:45 | one instance | Deletes delivery records older than 30 days |
 | Personal data retention | daily at 04:00 | one instance | Anonymizes deleted accounts and handles inactive ones |
+| Export purge | daily at 04:30 | one instance | Deletes the files of exports older than 7 days, then expired exports and Spring Batch history older than 30 days |
+| Export recovery | every 5 minutes | one instance | Queues again the exports of an instance that stopped while running them |
 | Outbox purge | hourly | one instance | Deletes messages published more than 7 days ago |
 | Rate limit purge | hourly, at 20 minutes past | one instance | Deletes expired request counters |
 | Outbox poller | every 5 seconds | every instance | Publishes the messages RabbitMQ could not take right after their commit |
 | Webhook retries | every 30 seconds | every instance | Queues the webhook deliveries due for another attempt |
 
-A lock is released when its job ends, but held at least 30 seconds to 5 minutes, so an instance whose clock is slightly late does not run the job again. If an instance crashes during a job, its lock expires after the job's maximum duration (from 14 minutes to 2 hours). To release a stuck lock earlier, set its `lock_until` to the current time; never delete the row, or the instances that already know it skip the job until they restart:
+A lock is released when its job ends, but held at least 30 seconds to 5 minutes, so an instance whose clock is slightly late does not run the job again. If an instance crashes during a job, its lock expires after the job's maximum duration (from 4 minutes to 2 hours). To release a stuck lock earlier, set its `lock_until` to the current time; never delete the row, or the instances that already know it skip the job until they restart:
 
 ```sql
 UPDATE scheduler_locks SET lock_until = timezone('utc', now()) WHERE name = 'media-cleanup';
