@@ -74,10 +74,23 @@ class MediaUsageTest {
         assertThat(MediaUsage.TASK_ATTACHMENT.allows(contentType)).isFalse();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"text/csv", "application/zip"})
+    void exportAllowsTheFilesTheApplicationWrites(String contentType) {
+        assertThat(MediaUsage.EXPORT.allows(contentType)).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"text/plain", "text/html", "application/pdf", "image/png", "application/octet-stream"})
+    void exportRejectsEverythingElse(String contentType) {
+        assertThat(MediaUsage.EXPORT.allows(contentType)).isFalse();
+    }
+
     @Test
     void storagePrefixIsTheKebabCaseName() {
         assertThat(MediaUsage.AVATAR.storagePrefix()).isEqualTo("avatar");
         assertThat(MediaUsage.AVATAR_UPLOAD.storagePrefix()).isEqualTo("avatar-upload");
         assertThat(MediaUsage.TASK_ATTACHMENT.storagePrefix()).isEqualTo("task-attachment");
+        assertThat(MediaUsage.EXPORT.storagePrefix()).isEqualTo("export");
     }
 }
