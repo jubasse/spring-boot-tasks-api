@@ -85,6 +85,30 @@ class BatchMetadataQueriesTests {
         assertThat(count("SELECT count(*) FROM batch_job_instance WHERE job_instance_id = ?", instance)).isOne();
     }
 
+    // Batch commits a new instance before its first execution: a job starting during the purge has one without any
+    @Test
+    void instanceWithoutExecutionThatThePurgeDidNotEmptyStays() {
+        long starting = insertInstance();
+        insertExecution(insertInstance(), CUTOFF.minus(Duration.ofDays(1)));
+
+        queries.deleteExecutionsEndedBefore(CUTOFF);
+
+        assertThat(count("SELECT count(*) FROM batch_job_instance WHERE job_instance_id = ?", starting)).isOne();
+    }
+
+    @Test
+    void purgeWithNothingToDeleteLeavesEveryInstance() {
+        long starting = insertInstance();
+        long instance = insertInstance();
+        long execution = insertExecution(instance, CUTOFF.minus(Duration.ofDays(1)));
+
+        assertThat(queries.deleteExecutionsEndedBefore(LONG_BEFORE)).isZero();
+
+        assertThat(rowsOf(execution)).isEqualTo(5);
+        assertThat(count("SELECT count(*) FROM batch_job_instance WHERE job_instance_id IN (?, ?)", starting, instance))
+                .isEqualTo(2);
+    }
+
     // Batch writes LocalDateTime.now() into columns without time zone: the cutoff must be read in the same zone, or
     // the history of a JVM east or west of UTC would be kept or deleted hours off
     @Test
