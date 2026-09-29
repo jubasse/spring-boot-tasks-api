@@ -48,7 +48,8 @@ public class PersonalDataQueries {
         return list("""
                 SELECT w.id, w.kind,
                        CASE WHEN w.kind = 'SLACK' THEN '%s' ELSE w.url END AS url,
-                       (SELECT string_agg(e.event, ' ' ORDER BY e.event)
+                       -- The API's event names: TASK_DUE_SOON is task.due_soon
+                       (SELECT string_agg(lower(regexp_replace(e.event, '^TASK_', 'task.')), ' ' ORDER BY e.event)
                         FROM webhook_endpoint_events e WHERE e.endpoint_id = w.id) AS events,
                        w.disabled_at, w.disabled_reason, w.created_at, w.updated_at
                 FROM webhook_endpoints w
