@@ -57,14 +57,23 @@ class NotificationStream {
         }
     }
 
-    /** Ends the response; the client reconnects unless it chose to stop. */
+    /**
+     * Ends the response; the client reconnects unless it chose to stop. Returns at once: the response is completed
+     * on a thread of its own, since completing waits for a write in progress, and the write that filled a slow
+     * client's buffer can block until the socket times out. Completed on the caller's thread, it held up the
+     * listener that serves every stream of the instance.
+     */
     void close() {
         if (release()) {
-            try {
-                emitter.complete();
-            } catch (IllegalStateException alreadyCompleted) {
-                // The client left at the same moment
-            }
+            Thread.ofVirtual().name("notification-stream-close").start(this::complete);
+        }
+    }
+
+    private void complete() {
+        try {
+            emitter.complete();
+        } catch (IllegalStateException alreadyCompleted) {
+            // The client left at the same moment
         }
     }
 

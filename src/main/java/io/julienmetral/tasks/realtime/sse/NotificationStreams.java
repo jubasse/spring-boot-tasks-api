@@ -65,7 +65,9 @@ public class NotificationStreams {
      * @throws AccessDeniedException               when the account is no longer active
      */
     public SseEmitter open(UUID userId, Instant tokenExpiresAt, String lastEventId) {
-        Duration untilExpiry = Duration.between(clock.instant(), tokenExpiresAt);
+        Duration untilExpiry = tokenExpiresAt == null
+                ? properties.maxDuration()
+                : Duration.between(clock.instant(), tokenExpiresAt);
         Duration lifetime = untilExpiry.compareTo(properties.maxDuration()) < 0 ? untilExpiry : properties.maxDuration();
         SseEmitter emitter = new SseEmitter(Math.max(1, lifetime.toMillis()));
         NotificationStream stream = new NotificationStream(
@@ -74,8 +76,18 @@ public class NotificationStreams {
         register(stream);
 
         // Read after registering, from the account rather than the status cache: a change committed after this read
-        // is broadcast, and closes the stream once it arrives
-        if (!isActive(userId)) {
+        // is broadcast, and closes the stream once it arrives. A failed read must unregister it: the emitter never
+        // reaches Spring, so no callback would, and the stream counted towards the user's limit until a restart.
+        boolean active;
+
+        try {
+            active = isActive(userId);
+        } catch (RuntimeException readFailed) {
+            stream.close();
+            throw readFailed;
+        }
+
+        if (!active) {
             stream.close();
             throw new AccessDeniedException("The account is not active");
         }
