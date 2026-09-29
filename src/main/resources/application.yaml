@@ -152,6 +152,13 @@ realtime:
     replay-window: 5m
     replay-size: 10000
     buffer-size: 100
+  # Task rooms over STOMP on /ws. Pages of other origins need them listed, comma-separated, as patterns such as
+  # https://*.example.com; empty allows the API's own origin only.
+  rooms:
+    allowed-origins: ${REALTIME_ALLOWED_ORIGINS:}
+    heartbeat: 10s
+    message-size-limit: 16KB
+    time-to-first-message: 10s
 # Outgoing HTTP calls (webhooks) reach only public addresses; OutboundHttpConfiguration explains why. To try a
 # receiver on your machine, set OUTBOUND_HTTP_ALLOWED_ADDRESSES=127.0.0.1/32.
 outbound-http:
