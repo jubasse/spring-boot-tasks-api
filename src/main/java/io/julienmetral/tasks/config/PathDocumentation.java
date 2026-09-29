@@ -6,6 +6,7 @@ import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.PathItem;
 import io.swagger.v3.oas.models.Paths;
 import io.swagger.v3.oas.models.media.Schema;
+import io.swagger.v3.oas.models.parameters.Parameter;
 import io.swagger.v3.oas.models.responses.ApiResponses;
 import org.springdoc.core.customizers.OpenApiCustomizer;
 import org.springframework.http.server.PathContainer;
@@ -13,6 +14,7 @@ import org.springframework.web.util.pattern.PathPatternParser;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Set;
 
 import static io.julienmetral.tasks.config.OpenApiConfiguration.BAD_REQUEST;
 import static io.julienmetral.tasks.config.OpenApiConfiguration.FORBIDDEN;
@@ -23,8 +25,9 @@ import static io.julienmetral.tasks.config.OperationDocumentation.reference;
 
 /**
  * Documents what depends on an operation's path: public operations without the bearer requirement
- * ({@link PublicEndpoints}), 401 on the others, 403 on task operations (they need an active account), 400 when the
- * operation takes input, 404 when its path names a resource, and a default response for an unexpected failure.
+ * ({@link PublicEndpoints}), 401 on the others, 403 on task and notification operations (they need an active account),
+ * 400 when the operation takes input that can be invalid, 404 when its path names a resource, and a default response
+ * for an unexpected failure.
  */
 class PathDocumentation implements OpenApiCustomizer {
 
@@ -34,7 +37,8 @@ class PathDocumentation implements OpenApiCustomizer {
         this.maxPageSize = maxPageSize;
     }
 
-    private static final String TASKS = "/api/v1/tasks";
+    // The paths SecurityConfiguration reserves to active accounts
+    private static final List<String> ACTIVE_ACCOUNT_PATHS = List.of("/api/v1/tasks", "/api/v1/notifications");
 
     // An identicon exists for every id, so an unknown one is not a 404
     private static final String IDENTICONS = "/api/v1/identicons";
@@ -81,7 +85,7 @@ class PathDocumentation implements OpenApiCustomizer {
             responses.putIfAbsent("401", reference(UNAUTHORIZED));
         }
 
-        if (path.startsWith(TASKS)) {
+        if (ACTIVE_ACCOUNT_PATHS.stream().anyMatch(path::startsWith)) {
             responses.putIfAbsent("403", reference(FORBIDDEN));
         }
 
@@ -110,9 +114,20 @@ class PathDocumentation implements OpenApiCustomizer {
                 .forEach(parameter -> parameter.getSchema().setMaximum(BigDecimal.valueOf(maxPageSize)));
     }
 
+    // An optional text header, such as Last-Event-ID, accepts any value
     private static boolean hasInput(Operation operation) {
         return operation.getRequestBody() != null
-                || (operation.getParameters() != null && !operation.getParameters().isEmpty());
+                || (operation.getParameters() != null && operation.getParameters().stream()
+                .anyMatch(parameter -> !isOptionalTextHeader(parameter)));
+    }
+
+    private static boolean isOptionalTextHeader(Parameter parameter) {
+        return "header".equals(parameter.getIn())
+                && !Boolean.TRUE.equals(parameter.getRequired())
+                && parameter.getSchema() != null
+                && parameter.getSchema().getTypes() != null
+                && parameter.getSchema().getTypes().equals(Set.of("string"))
+                && parameter.getSchema().getFormat() == null;
     }
 
     // springdoc does not mark the members of PagedModel as required (springdoc-openapi #3360), while every page has
