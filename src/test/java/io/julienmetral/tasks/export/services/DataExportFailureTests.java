@@ -27,6 +27,8 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** Runs that fail, with the object storage made to fail through the spy of this context. */
 @DeadLetterIntegrationTest
@@ -83,6 +85,37 @@ class DataExportFailureTests extends AbstractDataExportTests {
                 Arrays.asList(mail.getTo()).contains(owner.getEmail())
                         && "Your export could not be produced".equals(mail.getSubject())
                         && mail.getText().contains("reference: " + exportId + ".")));
+    }
+
+    @Test
+    void personalDataExportWhosePhotoCannotBeReadFailsAndItsOwnerIsEmailed() throws Exception {
+        User owner = createUser(UserRole.USER);
+        String photoKey = "avatar/" + UUID.randomUUID();
+        UUID photo = jdbcTemplate.queryForObject(
+                """
+                        INSERT INTO media (storage_key, usage, original_filename, content_type, size_bytes, sha256,
+                                           uploaded_by_id, created_at)
+                        VALUES (?, 'AVATAR', 'avatar.png', 'image/png', 1, repeat('0', 64), ?, now())
+                        RETURNING id
+                        """,
+                UUID.class,
+                photoKey, owner.getId()
+        );
+        jdbcTemplate.update("UPDATE user_profiles SET avatar_media_id = ? WHERE id = ?", photo, owner.getId());
+        doThrow(new StorageUnavailableException(new RuntimeException("storage down")))
+                .when(objectStorage).open(photoKey);
+
+        UUID exportId = exportIdOf(mockMvc.perform(post(EXPORTS + "/my-data").with(as(owner)))
+                .andExpect(status().isAccepted())
+                .andReturn());
+
+        assertThat(awaitEnded(exportId)).isEqualTo("FAILED");
+        assertThat(failureOf(exportId)).isEqualTo("StorageUnavailableException");
+        assertThat(Path.of(System.getProperty("java.io.tmpdir"), "exports", exportId.toString())).doesNotExist();
+        verify(mailSender, timeout(EMAIL_TIMEOUT_MILLIS)).send(argThat((SimpleMailMessage mail) ->
+                Arrays.asList(mail.getTo()).contains(owner.getEmail())
+                        && "Your export could not be produced".equals(mail.getSubject())
+                        && mail.getText().contains("Your export of your personal data could not be produced.")));
     }
 
     @Test
