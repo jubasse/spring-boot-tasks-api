@@ -7,6 +7,8 @@ import io.julienmetral.tasks.realtime.RealtimeConfiguration;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 
@@ -19,6 +21,7 @@ import java.time.Clock;
 public class RealtimeBroadcasts {
 
     private final Outbox outbox;
+    private final TransactionTemplate transactionTemplate;
     private final Clock clock;
 
     @EventListener
@@ -31,8 +34,16 @@ public class RealtimeBroadcasts {
         ));
     }
 
+    // A change published outside a transaction is already done: its broadcast gets a transaction of its own. The
+    // outbox refuses to run without one, which made such a publisher fail.
     @EventListener
     public void onAccountStateChanged(AccountStateChanged change) {
-        outbox.broadcast(RealtimeConfiguration.EXCHANGE, new AccountStatusChanged(change.userId()));
+        AccountStatusChanged message = new AccountStatusChanged(change.userId());
+
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            outbox.broadcast(RealtimeConfiguration.EXCHANGE, message);
+        } else {
+            transactionTemplate.executeWithoutResult(status -> outbox.broadcast(RealtimeConfiguration.EXCHANGE, message));
+        }
     }
 }
