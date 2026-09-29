@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.identity.security;
 
 import io.julienmetral.tasks.identity.services.DatabaseUserDetailsService;
+import io.julienmetral.tasks.realtime.stomp.StompConfiguration;
 import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -37,6 +38,10 @@ public class SecurityConfiguration {
 
     // The probes of the orchestrator, which sends no token; the health details stay on the management port
     private static final String[] PROBES = {"/livez", "/readyz"};
+
+    // The WebSocket handshake of the task rooms: browsers send no header with it, and the STOMP CONNECT frame that
+    // follows carries the token (StompAuthentication)
+    private static final String WEBSOCKET = StompConfiguration.ENDPOINT;
 
     private static final String[] API_DOCUMENTATION = {
             "/v3/api-docs", "/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**"
@@ -118,14 +123,15 @@ public class SecurityConfiguration {
         return authenticationConverter;
     }
 
-    // Public endpoints and probes ignore the Authorization header: a client that kept its expired access token got a
+    // Public endpoints, probes and the WebSocket handshake ignore the Authorization header: a client that kept its expired access token got a
     // 401 from login and refresh, the very endpoints that give it a new one, and a probe would fail the same way
     @Bean
     BearerTokenResolver bearerTokenResolver() {
         DefaultBearerTokenResolver resolver = new DefaultBearerTokenResolver();
         RequestMatcher withoutToken = new OrRequestMatcher(Stream.concat(
                         PublicEndpoints.ALL.stream().map(endpoint -> matcher(endpoint.method(), endpoint.pattern())),
-                        Arrays.stream(PROBES).map(probe -> matcher(HttpMethod.GET, probe)))
+                        Stream.concat(Arrays.stream(PROBES), Stream.of(WEBSOCKET))
+                                .map(path -> matcher(HttpMethod.GET, path)))
                 .toList());
 
         return request -> withoutToken.matches(request) ? null : resolver.resolve(request);
@@ -173,6 +179,8 @@ public class SecurityConfiguration {
                             .requestMatchers(HttpMethod.GET, API_DOCUMENTATION)
                             .permitAll()
                             .requestMatchers(HttpMethod.GET, PROBES)
+                            .permitAll()
+                            .requestMatchers(HttpMethod.GET, WEBSOCKET)
                             .permitAll()
                             // Tasks and their notifications are reserved to enabled users with a verified email,
                             // whatever the API version

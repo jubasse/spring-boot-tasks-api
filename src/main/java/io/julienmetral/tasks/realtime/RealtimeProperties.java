@@ -7,19 +7,23 @@ import org.hibernate.validator.constraints.time.DurationMax;
 import org.hibernate.validator.constraints.time.DurationMin;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
+import org.springframework.util.unit.DataSize;
 import org.springframework.validation.annotation.Validated;
 
 import java.time.Duration;
+import java.util.List;
 
 /**
  * @param queueMaxLength events an instance's own queue keeps while it cannot keep up; the oldest go first
  * @param streams        the notification streams (server-sent events)
+ * @param rooms          the task rooms (STOMP over WebSocket)
  */
 @Validated
 @ConfigurationProperties(prefix = "realtime")
 public record RealtimeProperties(
         @DefaultValue("10000") @Min(1) int queueMaxLength,
-        @DefaultValue @Valid @NotNull Streams streams
+        @DefaultValue @Valid @NotNull Streams streams,
+        @DefaultValue @Valid @NotNull Rooms rooms
 ) {
 
     /**
@@ -42,6 +46,21 @@ public record RealtimeProperties(
             @DefaultValue("5m") @NotNull Duration replayWindow,
             @DefaultValue("10000") @Min(1) int replaySize,
             @DefaultValue("100") @Min(1) int bufferSize
+    ) {
+    }
+
+    /**
+     * @param allowedOrigins     origins whose pages may open the WebSocket, as patterns such as
+     *                           {@code https://*.example.com}; empty allows the API's own origin only
+     * @param heartbeat          interval of the heartbeats both sides send, so a lost connection is noticed
+     * @param messageSizeLimit   largest frame a client may send
+     * @param timeToFirstMessage how long a new connection may wait before its CONNECT frame
+     */
+    public record Rooms(
+            @DefaultValue List<String> allowedOrigins,
+            @DefaultValue("10s") @NotNull @DurationMin(seconds = 1) Duration heartbeat,
+            @DefaultValue("16KB") @NotNull DataSize messageSizeLimit,
+            @DefaultValue("10s") @NotNull @DurationMin(seconds = 1) Duration timeToFirstMessage
     ) {
     }
 }
