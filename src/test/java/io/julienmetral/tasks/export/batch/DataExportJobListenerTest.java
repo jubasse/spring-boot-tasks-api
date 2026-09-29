@@ -52,25 +52,28 @@ class DataExportJobListenerTest {
         return execution;
     }
 
-    private Path writeLocalFile(String extension) throws IOException {
-        return Files.writeString(ExportFiles.of(exportId, extension), "\"id\"\r\n");
+    private Path writeLocalFile(String name) throws IOException {
+        return Files.writeString(ExportFiles.of(exportId, name), "\"id\"\r\n");
     }
 
     @Test
-    void completedRunDeletesItsLocalFileAndRecordsNothing() throws IOException {
-        Path csv = writeLocalFile("csv");
-        Path zip = writeLocalFile("zip");
+    void completedRunDeletesTheDirectoryOfItsFilesAndRecordsNothing() throws IOException {
+        Path csv = writeLocalFile(PublishExport.CSV_FILE);
+        Path json = writeLocalFile("my-data.json");
+        Path zip = writeLocalFile("export.zip");
 
         listener.afterJob(execution(BatchStatus.COMPLETED));
 
         assertThat(csv).doesNotExist();
+        assertThat(json).doesNotExist();
         assertThat(zip).doesNotExist();
+        assertThat(csv.getParent()).doesNotExist();
         verifyNoInteractions(exportService);
     }
 
     @Test
-    void failedRunDeletesItsLocalFileAndRecordsTheClassOfItsFailureNeverItsMessage() throws IOException {
-        Path csv = writeLocalFile("csv");
+    void failedRunDeletesItsFilesAndRecordsTheClassOfItsFailureNeverItsMessage() throws IOException {
+        Path csv = writeLocalFile(PublishExport.CSV_FILE);
         JobExecution execution = execution(BatchStatus.FAILED);
         StepExecution publish = new StepExecution(2L, "tasksCsvExportPublish", execution);
         publish.addFailureException(new StorageUnavailableException(new RuntimeException("jane@example.com")));
@@ -78,7 +81,7 @@ class DataExportJobListenerTest {
 
         listener.afterJob(execution);
 
-        assertThat(csv).doesNotExist();
+        assertThat(csv.getParent()).doesNotExist();
         verify(exportService).fail(exportId, "StorageUnavailableException");
     }
 

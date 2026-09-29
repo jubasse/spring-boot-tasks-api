@@ -87,7 +87,7 @@ class DataExportApiTests extends AbstractDataExportTests {
         assertThat(export.path("rowCount").asLong()).isOne();
         assertThat(Instant.parse(export.path("expiresAt").asString())).isEqualTo(completedAt.plus(Duration.ofDays(7)));
         assertThat(export.path("downloadUrl").asString()).contains(storageKeyOf(exportId));
-        assertThat(Path.of(System.getProperty("java.io.tmpdir"), "exports", exportId + ".csv")).doesNotExist();
+        assertThat(Path.of(System.getProperty("java.io.tmpdir"), "exports", exportId.toString())).doesNotExist();
     }
 
     @Test

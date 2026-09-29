@@ -39,6 +39,7 @@ class ExportConfigurationTest {
             assertThat(properties.purgeCron()).isEqualTo("0 30 4 * * *");
             assertThat(properties.recoveryEnabled()).isTrue();
             assertThat(properties.recoveryInterval()).isEqualTo(Duration.ofMinutes(5));
+            assertThat(properties.pdfMaxRowsPerSection()).isEqualTo(1000);
         });
     }
 
@@ -91,6 +92,13 @@ class ExportConfigurationTest {
     void noAttemptFailsStartup() {
         configured.withPropertyValues("exports.max-attempts=0").run(context -> assertThat(context).getFailure()
                 .hasStackTraceContaining("Min.exports.maxAttempts"));
+    }
+
+    @Test
+    void pdfWithoutRowsPerSectionFailsStartup() {
+        configured.withPropertyValues("exports.pdf-max-rows-per-section=0").run(context -> assertThat(context)
+                .getFailure()
+                .hasStackTraceContaining("Min.exports.pdfMaxRowsPerSection"));
     }
 
     @Test

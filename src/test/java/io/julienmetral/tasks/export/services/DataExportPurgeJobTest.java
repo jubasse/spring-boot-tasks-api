@@ -47,7 +47,8 @@ class DataExportPurgeJobTest {
                 true,
                 "0 30 4 * * *",
                 true,
-                Duration.ofMinutes(5)
+                Duration.ofMinutes(5),
+                1000
         );
         job = new DataExportPurgeJob(exportService, batchMetadataQueries, properties, Clock.fixed(NOW, ZoneOffset.UTC));
     }

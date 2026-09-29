@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.export.services;
 
 import io.julienmetral.tasks.export.batch.CsvExportJobs;
+import io.julienmetral.tasks.export.batch.PersonalDataJob;
 import io.julienmetral.tasks.export.batch.PublishExport;
 import io.julienmetral.tasks.export.entities.DataExport;
 import io.julienmetral.tasks.export.entities.DataExportStatus;
@@ -59,11 +60,15 @@ class DataExportRunnerTest {
     @Mock
     private Job usersCsvExport;
 
+    @Mock
+    private Job personalDataExport;
+
     private DataExportRunner runner;
 
     @BeforeEach
     void setUp() {
-        runner = new DataExportRunner(exportService, jobOperator, jobRepository, tasksCsvExport, usersCsvExport);
+        runner = new DataExportRunner(
+                exportService, jobOperator, jobRepository, tasksCsvExport, usersCsvExport, personalDataExport);
     }
 
     private void claims(DataExportType type) {
@@ -98,6 +103,18 @@ class DataExportRunnerTest {
         runner.run(EXPORT_ID);
 
         verify(jobOperator).start(usersCsvExport, PARAMETERS);
+    }
+
+    @Test
+    void claimedPersonalDataExportStartsThePersonalDataJob() throws Exception {
+        claims(DataExportType.PERSONAL_DATA);
+        when(personalDataExport.getName()).thenReturn(PersonalDataJob.JOB);
+
+        runner.run(EXPORT_ID);
+
+        verify(jobOperator).start(personalDataExport, PARAMETERS);
+        verify(jobRepository).getJobInstance(PersonalDataJob.JOB, PARAMETERS);
+        verifyNoInteractions(tasksCsvExport, usersCsvExport);
     }
 
     @Test

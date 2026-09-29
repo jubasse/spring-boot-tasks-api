@@ -56,7 +56,8 @@ class DataExportEmailSenderTest {
                 false,
                 "0 30 4 * * *",
                 false,
-                Duration.ofMinutes(5)
+                Duration.ofMinutes(5),
+                1000
         );
         sender = new DataExportEmailSender(mailService, userRepository, properties);
     }
@@ -109,6 +110,24 @@ class DataExportEmailSenderTest {
         sender.onCompleted(new DataExportCompleted(EXPORT_ID, OWNER_ID, DataExportType.USERS_CSV, EXPIRES_AT));
 
         assertThat(sentMessage().text()).contains("Your export of users is ready.");
+    }
+
+    @Test
+    void readyEmailOfAPersonalDataExportNamesYourPersonalData() {
+        ownerExists();
+
+        sender.onCompleted(new DataExportCompleted(EXPORT_ID, OWNER_ID, DataExportType.PERSONAL_DATA, EXPIRES_AT));
+
+        assertThat(sentMessage().text()).contains("Your export of your personal data is ready.");
+    }
+
+    @Test
+    void failedEmailOfAPersonalDataExportNamesYourPersonalData() {
+        ownerExists();
+
+        sender.onFailed(new DataExportFailed(EXPORT_ID, OWNER_ID, DataExportType.PERSONAL_DATA));
+
+        assertThat(sentMessage().text()).contains("Your export of your personal data could not be produced.");
     }
 
     @Test

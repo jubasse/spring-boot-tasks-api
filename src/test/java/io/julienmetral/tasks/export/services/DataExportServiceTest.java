@@ -107,7 +107,8 @@ class DataExportServiceTest {
                 false,
                 "0 30 4 * * *",
                 false,
-                Duration.ofMinutes(5)
+                Duration.ofMinutes(5),
+                1000
         );
         service = new DataExportService(
                 repository,
@@ -311,7 +312,7 @@ class DataExportServiceTest {
             when(mediaService.storeGenerated(file, "tasks-2030-01-01.csv", "text/csv", MediaUsage.EXPORT, OWNER_ID))
                     .thenReturn(media);
 
-            service.complete(EXPORT_ID, file, "tasks-2030-01-01.csv", "text/csv", 42);
+            service.complete(EXPORT_ID, file, "tasks-2030-01-01.csv", "text/csv", 42L);
 
             assertThat(export.getMedia()).isSameAs(media);
             assertThat(export.getStatus()).isEqualTo(DataExportStatus.COMPLETED);
@@ -324,8 +325,24 @@ class DataExportServiceTest {
         }
 
         @Test
+        void exportWithoutRowsToCountIsCompletedWithoutARowCount() {
+            DataExport export = export(DataExportStatus.RUNNING);
+            export.setType(DataExportType.PERSONAL_DATA);
+            when(repository.findById(EXPORT_ID)).thenReturn(Optional.of(export));
+            when(mediaService.storeGenerated(file, "my-data-2030-01-01.zip", "application/zip", MediaUsage.EXPORT,
+                    OWNER_ID)).thenReturn(media());
+
+            service.complete(EXPORT_ID, file, "my-data-2030-01-01.zip", "application/zip", null);
+
+            assertThat(export.getStatus()).isEqualTo(DataExportStatus.COMPLETED);
+            assertThat(export.getRowCount()).isNull();
+            verify(eventPublisher).publishEvent(
+                    new DataExportCompleted(EXPORT_ID, OWNER_ID, DataExportType.PERSONAL_DATA, NOW.plus(RETENTION)));
+        }
+
+        @Test
         void unknownExportIsNotFoundAndNothingIsStored() {
-            assertThatThrownBy(() -> service.complete(EXPORT_ID, file, "tasks.csv", "text/csv", 1))
+            assertThatThrownBy(() -> service.complete(EXPORT_ID, file, "tasks.csv", "text/csv", 1L))
                     .isInstanceOf(DataExportNotFoundException.class);
 
             verifyNoInteractions(mediaService, eventPublisher);
@@ -338,7 +355,7 @@ class DataExportServiceTest {
             when(repository.findById(EXPORT_ID)).thenReturn(Optional.of(export));
             when(mediaService.storeGenerated(any(), anyString(), anyString(), any(), any())).thenThrow(failure);
 
-            assertThatThrownBy(() -> service.complete(EXPORT_ID, file, "tasks.csv", "text/csv", 1)).isSameAs(failure);
+            assertThatThrownBy(() -> service.complete(EXPORT_ID, file, "tasks.csv", "text/csv", 1L)).isSameAs(failure);
 
             assertThat(export.getStatus()).isEqualTo(DataExportStatus.RUNNING);
             assertThat(export.getMedia()).isNull();

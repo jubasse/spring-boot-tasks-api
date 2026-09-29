@@ -63,7 +63,7 @@ class DataExportFailureTests extends AbstractDataExportTests {
                 Integer.class,
                 owner.getId()
         )).isZero();
-        assertThat(Path.of(System.getProperty("java.io.tmpdir"), "exports", exportId + ".csv")).doesNotExist();
+        assertThat(Path.of(System.getProperty("java.io.tmpdir"), "exports", exportId.toString())).doesNotExist();
 
         JsonNode export = exportJson(owner, exportId);
         assertThat(export.path("status").asString()).isEqualTo("FAILED");

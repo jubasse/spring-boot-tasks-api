@@ -16,6 +16,7 @@ import org.springframework.batch.core.step.StepContribution;
 import org.springframework.batch.core.step.StepExecution;
 import org.springframework.batch.infrastructure.repeat.RepeatStatus;
 
+import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -63,6 +64,10 @@ class PublishExportTest {
         return step;
     }
 
+    private Path csvFile() {
+        return ExportFiles.of(exportId, PublishExport.CSV_FILE);
+    }
+
     private RepeatStatus publish(Clock clock) {
         return new PublishExport(exportService, clock, WRITE_STEP, "tasks")
                 .execute(new StepContribution(publishStep), new ChunkContext(new StepContext(publishStep)));
@@ -76,7 +81,7 @@ class PublishExportTest {
 
         assertThat(status).isEqualTo(RepeatStatus.FINISHED);
         verify(exportService).complete(
-                exportId, ExportFiles.of(exportId, "csv"), "tasks-2030-03-04.csv", "text/csv", 1234L);
+                exportId, csvFile(), "tasks-2030-03-04.csv", "text/csv", 1234L);
     }
 
     @Test
@@ -86,7 +91,7 @@ class PublishExportTest {
 
         publish(Clock.fixed(NOW, ZoneOffset.UTC));
 
-        verify(exportService).complete(eq(exportId), eq(ExportFiles.of(exportId, "csv")), anyString(),
+        verify(exportService).complete(eq(exportId), eq(csvFile()), anyString(),
                 eq("text/csv"), eq(10L));
     }
 
@@ -96,7 +101,7 @@ class PublishExportTest {
 
         publish(Clock.fixed(NOW, ZoneOffset.UTC));
 
-        verify(exportService).complete(eq(exportId), eq(ExportFiles.of(exportId, "csv")), anyString(),
+        verify(exportService).complete(eq(exportId), eq(csvFile()), anyString(),
                 eq("text/csv"), eq(0L));
     }
 
@@ -106,7 +111,7 @@ class PublishExportTest {
 
         publish(Clock.fixed(NOW, ZoneId.of("Asia/Tokyo")));
 
-        verify(exportService).complete(eq(exportId), eq(ExportFiles.of(exportId, "csv")),
+        verify(exportService).complete(eq(exportId), eq(csvFile()),
                 eq("tasks-2030-03-05.csv"), eq("text/csv"), anyLong());
     }
 
@@ -114,7 +119,7 @@ class PublishExportTest {
     void fileThatCannotBeStoredFailsTheStep() {
         step(2L, WRITE_STEP, 1);
         StorageUnavailableException failure = new StorageUnavailableException(new RuntimeException("down"));
-        doThrow(failure).when(exportService).complete(eq(exportId), eq(ExportFiles.of(exportId, "csv")), anyString(),
+        doThrow(failure).when(exportService).complete(eq(exportId), eq(csvFile()), anyString(),
                 anyString(), anyLong());
 
         assertThatThrownBy(() -> publish(Clock.fixed(NOW, ZoneOffset.UTC))).isSameAs(failure);
