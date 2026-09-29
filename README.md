@@ -213,6 +213,28 @@ When no answer came back, `statusCode` is absent and `error` says why: `Timeout`
 
 In development, set `WEBHOOK_REQUIRE_HTTPS=false` and `OUTBOUND_HTTP_ALLOWED_ADDRESSES=127.0.0.1/32` in `.env`, then declare a URL such as `http://127.0.0.1:9090/hooks`.
 
+## Receive task notifications as they happen
+
+A client that is open, such as a web page, can receive the same notifications as the webhooks while they happen, from a stream of [server-sent events](https://html.spec.whatwg.org/multipage/server-sent-events.html):
+
+```bash
+curl -N http://localhost:8080/api/v1/notifications/stream -H "Authorization: Bearer $TOKEN"
+```
+
+```text
+retry:4211
+
+id:01a0ebb0-1916-73c6-a899-2801bd717d66
+event:task.assigned
+data:{"type":"task.assigned","timestamp":"2026-09-29T05:43:01.651Z","data":{"task":{...},"actor":{...}}}
+```
+
+- **Events:** every notification of the account, whatever its email settings, with the webhook payload as data (see Read a notification). You never receive your own actions, and the stream needs an active account (verified email, not disabled); disabling the account closes it.
+- **Reconnecting:** the stream ends when the access token expires, after 15 minutes at most. Reconnect with a fresh token and the `Last-Event-ID` header set to the last `id` received: the events missed meanwhile come first. If they are no longer kept (5 minutes), a `resync` event says to reload what you show. An event may come twice: ignore an `id` you already have.
+- **Browsers:** `EventSource` cannot send the `Authorization` header. Use a client built on `fetch`, such as the `eventsource` package with its `fetch` option, which sends the header and `Last-Event-ID`.
+- **Limit:** 5 open streams per account on each instance; one more answers 429.
+- **Behind a proxy:** turn response buffering off for this path (the API sends `X-Accel-Buffering: no` for nginx), and keep read timeouts above 20 seconds: an idle stream sends a comment line every 20 seconds.
+
 ## Commands
 
 | Command | What it does |
@@ -386,7 +408,8 @@ The code lives under `src/main/java/io/julienmetral/tasks`, organized by feature
 |---|---|
 | `identity` | Accounts, login, access and refresh tokens, email verification, password reset, profile photos, personal data retention |
 | `task` | Tasks, their history, attachments, comments and due-date reminders |
-| `notification` | Task emails and each user's notification settings |
+| `notification` | Task emails, webhooks and each user's notification settings |
+| `realtime` | Events relayed to every instance, and the streams of notifications that clients keep open |
 | `media` | Stored files: type and size checks, antivirus, object storage, download links, cleanup |
 | `mail` | Sending emails, used by every feature |
 | `messaging` | Outbox that saves messages for RabbitMQ with the change that triggers them, and publishes them |
@@ -414,6 +437,8 @@ Work that must not slow down a request, or must survive a failure, goes through 
 | `webhook.deliver` | Sends a task notification to a webhook endpoint (its retries are scheduled in the database) |
 
 A failed message is retried with a growing delay, then moved to the queue's `.dead-letter` queue, where you can inspect it from the RabbitMQ console.
+
+Real-time events go through the same outbox to the `tasks.realtime` exchange, which copies each of them to a queue of every running instance. That queue belongs to its instance and disappears with it, so events are not kept for an instance that is down; clients of the notification stream catch up when they reconnect.
 
 Scheduled jobs run inside the API. When several instances are deployed, a job that must run once per schedule first takes its row in the `scheduler_locks` table (ShedLock), and the other instances skip that run. The two pollers run on every instance and share the work instead:
 
