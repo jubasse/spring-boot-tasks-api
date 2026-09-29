@@ -116,7 +116,7 @@ Only **active** users can work on tasks. Active means enabled, not deleted, and 
 
 `TaskReminderJob` runs `TaskReminderService.sendDueReminders` on `task.reminders.cron` (every 15 minutes). It emails the assignee of each open task (not done, cancelled or archived) once when the due date is within `task.reminders.due-soon-lead-time` (24 h), and once when it has passed, within `task.reminders.overdue-lookback` (7 days).
 - `task_reminders` records what was sent, one row per task, kind, due date and recipient, through an `INSERT ... ON CONFLICT DO NOTHING` (`TaskReminderQueries`). Moving the due date or reassigning the task makes a new reminder due.
-- A Postgres advisory lock keeps several instances from sending the same reminders, as for the media cleanup.
+- Its scheduler lock keeps it to one instance at a time (see Scheduled jobs).
 - Tests disable the job (`task.reminders.enabled: false`) and call the service with a fixed `Clock`.
 
 ### Users and their profile
@@ -198,7 +198,7 @@ Users declare HTTPS endpoints that receive their task notifications: `/api/v1/us
   - It purges the attachments of tasks, and the profile photos of users, soft-deleted for longer than `media.cleanup.retention` (30 days).
   - It also purges media rows that nothing references and stored objects without a media row, once they are older than `media.cleanup.orphan-grace-period` (1 day), so uploads in progress are left alone.
   - It uses native SQL (`MediaCleanupQueries`), because soft-deleted rows are invisible to JPA.
-  - One transaction holds a PostgreSQL advisory lock (`pg_try_advisory_xact_lock`), so a single instance works when several run. Rows are deleted in the transaction and objects after the commit, and an object that fails to delete is swept on the next run.
+  - Its scheduler lock keeps it to one instance at a time (see Scheduled jobs). Rows are deleted in one transaction and objects after the commit, and an object that fails to delete is swept on the next run.
   - Services that need the current time inject the `Clock` bean, so tests can move time forward.
 - **Downloads:** they never go through the application. `MediaService.downloadUrl` returns a presigned URL, valid `storage.presigned-url-ttl`, whose signed response headers force an attachment download under the original file name.
 - **Drivers:** the code depends on the `ObjectStorage` interface; `storage.driver` picks its configuration.
@@ -225,11 +225,23 @@ Every message for RabbitMQ goes through `messaging.services.Outbox.enqueue`, nev
 - Rows are locked with `FOR UPDATE SKIP LOCKED`, so the immediate publish, the poller and other instances never send the same message twice at once. A crash between the confirm and the commit publishes it again: delivery is at least once, and consumers must tolerate a duplicate.
 - The message carries its class name in the `__TypeId__` header; the class's package must be trusted by the converter in `MessagingConfiguration`.
 
+### Scheduled jobs
+
+Jobs run with `@Scheduled` inside the API. A job that must run once per schedule carries ShedLock's `@SchedulerLock` (`config.SchedulerLockConfiguration`): the method first takes its row in `scheduler_locks`, and an instance that finds it taken skips that run.
+- **Locked:** the media cleanup, the user retention, the due-date reminders, and the purges of the outbox, rate limit counters and webhook deliveries. Their lock names are the constants of `ScheduledJobLocks`.
+- **Not locked on purpose:** the outbox poller and the webhook retries. Every instance polls and `FOR UPDATE SKIP LOCKED` shares the backlog; a lock would leave it to one instance.
+- **Durations:** `lockAtMostFor` releases a crashed instance's lock, so it stays well above the longest run, and below the period of a frequent job. `lockAtLeastFor` keeps a quick run's lock for a while, so an instance whose clock fires late does not run the job again.
+- **Times:** `usingDbTime()` takes every time from the database clock. The columns have no time zone on purpose: ShedLock writes UTC wall-clock values, which a `timestamptz` column would read in each session's zone.
+- **A new job** needs a name in `ScheduledJobLocks` (its metrics are registered at startup), or a place on the pollers' allowlist: `ScheduledJobLockTest` fails otherwise.
+- They replaced three hand-written advisory locks, which held only while their transaction ran and did not stop an instance firing a moment later from running the job again.
+- Warning: put `@SchedulerLock` on the job method, never on a `@Transactional` one: the lock is written in its own transaction and would be released before the work commits. The method must be public.
+- Warning: never delete a row of `scheduler_locks` to free a stuck lock. ShedLock remembers the rows it inserted and then only updates them, so every later run is skipped until a restart. Set `lock_until` to the current time instead (README, Background work).
+
 ### Monitoring
 
 Actuator runs on its own port, `management.server.port` (`MANAGEMENT_PORT`, 8081), with `health`, `info`, `metrics`, `prometheus` and `sbom` exposed and no authentication. Warning: that port must stay reachable only from the monitoring network. On the API port, `/actuator/**` does not exist, but `/livez` and `/readyz` serve the `livez` and `readyz` health groups without details, with the members of `liveness` and `readiness` (permitted in `SecurityConfiguration`, and the bearer token is ignored): a probe on the management port alone could pass while the API port is down. Warning: not `add-additional-paths`, which reuses the probe groups, whose settings apply to all their paths: hiding details on 8080 hid them on 8081. `SecurityConfiguration` also permits every request that arrived on the management port (`local.management.port`), error page included: matching the endpoints only once made every error there answer 401.
 - **Health:** Spring Boot's indicators (`db`, `rabbit`, `mail`, `diskSpace`) plus `storage` (`StorageHealthIndicator`, a `headBucket`) and `antivirus` (`AntivirusHealthIndicator`, clamd `PING` with a 5-second cap; up with `scanning: disabled` when the antivirus is off). Readiness (`/actuator/health/readiness`) includes only `db`: RabbitMQ down only delays messages (the outbox keeps them), and storage or antivirus down only blocks files, so they must not take the whole API out of the load balancer.
-- **Metrics:** `webhook.deliveries` per outcome and `webhook.circuit.breakers.open` (webhooks), `outbox.messages.pending` and `outbox.messages.oldest.pending.age` (`OutboxMetrics`), `outbox.messages.published` and `outbox.publish.failures` per queue (`OutboxRelay`), `rabbitmq.dead.letter.messages` per dead-letter queue (`DeadLetterQueueMetrics`, NaN while the broker is unreachable). Spring records every `@Scheduled` run as `tasks.scheduled.execution`.
+- **Metrics:** `webhook.deliveries` per outcome and `webhook.circuit.breakers.open` (webhooks), `outbox.messages.pending` and `outbox.messages.oldest.pending.age` (`OutboxMetrics`), `outbox.messages.published` and `outbox.publish.failures` per queue (`OutboxRelay`), `rabbitmq.dead.letter.messages` per dead-letter queue (`DeadLetterQueueMetrics`, NaN while the broker is unreachable). Spring records every `@Scheduled` run as `tasks.scheduled.execution`, a run skipped for its lock included; ShedLock counts `shedlock.lock.attempts`, `shedlock.lock.acquired` and `shedlock.lock.not.acquired`, and times `shedlock.execution.duration`, per `lock_name`.
 - **Info:** `spring-boot-maven-plugin` writes `build-info`, so `/actuator/info` shows the version, and `cyclonedx-maven-plugin` (configured by the Boot parent) writes the SBOM that `/actuator/sbom/application` serves.
 
 ### Deployment profile and image
@@ -334,7 +346,7 @@ Cut:
   - Warning: Postgres is declared once, in `PostgresTestcontainersConfiguration`. Testcontainers reuses a container only when its whole definition matches, so a second definition starts a second database.
 - **Contexts:** Spring caches one context per distinct test configuration, and each integration context starts its own RabbitMQ (and all its containers when reuse is off). Warning: a property, a mock or an import added to a single class creates another context; use the annotations above alone unless the test cannot work otherwise. The integration contexts that differ on purpose are `@DeadLetterIntegrationTest` (fast retries, SMTP mock, storage spy), `OutboxBrokerFailureTests` (template spy), `RateLimitTests` (limits on), and `MonitoringTests` with `PublicEndpointErrorTests` (a real server port). The slices add three light contexts: web, JDBC and JPA.
 - **Shared data:** Postgres, Mailpit, RustFS and ClamAV are reusable containers: with reuse on (see the README), one of each serves every context and every run. Use unique emails and references (random UUIDs) in every test, and never assert on global counts.
-  - Warning: a background job enabled in a test context acts on the data of every other context. Tests keep the scheduled jobs off and call the services directly, and the outbox poller runs hourly (`messaging.outbox.poll-interval`), since it would publish another context's messages to its own broker.
+  - Warning: a background job enabled in a test context acts on the data of every other context, and its lock in `scheduler_locks` would skip the same job everywhere else. Tests keep the scheduled jobs off and call the services directly, and the outbox poller runs hourly (`messaging.outbox.poll-interval`), since it would publish another context's messages to its own broker.
   - RabbitMQ is never reused: the dead-letter tests make the listeners' collaborators fail, and on a shared broker those listeners would consume the messages of every other context.
 - `src/test/resources/spring.properties` caps the context cache at 12; an evicted context stops its containers and restarts them when a later class needs it. Warning: a full run needs several GB of memory; never run two full suites at once on the same machine.
 
