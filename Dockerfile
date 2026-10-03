@@ -3,7 +3,7 @@
 # The production image of the API; run it with the prod profile and its variables (README, Deploy the API).
 # Base images are pinned by digest, and Dependabot proposes their updates.
 
-FROM eclipse-temurin:25-jdk-noble@sha256:5b14970485a676b41faa08f4a7bc8716cc20915daa1d581d7a75f37a8ebaf9a8 AS build
+FROM eclipse-temurin:25-jdk-noble@sha256:0d623ea18d7b0fe1e12a2c0a920f7e950cad433387e5a49d3611e1507fa07602 AS build
 WORKDIR /build
 COPY mvnw pom.xml ./
 COPY .mvn/ .mvn/
@@ -14,7 +14,7 @@ RUN ./mvnw --batch-mode --quiet -Dmaven.test.skip=true package \
     && cp target/tasks-*.jar application.jar \
     && java -Djarmode=tools -jar application.jar extract --layers --destination extracted
 
-FROM eclipse-temurin:25-jre-noble@sha256:30772b161c319f9a10c82e30fd77b7b6702c6b051e44e0e9f3d7ab5dd389a5ab
+FROM eclipse-temurin:25-jre-noble@sha256:398f810215757dc1926390014272579fb0e57c41ef1c8aa4f64ae761613a168b
 RUN groupadd --system --gid 10001 tasks \
     && useradd --system --uid 10001 --gid tasks --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin tasks
 WORKDIR /application
