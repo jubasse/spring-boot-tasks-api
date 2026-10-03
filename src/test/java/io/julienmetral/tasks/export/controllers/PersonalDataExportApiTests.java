@@ -10,6 +10,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.JsonNode;
 
@@ -115,6 +116,29 @@ class PersonalDataExportApiTests extends AbstractDataExportTests {
     }
 
     @Test
+    void personalDataOfAnAccountThatSignedInHoldsItsSessionAndAMentionOfItByAnotherAccount() throws Exception {
+        User owner = createUser(UserRole.USER);
+        User colleague = createUser(UserRole.USER);
+        login(owner.getEmail(), "password");
+        String task = insertTask(TaskRow.assignedTo(colleague)
+                .titled("Ping the owner", null)
+                .createdBy(colleague, null));
+        insertCommentWithMention(task, colleague, owner.getId(), "Hey <@" + owner.getId() + ">, please check");
+
+        UUID exportId = exportIdOf(mockMvc.perform(post(MY_DATA_EXPORT).with(as(owner)))
+                .andExpect(status().isAccepted())
+                .andReturn());
+        awaitCompleted(exportId);
+
+        JsonNode json = jsonMapper.readTree(entriesOf(download(owner, exportId).body()).get("my-data.json"));
+        assertThat(json.path("sessions").valueStream().toList()).isNotEmpty();
+        assertThat(json.path("mentions").valueStream().anyMatch(mention ->
+                mention.path("task_reference").asString().equals(task)
+                        && mention.path("author").asString().equals(colleague.getDisplayName())))
+                .isTrue();
+    }
+
+    @Test
     void profilePhotoOfTheAccountIsAddedToTheArchive() throws Exception {
         User owner = createUser(UserRole.USER);
         givePhoto(owner);
@@ -191,6 +215,34 @@ class PersonalDataExportApiTests extends AbstractDataExportTests {
                         """,
                 author.getId(), body, taskReference
         );
+    }
+
+    private void insertCommentWithMention(String taskReference, User author, UUID mentionedUserId, String body) {
+        UUID comment = jdbcTemplate.queryForObject(
+                """
+                        INSERT INTO task_comments (task_id, author_id, body, created_at)
+                        SELECT id, ?, ?, now() FROM tasks WHERE reference = ?
+                        RETURNING id
+                        """,
+                UUID.class,
+                author.getId(), body, taskReference
+        );
+        jdbcTemplate.update(
+                "INSERT INTO task_comment_mentions (comment_id, user_id) VALUES (?, ?)", comment, mentionedUserId);
+    }
+
+    /** createUser leaves every account with the password "password", hashed by the application's encoder. */
+    private String login(String email, String password) throws Exception {
+        String body = mockMvc.perform(
+                        post("/api/v1/auth/login")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"email\": \"%s\", \"password\": \"%s\"}".formatted(email, password)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        return jsonMapper.readTree(body).path("accessToken").asString();
     }
 
     private void insertSlackWebhook(User owner) {
