@@ -33,10 +33,27 @@ public class Outbox {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void enqueue(String queue, Object message) {
-        Instant now = clock.instant();
         OutboxMessage row = new OutboxMessage();
-
         row.setQueue(queue);
+
+        save(row, message);
+    }
+
+    /**
+     * Like {@link #enqueue}, for an exchange that copies the message to every instance's own queue. Nobody listening
+     * is not an error there: a broadcast that no queue receives is marked published.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void broadcast(String exchange, Object message) {
+        OutboxMessage row = new OutboxMessage();
+        row.setExchange(exchange);
+
+        save(row, message);
+    }
+
+    private void save(OutboxMessage row, Object message) {
+        Instant now = clock.instant();
+
         row.setType(message.getClass().getName());
         row.setPayload(jsonMapper.convertValue(message, new TypeReference<Map<String, Object>>() {
         }));

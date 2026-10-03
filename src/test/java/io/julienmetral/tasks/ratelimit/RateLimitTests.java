@@ -7,6 +7,11 @@ import io.julienmetral.tasks.ratelimit.services.RateLimiter;
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
 import io.julienmetral.tasks.support.TestClock;
+import mockwebserver3.Dispatcher;
+import mockwebserver3.MockResponse;
+import mockwebserver3.MockWebServer;
+import mockwebserver3.RecordedRequest;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -21,6 +26,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import java.io.IOException;
+import java.net.InetAddress;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -66,7 +73,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "rate-limit.password-reset-per-email.requests=" + RateLimitTests.PASSWORD_RESET_PER_EMAIL,
         "rate-limit.password-reset-per-email.window=PT1H",
         "rate-limit.verification-resend-per-user.requests=" + RateLimitTests.VERIFICATION_RESEND_PER_USER,
-        "rate-limit.verification-resend-per-user.window=PT1H"
+        "rate-limit.verification-resend-per-user.window=PT1H",
+        "rate-limit.webhook-test-per-user.requests=" + RateLimitTests.WEBHOOK_TEST_PER_USER,
+        "rate-limit.webhook-test-per-user.window=PT1H"
 })
 class RateLimitTests {
 
@@ -76,6 +85,7 @@ class RateLimitTests {
     static final int PASSWORD_RESET_PER_IP = 3;
     static final int PASSWORD_RESET_PER_EMAIL = 2;
     static final int VERIFICATION_RESEND_PER_USER = 2;
+    static final int WEBHOOK_TEST_PER_USER = 3;
 
     // 40 s before the next minute, 4 min 40 s before the next quarter hour and 49 min 40 s before the next hour
     static final Instant NOW = Instant.parse("2100-01-01T00:10:20Z");
@@ -420,6 +430,114 @@ class RateLimitTests {
             expectTooManyRequests(resend(address, limitedUser), UNTIL_NEXT_HOUR);
 
             resend(address, otherUser).andExpect(status().isNoContent());
+        }
+    }
+
+    @Nested
+    class WebhookTest {
+
+        private final MockWebServer receiver = new MockWebServer();
+
+        @BeforeEach
+        void startReceiverThatAcceptsEveryEvent() throws IOException {
+            receiver.setDispatcher(new Dispatcher() {
+                @Override
+                public MockResponse dispatch(RecordedRequest request) {
+                    return new MockResponse.Builder().code(204).build();
+                }
+            });
+            receiver.start(InetAddress.getByName("127.0.0.1"), 0);
+        }
+
+        @AfterEach
+        void stopReceiver() {
+            receiver.close();
+        }
+
+        @Test
+        void webhookTestIsRefusedPastTheLimitPerUserAndSendsNothingMore() throws Exception {
+            UUID userId = signUpUser(uniqueEmail());
+            UUID webhookId = createWebhook(userId);
+
+            for (int attempt = 0; attempt < WEBHOOK_TEST_PER_USER; attempt++) {
+                sendWebhookTest(userId, webhookId, caller(userId, "ROLE_USER"))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.delivered").value(true));
+            }
+
+            expectTooManyRequests(sendWebhookTest(userId, webhookId, caller(userId, "ROLE_USER")), UNTIL_NEXT_HOUR);
+            assertThat(receiver.getRequestCount()).isEqualTo(WEBHOOK_TEST_PER_USER);
+        }
+
+        @Test
+        void webhookTestOfAnUnknownWebhookDoesNotCountAgainstTheLimit() throws Exception {
+            UUID userId = signUpUser(uniqueEmail());
+            UUID webhookId = createWebhook(userId);
+
+            for (int attempt = 0; attempt <= WEBHOOK_TEST_PER_USER; attempt++) {
+                sendWebhookTest(userId, UUID.randomUUID(), caller(userId, "ROLE_USER"))
+                        .andExpect(status().isNotFound());
+            }
+
+            sendWebhookTest(userId, webhookId, caller(userId, "ROLE_USER"))
+                    .andExpect(status().isOk());
+        }
+
+        @Test
+        void webhookTestsSentByAnAdminCountAgainstTheOwnersLimit() throws Exception {
+            UUID userId = signUpUser(uniqueEmail());
+            UUID webhookId = createWebhook(userId);
+
+            for (int attempt = 0; attempt < WEBHOOK_TEST_PER_USER; attempt++) {
+                sendWebhookTest(userId, webhookId, caller(UUID.randomUUID(), "ROLE_ADMIN"))
+                        .andExpect(status().isOk());
+            }
+
+            expectTooManyRequests(sendWebhookTest(userId, webhookId, caller(userId, "ROLE_USER")), UNTIL_NEXT_HOUR);
+        }
+
+        @Test
+        void webhookTestLimitOfOneUserLeavesOtherUsersAlone() throws Exception {
+            UUID limitedUser = signUpUser(uniqueEmail());
+            UUID limitedWebhook = createWebhook(limitedUser);
+            UUID otherUser = signUpUser(uniqueEmail());
+            UUID otherWebhook = createWebhook(otherUser);
+            for (int attempt = 0; attempt < WEBHOOK_TEST_PER_USER; attempt++) {
+                sendWebhookTest(limitedUser, limitedWebhook, caller(limitedUser, "ROLE_USER"))
+                        .andExpect(status().isOk());
+            }
+
+            expectTooManyRequests(
+                    sendWebhookTest(limitedUser, limitedWebhook, caller(limitedUser, "ROLE_USER")), UNTIL_NEXT_HOUR);
+
+            sendWebhookTest(otherUser, otherWebhook, caller(otherUser, "ROLE_USER")).andExpect(status().isOk());
+        }
+
+        private UUID createWebhook(UUID userId) throws Exception {
+            String location = mockMvc.perform(post("/api/v1/users/{id}/webhooks", userId)
+                            .with(caller(userId, "ROLE_USER"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"url": "http://127.0.0.1:%d/hooks", "events": ["task.assigned"]}
+                                    """.formatted(receiver.getPort())))
+                    .andExpect(status().isCreated())
+                    .andReturn()
+                    .getResponse()
+                    .getHeader(HttpHeaders.LOCATION);
+
+            return UUID.fromString(location.substring(location.lastIndexOf('/') + 1));
+        }
+
+        private ResultActions sendWebhookTest(UUID userId, UUID webhookId, RequestPostProcessor caller)
+                throws Exception {
+            return mockMvc.perform(post("/api/v1/users/{id}/webhooks/{webhookId}/test", userId, webhookId)
+                    .with(caller));
+        }
+
+        private static RequestPostProcessor caller(UUID userId, String role) {
+            return jwt()
+                    .jwt(jwt -> jwt.claim("uid", userId.toString()))
+                    .authorities(new SimpleGrantedAuthority(role));
         }
     }
 

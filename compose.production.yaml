@@ -23,6 +23,7 @@ services:
     environment:
       DEPLOYMENT_ENVIRONMENT: local
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      WEBHOOK_ENCRYPTION_KEY: ${WEBHOOK_ENCRYPTION_KEY:?set WEBHOOK_ENCRYPTION_KEY in .env}
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-tasks}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-tasks}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-secret}
@@ -36,6 +37,7 @@ services:
       MAIL_FROM: no-reply@tasks.local
       EMAIL_VERIFICATION_URL: http://localhost:3000/verify-email
       PASSWORD_RESET_URL: http://localhost:3000/reset-password
+      EXPORT_DOWNLOAD_URL: http://localhost:3000/exports
       STORAGE_DRIVER: rustfs
       S3_BUCKET: tasks-media
       S3_ENDPOINT: http://rustfs:9000

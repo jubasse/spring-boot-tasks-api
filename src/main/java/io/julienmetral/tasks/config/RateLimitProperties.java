@@ -21,6 +21,8 @@ import java.time.Duration;
  * @param passwordResetPerIp        password reset requests and confirmations from one client address
  * @param passwordResetPerEmail     password reset requests for one email, which each send an email
  * @param verificationResendPerUser verification emails one user can ask to be sent again
+ * @param webhookTestPerUser        test events sent to the webhooks of one user, each an HTTP call to a URL the user
+ *                                  chose
  */
 @Validated
 @ConfigurationProperties(prefix = "rate-limit")
@@ -32,7 +34,8 @@ public record RateLimitProperties(
         @Valid @NotNull Limit signUpPerIp,
         @Valid @NotNull Limit passwordResetPerIp,
         @Valid @NotNull Limit passwordResetPerEmail,
-        @Valid @NotNull Limit verificationResendPerUser
+        @Valid @NotNull Limit verificationResendPerUser,
+        @Valid @NotNull Limit webhookTestPerUser
 ) {
 
     /**

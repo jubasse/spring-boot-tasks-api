@@ -1,0 +1,16 @@
+databaseChangeLog:
+- changeSet:
+    id: 020-add-webhook-endpoints-kind
+    author: julien-metral
+    comment: >
+      What an endpoint receives: a signed Standard Webhooks event, or a Slack message.
+    changes:
+    - addColumn:
+        tableName: webhook_endpoints
+        columns:
+        - column:
+            name: kind
+            type: VARCHAR(20)
+            defaultValue: WEBHOOK
+            constraints:
+              nullable: false

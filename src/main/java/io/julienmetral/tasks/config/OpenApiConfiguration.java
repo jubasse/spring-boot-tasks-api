@@ -60,6 +60,9 @@ public class OpenApiConfiguration {
 
             **Limits.** Login, sign-up, verification email resend and password reset are rate limited: a 429 gives \
             the seconds to wait in `Retry-After`. A page holds at most 100 items.
+
+            **Evolution.** An enumeration in a response can gain values, such as a new status: treat a value you \
+            do not know as unknown rather than as an error. New optional fields can appear too.
             """;
 
     @Bean
@@ -114,8 +117,8 @@ public class OpenApiConfiguration {
                         "WWW-Authenticate",
                         "Bearer, with the reason of the refusal."))
                 .addResponses(FORBIDDEN, withoutBody(
-                        "The account may not do this. Task operations need an active account (verified email, "
-                                + "not disabled); other rules are in the operation's description.",
+                        "The account may not do this. Task, notification and export operations need an active account "
+                                + "(verified email, not disabled); other rules are in the operation's description.",
                         "WWW-Authenticate",
                         "Bearer error=\"insufficient_scope\"."))
                 .addResponses(NOT_FOUND, response("The resource does not exist."))

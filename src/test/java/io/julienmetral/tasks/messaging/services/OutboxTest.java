@@ -6,6 +6,8 @@ import io.julienmetral.tasks.mail.MailMessage;
 import io.julienmetral.tasks.mail.MailQueues;
 import io.julienmetral.tasks.messaging.entities.OutboxMessage;
 import io.julienmetral.tasks.messaging.repositories.OutboxMessageRepository;
+import io.julienmetral.tasks.realtime.RealtimeConfiguration;
+import io.julienmetral.tasks.realtime.messaging.AccountStatusChanged;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -116,6 +118,57 @@ class OutboxTest {
     void rollbackPublishesNothing() {
         savingAssignsTheRowId();
         outbox.enqueue(MailQueues.SEND, MAIL);
+
+        TransactionSynchronizationUtils.triggerAfterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK);
+
+        verifyNoInteractions(relay);
+    }
+
+    @Test
+    void broadcastSavesARowDueNowWithTheExchangeAndNoQueue() {
+        savingAssignsTheRowId();
+        UUID userId = UUID.fromString("00000000-0000-0000-0000-000000000001");
+
+        outbox.broadcast(RealtimeConfiguration.EXCHANGE, new AccountStatusChanged(userId));
+
+        ArgumentCaptor<OutboxMessage> saved = ArgumentCaptor.forClass(OutboxMessage.class);
+        verify(repository).save(saved.capture());
+        OutboxMessage row = saved.getValue();
+        assertThat(row.getExchange()).isEqualTo("tasks.realtime");
+        assertThat(row.getQueue()).isNull();
+        assertThat(row.isBroadcast()).isTrue();
+        assertThat(row.destination()).isEqualTo("tasks.realtime");
+        assertThat(row.getType()).isEqualTo(AccountStatusChanged.class.getName());
+        assertThat(row.getPayload()).isEqualTo(Map.of("userId", userId.toString()));
+        assertThat(row.getCreatedAt()).isEqualTo(NOW);
+        assertThat(row.getNextAttemptAt()).isEqualTo(NOW);
+        assertThat(row.getPublishedAt()).isNull();
+    }
+
+    @Test
+    void enqueuedRowHasNoExchangeAndGoesToItsQueue() {
+        OutboxMessage row = enqueueAndCaptureRow(MailQueues.SEND, MAIL);
+
+        assertThat(row.getExchange()).isNull();
+        assertThat(row.isBroadcast()).isFalse();
+        assertThat(row.destination()).isEqualTo("mail.send");
+    }
+
+    @Test
+    void broadcastIsPublishedRightAfterTheCommit() {
+        savingAssignsTheRowId();
+        outbox.broadcast(RealtimeConfiguration.EXCHANGE, new AccountStatusChanged(UUID.randomUUID()));
+
+        verifyNoInteractions(relay);
+        TransactionSynchronizationUtils.triggerAfterCommit();
+
+        verify(relay).publishNow(List.of(ROW_ID));
+    }
+
+    @Test
+    void rolledBackBroadcastPublishesNothing() {
+        savingAssignsTheRowId();
+        outbox.broadcast(RealtimeConfiguration.EXCHANGE, new AccountStatusChanged(UUID.randomUUID()));
 
         TransactionSynchronizationUtils.triggerAfterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK);
 

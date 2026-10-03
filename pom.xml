@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>io.julienmetral</groupId>
 	<artifactId>tasks</artifactId>
-	<version>0.4.0</version>
+	<version>0.5.0</version>
 	<name/>
 	<description/>
 	<url/>
@@ -34,11 +34,20 @@
 		<tika.version>4.0.0</tika.version>
 		<twelvemonkeys.version>3.15.2</twelvemonkeys.version>
 		<metadata-extractor.version>2.21.0</metadata-extractor.version>
+		<resilience4j.version>2.4.0</resilience4j.version>
+		<mockwebserver.version>5.5.0</mockwebserver.version>
+		<standardwebhooks.version>1.2.0</standardwebhooks.version>
+		<shedlock.version>7.10.1</shedlock.version>
+		<openhtmltopdf.version>1.1.87</openhtmltopdf.version>
 		<!-- Above the versions Spring Boot 4.1.1 manages, which have fixed vulnerabilities: Tomcat 11.0.24 three critical
-		     (GHSA-9xv2-5v5q-p794, GHSA-gcx9-497g-6cp6, GHSA-h3x4-894j-xpx5), amqp-client 5.30.0 four high. Remove both
-		     once Spring Boot manages these versions or later. -->
+		     (GHSA-9xv2-5v5q-p794, GHSA-gcx9-497g-6cp6, GHSA-h3x4-894j-xpx5), amqp-client 5.30.0 four high, Jackson 3.1.5
+		     and 2.21.5 (Hibernate brings 2 for JSON columns) five high in jackson-databind and jackson-core
+		     (GHSA-q4xh-88c3-wmh7, GHSA-cxp5-3px4-pw24, GHSA-wv8q-qhhj-9h54, GHSA-7hhh-6rmp-j9qf, GHSA-p6pp-m3f8-5c89).
+		     Remove each once Spring Boot manages that version or later. -->
 		<tomcat.version>11.0.26</tomcat.version>
 		<rabbit-amqp-client.version>5.36.0</rabbit-amqp-client.version>
+		<jackson-bom.version>3.1.7</jackson-bom.version>
+		<jackson-2-bom.version>2.21.7</jackson-2-bom.version>
 	</properties>
 	<dependencyManagement>
 		<dependencies>
@@ -49,12 +58,49 @@
 				<type>pom</type>
 				<scope>import</scope>
 			</dependency>
+			<dependency>
+				<groupId>net.javacrumbs.shedlock</groupId>
+				<artifactId>shedlock-bom</artifactId>
+				<version>${shedlock.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
 		</dependencies>
 	</dependencyManagement>
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+		<!-- STOMP over WebSocket for the task rooms, and Spring Security's authorization of its messages -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-websocket</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-messaging</artifactId>
+		</dependency>
+		<!-- Exports run as Spring Batch jobs, with their metadata in Postgres -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-batch-jdbc</artifactId>
+		</dependency>
+		<!-- The PDF of a personal data export: a Thymeleaf template (plain, no Spring MVC view) rendered by
+		     openhtmltopdf, the maintained fork (LGPL 2.1 or later, on PDFBox 3) -->
+		<dependency>
+			<groupId>org.thymeleaf</groupId>
+			<artifactId>thymeleaf</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>io.github.openhtmltopdf</groupId>
+			<artifactId>openhtmltopdf-pdfbox</artifactId>
+			<version>${openhtmltopdf.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>io.github.openhtmltopdf</groupId>
+			<artifactId>openhtmltopdf-slf4j</artifactId>
+			<version>${openhtmltopdf.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -95,6 +141,42 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc</artifactId>
+		</dependency>
+		<!-- RestClient and HTTP service clients; without it, the spring.http.* properties are ignored silently -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-restclient</artifactId>
+		</dependency>
+		<!-- Declared rather than inherited from the AWS SDK at runtime scope: RestClient uses it, and its address
+		     filtering is the one that also holds against DNS rebinding (see OutboundHttpConfiguration) -->
+		<dependency>
+			<groupId>org.apache.httpcomponents.client5</groupId>
+			<artifactId>httpclient5</artifactId>
+		</dependency>
+		<!-- The core modules only, used from code: one circuit breaker and one bulkhead per webhook host, which the
+		     annotations cannot key. The Spring Boot 4 starter is left out: its Boot 4.1 support is unconfirmed. -->
+		<dependency>
+			<groupId>io.github.resilience4j</groupId>
+			<artifactId>resilience4j-circuitbreaker</artifactId>
+			<version>${resilience4j.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>io.github.resilience4j</groupId>
+			<artifactId>resilience4j-bulkhead</artifactId>
+			<version>${resilience4j.version}</version>
+		</dependency>
+		<!-- One run of each single-instance job across the cluster, locked in the scheduler_locks table -->
+		<dependency>
+			<groupId>net.javacrumbs.shedlock</groupId>
+			<artifactId>shedlock-spring</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>net.javacrumbs.shedlock</groupId>
+			<artifactId>shedlock-provider-jdbc-template</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>net.javacrumbs.shedlock</groupId>
+			<artifactId>shedlock-micrometer</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.springdoc</groupId>
@@ -217,6 +299,17 @@
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-batch-jdbc-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-csv</artifactId>
+			<version>1.14.1</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc-test</artifactId>
 			<scope>test</scope>
 		</dependency>
@@ -238,6 +331,20 @@
 		<dependency>
 			<groupId>org.testcontainers</groupId>
 			<artifactId>testcontainers-rabbitmq</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<!-- A real HTTP server on a local port, so tests go through the real client, filter and timeouts -->
+		<dependency>
+			<groupId>com.squareup.okhttp3</groupId>
+			<artifactId>mockwebserver3-junit5</artifactId>
+			<version>${mockwebserver.version}</version>
+			<scope>test</scope>
+		</dependency>
+		<!-- The official Standard Webhooks library, as an independent check of the signatures the API sends -->
+		<dependency>
+			<groupId>com.standardwebhooks</groupId>
+			<artifactId>standardwebhooks</artifactId>
+			<version>${standardwebhooks.version}</version>
 			<scope>test</scope>
 		</dependency>
 		<dependency>
@@ -306,7 +413,7 @@
 			<plugin>
 				<groupId>org.jacoco</groupId>
 				<artifactId>jacoco-maven-plugin</artifactId>
-				<version>0.8.14</version>
+				<version>0.8.15</version>
 				<executions>
 					<execution>
 						<goals>
@@ -330,6 +437,8 @@
 					<searchPath>${project.basedir}/src/main/resources</searchPath>
 					<propertyFile>liquibase.properties</propertyFile>
 					<changeLogFile>db/changelog/db.changelog-master.yaml</changeLogFile>
+					<!-- Spring Batch's tables have no entity: without this, the diff proposes to drop them -->
+					<diffExcludeObjects>table:batch_.*, sequence:batch_.*</diffExcludeObjects>
 				</configuration>
 				<dependencies>
 					<dependency>

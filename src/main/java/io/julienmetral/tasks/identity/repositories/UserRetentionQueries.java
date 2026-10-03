@@ -15,9 +15,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class UserRetentionQueries {
 
-    // Any stable number, distinct from the other jobs' locks: every instance must use the same one
-    private static final long LOCK_KEY = 5_118_640_279_033_417L;
-
     private static final String ACTIVITY = "COALESCE(u.last_active_at, u.last_login_at, u.created_at)";
 
     // Admins are never warned nor deleted for inactivity: deleting the last one would lock everybody out of
@@ -35,20 +32,11 @@ public class UserRetentionQueries {
     ) {
     }
 
-    /** Transaction-scoped lock, released on commit or rollback; false when another instance holds it. */
-    public boolean tryLock() {
-        return Boolean.TRUE.equals(jdbc.queryForObject(
-                "SELECT pg_try_advisory_xact_lock(:key)",
-                new MapSqlParameterSource("key", LOCK_KEY),
-                Boolean.class
-        ));
-    }
-
     /**
      * Erases users deleted before {@code cutoff}: their profile becomes a "Deleted user" without photo, which tasks,
      * comments and history keep pointing to, and the account itself is deleted with every row that only held its
-     * data (roles, settings, tokens). The email becomes free for a new sign-up. The photos' files go with the next
-     * media cleanup, once nothing references them.
+     * data (roles, settings, tokens, webhooks). The email becomes free for a new sign-up. The photos' files go with
+     * the next media cleanup, once nothing references them.
      *
      * @return the ids of the erased users
      */
@@ -75,7 +63,16 @@ public class UserRetentionQueries {
         if (!ids.isEmpty()) {
             MapSqlParameterSource users = new MapSqlParameterSource("ids", ids);
 
+            for (String table : List.of("webhook_deliveries", "webhook_endpoint_events")) {
+                jdbc.update(
+                        "DELETE FROM " + table
+                                + " WHERE endpoint_id IN (SELECT id FROM webhook_endpoints WHERE user_id IN (:ids))",
+                        users
+                );
+            }
+
             for (String table : List.of(
+                    "webhook_endpoints",
                     "notification_settings",
                     "refresh_tokens",
                     "email_verification_tokens",

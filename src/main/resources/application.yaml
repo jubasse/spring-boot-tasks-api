@@ -37,6 +37,7 @@ rate-limit:
   password-reset-per-ip: {requests: 20, window: PT1H}
   password-reset-per-email: {requests: 3, window: PT1H}
   verification-resend-per-user: {requests: 3, window: PT1H}
+  webhook-test-per-user: {requests: 10, window: PT1H}
 # Messages for RabbitMQ are written to an outbox table in the business transaction, then published after commit
 messaging:
   outbox:
@@ -116,9 +117,92 @@ management:
 # rate limits comes from X-Forwarded-For; without a proxy, keep none, or clients could pick their own address
 server:
   forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
+# Exports produced by Spring Batch jobs in the background (POST /api/v1/exports/...). The ready email links to
+# download-page-url?id=..., a page of the front end that asks GET /api/v1/exports/{id} for the download link.
+exports:
+  download-page-url: ${EXPORT_DOWNLOAD_URL:http://localhost:3000/exports}
+  retention: 7d
+  history-retention: 30d
+  chunk-size: 500
+  lease: 15m
+  max-attempts: 3
+  purge-enabled: ${EXPORT_PURGE_ENABLED:true}
+  purge-cron: 0 30 4 * * *
+  recovery-enabled: ${EXPORT_RECOVERY_ENABLED:true}
+  recovery-interval: 5m
+  pdf-max-rows-per-section: 1000
+# Endpoints users declare to receive their task notifications. The key encrypts their signing secrets in the
+# database: Base64 of at least 32 bytes (openssl rand -base64 32). Only a development machine turns requireHttps off,
+# with OUTBOUND_HTTP_ALLOWED_ADDRESSES, to reach a local receiver.
+webhooks:
+  encryption-key: ${WEBHOOK_ENCRYPTION_KEY:}
+  require-https: ${WEBHOOK_REQUIRE_HTTPS:true}
+  max-per-user: 5
+  previous-secret-validity: 24h
+  concurrent-deliveries: 4
+  delivery-lease: 5m
+  retry-enabled: ${WEBHOOK_RETRY_ENABLED:true}
+  retry-poll-interval: PT30S
+  retry-batch-size: 100
+  disable-after: 3d
+  delivery-retention: 30d
+  purge-enabled: ${WEBHOOK_PURGE_ENABLED:true}
+  purge-cron: 0 45 3 * * *
+  circuit-breaker:
+    failure-rate-threshold: 50
+    minimum-calls: 5
+    window: 60s
+    open-duration: 1m
+  concurrent-calls-per-host: 2
+# Real-time events. Task notifications are streamed to their recipient (GET /api/v1/notifications/stream); every
+# instance receives every event on a queue of its own, which keeps at most queue-max-length of them.
+realtime:
+  queue-max-length: 10000
+  streams:
+    heartbeat: 20s
+    max-duration: 15m
+    max-per-user: 5
+    reconnect-delay: 3s
+    replay-window: 5m
+    replay-size: 10000
+    buffer-size: 100
+  # Task rooms over STOMP on /ws. Pages of other origins need them listed, comma-separated, as patterns such as
+  # https://*.example.com; empty allows the API's own origin only.
+  rooms:
+    allowed-origins: ${REALTIME_ALLOWED_ORIGINS:}
+    heartbeat: 10s
+    message-size-limit: 16KB
+    time-to-first-message: 10s
+# Outgoing HTTP calls (webhooks) reach only public addresses; OutboundHttpConfiguration explains why. To try a
+# receiver on your machine, set OUTBOUND_HTTP_ALLOWED_ADDRESSES=127.0.0.1/32.
+outbound-http:
+  allowed-addresses: ${OUTBOUND_HTTP_ALLOWED_ADDRESSES:}
 spring:
   config:
     import: optional:file:.env[.properties]
+  # An enum in a request is one of its documented names: Jackson otherwise reads a number as the constant at that
+  # index, so "kind": 1 created a Slack webhook
+  jackson:
+    datatype:
+      enum:
+        fail-on-numbers-for-enums: true
+  # Apache HttpClient explicitly: it would otherwise be picked only because the AWS SDK brings it, and its address
+  # filtering also holds against DNS rebinding
+  http:
+    clients:
+      imperative:
+        factory: http-components
+      # Apache's own defaults wait minutes for a connection. A client group can set its own values.
+      connect-timeout: 5s
+      read-timeout: 15s
+    # The client that delivers webhooks (WebhookClient). A redirect or a cookie would let a receiver steer the next
+    # call, so neither is followed.
+    serviceclient:
+      webhooks:
+        connect-timeout: 5s
+        read-timeout: 15s
+        redirects: dont-follow
+        cookie-handling: disable
   data:
     web:
       pageable:
@@ -167,6 +251,15 @@ spring:
     host: ${MAIL_HOST:localhost}
     port: ${MAIL_PORT:1025}
 
+  # Jobs start only when an export asks for one; Liquibase creates Batch's tables (changeset 023). Executions are
+  # created at read committed: serializable made concurrent starts fail on Postgres.
+  batch:
+    job:
+      enabled: false
+    jdbc:
+      initialize-schema: never
+      isolation-level-for-create: read-committed
+
   jpa:
     hibernate:
       ddl-auto: validate
@@ -196,3 +289,9 @@ springdoc:
   # A stable output for the committed docs/openapi.json
   writer-with-order-by-keys: true
   writer-with-default-pretty-printer: true
+# Rendering a personal data PDF: openhtmltopdf logs every step at info, and PDFBox warns each time that it falls back
+# to LiberationSans for the base font Symbol, which no page uses (the PDF embeds Noto Sans)
+logging:
+  level:
+    com.openhtmltopdf: warn
+    org.apache.pdfbox.pdmodel.font.PDType1Font: error

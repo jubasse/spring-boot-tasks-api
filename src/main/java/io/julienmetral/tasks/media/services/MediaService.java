@@ -25,6 +25,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.file.Path;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -76,6 +77,36 @@ public class MediaService {
         media.setSizeBytes(source.size());
         media.setSha256(sha256);
         media.setUploadedBy(uploadedById == null ? null : userProfileRepository.getReferenceById(uploadedById));
+        media.setCreatedAt(Instant.now());
+
+        return mediaRepository.save(media);
+    }
+
+    /**
+     * Stores a file the application wrote itself, such as an export: no type detection and no antivirus scan, which
+     * guard against what clients send. Must run in the caller's transaction, like {@link #store}.
+     */
+    @Transactional
+    public Media storeGenerated(Path file, String filename, String contentType, MediaUsage usage, UUID ownerId) {
+        if (!usage.allows(contentType)) {
+            throw new IllegalArgumentException(contentType + " is not a type of " + usage);
+        }
+
+        MediaSource source = MediaSource.of(file, filename);
+        String storageKey = usage.storagePrefix() + "/" + UUID.randomUUID();
+        String sha256 = upload(source, storageKey, contentType);
+
+        deleteObjectIfRolledBack(storageKey);
+
+        Media media = new Media();
+
+        media.setStorageKey(storageKey);
+        media.setUsage(usage);
+        media.setOriginalFilename(filename);
+        media.setContentType(contentType);
+        media.setSizeBytes(source.size());
+        media.setSha256(sha256);
+        media.setUploadedBy(ownerId == null ? null : userProfileRepository.getReferenceById(ownerId));
         media.setCreatedAt(Instant.now());
 
         return mediaRepository.save(media);
@@ -159,6 +190,7 @@ public class MediaService {
         return switch (usage) {
             case AVATAR, AVATAR_UPLOAD -> properties.avatarMaxSize();
             case TASK_ATTACHMENT -> properties.attachmentMaxSize();
+            case EXPORT -> throw new IllegalArgumentException("Exports are written by the application, not uploaded");
         };
     }
 

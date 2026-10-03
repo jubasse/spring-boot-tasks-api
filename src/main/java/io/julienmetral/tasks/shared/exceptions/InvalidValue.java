@@ -1,8 +1,10 @@
 package io.julienmetral.tasks.shared.exceptions;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonValue;
 import tools.jackson.core.JacksonException;
 
+import java.lang.reflect.Method;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -53,6 +55,35 @@ public record InvalidValue(String detail, String pointer, String parameter) {
      * What a value of this type must look like, in the client's terms: a Java type name or a parser message would
      * reveal the implementation without helping the client.
      */
+    /**
+     * Like {@link #expected}, for a value of the JSON body: an enum lists the names its JSON uses, which a
+     * {@code @JsonValue} method can make differ from its constant names ({@code task.assigned} for
+     * {@code TASK_ASSIGNED}).
+     */
+    static String expectedInJson(Class<?> type) {
+        if (type != null && type.isEnum()) {
+            return Arrays.stream(type.getEnumConstants())
+                    .map(constant -> jsonName((Enum<?>) constant))
+                    .collect(Collectors.joining(", ", "must be one of ", ""));
+        }
+
+        return expected(type);
+    }
+
+    private static String jsonName(Enum<?> constant) {
+        for (Method method : constant.getDeclaringClass().getMethods()) {
+            if (method.isAnnotationPresent(JsonValue.class) && method.getParameterCount() == 0) {
+                try {
+                    return String.valueOf(method.invoke(constant));
+                } catch (ReflectiveOperationException unreadable) {
+                    return constant.name();
+                }
+            }
+        }
+
+        return constant.name();
+    }
+
     static String expected(Class<?> type) {
         if (type == null) {
             return "has an invalid value";

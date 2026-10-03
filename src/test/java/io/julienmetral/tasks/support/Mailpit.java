@@ -34,19 +34,42 @@ public class Mailpit {
         return search(email).path("messages_count").asInt();
     }
 
+    /** Number of emails sent to this address whose plain-text body contains the given text. */
+    public int countTo(String email, String containing) {
+        int count = 0;
+
+        for (JsonNode summary : search(email).path("messages")) {
+            if (text(summary).contains(containing)) {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
     /** Plain-text body of the most recent email sent to this address, waiting up to 5 seconds for it. */
     public String latestTextTo(String email) {
+        return latestTextTo(email, "");
+    }
+
+    /**
+     * Plain-text body of the most recent email sent to this address that contains the given text, waiting up to 5
+     * seconds for it. Emails leave through the outbox and RabbitMQ, so two sent in a row can arrive in either order:
+     * the most recent email of all is not always the one the test triggered last.
+     */
+    public String latestTextTo(String email, String containing) {
         Instant deadline = Instant.now().plus(Duration.ofSeconds(5));
 
         while (true) {
-            Optional<String> text = findLatestTextTo(email);
+            Optional<String> text = findLatestTextTo(email, containing);
 
             if (text.isPresent()) {
                 return text.get();
             }
 
             if (Instant.now().isAfter(deadline)) {
-                throw new AssertionError("No email received by " + email);
+                throw new AssertionError("No email received by " + email
+                        + (containing.isEmpty() ? "" : " containing \"" + containing + "\""));
             }
 
             sleep();
@@ -54,18 +77,24 @@ public class Mailpit {
     }
 
     public Optional<String> findLatestTextTo(String email) {
-        JsonNode messages = search(email).path("messages");
+        return findLatestTextTo(email, "");
+    }
 
-        if (messages.isEmpty()) {
-            return Optional.empty();
+    private Optional<String> findLatestTextTo(String email, String containing) {
+        // Search results are sorted newest first
+        for (JsonNode summary : search(email).path("messages")) {
+            String text = text(summary);
+
+            if (text.contains(containing)) {
+                return Optional.of(text);
+            }
         }
 
-        // Search results are sorted newest first
-        String id = messages.get(0).path("ID").asString();
+        return Optional.empty();
+    }
 
-        JsonNode message = read("/api/v1/message/{id}", id);
-
-        return Optional.of(message.path("Text").asString());
+    private String text(JsonNode summary) {
+        return read("/api/v1/message/{id}", summary.path("ID").asString()).path("Text").asString();
     }
 
     /** The verification token contained in the most recent email sent to this address. */

@@ -20,7 +20,8 @@ import java.util.Set;
  * Purges files nobody can reach any more: attachments of tasks and profile photos of users soft-deleted for longer
  * than the retention period, media rows that nothing references, and stored objects without a media row (left behind
  * by a crash between upload and commit). Rows go in the transaction, objects only after it commits; an object that
- * fails to delete is caught by the next run's sweep.
+ * fails to delete is caught by the next run's sweep. {@link MediaCleanupJob}'s scheduler lock keeps it to one
+ * instance at a time.
  */
 @Slf4j
 @Service
@@ -34,11 +35,6 @@ public class MediaCleanupService {
 
     @Transactional
     public MediaCleanupReport cleanUp() {
-        // Several instances may run the schedule: only the one holding the lock works
-        if (!queries.tryLock()) {
-            return MediaCleanupReport.skippedRun();
-        }
-
         Instant now = clock.instant();
         Instant retentionCutoff = now.minus(properties.retention());
         Instant graceCutoff = now.minus(properties.orphanGracePeriod());
@@ -62,7 +58,6 @@ public class MediaCleanupService {
         deleteObjectsAfterCommit(keysToDelete);
 
         return new MediaCleanupReport(
-                false,
                 detachedAttachments,
                 detachedAvatars,
                 deletedMediaKeys.size(),

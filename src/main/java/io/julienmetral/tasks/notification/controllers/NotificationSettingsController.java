@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/users/{id}/notification-settings")
+@RequestMapping("/users/{id}/notification-settings")
 @RequiredArgsConstructor
 @Tag(name = "Notification settings", description = "Which task emails an account receives.")
 public class NotificationSettingsController {

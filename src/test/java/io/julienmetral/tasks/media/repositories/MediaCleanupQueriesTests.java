@@ -4,7 +4,6 @@ import io.julienmetral.tasks.support.JdbcSliceTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
 
 import java.sql.Timestamp;
 import java.time.Duration;
@@ -12,7 +11,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
-import static io.julienmetral.tasks.support.Transactions.inNewTransaction;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @JdbcSliceTest
@@ -33,9 +31,6 @@ class MediaCleanupQueriesTests {
 
     @Autowired
     private JdbcTemplate jdbc;
-
-    @Autowired
-    private PlatformTransactionManager transactionManager;
 
     // Attachments of deleted tasks
 
@@ -158,6 +153,25 @@ class MediaCleanupQueriesTests {
     }
 
     @Test
+    void deletingUnreferencedMediaSparesTheFileOfAnExport() {
+        UUID file = insertMedia(LONG_AGO);
+        insertExport(insertUser(null), file);
+
+        assertThat(queries.deleteUnreferencedMediaCreatedBefore(GRACE_CUTOFF)).doesNotContain(storageKeyOf(file));
+        assertThat(count("SELECT count(*) FROM media WHERE id = ?", file)).isOne();
+    }
+
+    @Test
+    void fileOfAnExportThatNoLongerPointsToItIsDeletedWithTheUnreferencedMedia() {
+        UUID file = insertMedia(LONG_AGO);
+        UUID export = insertExport(insertUser(null), file);
+        String storageKey = storageKeyOf(file);
+        jdbc.update("UPDATE data_exports SET media_id = NULL, status = 'EXPIRED' WHERE id = ?", export);
+
+        assertThat(queries.deleteUnreferencedMediaCreatedBefore(GRACE_CUTOFF)).contains(storageKey);
+    }
+
+    @Test
     void mediaDetachedFromADeletedTaskIsDeletedWithTheUnreferencedMedia() {
         UUID attachment = insertMedia(LONG_AGO);
         attach(insertTask(RETENTION_CUTOFF.minusSeconds(1)), attachment);
@@ -181,13 +195,6 @@ class MediaCleanupQueriesTests {
     @Test
     void existingStorageKeysOfNoKeyIsEmpty() {
         assertThat(queries.existingStorageKeys(List.of())).isEmpty();
-    }
-
-    @Test
-    void lockIsHeldByOneTransactionAtATimeAndReleasedWhenItEnds() {
-        assertThat(inNewTransaction(transactionManager, queries::tryLock)).isTrue();
-        assertThat(queries.tryLock()).isTrue();
-        assertThat(inNewTransaction(transactionManager, queries::tryLock)).isFalse();
     }
 
     private UUID insertUser(Instant deletedAt) {
@@ -235,6 +242,18 @@ class MediaCleanupQueriesTests {
                         """,
                 UUID.class,
                 "task-attachment/" + UUID.randomUUID(), timestamp(createdAt)
+        );
+    }
+
+    private UUID insertExport(UUID owner, UUID media) {
+        return jdbc.queryForObject(
+                """
+                        INSERT INTO data_exports (owner_id, type, status, media_id, attempts, created_at)
+                        VALUES (?, 'TASKS_CSV', 'COMPLETED', ?, 1, ?)
+                        RETURNING id
+                        """,
+                UUID.class,
+                owner, media, timestamp(LONG_AGO)
         );
     }
 

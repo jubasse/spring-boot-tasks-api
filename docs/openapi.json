@@ -36,7 +36,7 @@
         "description" : "A file is larger than its limit."
       },
       "Forbidden" : {
-        "description" : "The account may not do this. Task operations need an active account (verified email, not disabled); other rules are in the operation's description.",
+        "description" : "The account may not do this. Task, notification and export operations need an active account (verified email, not disabled); other rules are in the operation's description.",
         "headers" : {
           "WWW-Authenticate" : {
             "description" : "Bearer error=\"insufficient_scope\".",
@@ -233,6 +233,87 @@
         "required" : [ "displayName", "email", "password" ],
         "type" : "object"
       },
+      "CreateWebhookEndpointDto" : {
+        "properties" : {
+          "events" : {
+            "items" : {
+              "enum" : [ "task.assigned", "task.unassigned", "task.cancelled", "task.deleted", "task.commented", "task.mentioned", "task.due_soon", "task.overdue" ],
+              "type" : "string"
+            },
+            "minItems" : 1,
+            "type" : "array",
+            "uniqueItems" : true
+          },
+          "kind" : {
+            "description" : "WEBHOOK (the default) for a signed JSON event, SLACK for a Slack incoming webhook message, whose URL must start with https://hooks.slack.com/services/",
+            "enum" : [ "WEBHOOK", "SLACK" ],
+            "type" : "string"
+          },
+          "url" : {
+            "example" : "https://hooks.example.com/tasks",
+            "maxLength" : 2048,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "events", "url" ],
+        "type" : "object"
+      },
+      "DataExportResponseDto" : {
+        "properties" : {
+          "completedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "downloadUrl" : {
+            "type" : "string"
+          },
+          "expiresAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "filters" : {
+            "$ref" : "#/components/schemas/TaskExportFilters"
+          },
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "rowCount" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "status" : {
+            "enum" : [ "QUEUED", "RUNNING", "COMPLETED", "FAILED", "EXPIRED" ],
+            "type" : "string"
+          },
+          "type" : {
+            "enum" : [ "TASKS_CSV", "USERS_CSV", "PERSONAL_DATA" ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ExportTasksDto" : {
+        "properties" : {
+          "archived" : {
+            "type" : "boolean"
+          },
+          "assigneeId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "status" : {
+            "enum" : [ "TO_DO", "IN_PROGRESS", "IN_REVIEW", "BLOCKED", "DONE", "ARCHIVED", "CANCELLED" ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "InvalidValue" : {
         "description" : "One invalid value of a request.",
         "properties" : {
@@ -265,6 +346,42 @@
           }
         },
         "required" : [ "email", "password" ],
+        "type" : "object"
+      },
+      "NewWebhookEndpointDto" : {
+        "properties" : {
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "enabled" : {
+            "type" : "boolean"
+          },
+          "events" : {
+            "items" : {
+              "enum" : [ "task.assigned", "task.unassigned", "task.cancelled", "task.deleted", "task.commented", "task.mentioned", "task.due_soon", "task.overdue" ],
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "kind" : {
+            "enum" : [ "WEBHOOK", "SLACK" ],
+            "type" : "string"
+          },
+          "secret" : {
+            "description" : "Signing secret in the Standard Webhooks format; it is never shown again. Absent for a Slack webhook, whose messages are not signed",
+            "example" : "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
+            "type" : "string"
+          },
+          "url" : {
+            "description" : "Masked for a Slack webhook, whose URL is its credential",
+            "type" : "string"
+          }
+        },
         "type" : "object"
       },
       "NotificationSettingsDto" : {
@@ -319,6 +436,21 @@
         "required" : [ "number", "size", "totalElements", "totalPages" ],
         "type" : "object"
       },
+      "PagedModelDataExportResponseDto" : {
+        "properties" : {
+          "content" : {
+            "items" : {
+              "$ref" : "#/components/schemas/DataExportResponseDto"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "$ref" : "#/components/schemas/PageMetadata"
+          }
+        },
+        "required" : [ "content", "page" ],
+        "type" : "object"
+      },
       "PagedModelTaskCommentResponseDto" : {
         "properties" : {
           "content" : {
@@ -354,6 +486,21 @@
           "content" : {
             "items" : {
               "$ref" : "#/components/schemas/TaskResponseDto"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "$ref" : "#/components/schemas/PageMetadata"
+          }
+        },
+        "required" : [ "content", "page" ],
+        "type" : "object"
+      },
+      "PagedModelWebhookDeliveryResponseDto" : {
+        "properties" : {
+          "content" : {
+            "items" : {
+              "$ref" : "#/components/schemas/WebhookDeliveryResponseDto"
             },
             "type" : "array"
           },
@@ -537,6 +684,22 @@
         },
         "type" : "object"
       },
+      "TaskExportFilters" : {
+        "properties" : {
+          "archived" : {
+            "type" : "boolean"
+          },
+          "assigneeId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "status" : {
+            "enum" : [ "TO_DO", "IN_PROGRESS", "IN_REVIEW", "BLOCKED", "DONE", "ARCHIVED", "CANCELLED" ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "TaskResponseDto" : {
         "properties" : {
           "archivedAt" : {
@@ -634,6 +797,32 @@
         },
         "type" : "object"
       },
+      "UpdateWebhookEndpointDto" : {
+        "properties" : {
+          "enabled" : {
+            "description" : "False pauses the deliveries; true resumes them, also after an automatic disabling",
+            "type" : "boolean"
+          },
+          "events" : {
+            "items" : {
+              "enum" : [ "task.assigned", "task.unassigned", "task.cancelled", "task.deleted", "task.commented", "task.mentioned", "task.due_soon", "task.overdue" ],
+              "type" : "string"
+            },
+            "minItems" : 1,
+            "type" : "array",
+            "uniqueItems" : true
+          },
+          "url" : {
+            "description" : "For a Slack webhook, the masked URL of a response keeps the current one",
+            "example" : "https://hooks.example.com/tasks",
+            "maxLength" : 2048,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "enabled", "events", "url" ],
+        "type" : "object"
+      },
       "UserProfileResponseDto" : {
         "properties" : {
           "avatarUrl" : {
@@ -727,6 +916,140 @@
         },
         "required" : [ "token" ],
         "type" : "object"
+      },
+      "WebhookDeliveryResponseDto" : {
+        "properties" : {
+          "attempts" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "deliveredAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "event" : {
+            "enum" : [ "task.assigned", "task.unassigned", "task.cancelled", "task.deleted", "task.commented", "task.mentioned", "task.due_soon", "task.overdue" ],
+            "type" : "string"
+          },
+          "id" : {
+            "description" : "Also the webhook-id header of every attempt",
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "lastAttemptAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "lastError" : {
+            "description" : "Why the last attempt got no response or could not go on",
+            "example" : "Timeout",
+            "type" : "string"
+          },
+          "lastStatusCode" : {
+            "description" : "HTTP status of the last attempt, absent when no response came back",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "nextAttemptAt" : {
+            "description" : "When the next attempt is due, while the delivery is pending",
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "status" : {
+            "enum" : [ "PENDING", "DELIVERED", "FAILED" ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "WebhookEndpointResponseDto" : {
+        "properties" : {
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "disabledAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "disabledReason" : {
+            "enum" : [ "OWNER", "GONE", "FAILING" ],
+            "type" : "string"
+          },
+          "enabled" : {
+            "type" : "boolean"
+          },
+          "events" : {
+            "items" : {
+              "enum" : [ "task.assigned", "task.unassigned", "task.cancelled", "task.deleted", "task.commented", "task.mentioned", "task.due_soon", "task.overdue" ],
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "kind" : {
+            "enum" : [ "WEBHOOK", "SLACK" ],
+            "type" : "string"
+          },
+          "previousSecretExpiresAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "updatedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "url" : {
+            "description" : "Masked for a Slack webhook, whose URL is its credential",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "WebhookSecretDto" : {
+        "properties" : {
+          "previousSecretExpiresAt" : {
+            "description" : "Until then, deliveries carry a signature with the previous secret too",
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "secret" : {
+            "description" : "The new signing secret; it is never shown again",
+            "example" : "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "WebhookTestResultDto" : {
+        "properties" : {
+          "delivered" : {
+            "description" : "Whether the receiver answered with a 2xx status",
+            "type" : "boolean"
+          },
+          "durationMillis" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "error" : {
+            "description" : "Why no answer came back",
+            "example" : "Timeout",
+            "type" : "string"
+          },
+          "statusCode" : {
+            "description" : "Status of the answer, absent when none came back",
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
       }
     },
     "securitySchemes" : {
@@ -747,7 +1070,7 @@
       "name" : "Tasks API on GitHub",
       "url" : "https://github.com/jubasse/spring-boot-tasks-api"
     },
-    "description" : "Tasks, with their comments, files and history, for teams whose members sign up themselves.\n\n**Authentication.** Sign in with `POST /api/v1/auth/login`, then send the access token in an `Authorization: Bearer` header. It lasts 15 minutes: `POST /api/v1/auth/refresh` trades the refresh token for a new pair. Task operations also need an active account: a verified email, not disabled.\n\n**Errors.** Every error is a problem document (RFC 9457, `application/problem+json`), except the 401 and 403 of an access check, which carry only a `WWW-Authenticate` header. When `type` is present, it links to the documentation of that problem.\n\n**Limits.** Login, sign-up, verification email resend and password reset are rate limited: a 429 gives the seconds to wait in `Retry-After`. A page holds at most 100 items.\n",
+    "description" : "Tasks, with their comments, files and history, for teams whose members sign up themselves.\n\n**Authentication.** Sign in with `POST /api/v1/auth/login`, then send the access token in an `Authorization: Bearer` header. It lasts 15 minutes: `POST /api/v1/auth/refresh` trades the refresh token for a new pair. Task operations also need an active account: a verified email, not disabled.\n\n**Errors.** Every error is a problem document (RFC 9457, `application/problem+json`), except the 401 and 403 of an access check, which carry only a `WWW-Authenticate` header. When `type` is present, it links to the documentation of that problem.\n\n**Limits.** Login, sign-up, verification email resend and password reset are rate limited: a 429 gives the seconds to wait in `Retry-After`. A page holds at most 100 items.\n\n**Evolution.** An enumeration in a response can gain values, such as a new status: treat a value you do not know as unknown rather than as an error. New optional fields can appear too.\n",
     "title" : "Tasks API",
     "version" : "development"
   },
@@ -1055,6 +1378,357 @@
         "tags" : [ "Authentication" ]
       }
     },
+    "/api/v1/exports" : {
+      "get" : {
+        "operationId" : "listExports",
+        "parameters" : [ {
+          "description" : "Zero-based page index (0..N)",
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "default" : 0,
+            "minimum" : 0,
+            "type" : "integer"
+          }
+        }, {
+          "description" : "The size of the page to be returned",
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "default" : 10,
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        }, {
+          "description" : "Sorting criteria in the format: property,(asc|desc). Default sort order is ascending. Multiple sort criteria are supported.",
+          "in" : "query",
+          "name" : "sort",
+          "required" : false,
+          "schema" : {
+            "default" : [ "createdAt,DESC" ],
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedModelDataExportResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "List your exports, newest first",
+        "tags" : [ "Exports" ]
+      }
+    },
+    "/api/v1/exports/my-data" : {
+      "post" : {
+        "description" : "Everything the API holds about your account, as a ZIP archive: my-data.json, complete and meant for software, my-data.pdf, for a person to read, and your profile photo. Tasks, comments and history of other accounts appear only where you took part, and other people by display name.",
+        "operationId" : "exportMyData",
+        "responses" : {
+          "202" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DataExportResponseDto"
+                }
+              }
+            },
+            "description" : "Queued: follow it at the Location URL. The owner is emailed once the file is ready, or if it could not be produced.",
+            "headers" : {
+              "Location" : {
+                "description" : "URL of the export.",
+                "schema" : {
+                  "format" : "uri-reference",
+                  "type" : "string"
+                },
+                "style" : "simple"
+              }
+            }
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "export-in-progress" : {
+                    "summary" : "Export already in progress",
+                    "value" : {
+                      "status" : 409,
+                      "title" : "Export already in progress",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#export-in-progress"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Conflict: Export already in progress."
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Export your personal data",
+        "tags" : [ "Exports" ]
+      }
+    },
+    "/api/v1/exports/tasks" : {
+      "post" : {
+        "description" : "Every task matching the filters of the task list, as a CSV file in UTF-8.",
+        "operationId" : "exportTasks",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ExportTasksDto"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "202" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DataExportResponseDto"
+                }
+              }
+            },
+            "description" : "Queued: follow it at the Location URL. The owner is emailed once the file is ready, or if it could not be produced.",
+            "headers" : {
+              "Location" : {
+                "description" : "URL of the export.",
+                "schema" : {
+                  "format" : "uri-reference",
+                  "type" : "string"
+                },
+                "style" : "simple"
+              }
+            }
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "export-in-progress" : {
+                    "summary" : "Export already in progress",
+                    "value" : {
+                      "status" : 409,
+                      "title" : "Export already in progress",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#export-in-progress"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Conflict: Export already in progress."
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Export tasks as CSV",
+        "tags" : [ "Exports" ]
+      }
+    },
+    "/api/v1/exports/users" : {
+      "post" : {
+        "description" : "Every account that is not deleted, with its email and roles, as a CSV file in UTF-8.\n\n**Access:** Requires the ADMIN role.",
+        "operationId" : "exportUsers",
+        "responses" : {
+          "202" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DataExportResponseDto"
+                }
+              }
+            },
+            "description" : "Queued: follow it at the Location URL. The owner is emailed once the file is ready, or if it could not be produced.",
+            "headers" : {
+              "Location" : {
+                "description" : "URL of the export.",
+                "schema" : {
+                  "format" : "uri-reference",
+                  "type" : "string"
+                },
+                "style" : "simple"
+              }
+            }
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "export-in-progress" : {
+                    "summary" : "Export already in progress",
+                    "value" : {
+                      "status" : 409,
+                      "title" : "Export already in progress",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#export-in-progress"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Conflict: Export already in progress."
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Export users as CSV",
+        "tags" : [ "Exports" ]
+      }
+    },
+    "/api/v1/exports/{id}" : {
+      "delete" : {
+        "operationId" : "deleteExport",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "export-in-progress" : {
+                    "summary" : "Export already in progress",
+                    "value" : {
+                      "status" : 409,
+                      "title" : "Export already in progress",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#export-in-progress"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Conflict: Export already in progress."
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Delete one of your exports and its file",
+        "tags" : [ "Exports" ]
+      },
+      "get" : {
+        "operationId" : "getExport",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DataExportResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Get one of your exports, with a download link once it is completed",
+        "tags" : [ "Exports" ]
+      }
+    },
     "/api/v1/identicons/{id}" : {
       "get" : {
         "operationId" : "getIdenticon",
@@ -1088,6 +1762,53 @@
         "security" : [ ],
         "summary" : "Get the identicon of a user, the same for every call",
         "tags" : [ "Identicons" ]
+      }
+    },
+    "/api/v1/notifications/stream" : {
+      "get" : {
+        "description" : "The events are the webhook notifications of the caller (`task.assigned`, `task.commented`...), whatever their email settings: each has an `id`, the event name, and as data the webhook payload, `{\"type\", \"timestamp\", \"data\"}`. A comment is sent after 20 seconds without events.\n\nThe stream ends when the access token expires, or after 15 minutes. Reconnect with a fresh token and the `Last-Event-ID` header: the events missed meanwhile follow, or a `resync` event when they are no longer kept, after which reload what you show. An event can come twice: ignore an id you already have. Browsers' `EventSource` cannot send the token: use a client built on `fetch`.",
+        "operationId" : "streamNotifications",
+        "parameters" : [ {
+          "in" : "header",
+          "name" : "Last-Event-ID",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "text/event-stream" : {
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "The stream, open until the token expires."
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "429" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Too many streams are open for this account: close one first."
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Stream your task notifications as server-sent events",
+        "tags" : [ "Notifications" ]
       }
     },
     "/api/v1/tasks" : {
@@ -2988,6 +3709,589 @@
         "summary" : "Replace the notification settings",
         "tags" : [ "Notification settings" ]
       }
+    },
+    "/api/v1/users/{id}/webhooks" : {
+      "get" : {
+        "description" : "**Access:** The user themselves, or the ADMIN role.",
+        "operationId" : "listWebhooks",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/WebhookEndpointResponseDto"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "List the webhooks of an account, oldest first",
+        "tags" : [ "Webhooks" ]
+      },
+      "post" : {
+        "description" : "The response carries the signing secret, shown only once.\n\n**Access:** The user themselves, or the ADMIN role.",
+        "operationId" : "createWebhook",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateWebhookEndpointDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/NewWebhookEndpointDto"
+                }
+              }
+            },
+            "description" : "Created",
+            "headers" : {
+              "Location" : {
+                "description" : "URL of the created resource.",
+                "schema" : {
+                  "format" : "uri-reference",
+                  "type" : "string"
+                }
+              }
+            }
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "webhook-limit-reached" : {
+                    "summary" : "Webhook limit reached",
+                    "value" : {
+                      "status" : 422,
+                      "title" : "Webhook limit reached",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#webhook-limit-reached"
+                    }
+                  },
+                  "webhook-url-not-allowed" : {
+                    "summary" : "Webhook URL not allowed",
+                    "value" : {
+                      "status" : 422,
+                      "title" : "Webhook URL not allowed",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#webhook-url-not-allowed"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Unprocessable Content: Webhook URL not allowed, or Webhook limit reached."
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Declare a webhook",
+        "tags" : [ "Webhooks" ]
+      }
+    },
+    "/api/v1/users/{id}/webhooks/{webhookId}" : {
+      "delete" : {
+        "description" : "**Access:** The user themselves, or the ADMIN role.",
+        "operationId" : "deleteWebhook",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "webhookId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Delete a webhook",
+        "tags" : [ "Webhooks" ]
+      },
+      "get" : {
+        "description" : "**Access:** The user themselves, or the ADMIN role.",
+        "operationId" : "getWebhook",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "webhookId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WebhookEndpointResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Get a webhook",
+        "tags" : [ "Webhooks" ]
+      },
+      "put" : {
+        "description" : "**Access:** The user themselves, or the ADMIN role.",
+        "operationId" : "updateWebhook",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "webhookId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateWebhookEndpointDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WebhookEndpointResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "webhook-url-not-allowed" : {
+                    "summary" : "Webhook URL not allowed",
+                    "value" : {
+                      "status" : 422,
+                      "title" : "Webhook URL not allowed",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#webhook-url-not-allowed"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Unprocessable Content: Webhook URL not allowed."
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Replace a webhook's URL, events and state",
+        "tags" : [ "Webhooks" ]
+      }
+    },
+    "/api/v1/users/{id}/webhooks/{webhookId}/deliveries" : {
+      "get" : {
+        "description" : "**Access:** The user themselves, or the ADMIN role.",
+        "operationId" : "listWebhookDeliveries",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "webhookId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "description" : "Zero-based page index (0..N)",
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "default" : 0,
+            "minimum" : 0,
+            "type" : "integer"
+          }
+        }, {
+          "description" : "The size of the page to be returned",
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "default" : 10,
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        }, {
+          "description" : "Sorting criteria in the format: property,(asc|desc). Default sort order is ascending. Multiple sort criteria are supported.",
+          "in" : "query",
+          "name" : "sort",
+          "required" : false,
+          "schema" : {
+            "default" : [ "createdAt,DESC", "id,DESC" ],
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedModelWebhookDeliveryResponseDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "List the deliveries of a webhook, newest first by default",
+        "tags" : [ "Webhooks" ]
+      }
+    },
+    "/api/v1/users/{id}/webhooks/{webhookId}/deliveries/{deliveryId}/redeliver" : {
+      "post" : {
+        "description" : "The delivery is sent again with the full retry schedule and the same webhook-id, whether it failed or was delivered.\n\n**Access:** The user themselves, or the ADMIN role.",
+        "operationId" : "redeliverWebhookDelivery",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "webhookId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "deliveryId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "202" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WebhookDeliveryResponseDto"
+                }
+              }
+            },
+            "description" : "Accepted"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Start a delivery over",
+        "tags" : [ "Webhooks" ]
+      }
+    },
+    "/api/v1/users/{id}/webhooks/{webhookId}/secret" : {
+      "post" : {
+        "description" : "The previous secret keeps signing deliveries, next to the new one, until previousSecretExpiresAt.\n\n**Access:** The user themselves, or the ADMIN role.",
+        "operationId" : "rotateWebhookSecret",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "webhookId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WebhookSecretDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "422" : {
+            "content" : {
+              "application/problem+json" : {
+                "examples" : {
+                  "webhook-not-signed" : {
+                    "summary" : "Webhook not signed",
+                    "value" : {
+                      "status" : 422,
+                      "title" : "Webhook not signed",
+                      "type" : "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#webhook-not-signed"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description" : "Unprocessable Content: Webhook not signed."
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Replace a webhook's signing secret",
+        "tags" : [ "Webhooks" ]
+      }
+    },
+    "/api/v1/users/{id}/webhooks/{webhookId}/test" : {
+      "post" : {
+        "description" : "Sends a signed webhook.test event at once, even to a paused webhook, and returns how the receiver answered. Nothing is recorded.\n\n**Access:** The user themselves, or the ADMIN role.",
+        "operationId" : "testWebhook",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "webhookId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WebhookTestResultDto"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "$ref" : "#/components/responses/BadRequest"
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "429" : {
+            "$ref" : "#/components/responses/TooManyRequests"
+          },
+          "default" : {
+            "$ref" : "#/components/responses/UnexpectedError"
+          }
+        },
+        "summary" : "Send a test event to a webhook",
+        "tags" : [ "Webhooks" ]
+      }
     }
   },
   "security" : [ {
@@ -3003,14 +4307,23 @@
     "description" : "Which task emails an account receives.",
     "name" : "Notification settings"
   }, {
+    "description" : "HTTPS endpoints of an account that receive its task notifications, signed with the Standard Webhooks scheme.",
+    "name" : "Webhooks"
+  }, {
     "description" : "Sign in, keep a session going, verify an email and reset a password.",
     "name" : "Authentication"
+  }, {
+    "description" : "Files of tasks, users or your personal data, produced in the background and downloadable for a while.",
+    "name" : "Exports"
   }, {
     "description" : "Generated images standing in for a missing or hidden profile photo.",
     "name" : "Identicons"
   }, {
     "description" : "Accounts: sign-up, profile, profile photo, and the admin actions.",
     "name" : "Users"
+  }, {
+    "description" : "The caller's task notifications, as they happen.",
+    "name" : "Notifications"
   }, {
     "description" : "Tasks, their status, assignee and archive.",
     "name" : "Tasks"

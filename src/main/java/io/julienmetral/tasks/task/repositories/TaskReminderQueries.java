@@ -16,9 +16,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class TaskReminderQueries {
 
-    // Any stable number, distinct from the media cleanup's: every instance must use the same one
-    private static final long LOCK_KEY = 2_906_551_730_418_667L;
-
     private final NamedParameterJdbcTemplate jdbc;
 
     public record Reminder(
@@ -28,15 +25,6 @@ public class TaskReminderQueries {
             Instant dueAt,
             UUID recipientId
     ) {
-    }
-
-    /** Transaction-scoped lock, released on commit or rollback; false when another instance holds it. */
-    public boolean tryLock() {
-        return Boolean.TRUE.equals(jdbc.queryForObject(
-                "SELECT pg_try_advisory_xact_lock(:key)",
-                new MapSqlParameterSource("key", LOCK_KEY),
-                Boolean.class
-        ));
     }
 
     /**

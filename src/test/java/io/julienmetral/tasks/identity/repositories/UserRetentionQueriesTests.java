@@ -7,7 +7,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
 
 import java.sql.Timestamp;
 import java.time.Duration;
@@ -17,7 +16,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static io.julienmetral.tasks.support.Transactions.inNewTransaction;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @JdbcSliceTest
@@ -40,9 +38,6 @@ class UserRetentionQueriesTests {
 
     @Autowired
     private JdbcTemplate jdbc;
-
-    @Autowired
-    private PlatformTransactionManager transactionManager;
 
     // Erasure of deleted users
 
@@ -255,13 +250,6 @@ class UserRetentionQueriesTests {
         setDate(deleted, "deleted_at", RECENTLY);
 
         assertThat(queries.usersWarnedBefore(NOW)).doesNotContain(deleted);
-    }
-
-    @Test
-    void lockIsHeldByOneTransactionAtATimeAndReleasedWhenItEnds() {
-        assertThat(inNewTransaction(transactionManager, queries::tryLock)).isTrue();
-        assertThat(queries.tryLock()).isTrue();
-        assertThat(inNewTransaction(transactionManager, queries::tryLock)).isFalse();
     }
 
     private UUID insertUser(Instant createdAt) {

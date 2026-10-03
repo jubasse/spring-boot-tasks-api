@@ -21,10 +21,14 @@ public enum ProblemType {
     REFERENCE_TAKEN(HttpStatus.CONFLICT, "reference-taken", "Task reference already in use"),
     EMAIL_ALREADY_VERIFIED(HttpStatus.CONFLICT, "email-already-verified", "Email already verified"),
     VERSION_CONFLICT(HttpStatus.CONFLICT, "version-conflict", "Changed by another request"),
+    EXPORT_IN_PROGRESS(HttpStatus.CONFLICT, "export-in-progress", "Export already in progress"),
     ASSIGNEE_NOT_ACTIVE(HttpStatus.UNPROCESSABLE_CONTENT, "assignee-not-active", "Assignee not active"),
     INVALID_MENTION(HttpStatus.UNPROCESSABLE_CONTENT, "invalid-mention", "Invalid mention"),
     INFECTED_FILE(HttpStatus.UNPROCESSABLE_CONTENT, "infected-file", "File rejected by the antivirus"),
-    INVALID_IMAGE(HttpStatus.UNPROCESSABLE_CONTENT, "invalid-image", "Invalid image");
+    INVALID_IMAGE(HttpStatus.UNPROCESSABLE_CONTENT, "invalid-image", "Invalid image"),
+    WEBHOOK_URL_NOT_ALLOWED(HttpStatus.UNPROCESSABLE_CONTENT, "webhook-url-not-allowed", "Webhook URL not allowed"),
+    WEBHOOK_LIMIT_REACHED(HttpStatus.UNPROCESSABLE_CONTENT, "webhook-limit-reached", "Webhook limit reached"),
+    WEBHOOK_NOT_SIGNED(HttpStatus.UNPROCESSABLE_CONTENT, "webhook-not-signed", "Webhook not signed");
 
     private static final String DOCUMENT =
             "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md#";

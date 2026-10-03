@@ -1,5 +1,6 @@
 package io.julienmetral.tasks.identity.controllers;
 
+import io.julienmetral.tasks.config.ApiVersioningConfiguration;
 import io.julienmetral.tasks.identity.services.IdenticonGenerator;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -24,7 +25,10 @@ import java.util.UUID;
 @Tag(name = "Identicons", description = "Generated images standing in for a missing or hidden profile photo.")
 public class IdenticonController {
 
-    static final String PATH = "/api/v1/identicons";
+    static final String PATH = "/identicons";
+
+    // The mapping is versioned by ApiVersioningConfiguration; the links handed out must carry the version too
+    private static final String URL_PATH = ApiVersioningConfiguration.CURRENT_PATH + PATH;
 
     private static final MediaType SVG = MediaType.valueOf("image/svg+xml");
 
@@ -34,11 +38,11 @@ public class IdenticonController {
     public static String urlOf(UUID profileId) {
         try {
             return ServletUriComponentsBuilder.fromCurrentContextPath()
-                    .path(PATH + "/{id}")
+                    .path(URL_PATH + "/{id}")
                     .buildAndExpand(profileId)
                     .toUriString();
         } catch (IllegalStateException noCurrentRequest) {
-            return PATH + "/" + profileId;
+            return URL_PATH + "/" + profileId;
         }
     }
 

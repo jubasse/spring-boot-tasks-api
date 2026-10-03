@@ -1,0 +1,34 @@
+databaseChangeLog:
+- changeSet:
+    id: 021-create-scheduler-locks
+    author: julien-metral
+    comment: >
+      ShedLock's rows, one per job that runs on a single instance at a time. Timestamps without time zone on purpose:
+      ShedLock writes timezone('utc', CURRENT_TIMESTAMP), a UTC wall-clock value, and a column with a time zone would
+      read it in each session's zone.
+    changes:
+    - createTable:
+        tableName: scheduler_locks
+        columns:
+        - column:
+            name: name
+            type: VARCHAR(64)
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: scheduler_locksPK
+        - column:
+            name: lock_until
+            type: TIMESTAMP(6) WITHOUT TIME ZONE
+            constraints:
+              nullable: false
+        - column:
+            name: locked_at
+            type: TIMESTAMP(6) WITHOUT TIME ZONE
+            constraints:
+              nullable: false
+        - column:
+            name: locked_by
+            type: VARCHAR(255)
+            constraints:
+              nullable: false

@@ -1,7 +1,5 @@
 package io.julienmetral.tasks.task.repositories;
 
-import io.julienmetral.tasks.identity.repositories.UserRetentionQueries;
-import io.julienmetral.tasks.media.repositories.MediaCleanupQueries;
 import io.julienmetral.tasks.support.JdbcSliceTest;
 import io.julienmetral.tasks.task.entities.TaskStatus;
 import io.julienmetral.tasks.task.repositories.TaskReminderQueries.Reminder;
@@ -10,7 +8,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
 
 import java.sql.Timestamp;
 import java.time.Duration;
@@ -18,7 +15,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
-import static io.julienmetral.tasks.support.Transactions.inNewTransaction;
 import static io.julienmetral.tasks.task.entities.TaskReminderKind.DUE_SOON;
 import static io.julienmetral.tasks.task.entities.TaskReminderKind.OVERDUE;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,16 +34,7 @@ class TaskReminderQueriesTests {
     private TaskReminderQueries queries;
 
     @Autowired
-    private MediaCleanupQueries mediaCleanupQueries;
-
-    @Autowired
-    private UserRetentionQueries userRetentionQueries;
-
-    @Autowired
     private JdbcTemplate jdbc;
-
-    @Autowired
-    private PlatformTransactionManager transactionManager;
 
     @Test
     void recordingAReminderReturnsItAndStoresItAsSent() {
@@ -179,23 +166,6 @@ class TaskReminderQueriesTests {
         assertThat(taskIds(dueSoonAt(NOW)))
                 .filteredOn(mine::contains)
                 .containsExactly(earlier, laterA, laterB);
-    }
-
-    @Test
-    void lockIsHeldByOneTransactionAtATimeAndReleasedWhenItEnds() {
-        assertThat(inNewTransaction(transactionManager, queries::tryLock)).isTrue();
-        assertThat(queries.tryLock()).isTrue();
-        assertThat(inNewTransaction(transactionManager, queries::tryLock)).isFalse();
-    }
-
-    @Test
-    void lockDoesNotBlockTheMediaCleanupOrTheUserRetention() {
-        // The reminders run every 15 minutes, so also at 03:30 and 04:00 when the media cleanup and the retention
-        // start: with a shared key, one of them would skip its run
-        assertThat(queries.tryLock()).isTrue();
-
-        assertThat(inNewTransaction(transactionManager, mediaCleanupQueries::tryLock)).isTrue();
-        assertThat(inNewTransaction(transactionManager, userRetentionQueries::tryLock)).isTrue();
     }
 
     private List<Reminder> dueSoonAt(Instant now) {

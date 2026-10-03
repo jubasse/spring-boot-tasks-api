@@ -29,7 +29,7 @@ import java.net.URI;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/tasks")
+@RequestMapping("/tasks")
 @RequiredArgsConstructor
 @Tag(name = "Tasks", description = "Tasks, their status, assignee and archive.")
 public class TaskController {

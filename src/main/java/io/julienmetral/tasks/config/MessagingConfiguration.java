@@ -1,8 +1,10 @@
 package io.julienmetral.tasks.config;
 
+import io.julienmetral.tasks.export.messaging.ExportQueues;
 import io.julienmetral.tasks.identity.messaging.AvatarQueues;
 import io.julienmetral.tasks.mail.MailQueues;
 import io.julienmetral.tasks.messaging.services.DeadLetterQueueMetrics;
+import io.julienmetral.tasks.notification.webhook.WebhookQueues;
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
@@ -32,13 +34,17 @@ public class MessagingConfiguration {
         return new JacksonJsonMessageConverter(
                 jsonMapper,
                 "io.julienmetral.tasks.mail",
-                "io.julienmetral.tasks.identity.messaging"
+                "io.julienmetral.tasks.identity.messaging",
+                "io.julienmetral.tasks.notification.webhook",
+                "io.julienmetral.tasks.realtime.messaging",
+                "io.julienmetral.tasks.export.messaging"
         );
     }
 
     @Bean
     DeadLetterQueueMetrics deadLetterQueueMetrics(AmqpAdmin amqpAdmin) {
-        return new DeadLetterQueueMetrics(amqpAdmin, List.of(MailQueues.DEAD_LETTER, AvatarQueues.DEAD_LETTER));
+        return new DeadLetterQueueMetrics(amqpAdmin, List.of(
+                MailQueues.DEAD_LETTER, AvatarQueues.DEAD_LETTER, WebhookQueues.DEAD_LETTER, ExportQueues.DEAD_LETTER));
     }
 
     /**

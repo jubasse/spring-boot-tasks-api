@@ -28,15 +28,11 @@ public class TaskReminderService {
      * Publishes {@link TaskDueSoon} for open tasks due within the lead time and {@link TaskOverdue} for those that
      * passed their due date within the lookback, each once per due date and assignee. The sent reminders are
      * recorded in the same transaction, and the emails go after commit: a failed run sends nothing and the next one
-     * retries.
+     * retries. {@link TaskReminderJob}'s scheduler lock keeps it to one instance at a time; a second run would only
+     * find the reminders already recorded.
      */
     @Transactional
     public TaskReminderReport sendDueReminders() {
-        // Several instances may run the schedule: only the one holding the lock works
-        if (!queries.tryLock()) {
-            return TaskReminderReport.skippedRun();
-        }
-
         Instant now = clock.instant();
 
         List<Reminder> dueSoon = queries.recordReminders(
@@ -51,6 +47,6 @@ public class TaskReminderService {
                 reminder.taskId(), reminder.reference(), reminder.title(), reminder.dueAt(), reminder.recipientId()
         )));
 
-        return new TaskReminderReport(false, dueSoon.size(), overdue.size());
+        return new TaskReminderReport(dueSoon.size(), overdue.size());
     }
 }

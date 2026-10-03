@@ -41,7 +41,7 @@ services:
 
   # Message broker for background work (emails); management UI on http://localhost:15672
   rabbitmq:
-    image: rabbitmq:4.2.9-management
+    image: rabbitmq:4.3.6-management
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-tasks}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-tasks-dev}

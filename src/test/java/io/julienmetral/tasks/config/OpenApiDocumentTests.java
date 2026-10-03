@@ -40,7 +40,13 @@ class OpenApiDocumentTests {
 
     private static final String PROBLEM_JSON = "application/problem+json";
 
-    private static final String TASKS = "/api/v1/tasks";
+    // The paths SecurityConfiguration reserves to active accounts, written as it writes them
+    private static final List<String> ACTIVE_ACCOUNT_PATTERNS =
+            List.of("/api/*/tasks/**", "/api/*/notifications/**", "/api/*/exports/**");
+
+    private static final String NOTIFICATION_STREAM = "/api/v1/notifications/stream";
+
+    private static final String EXPORTS = "/api/v1/exports";
 
     private static final String IDENTICONS = "/api/v1/identicons";
 
@@ -102,10 +108,21 @@ class OpenApiDocumentTests {
     }
 
     @Test
-    void everyTaskOperationDocumentsTheForbiddenResponseOfAnInactiveAccount() {
-        assertThat(operations(operation -> operation.path().startsWith(TASKS))).isNotEmpty().allSatisfy(operation ->
+    void everyOperationReservedToActiveAccountsDocumentsTheForbiddenResponse() {
+        List<Operation> reserved = operations(OpenApiDocumentTests::isReservedToActiveAccounts);
+
+        assertThat(reserved).extracting(Operation::path).contains("/api/v1/tasks", NOTIFICATION_STREAM, EXPORTS);
+        assertThat(reserved).allSatisfy(operation ->
                 assertThat(responseReferenceOf(operation, "403")).as("403 of %s", operation)
                         .isEqualTo(responseReference(FORBIDDEN)));
+    }
+
+    @Test
+    void notificationStreamDocumentsTheForbiddenResponseButNoValidationError() {
+        Operation stream = operations(operation -> operation.path().equals(NOTIFICATION_STREAM)).getFirst();
+
+        assertThat(stream.node().path("parameters")).isNotEmpty();
+        assertThat(stream.responses().propertyNames()).contains("403").doesNotContain("400");
     }
 
     // Matched as SecurityConfiguration matches them, not as PathDocumentation does, so that the two cannot share a bug
@@ -156,9 +173,9 @@ class OpenApiDocumentTests {
     }
 
     @Test
-    void everyOperationTakingInputDocumentsAValidationError() {
-        List<Operation> takingInput = operations(operation ->
-                !operation.node().path("parameters").isEmpty() || operation.node().has("requestBody"));
+    void everyOperationTakingInputThatCanBeInvalidDocumentsAValidationError() {
+        List<Operation> takingInput = operations(operation -> operation.node().has("requestBody")
+                || operation.node().path("parameters").valueStream().anyMatch(parameter -> !acceptsAnyValue(parameter)));
 
         assertThat(takingInput).isNotEmpty().allSatisfy(operation ->
                 assertThat(examplesOf(operation, "400")).as("400 examples of %s", operation)
@@ -313,6 +330,23 @@ class OpenApiDocumentTests {
 
     private static boolean isError(String code) {
         return code.startsWith("4") || code.startsWith("5") || code.equals("default");
+    }
+
+    // An optional header of plain text, such as Last-Event-ID: no value of it is refused
+    private static boolean acceptsAnyValue(JsonNode parameter) {
+        JsonNode schema = parameter.path("schema");
+
+        return parameter.path("in").asString("").equals("header")
+                && !parameter.path("required").asBoolean(false)
+                && schema.path("type").asString("").equals("string")
+                && !schema.has("format")
+                && !schema.has("enum")
+                && !schema.has("pattern");
+    }
+
+    private static boolean isReservedToActiveAccounts(Operation operation) {
+        return ACTIVE_ACCOUNT_PATTERNS.stream()
+                .anyMatch(pattern -> PathPatternRequestMatcher.pathPattern(pattern).matches(operation.sampleRequest()));
     }
 
     private static boolean matches(PublicEndpoints.Endpoint endpoint, Operation operation) {

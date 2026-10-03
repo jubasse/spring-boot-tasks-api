@@ -25,7 +25,7 @@ Only accounts that are enabled and have a verified email address can work on tas
    cp .env.example .env
    ```
 
-2. Generate a signing key for the access tokens and put it in `.env` as `JWT_SECRET`:
+2. Generate two keys and put them in `.env`: one as `JWT_SECRET`, which signs the access tokens, and another as `WEBHOOK_ENCRYPTION_KEY`, which encrypts the webhook secrets. Run this once per key:
 
    ```bash
    openssl rand -base64 32
@@ -99,11 +99,13 @@ The role is part of the access token, so log in again afterwards.
 
 Open http://localhost:8080/swagger-ui.html. Every endpoint is listed with its parameters, responses and errors, and you can call it from the page: sign in with `POST /api/v1/auth/login`, copy the `accessToken`, then paste it in **Authorize**.
 
+Every path starts with the API version, `/api/v1`; a version the API does not support answers 400.
+
 The OpenAPI document behind the page is at http://localhost:8080/v3/api-docs, and a copy is kept in [docs/openapi.json](docs/openapi.json), so a change to the API shows in the diff of its pull request. To generate a client, use that file.
 
 ### Explore every endpoint with Postman
 
-`postman/tasks-api.postman_collection.json` covers every endpoint, with test scripts. Import it into Postman, or run it with newman:
+`postman/tasks-api.postman_collection.json` covers every endpoint, with test scripts, but the notification stream, which never ends, and the task rooms, which are not HTTP (see their sections below). Import it into Postman, or run it with newman:
 
 1. Run the `0. Setup` folder, which signs up a user, an admin and an unverified user:
 
@@ -119,6 +121,181 @@ The collection reads the verification and password reset emails from Mailpit, so
 ### Run without the antivirus
 
 Add `ANTIVIRUS_ENABLED=false` to `.env`. Uploads are then stored without being scanned, and the API logs a warning at startup. Use this only on a development machine.
+
+## Receive task notifications by webhook
+
+Besides email, an account can have its task notifications sent to an HTTPS endpoint of its own, such as an automation service or a chat integration. Each notification is a signed JSON `POST`.
+
+### Declare a webhook
+
+```bash
+curl -X POST http://localhost:8080/api/v1/users/$USER_ID/webhooks \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"url": "https://hooks.example.com/tasks", "events": ["task.assigned", "task.commented"]}'
+```
+
+The response carries the webhook's signing secret, `whsec_...`. Store it now: no later response shows it again.
+
+- **URL:** HTTPS on the default port, without a user name or password, and resolving to a public address. A refused URL answers 422 `webhook-url-not-allowed`.
+- **Events:** `task.assigned`, `task.unassigned`, `task.cancelled`, `task.deleted`, `task.commented`, `task.mentioned`, `task.due_soon` and `task.overdue`. You never receive an event about your own action, and nothing is sent while your account is disabled or its email is not verified.
+- **Limit:** 5 webhooks per account.
+
+### Send them to Slack
+
+Create an [incoming webhook](https://api.slack.com/messaging/webhooks) in your Slack workspace, then declare its URL with `"kind": "SLACK"`:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/users/$USER_ID/webhooks \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"kind": "SLACK", "url": "https://hooks.slack.com/services/T0123/B0456/abcdef", "events": ["task.assigned", "task.mentioned"]}'
+```
+
+- Each notification arrives as a short message in the webhook's channel, such as "*Alice Martin* assigned you *OPS-142*: Renew the TLS certificate".
+- The URL must start with `https://hooks.slack.com/services/`. It works like a password, so responses show it masked; to keep it in a `PUT`, send the masked value back.
+- Slack messages are not signed, and there is no secret.
+- If Slack reports that the webhook was revoked or its channel deleted or archived, the webhook is disabled.
+
+### Read a notification
+
+```json
+{
+  "type": "task.assigned",
+  "timestamp": "2026-09-28T09:15:02.311Z",
+  "data": {
+    "task": {"id": "0199a3c4-6f1e-7b52-9d0a-2f6e8c1b4a77", "reference": "OPS-142", "title": "Renew the TLS certificate"},
+    "actor": {"id": "0199a3c1-2b7d-7e90-8a41-5c3d9e0f1b26", "displayName": "Alice Martin"}
+  }
+}
+```
+
+`task.cancelled` adds a `reason`, `task.commented` and `task.mentioned` add a `comment` with an `excerpt`, and `task.due_soon` and `task.overdue` add a `dueAt`. For due dates, `actor` is `null`.
+
+### Check the signature
+
+Each request carries three headers, from the [Standard Webhooks](https://www.standardwebhooks.com/) specification: `webhook-id`, `webhook-timestamp` (Unix seconds) and `webhook-signature`. Verify them before trusting the body, with one of the [Standard Webhooks libraries](https://github.com/standard-webhooks/standard-webhooks/tree/main/libraries) and your secret:
+
+```java
+new Webhook("whsec_...").verify(body, headers);
+```
+
+To do it yourself: Base64-decode the secret without its `whsec_` prefix, compute the HMAC-SHA256 of `{webhook-id}.{webhook-timestamp}.{body}`, and compare its Base64 with each `v1,` entry of `webhook-signature`. Refuse a timestamp more than 5 minutes old.
+
+### Answer, and what happens when you cannot
+
+Answer with any 2xx status within 15 seconds. Redirects are not followed.
+
+- **A failure** (another status, no answer in time, no connection) is retried after about 5 seconds, 5 minutes, 30 minutes, 2 hours, 5 hours and 10 hours; a `Retry-After` header you send is honoured. After the last retry, the notification is dropped.
+- **A host that keeps failing:** when half the calls to one host fail within a minute, notifications to that host pause for a minute, then one is sent to test it. Paused notifications do not use up their retries.
+- **410 Gone** stops everything: the webhook is disabled, and no more notifications are sent to it.
+- **Duplicates:** a notification can arrive twice. Its `webhook-id` stays the same on every attempt, so ignore an id you have already processed.
+
+- **A receiver that keeps failing:** when every attempt has failed for 3 days, the webhook is disabled and you get an email. Fix the receiver, then turn the webhook back on.
+
+Each notification and its attempts are listed at `GET /api/v1/users/{id}/webhooks/{webhookId}/deliveries`, newest first, for 30 days. To send one again with a fresh retry schedule, `POST .../deliveries/{deliveryId}/redeliver`; it keeps its `webhook-id`.
+
+### Test a webhook
+
+`POST /api/v1/users/{id}/webhooks/{webhookId}/test` sends a signed `webhook.test` event at once, even to a paused webhook, and answers how your receiver responded:
+
+```json
+{"delivered": false, "statusCode": 500, "error": null, "durationMillis": 184}
+```
+
+When no answer came back, `statusCode` is absent and `error` says why: `Timeout`, `ConnectionFailed` or `DestinationNotAllowed`. You can send 10 test events per hour.
+
+### Pause, change or rotate
+
+- `PUT /api/v1/users/{id}/webhooks/{webhookId}` replaces the URL and events, and pauses (`"enabled": false`) or resumes the webhook, also after a 410 or an automatic disabling.
+- `POST /api/v1/users/{id}/webhooks/{webhookId}/secret` gives a new secret. For the next 24 hours, each request is signed with both the old and the new one, so you can switch without losing any.
+- `DELETE /api/v1/users/{id}/webhooks/{webhookId}` removes it with its delivery history.
+
+### Receive them on your machine
+
+In development, set `WEBHOOK_REQUIRE_HTTPS=false` and `OUTBOUND_HTTP_ALLOWED_ADDRESSES=127.0.0.1/32` in `.env`, then declare a URL such as `http://127.0.0.1:9090/hooks`.
+
+## Receive task notifications as they happen
+
+A client that is open, such as a web page, can receive the same notifications as the webhooks while they happen, from a stream of [server-sent events](https://html.spec.whatwg.org/multipage/server-sent-events.html):
+
+```bash
+curl -N http://localhost:8080/api/v1/notifications/stream -H "Authorization: Bearer $TOKEN"
+```
+
+```text
+retry:4211
+
+id:01a0ebb0-1916-73c6-a899-2801bd717d66
+event:task.assigned
+data:{"type":"task.assigned","timestamp":"2026-09-29T05:43:01.651Z","data":{"task":{...},"actor":{...}}}
+```
+
+- **Events:** every notification of the account, whatever its email settings, with the webhook payload as data (see Read a notification). You never receive your own actions, and the stream needs an active account (verified email, not disabled); disabling the account closes it.
+- **Reconnecting:** the stream ends when the access token expires, after 15 minutes at most. Reconnect with a fresh token and the `Last-Event-ID` header set to the last `id` received: the events missed meanwhile come first. If they are no longer kept (5 minutes), a `resync` event says to reload what you show. An event may come twice: ignore an `id` you already have.
+- **Browsers:** `EventSource` cannot send the `Authorization` header. Use a client built on `fetch`, such as the `eventsource` package with its `fetch` option, which sends the header and `Last-Event-ID`.
+- **Limit:** 5 open streams per account on each instance; one more answers 429.
+- **Behind a proxy:** turn response buffering off for this path (the API sends `X-Accel-Buffering: no` for nginx), and keep read timeouts above 20 seconds: an idle stream sends a comment line every 20 seconds.
+
+## Follow a task live
+
+A page that shows a task can follow its changes over a WebSocket, with the [STOMP](https://stomp.github.io/) protocol: every change made through the API, by anyone, comes as a message in the task's room.
+
+1. Open a WebSocket to `ws://localhost:8080/ws` (`wss://` in production), with the `v12.stomp` subprotocol.
+2. Send a `CONNECT` frame with an `Authorization: Bearer <access token>` header: browsers cannot add headers to the WebSocket request itself.
+3. Subscribe to `/topic/tasks/<task id>`.
+
+With [@stomp/stompjs](https://github.com/stomp-js/stompjs):
+
+```js
+const client = new Client({
+  brokerURL: "wss://tasks.example.com/ws",
+  beforeConnect: async () => { client.connectHeaders = { Authorization: `Bearer ${await freshAccessToken()}` }; },
+  onConnect: () => client.subscribe(`/topic/tasks/${taskId}`, (message) => {
+    const event = JSON.parse(message.body);   // {"taskId", "eventId", "type", "actorId", "occurredAt"}
+    reloadTask(taskId);
+  }),
+});
+client.activate();
+```
+
+- **Messages:** `type` is the history event (`UPDATED`, `STATUS_CHANGED`, `COMMENT_ADDED`...), or `DELETED` when the task is deleted. A message does not carry the new state: read the task again, and its history (`GET /api/v1/tasks/{id}/events`) for the details. An `event-id` header identifies the message: ignore one you already have.
+- **Access:** an active account, as for the task endpoints. A refused `CONNECT` or `SUBSCRIBE` answers an `ERROR` frame with the reason, then the connection closes.
+- **Sessions:** the connection closes when the access token expires, or as soon as the account is disabled or deleted. `beforeConnect` above reconnects with a fresh token. Changes made while disconnected are not replayed: reload the task after reconnecting.
+- **Other origins:** a page served from another origin needs it in `REALTIME_ALLOWED_ORIGINS` (patterns such as `https://*.example.com`); by default only the API's own origin may connect.
+- **Behind a proxy:** forward the WebSocket upgrade headers on `/ws`, and keep idle timeouts above 10 seconds: both sides send heartbeats every 10 seconds.
+
+## Export data
+
+Tasks and, for an admin, users can be exported as CSV files, and every account can export its own personal data. An export runs in the background: the request returns at once, and an email tells you when the file is ready.
+
+```bash
+curl -i -X POST http://localhost:8080/api/v1/exports/tasks \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"status": "IN_PROGRESS", "archived": false}'
+```
+
+The answer is `202 Accepted`, with the export in the body and its URL in the `Location` header. Follow it until its `status` is `COMPLETED`:
+
+```bash
+curl http://localhost:8080/api/v1/exports/$EXPORT_ID -H "Authorization: Bearer $TOKEN"
+```
+
+- **Download:** a completed export carries a `downloadUrl`, valid a few minutes; ask for the export again to get a new one. The file stays available 7 days, then its `status` becomes `EXPIRED`.
+- **Kinds:** `POST /api/v1/exports/tasks` takes the filters of the task list (`status`, `assigneeId`, `archived`), for any active account. `POST /api/v1/exports/users` lists every account with its email and roles, for admins only. `POST /api/v1/exports/my-data` exports the caller's personal data (see below).
+- **One at a time:** while an export is queued or running, asking for another of the same kind answers 409 `export-in-progress`.
+- **Your exports only:** `GET /api/v1/exports` lists yours, and `DELETE /api/v1/exports/{id}` deletes one with its file. Another account's export answers 404.
+- **Files:** UTF-8 with a byte order mark, so that Excel reads accents; comma-separated, every value quoted, dates in UTC (ISO 8601). A text that a spreadsheet would run as a formula starts with an apostrophe.
+
+### Export your personal data
+
+`POST /api/v1/exports/my-data` produces a ZIP archive of everything the API holds about your account, as the GDPR's rights of access and portability (articles 15 and 20) ask:
+
+| File | Content |
+|---|---|
+| `my-data.json` | Everything, for software: your account, your sessions (dates only), email notification settings, webhooks and their recent deliveries, the tasks you created or are assigned to (deleted ones included, with their deletion date), your comments and the mentions of you, the reminders sent to you, the files you attached, what you did on tasks, and your exports. `version` identifies the format |
+| `my-data.pdf` | The same, for a person to read; each section shows its first 1000 rows |
+| `profile-photo.jpg` (or `.png`, `.webp`) | Your profile photo, when you have one |
+
+Other people appear by display name only, never by email. Secrets never appear: no password, no token, no webhook signing secret, and a Slack webhook URL is masked.
 
 ## Commands
 
@@ -145,9 +322,11 @@ The API reads its configuration from `src/main/resources/application.yaml`, whic
 | Variable | Default | Meaning |
 |---|---|---|
 | `JWT_SECRET` | none, required | Base64 key of at least 32 bytes that signs the access tokens |
+| `WEBHOOK_ENCRYPTION_KEY` | none, required | Base64 key of at least 32 bytes that encrypts the webhook signing secrets in the database. Changing it makes the secrets of existing webhooks unreadable |
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | set in `.env.example` | Database of the local PostgreSQL service |
 | `MAIL_FROM` | `no-reply@tasks.local` | Sender address of every email |
 | `EMAIL_VERIFICATION_URL`, `PASSWORD_RESET_URL` | `http://localhost:3000/...` | Front-end pages that the emailed links open, with `?token=...` |
+| `EXPORT_DOWNLOAD_URL` | `http://localhost:3000/exports` | Front-end page that the export ready email opens, with `?id=...` |
 | `STORAGE_DRIVER` | `rustfs` | `rustfs` for the local service, `aws-s3` for Amazon S3 (credentials from the standard AWS variables or an IAM role) |
 | `ANTIVIRUS_ENABLED` | `true` | `false` stores uploads without scanning them |
 | `RATE_LIMIT_ENABLED` | `true` | `false` turns off the request limits on the public endpoints |
@@ -155,8 +334,11 @@ The API reads its configuration from `src/main/resources/application.yaml`, whic
 | `MEDIA_CLEANUP_RETENTION` | `30d` | How long the files of deleted tasks and accounts are kept |
 | `SPRING_RABBITMQ_HOST`, `SPRING_RABBITMQ_USERNAME`, `SPRING_RABBITMQ_PASSWORD` | provided by Docker Compose | RabbitMQ connection outside local development |
 | `MANAGEMENT_PORT` | `8081` | Port of the health and metrics endpoints |
+| `WEBHOOK_REQUIRE_HTTPS` | `true` | `false` accepts plain HTTP webhook URLs on any port, for a receiver on your machine. Use it only in development |
+| `OUTBOUND_HTTP_ALLOWED_ADDRESSES` | empty | Private address ranges, in CIDR notation, that webhooks may reach besides public addresses, such as `127.0.0.1/32` for a receiver on your machine. Keep it empty in production |
+| `REALTIME_ALLOWED_ORIGINS` | empty | Origins of the pages that may open the task rooms' WebSocket, comma-separated patterns such as `https://*.example.com`. Empty allows the API's own origin only |
 | `API_DOCS_ENABLED`, `SWAGGER_UI_ENABLED` | `true`, and `false` under the `prod` profile | `false` stops serving the OpenAPI document and Swagger UI |
-| `IDENTITY_STATUS_CACHE_TTL` | `30s` | How long an account's status is reused before it is read again, from 1 second to 1 minute. With several instances, it is also how long an account disabled on one instance can keep working through the others |
+| `IDENTITY_STATUS_CACHE_TTL` | `30s` | How long an account's status is reused before it is read again, from 1 second to 1 minute. With several instances, the others forget it as soon as RabbitMQ relays the change; while RabbitMQ is down, it is how long an account disabled on one instance can keep working through the others |
 
 `.env.example` lists the other options, and `application.yaml` holds the fixed settings, such as the upload size limits and the schedules of the background jobs.
 
@@ -177,11 +359,13 @@ Required variables:
 | Variable | Meaning | Example |
 |---|---|---|
 | `JWT_SECRET` | Base64 key of at least 32 bytes that signs the access tokens: `openssl rand -base64 32` | |
+| `WEBHOOK_ENCRYPTION_KEY` | Base64 key of at least 32 bytes that encrypts the webhook signing secrets, generated the same way. Keep it: a new key makes the secrets of existing webhooks unreadable | |
 | `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` | PostgreSQL 18 database | `jdbc:postgresql://db.internal:5432/tasks` |
 | `SPRING_RABBITMQ_HOST` | RabbitMQ host. Set `SPRING_RABBITMQ_USERNAME` and `SPRING_RABBITMQ_PASSWORD` too: the default account, `guest`, only connects from the broker's own machine | `rabbitmq.internal` |
 | `MAIL_HOST` | SMTP server. `SPRING_MAIL_USERNAME` and `SPRING_MAIL_PASSWORD` hold its credentials | `smtp.example.com` |
 | `MAIL_FROM` | Sender address of every email | `no-reply@example.com` |
 | `EMAIL_VERIFICATION_URL`, `PASSWORD_RESET_URL` | Front-end pages that the emailed links open | `https://app.example.com/verify-email` |
+| `EXPORT_DOWNLOAD_URL` | Front-end page that the export ready email opens | `https://app.example.com/exports` |
 | `S3_BUCKET` | Bucket of the uploaded files. `AWS_REGION` (default `eu-west-3`) and the standard AWS credentials, variables or IAM role, give access to it | `tasks-media` |
 | `CLAMAV_HOST` | Host of the ClamAV daemon, on `CLAMAV_PORT` (default `3310`) | `clamav.internal` |
 
@@ -225,7 +409,7 @@ gh attestation verify oci://ghcr.io/jubasse/spring-boot-tasks-api:0.4.0 -R jubas
 
 ### Run the production image locally
 
-`compose.production.yaml` runs the image as a production platform would: `prod` profile, read-only file system, no Linux capabilities, 1 GB of memory and 2 CPUs. It starts its own copy of the services of `compose.yaml`, with its own data, next to your development services. It reads `JWT_SECRET` and the other values from your `.env`.
+`compose.production.yaml` runs the image as a production platform would: `prod` profile, read-only file system, no Linux capabilities, 1 GB of memory and 2 CPUs. It starts its own copy of the services of `compose.yaml`, with its own data, next to your development services. It reads `JWT_SECRET`, `WEBHOOK_ENCRYPTION_KEY` and the other values from your `.env`.
 
 ```bash
 docker compose -p tasks-prod -f compose.yaml -f compose.production.yaml up -d --build
@@ -277,6 +461,9 @@ Metrics worth alerting on:
 | `outbox_publish_failures_total` | It increases steadily |
 | `cache_gets_total{cache="userStatus",result=...}` | The share of `hit` falls: every task request reads the account from the database again |
 | `tasks_scheduled_execution_seconds_count{outcome="FAILURE"}` | A background job failed |
+| `shedlock_lock_acquired_total{lock_name=...}` | It did not increase for longer than the job's period (25 hours for a daily job): no instance ran the job, for example because of a stuck lock |
+| `webhook_deliveries_total{outcome="failed"}` | It increases steadily: webhook notifications are being dropped after all their retries |
+| `webhook_circuit_breakers_open` | Above 0 for long: some webhook receivers are down, and notifications to them wait |
 
 ## Architecture
 
@@ -286,7 +473,9 @@ The code lives under `src/main/java/io/julienmetral/tasks`, organized by feature
 |---|---|
 | `identity` | Accounts, login, access and refresh tokens, email verification, password reset, profile photos, personal data retention |
 | `task` | Tasks, their history, attachments, comments and due-date reminders |
-| `notification` | Task emails and each user's notification settings |
+| `notification` | Task emails, webhooks and each user's notification settings |
+| `realtime` | Events relayed to every instance, the notification streams and the live task rooms |
+| `export` | CSV and personal data exports, produced by Spring Batch jobs in the background |
 | `media` | Stored files: type and size checks, antivirus, object storage, download links, cleanup |
 | `mail` | Sending emails, used by every feature |
 | `messaging` | Outbox that saves messages for RabbitMQ with the change that triggers them, and publishes them |
@@ -311,16 +500,33 @@ Work that must not slow down a request, or must survive a failure, goes through 
 |---|---|
 | `mail.send` | Sends the email over SMTP |
 | `avatar.process` | Crops and re-encodes an uploaded profile photo |
+| `webhook.deliver` | Sends a task notification to a webhook endpoint (its retries are scheduled in the database) |
+| `export.run` | Runs the Spring Batch job of an export, one at a time per instance |
 
 A failed message is retried with a growing delay, then moved to the queue's `.dead-letter` queue, where you can inspect it from the RabbitMQ console.
 
-Scheduled jobs run inside the API. Each job takes a PostgreSQL lock first, so only one instance runs it when several are deployed:
+Real-time events go through the same outbox to the `tasks.realtime` exchange, which copies each of them to a queue of every running instance. That queue belongs to its instance and disappears with it, so events are not kept for an instance that is down; clients of the notification stream catch up when they reconnect.
 
-| Job | Default schedule | What it does |
-|---|---|---|
-| Due-date reminders | every 15 minutes | Emails assignees about tasks due within 24 hours or just overdue |
-| Media cleanup | daily at 03:30 | Deletes the files of tasks and accounts deleted more than 30 days ago, and orphan files |
-| Personal data retention | daily at 04:00 | Anonymizes deleted accounts and handles inactive ones |
+Scheduled jobs run inside the API. When several instances are deployed, a job that must run once per schedule first takes its row in the `scheduler_locks` table (ShedLock), and the other instances skip that run. The two pollers run on every instance and share the work instead:
+
+| Job | Default schedule | Runs on | What it does |
+|---|---|---|---|
+| Due-date reminders | every 15 minutes | one instance | Emails assignees about tasks due within 24 hours or just overdue |
+| Media cleanup | daily at 03:30 | one instance | Deletes the files of tasks and accounts deleted more than 30 days ago, and orphan files |
+| Webhook deliveries purge | daily at 03:45 | one instance | Deletes delivery records older than 30 days |
+| Personal data retention | daily at 04:00 | one instance | Anonymizes deleted accounts and handles inactive ones |
+| Export purge | daily at 04:30 | one instance | Deletes the files of exports older than 7 days, then expired exports and Spring Batch history older than 30 days |
+| Export recovery | every 5 minutes | one instance | Queues again the exports of an instance that stopped while running them |
+| Outbox purge | hourly | one instance | Deletes messages published more than 7 days ago |
+| Rate limit purge | hourly, at 20 minutes past | one instance | Deletes expired request counters |
+| Outbox poller | every 5 seconds | every instance | Publishes the messages RabbitMQ could not take right after their commit |
+| Webhook retries | every 30 seconds | every instance | Queues the webhook deliveries due for another attempt |
+
+A lock is released when its job ends, but held at least 30 seconds to 5 minutes, so an instance whose clock is slightly late does not run the job again. If an instance crashes during a job, its lock expires after the job's maximum duration (from 4 minutes to 2 hours). To release a stuck lock earlier, set its `lock_until` to the current time; never delete the row, or the instances that already know it skip the job until they restart:
+
+```sql
+UPDATE scheduler_locks SET lock_until = timezone('utc', now()) WHERE name = 'media-cleanup';
+```
 
 ## Technologies
 
@@ -358,7 +564,7 @@ The label matches only this project's test containers.
 
 ## Troubleshooting
 
-**The API stops at startup with an error about the JWT secret.** `JWT_SECRET` is missing from `.env` or too short. Generate one with `openssl rand -base64 32`, and start the API from the project root so that `.env` is found.
+**The API stops at startup with an error about the JWT secret or `WEBHOOK_ENCRYPTION_KEY`.** The key is missing from `.env` or too short. Generate one with `openssl rand -base64 32`, and start the API from the project root so that `.env` is found.
 
 **The API stops at startup with "Required settings without a value".** It runs the `prod` profile and the settings named in the error have no value. Set their variables (see [Deploy the API](#deploy-the-api)). If this happens on your machine, `SPRING_PROFILES_ACTIVE=prod` is exported in your shell or IDE: remove it.
 

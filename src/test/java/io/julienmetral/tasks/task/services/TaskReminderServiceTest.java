@@ -65,7 +65,6 @@ class TaskReminderServiceTest {
     }
 
     private void stubReminders(List<Reminder> dueSoon, List<Reminder> overdue) {
-        when(queries.tryLock()).thenReturn(true);
         when(queries.recordReminders(TaskReminderKind.DUE_SOON, NOW, DUE_SOON_END, NOW)).thenReturn(dueSoon);
         when(queries.recordReminders(TaskReminderKind.OVERDUE, OVERDUE_START, NOW, NOW)).thenReturn(overdue);
     }
@@ -77,28 +76,13 @@ class TaskReminderServiceTest {
     }
 
     @Test
-    void skipsTheRunWhenAnotherInstanceHoldsTheLock() {
-        when(queries.tryLock()).thenReturn(false);
-
-        TaskReminderReport report = service.sendDueReminders();
-
-        assertThat(report).isEqualTo(TaskReminderReport.skippedRun());
-        assertThat(report.skipped()).isTrue();
-        verify(queries).tryLock();
-        verifyNoMoreInteractions(queries);
-        verifyNoInteractions(eventPublisher);
-    }
-
-    @Test
-    void recordsDueSoonAheadOfNowAndOverdueBehindNowAfterTakingTheLock() {
-        when(queries.tryLock()).thenReturn(true);
+    void recordsDueSoonAheadOfNowAndOverdueBehindNow() {
         when(queries.recordReminders(TaskReminderKind.DUE_SOON, NOW, DUE_SOON_END, NOW)).thenReturn(List.of());
         when(queries.recordReminders(TaskReminderKind.OVERDUE, OVERDUE_START, NOW, NOW)).thenReturn(List.of());
 
         service.sendDueReminders();
 
         InOrder order = inOrder(queries);
-        order.verify(queries).tryLock();
         order.verify(queries).recordReminders(TaskReminderKind.DUE_SOON, NOW, DUE_SOON_END, NOW);
         order.verify(queries).recordReminders(TaskReminderKind.OVERDUE, OVERDUE_START, NOW, NOW);
         verifyNoMoreInteractions(queries);
@@ -107,7 +91,6 @@ class TaskReminderServiceTest {
     @Test
     void windowsFollowTheConfiguredLeadTimeAndLookback() {
         TaskReminderService custom = serviceWith(Duration.ofMinutes(90), Duration.ofDays(2));
-        when(queries.tryLock()).thenReturn(true);
         when(queries.recordReminders(TaskReminderKind.DUE_SOON, NOW, Instant.parse("2026-09-26T11:45:00Z"), NOW))
                 .thenReturn(List.of());
         when(queries.recordReminders(TaskReminderKind.OVERDUE, Instant.parse("2026-09-24T10:15:00Z"), NOW, NOW))
@@ -115,7 +98,7 @@ class TaskReminderServiceTest {
 
         TaskReminderReport report = custom.sendDueReminders();
 
-        assertThat(report).isEqualTo(new TaskReminderReport(false, 0, 0));
+        assertThat(report).isEqualTo(new TaskReminderReport(0, 0));
     }
 
     @Test
@@ -172,7 +155,7 @@ class TaskReminderServiceTest {
 
         TaskReminderReport report = service.sendDueReminders();
 
-        assertThat(report).isEqualTo(new TaskReminderReport(false, 1, 2));
+        assertThat(report).isEqualTo(new TaskReminderReport(1, 2));
         assertThat(publishedEvents(3)).containsExactlyInAnyOrder(
                 new TaskDueSoon(TASK_1, "TASK-1", "Write tests", soon, ALICE),
                 new TaskOverdue(TASK_2, "TASK-2", "Ship it", past, ALICE),
@@ -186,8 +169,7 @@ class TaskReminderServiceTest {
 
         TaskReminderReport report = service.sendDueReminders();
 
-        assertThat(report).isEqualTo(new TaskReminderReport(false, 0, 0));
-        assertThat(report.skipped()).isFalse();
+        assertThat(report).isEqualTo(new TaskReminderReport(0, 0));
         verifyNoInteractions(eventPublisher);
     }
 }
