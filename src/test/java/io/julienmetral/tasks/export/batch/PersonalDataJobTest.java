@@ -163,8 +163,9 @@ class PersonalDataJobTest {
 
         JsonNode json = jsonMapper.readTree(ExportFiles.of(exportId, "my-data.json").toFile());
         assertThat(json.propertyNames()).containsExactly(
-                "format", "version", "exported_at", "account", "notification_settings", "webhooks", "tasks",
-                "comments", "attachments", "history", "exports");
+                "format", "version", "exported_at", "account", "notification_settings", "sessions", "webhooks",
+                "webhook_deliveries", "tasks", "comments", "mentions", "reminders", "attachments", "history",
+                "exports");
         assertThat(json.path("format").asString()).isEqualTo("tasks-api-personal-data");
         assertThat(json.path("version").asInt()).isEqualTo(1);
         assertThat(json.path("exported_at").asString()).isEqualTo("2030-03-04T23:30:00Z");
@@ -174,8 +175,12 @@ class PersonalDataJobTest {
         assertThat(json.path("webhooks").isEmpty()).isTrue();
         assertThat(json.path("tasks").path(0).path("title").asString()).isEqualTo("Été");
         assertThat(json.path("exports").path(0).path("type").asString()).isEqualTo("PERSONAL_DATA");
+        verify(queries).sessions(OWNER_ID);
+        verify(queries).webhookDeliveries(OWNER_ID);
         verify(queries).history(OWNER_ID);
         verify(queries).comments(OWNER_ID);
+        verify(queries).mentions(OWNER_ID);
+        verify(queries).reminders(OWNER_ID);
         verify(queries).attachments(OWNER_ID);
     }
 
