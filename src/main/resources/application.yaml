@@ -117,6 +117,20 @@ management:
 # rate limits comes from X-Forwarded-For; without a proxy, keep none, or clients could pick their own address
 server:
   forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
+# Exports produced by Spring Batch jobs in the background (POST /api/v1/exports/...). The ready email links to
+# download-page-url?id=..., a page of the front end that asks GET /api/v1/exports/{id} for the download link.
+exports:
+  download-page-url: ${EXPORT_DOWNLOAD_URL:http://localhost:3000/exports}
+  retention: 7d
+  history-retention: 30d
+  chunk-size: 500
+  lease: 15m
+  max-attempts: 3
+  purge-enabled: ${EXPORT_PURGE_ENABLED:true}
+  purge-cron: 0 30 4 * * *
+  recovery-enabled: ${EXPORT_RECOVERY_ENABLED:true}
+  recovery-interval: 5m
+  pdf-max-rows-per-section: 1000
 # Endpoints users declare to receive their task notifications. The key encrypts their signing secrets in the
 # database: Base64 of at least 32 bytes (openssl rand -base64 32). Only a development machine turns requireHttps off,
 # with OUTBOUND_HTTP_ALLOWED_ADDRESSES, to reach a local receiver.
@@ -237,6 +251,15 @@ spring:
     host: ${MAIL_HOST:localhost}
     port: ${MAIL_PORT:1025}
 
+  # Jobs start only when an export asks for one; Liquibase creates Batch's tables (changeset 023). Executions are
+  # created at read committed: serializable made concurrent starts fail on Postgres.
+  batch:
+    job:
+      enabled: false
+    jdbc:
+      initialize-schema: never
+      isolation-level-for-create: read-committed
+
   jpa:
     hibernate:
       ddl-auto: validate
@@ -266,3 +289,9 @@ springdoc:
   # A stable output for the committed docs/openapi.json
   writer-with-order-by-keys: true
   writer-with-default-pretty-printer: true
+# Rendering a personal data PDF: openhtmltopdf logs every step at info, and PDFBox warns each time that it falls back
+# to LiberationSans for the base font Symbol, which no page uses (the PDF embeds Noto Sans)
+logging:
+  level:
+    com.openhtmltopdf: warn
+    org.apache.pdfbox.pdmodel.font.PDType1Font: error

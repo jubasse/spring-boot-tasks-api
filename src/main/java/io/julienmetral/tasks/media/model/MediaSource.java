@@ -5,6 +5,9 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 /** Content to store, readable several times (type detection, scan, upload). */
 public interface MediaSource {
@@ -31,6 +34,29 @@ public interface MediaSource {
             @Override
             public InputStream open() throws IOException {
                 return file.getInputStream();
+            }
+        };
+    }
+
+    static MediaSource of(Path file, String filename) {
+        return new MediaSource() {
+            @Override
+            public String filename() {
+                return filename;
+            }
+
+            @Override
+            public long size() {
+                try {
+                    return Files.size(file);
+                } catch (IOException exception) {
+                    throw new UncheckedIOException(exception);
+                }
+            }
+
+            @Override
+            public InputStream open() throws IOException {
+                return Files.newInputStream(file);
             }
         };
     }

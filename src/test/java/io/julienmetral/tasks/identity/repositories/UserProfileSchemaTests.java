@@ -73,7 +73,8 @@ class UserProfileSchemaTests {
             "media, uploaded_by_id, media_uploaded_byFK",
             "refresh_tokens, user_id, refresh_tokens_userFK",
             "email_verification_tokens, user_id, email_verification_tokens_userFK",
-            "password_reset_tokens, user_id, password_reset_tokens_userFK"
+            "password_reset_tokens, user_id, password_reset_tokens_userFK",
+            "data_exports, owner_id, data_exports_ownerFK"
     })
     void referenceToAUserPointsToItsProfile(String table, String column, String constraint) {
         assertThat(foreignKeysFrom(table, column))

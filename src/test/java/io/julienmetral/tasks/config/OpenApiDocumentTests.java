@@ -41,9 +41,12 @@ class OpenApiDocumentTests {
     private static final String PROBLEM_JSON = "application/problem+json";
 
     // The paths SecurityConfiguration reserves to active accounts, written as it writes them
-    private static final List<String> ACTIVE_ACCOUNT_PATTERNS = List.of("/api/*/tasks/**", "/api/*/notifications/**");
+    private static final List<String> ACTIVE_ACCOUNT_PATTERNS =
+            List.of("/api/*/tasks/**", "/api/*/notifications/**", "/api/*/exports/**");
 
     private static final String NOTIFICATION_STREAM = "/api/v1/notifications/stream";
+
+    private static final String EXPORTS = "/api/v1/exports";
 
     private static final String IDENTICONS = "/api/v1/identicons";
 
@@ -108,7 +111,7 @@ class OpenApiDocumentTests {
     void everyOperationReservedToActiveAccountsDocumentsTheForbiddenResponse() {
         List<Operation> reserved = operations(OpenApiDocumentTests::isReservedToActiveAccounts);
 
-        assertThat(reserved).extracting(Operation::path).contains("/api/v1/tasks", NOTIFICATION_STREAM);
+        assertThat(reserved).extracting(Operation::path).contains("/api/v1/tasks", NOTIFICATION_STREAM, EXPORTS);
         assertThat(reserved).allSatisfy(operation ->
                 assertThat(responseReferenceOf(operation, "403")).as("403 of %s", operation)
                         .isEqualTo(responseReference(FORBIDDEN)));

@@ -1,5 +1,6 @@
 package io.julienmetral.tasks.config;
 
+import io.julienmetral.tasks.export.messaging.DataExportRequested;
 import io.julienmetral.tasks.identity.messaging.AvatarUploaded;
 import io.julienmetral.tasks.mail.MailMessage;
 import io.julienmetral.tasks.realtime.messaging.AccountStatusChanged;
@@ -114,6 +115,16 @@ class MessagingConfigurationTest {
         receivedByListenerOf(AvatarUploaded.class, message);
 
         assertThat(converter.fromMessage(message)).isEqualTo(AVATAR_UPLOADED);
+    }
+
+    @Test
+    void dataExportRequestedRoundTripsThroughItsTypeHeader() {
+        DataExportRequested request = new DataExportRequested(UUID.fromString("00000000-0000-0000-0000-0000000000e1"));
+        Message message = converter.toMessage(request, new MessageProperties());
+
+        assertThat(message.getMessageProperties().<String>getHeader(TYPE_ID_HEADER))
+                .isEqualTo(DataExportRequested.class.getName());
+        assertThat(converter.fromMessage(message)).isEqualTo(request);
     }
 
     @Test

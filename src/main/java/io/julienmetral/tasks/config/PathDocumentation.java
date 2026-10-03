@@ -38,7 +38,8 @@ class PathDocumentation implements OpenApiCustomizer {
     }
 
     // The paths SecurityConfiguration reserves to active accounts
-    private static final List<String> ACTIVE_ACCOUNT_PATHS = List.of("/api/v1/tasks", "/api/v1/notifications");
+    private static final List<String> ACTIVE_ACCOUNT_PATHS =
+            List.of("/api/v1/tasks", "/api/v1/notifications", "/api/v1/exports");
 
     // An identicon exists for every id, so an unknown one is not a 404
     private static final String IDENTICONS = "/api/v1/identicons";

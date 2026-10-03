@@ -117,7 +117,7 @@ public class OpenApiConfiguration {
                         "WWW-Authenticate",
                         "Bearer, with the reason of the refusal."))
                 .addResponses(FORBIDDEN, withoutBody(
-                        "The account may not do this. Task and notification operations need an active account "
+                        "The account may not do this. Task, notification and export operations need an active account "
                                 + "(verified email, not disabled); other rules are in the operation's description.",
                         "WWW-Authenticate",
                         "Bearer error=\"insufficient_scope\"."))

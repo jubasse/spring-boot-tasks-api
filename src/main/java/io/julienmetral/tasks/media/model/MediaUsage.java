@@ -38,6 +38,12 @@ public enum MediaUsage {
             "application/vnd.openxmlformats-officedocument.presentationml.presentation",
             "application/vnd.oasis.opendocument.presentation",
             "application/zip"
+    )),
+
+    // Files the application writes itself (see MediaService.storeGenerated), never uploaded
+    EXPORT(Set.of(
+            "text/csv",
+            "application/zip"
     ));
 
     private final Set<String> allowedContentTypes;

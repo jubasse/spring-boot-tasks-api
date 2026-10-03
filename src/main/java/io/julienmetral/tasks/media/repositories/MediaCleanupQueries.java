@@ -72,6 +72,7 @@ public class MediaCleanupQueries {
                           AND NOT EXISTS (SELECT 1 FROM user_profiles p WHERE p.avatar_media_id = m.id)
                           AND NOT EXISTS (SELECT 1 FROM user_profiles p WHERE p.pending_avatar_media_id = m.id)
                           AND NOT EXISTS (SELECT 1 FROM task_attachments ta WHERE ta.media_id = m.id)
+                          AND NOT EXISTS (SELECT 1 FROM data_exports e WHERE e.media_id = m.id)
                         RETURNING m.storage_key
                         """,
                 cutoff(cutoff),

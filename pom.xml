@@ -38,14 +38,16 @@
 		<mockwebserver.version>5.5.0</mockwebserver.version>
 		<standardwebhooks.version>1.2.0</standardwebhooks.version>
 		<shedlock.version>7.10.1</shedlock.version>
+		<openhtmltopdf.version>1.1.87</openhtmltopdf.version>
 		<!-- Above the versions Spring Boot 4.1.1 manages, which have fixed vulnerabilities: Tomcat 11.0.24 three critical
 		     (GHSA-9xv2-5v5q-p794, GHSA-gcx9-497g-6cp6, GHSA-h3x4-894j-xpx5), amqp-client 5.30.0 four high, Jackson 3.1.5
-		     and 2.21.5 (jackson-databind, which Hibernate brings for JSON columns) one high (GHSA-q4xh-88c3-wmh7). Remove
-		     each once Spring Boot manages that version or later. -->
+		     and 2.21.5 (Hibernate brings 2 for JSON columns) five high in jackson-databind and jackson-core
+		     (GHSA-q4xh-88c3-wmh7, GHSA-cxp5-3px4-pw24, GHSA-wv8q-qhhj-9h54, GHSA-7hhh-6rmp-j9qf, GHSA-p6pp-m3f8-5c89).
+		     Remove each once Spring Boot manages that version or later. -->
 		<tomcat.version>11.0.26</tomcat.version>
 		<rabbit-amqp-client.version>5.36.0</rabbit-amqp-client.version>
-		<jackson-bom.version>3.1.6</jackson-bom.version>
-		<jackson-2-bom.version>2.21.6</jackson-2-bom.version>
+		<jackson-bom.version>3.1.7</jackson-bom.version>
+		<jackson-2-bom.version>2.21.7</jackson-2-bom.version>
 	</properties>
 	<dependencyManagement>
 		<dependencies>
@@ -78,6 +80,27 @@
 		<dependency>
 			<groupId>org.springframework.security</groupId>
 			<artifactId>spring-security-messaging</artifactId>
+		</dependency>
+		<!-- Exports run as Spring Batch jobs, with their metadata in Postgres -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-batch-jdbc</artifactId>
+		</dependency>
+		<!-- The PDF of a personal data export: a Thymeleaf template (plain, no Spring MVC view) rendered by
+		     openhtmltopdf, the maintained fork (LGPL 2.1 or later, on PDFBox 3) -->
+		<dependency>
+			<groupId>org.thymeleaf</groupId>
+			<artifactId>thymeleaf</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>io.github.openhtmltopdf</groupId>
+			<artifactId>openhtmltopdf-pdfbox</artifactId>
+			<version>${openhtmltopdf.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>io.github.openhtmltopdf</groupId>
+			<artifactId>openhtmltopdf-slf4j</artifactId>
+			<version>${openhtmltopdf.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -276,6 +299,17 @@
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-batch-jdbc-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-csv</artifactId>
+			<version>1.14.1</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc-test</artifactId>
 			<scope>test</scope>
 		</dependency>
@@ -403,6 +437,8 @@
 					<searchPath>${project.basedir}/src/main/resources</searchPath>
 					<propertyFile>liquibase.properties</propertyFile>
 					<changeLogFile>db/changelog/db.changelog-master.yaml</changeLogFile>
+					<!-- Spring Batch's tables have no entity: without this, the diff proposes to drop them -->
+					<diffExcludeObjects>table:batch_.*, sequence:batch_.*</diffExcludeObjects>
 				</configuration>
 				<dependencies>
 					<dependency>

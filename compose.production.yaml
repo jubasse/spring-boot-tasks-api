@@ -37,6 +37,7 @@ services:
       MAIL_FROM: no-reply@tasks.local
       EMAIL_VERIFICATION_URL: http://localhost:3000/verify-email
       PASSWORD_RESET_URL: http://localhost:3000/reset-password
+      EXPORT_DOWNLOAD_URL: http://localhost:3000/exports
       STORAGE_DRIVER: rustfs
       S3_BUCKET: tasks-media
       S3_ENDPOINT: http://rustfs:9000

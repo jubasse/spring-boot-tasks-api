@@ -183,9 +183,9 @@ public class SecurityConfiguration {
                             .permitAll()
                             .requestMatchers(HttpMethod.GET, WEBSOCKET)
                             .permitAll()
-                            // Tasks and their notifications are reserved to enabled users with a verified email,
-                            // whatever the API version
-                            .requestMatchers("/api/*/tasks/**", "/api/*/notifications/**")
+                            // Tasks, their notifications and exports are reserved to enabled users with a verified
+                            // email, whatever the API version
+                            .requestMatchers("/api/*/tasks/**", "/api/*/notifications/**", "/api/*/exports/**")
                             .access(activeUserAuthorizationManager)
                             .anyRequest()
                             .authenticated();

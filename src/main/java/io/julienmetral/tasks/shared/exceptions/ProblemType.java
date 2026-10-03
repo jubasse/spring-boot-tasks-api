@@ -21,6 +21,7 @@ public enum ProblemType {
     REFERENCE_TAKEN(HttpStatus.CONFLICT, "reference-taken", "Task reference already in use"),
     EMAIL_ALREADY_VERIFIED(HttpStatus.CONFLICT, "email-already-verified", "Email already verified"),
     VERSION_CONFLICT(HttpStatus.CONFLICT, "version-conflict", "Changed by another request"),
+    EXPORT_IN_PROGRESS(HttpStatus.CONFLICT, "export-in-progress", "Export already in progress"),
     ASSIGNEE_NOT_ACTIVE(HttpStatus.UNPROCESSABLE_CONTENT, "assignee-not-active", "Assignee not active"),
     INVALID_MENTION(HttpStatus.UNPROCESSABLE_CONTENT, "invalid-mention", "Invalid mention"),
     INFECTED_FILE(HttpStatus.UNPROCESSABLE_CONTENT, "infected-file", "File rejected by the antivirus"),

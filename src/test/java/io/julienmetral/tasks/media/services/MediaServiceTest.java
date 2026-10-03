@@ -19,6 +19,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -38,6 +39,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
@@ -788,6 +792,118 @@ class MediaServiceTest {
             order.verify(virusScanner).findThreat(any(InputStream.class));
             order.verify(objectStorage).put(anyString(), any(InputStream.class), anyLong(), eq("image/jpeg"));
             verifyNoMoreInteractions(virusScanner);
+        }
+    }
+
+    @Nested
+    class StoreGenerated {
+
+        private static final byte[] CSV = "\uFEFF\"id\",\"title\"\r\n\"1\",\"'=1+1\"\r\n".getBytes(UTF_8);
+
+        @TempDir
+        Path directory;
+
+        private Path writtenFile() throws IOException {
+            return Files.write(directory.resolve("export.csv"), CSV);
+        }
+
+        @Test
+        void storesTheFileAsWrittenUnderTheExportPrefixWithItsChecksum() throws IOException {
+            savesWhatItIsGiven();
+            UserProfile owner = reference(UPLOADER_ID);
+            when(userProfileRepository.getReferenceById(UPLOADER_ID)).thenReturn(owner);
+            byte[][] uploaded = new byte[1][];
+            doAnswer(invocation -> {
+                uploaded[0] = invocation.<InputStream>getArgument(1).readAllBytes();
+                return null;
+            }).when(objectStorage).put(anyString(), any(InputStream.class), anyLong(), anyString());
+
+            Instant before = Instant.now();
+            Media media = service.storeGenerated(writtenFile(), "tasks-2030-01-01.csv", "text/csv",
+                    MediaUsage.EXPORT, UPLOADER_ID);
+
+            String key = uploadedKey();
+            assertThat(key).startsWith("export/");
+            assertThat(UUID.fromString(key.substring("export/".length()))).isNotNull();
+            verify(objectStorage).put(eq(key), any(InputStream.class), eq((long) CSV.length), eq("text/csv"));
+            assertThat(uploaded[0]).isEqualTo(CSV);
+
+            assertThat(media.getStorageKey()).isEqualTo(key);
+            assertThat(media.getUsage()).isEqualTo(MediaUsage.EXPORT);
+            assertThat(media.getOriginalFilename()).isEqualTo("tasks-2030-01-01.csv");
+            assertThat(media.getContentType()).isEqualTo("text/csv");
+            assertThat(media.getSizeBytes()).isEqualTo(CSV.length);
+            assertThat(media.getSha256()).isEqualTo(sha256Hex(CSV));
+            assertThat(media.getUploadedBy()).isSameAs(owner);
+            assertThat(media.getCreatedAt()).isBetween(before, Instant.now());
+            verify(mediaRepository).save(media);
+        }
+
+        @Test
+        void neitherDetectsTheTypeNorScansTheFile() throws IOException {
+            savesWhatItIsGiven();
+
+            service.storeGenerated(writtenFile(), "users.csv", "text/csv", MediaUsage.EXPORT, null);
+
+            verifyNoInteractions(contentTypeDetector, virusScanner);
+        }
+
+        @Test
+        void withoutOwnerLeavesUploadedByEmpty() throws IOException {
+            savesWhatItIsGiven();
+
+            Media media = service.storeGenerated(writtenFile(), "users.csv", "text/csv", MediaUsage.EXPORT, null);
+
+            assertThat(media.getUploadedBy()).isNull();
+            verifyNoInteractions(userProfileRepository);
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"text/html", "application/pdf", "text/plain", ""})
+        void typeTheUsageDoesNotAllowIsRefusedBeforeAnythingIsStored(String contentType) throws IOException {
+            Path file = writtenFile();
+
+            assertThatThrownBy(() -> service.storeGenerated(file, "export.csv", contentType, MediaUsage.EXPORT,
+                    UPLOADER_ID))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage(contentType + " is not a type of EXPORT");
+
+            verifyNoInteractions(objectStorage, mediaRepository, userProfileRepository);
+            assertThat(synchronizations()).isEmpty();
+        }
+
+        @Test
+        void rollbackDeletesTheStoredFile() throws IOException {
+            savesWhatItIsGiven();
+            service.storeGenerated(writtenFile(), "tasks.csv", "text/csv", MediaUsage.EXPORT, null);
+
+            assertThat(synchronizations()).singleElement()
+                    .satisfies(cleanup -> cleanup.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+
+            String key = uploadedKey();
+            verify(objectStorage).delete(key);
+        }
+
+        @Test
+        void missingFileIsRethrownUncheckedAndNothingIsSaved() {
+            Path missing = directory.resolve("missing.csv");
+
+            assertThatThrownBy(() -> service.storeGenerated(missing, "tasks.csv", "text/csv", MediaUsage.EXPORT,
+                    null))
+                    .isInstanceOf(UncheckedIOException.class)
+                    .hasCauseInstanceOf(NoSuchFileException.class);
+
+            verifyNoInteractions(objectStorage, mediaRepository);
+            assertThat(synchronizations()).isEmpty();
+        }
+
+        @Test
+        void exportUsageIsNeverAcceptedFromAnUpload() {
+            assertThatThrownBy(() -> service.store(file("tasks.csv", CSV), MediaUsage.EXPORT, UPLOADER_ID))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("Exports are written by the application, not uploaded");
+
+            verifyNoInteractions(contentTypeDetector, virusScanner, objectStorage, mediaRepository);
         }
     }
 

@@ -68,6 +68,30 @@ class PathDocumentationTest {
     }
 
     @Test
+    void exportOperationsDocumentTheForbiddenResponseOfAnInactiveAccount() {
+        Operation listExports = operation("listExports");
+        Operation getExport = operation("getExport");
+        OpenAPI openApi = document(new Paths()
+                .addPathItem("/api/v{version}/exports", new PathItem().get(listExports))
+                .addPathItem("/api/v{version}/exports/{id}", new PathItem().get(getExport)));
+
+        documentation.customise(openApi);
+
+        assertThat(listExports.getResponses()).containsKeys("401", "403").doesNotContainKey("404");
+        assertThat(getExport.getResponses()).containsKeys("401", "403", "404");
+    }
+
+    @Test
+    void operationOutsideTheActiveAccountPathsGetsNoForbiddenResponseFromItsPath() {
+        Operation getUser = operation("getUser");
+        OpenAPI openApi = document(new Paths().addPathItem("/api/v{version}/users/{id}", new PathItem().get(getUser)));
+
+        documentation.customise(openApi);
+
+        assertThat(getUser.getResponses()).containsKeys("401", "404").doesNotContainKey("403");
+    }
+
+    @Test
     void publicEndpointIsRecognisedThroughItsPinnedPath() {
         Operation login = operation("login");
         OpenAPI openApi = document(new Paths().addPathItem("/api/v{version}/auth/login", new PathItem().post(login)));
