@@ -30,8 +30,8 @@
 		<java.version>25</java.version>
 		<liquibase.version>5.0.4</liquibase.version>
 		<liquibase-hibernate.version>5.0.4</liquibase-hibernate.version>
-		<aws-sdk.version>2.55.6</aws-sdk.version>
-		<tika.version>4.0.0</tika.version>
+		<aws-sdk.version>2.55.9</aws-sdk.version>
+		<tika.version>4.1.0</tika.version>
 		<twelvemonkeys.version>3.15.2</twelvemonkeys.version>
 		<metadata-extractor.version>2.21.0</metadata-extractor.version>
 		<resilience4j.version>2.4.0</resilience4j.version>
