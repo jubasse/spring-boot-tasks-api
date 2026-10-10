@@ -7,7 +7,7 @@
 - **Problème** : le schéma doit évoluer avec le code, dans le même ordre sur chaque machine et chaque environnement, et les entités doivent lui correspondre.
 - **Quand l'utiliser** : tout projet à base relationnelle qui vit plus longtemps qu'un prototype.
 - **Quand s'en passer** : ne jamais laisser Hibernate créer le schéma hors des tests jetables. `ddl-auto: create` ou `update` ne renomme pas, ne migre pas les données et ne se relit pas.
-- **Dans ce dépôt** : 24 changesets YAML sous `db/changelog/changes/`, inclus par un fichier maître. Hibernate ne fait que valider.
+- **Dans ce dépôt** : 24 fichiers YAML de changesets sous `db/changelog/changes/`, inclus par un fichier maître. Hibernate ne fait que valider.
 - **Prérequis** : guide 12 (mapping). Versions : Spring Boot 4.1, Liquibase 5.0.4 (plugin Maven et `liquibase-hibernate7` 5.0.4), Hibernate 7.4, PostgreSQL 18.
 
 Les façons de faire évoluer un schéma :
@@ -23,7 +23,7 @@ Les façons de faire évoluer un schéma :
 ### Vocabulaire
 
 - **Migration** : un changement versionné du schéma (ou de ses données), appliqué une fois par base.
-- **Changelog** : le fichier qui liste les changesets ; le changelog maître inclut les autres.
+- **Changelog** : le fichier qui liste les changesets. Le changelog maître inclut les autres.
 - **Changeset** : une unité de changement, identifiée par son `id`, son `author` et le chemin de son fichier.
 - **Somme de contrôle** (checksum) : un hash d'un changeset appliqué, gardé pour détecter une modification ultérieure.
 - **Diff** : la comparaison entre deux schémas (ici les entités et une vraie base), qui écrit les changesets manquants.
@@ -35,7 +35,7 @@ Liquibase crée deux tables dans la base :
 - `DATABASECHANGELOG` : une ligne par changeset appliqué (id, auteur, fichier, somme de contrôle).
 - `DATABASECHANGELOGLOCK` : une ligne qui n'autorise qu'une mise à jour Liquibase à la fois. Une autre instance attend (« Waiting for changelog lock.... »).
 
-À chaque passage, un changeset d'identité inconnue est appliqué. Un changeset connu est comparé par somme de contrôle : si elle diffère, quelqu'un l'a modifié, et Liquibase s'arrête avec une erreur (sauf `runOnChange` ou `runAlways`). `includeAll` inclut les fichiers du dossier dans l'ordre alphabétique, d'où le préfixe `NNN-`.
+À chaque passage, Liquibase applique un changeset d'identité inconnue. Il compare un changeset connu par somme de contrôle. Si elle diffère, quelqu'un l'a modifié et Liquibase s'arrête avec une erreur (sauf `runOnChange` ou `runAlways`). `includeAll` inclut les fichiers du dossier dans l'ordre alphabétique, d'où le préfixe `NNN-`.
 
 ```
  démarrage
@@ -55,7 +55,7 @@ Liquibase crée deux tables dans la base :
 
 ### Au démarrage de Spring Boot
 
-Avec `spring-boot-starter-liquibase`, Boot lance Liquibase sur la `DataSource` de l'application avant de créer l'`EntityManagerFactory` de JPA. Hibernate, avec `ddl-auto: validate`, vérifie ensuite chaque entité contre le schéma migré : une table ou une colonne manquante, ou un type incompatible, arrête le démarrage. Une entité modifiée sans son changeset échoue donc au premier démarrage, en test aussi.
+Avec `spring-boot-starter-liquibase`, Boot lance Liquibase sur la `DataSource` de l'application avant de créer l'`EntityManagerFactory` de JPA. Hibernate, avec `ddl-auto: validate`, vérifie ensuite chaque entité contre le schéma migré. Une table ou une colonne manquante, ou un type incompatible, arrête le démarrage. Une entité modifiée sans son changeset échoue donc au premier démarrage, en test aussi.
 
 ```
  DataSource
@@ -74,9 +74,9 @@ Avec `spring-boot-starter-liquibase`, Boot lance Liquibase sur la `DataSource` d
 
 ### Écrit à la main ou généré
 
-- **Généré** par `liquibase:diff` (les entités comparées à une base migrée) : types et nullabilité tels qu'Hibernate les attend, mais des ids génériques et des angles morts (voir Concepts avancés).
+- **Généré** par `liquibase:diff` (les entités comparées à une base migrée) : types et nullabilité tels qu'Hibernate les attend, mais ids génériques et angles morts (voir Concepts avancés).
 - **Écrit à la main** : migrations de données, SQL que Liquibase ne sait pas générer, tables sans entité, schéma d'une bibliothèque.
-- Dans les deux cas, le fichier se relit comme du code, et ne bouge plus une fois appliqué.
+- Dans les deux cas, le fichier se relit comme du code et ne bouge plus une fois appliqué.
 
 ## Implémentation avec Spring
 
@@ -166,7 +166,7 @@ databaseChangeLog:
         referencedColumnNames: id
 ```
 
-**Étape 3. Valider le schéma au démarrage.** Hibernate compare les entités à ce que Liquibase a construit, au lieu de modifier le schéma lui-même. Le défaut de `ddl-auto` est `none` avec une vraie base : `validate` doit être écrit.
+**Étape 3. Valider le schéma au démarrage.** Hibernate compare les entités à ce que Liquibase a construit, au lieu de modifier le schéma lui-même. Le défaut de `ddl-auto` est `none` avec une vraie base, donc `validate` doit être écrit.
 
 ```yaml
 spring:
@@ -179,7 +179,7 @@ spring:
 
 ### Générer les changesets depuis les entités
 
-**Étape 4. Configurer le plugin Maven.** `liquibase-hibernate7` permet au plugin de lire les entités comme une « base de référence ». Les tables de Spring Batch n'ont pas d'entité : on les exclut, sinon le diff proposerait de les supprimer.
+**Étape 4. Configurer le plugin Maven.** `liquibase-hibernate7` permet au plugin de lire les entités comme une « base de référence ». Les tables de Spring Batch n'ont pas d'entité. On les exclut, sinon le diff proposerait de les supprimer.
 
 ```xml
 <plugin>
@@ -209,7 +209,7 @@ username=invoices
 driver=org.postgresql.Driver
 ```
 
-**Étape 5. Générer le diff.** On compare les entités compilées à une base qui a déjà toutes les migrations ; le plugin écrit ce qui manque.
+**Étape 5. Générer le diff.** On compare les entités compilées à une base qui a déjà toutes les migrations, et le plugin écrit ce qui manque.
 
 ```bash
 ./mvnw compile                     # le diff lit les entités dans target/classes
@@ -220,10 +220,10 @@ driver=org.postgresql.Driver
 ```
 
 - `hibernate:spring:<paquet>` fait scanner les entités de ce paquet.
-- La stratégie de nommage physique doit produire les noms de Boot (`PhysicalNamingStrategySnakeCaseImpl` en 4.1) : sans elle, Hibernate garde les noms Java en camelCase et toutes les colonnes semblent différentes.
+- La stratégie de nommage physique doit produire les noms de Boot (`PhysicalNamingStrategySnakeCaseImpl` en 4.1). Sans elle, Hibernate garde les noms Java en camelCase et toutes les colonnes semblent différentes.
 - Un conteneur Postgres jetable, migré, convient comme base cible.
 
-**Étape 6. Relire le changeset généré.** Le diff écrit des ids horodatés et un auteur « (generated) », et ne voit pas les contraintes ni les index renommés. Tel que généré :
+**Étape 6. Relire le changeset généré.** Le diff écrit des ids horodatés et un auteur « (generated) ». Il ne voit pas les contraintes ni les index renommés. Tel que généré :
 
 ```yaml
 - changeSet:
@@ -267,7 +267,7 @@ Après relecture :
 - rien de supprimé par surprise (une table sans entité, une clé étrangère après un changement de mapping) ;
 - un `comment` qui dit pourquoi.
 
-**Étape 7. Faire évoluer sans réécrire.** Un changeset appliqué est figé par sa somme de contrôle : une correction ou un changement de données est un nouveau changeset.
+**Étape 7. Faire évoluer sans réécrire.** Un changeset appliqué est figé par sa somme de contrôle. Une correction ou un changement de données est donc un nouveau changeset.
 
 ```yaml
 # 003-backfill-due-at.yaml
@@ -283,7 +283,7 @@ databaseChangeLog:
           WHERE due_at IS NULL
 ```
 
-**Étape 8. Vérifier.** Chaque contexte de test migre une vraie base Postgres (guide 30) et la validation contrôle les entités. Un test de schéma contrôle ce que la validation ne voit pas, comme les noms de contraintes.
+**Étape 8. Vérifier.** Chaque contexte de test migre une vraie base Postgres (guide 30), et la validation contrôle les entités. Un test de schéma contrôle ce que la validation ne voit pas, comme les noms de contraintes.
 
 ```java
 @JdbcTest
@@ -329,14 +329,14 @@ Les propriétés de Spring Boot :
 | `spring.liquibase.drop-first` | `false` | vider le schéma avant : jamais hors d'un poste local |
 | `spring.jpa.hibernate.ddl-auto` | `none` (base réelle) | `validate` : comparer sans modifier |
 
-Limites de cette version : aucun retour arrière n'est écrit ; une mauvaise migration en production se corrige par un nouveau changeset.
+Limites de cette version : aucun retour arrière n'est écrit. Une mauvaise migration en production se corrige par un nouveau changeset.
 
 ## Concepts avancés
 
 ### Sous le capot : ce que le diff ne voit pas
 
-- `liquibase:diff` compare les index et les clés étrangères par table et colonnes, pas par nom : une contrainte ou un index renommé n'est pas signalé (vérifié le 2026-09-27). Une contrainte manquante ou une colonne modifiée, elle, l'est. On vérifie donc les noms à la main, contre la convention.
-- Il lit les entités dans `target/classes` : sans compilation préalable, il compare l'ancien code.
+- `liquibase:diff` compare les index et les clés étrangères par table et colonnes, pas par nom. Une contrainte ou un index renommé n'est pas signalé (vérifié le 2026-09-27), alors qu'une contrainte manquante ou une colonne modifiée l'est. On vérifie donc les noms à la main, contre la convention.
+- Il lit les entités dans `target/classes`. Sans compilation préalable, il compare l'ancien code.
 - Il écrit ce que les entités impliquent, y compris la vision d'Hibernate sur le mapping.
 
 Ce que le mapping fait dire au diff :
@@ -355,18 +355,18 @@ Deux remèdes, selon le propriétaire de la table :
 - Les tables d'une bibliothèque (Spring Batch) : les exclure du diff (`diffExcludeObjects: table:batch_.*, sequence:batch_.*`).
 - Les tables de l'application écrites en SQL seulement (verrous ShedLock, compteurs de rate limit, rappels envoyés) : une entité `@Immutable` en lecture seule les garde dans le modèle d'Hibernate. La validation les contrôle et le diff les laisse tranquilles (guide 12).
 
-Le schéma d'une bibliothèque se copie dans un changeset : une montée de version changerait sinon le script, donc la somme de contrôle (changeset 023, guide 22).
+Le schéma d'une bibliothèque se copie dans un changeset. Sinon, une montée de version changerait le script, donc la somme de contrôle (changeset 023, guide 22).
 
 ### Plusieurs instances
 
-- Si plusieurs instances démarrent ensemble, `DATABASECHANGELOGLOCK` en laisse une appliquer les changesets ; les autres attendent le verrou, puis n'ont plus rien à faire.
-- Un changeset doit rester compatible avec la version encore en marche pendant un déploiement progressif : ajouter une colonne d'abord, l'utiliser à la version suivante, supprimer l'ancienne plus tard.
+- Si plusieurs instances démarrent ensemble, `DATABASECHANGELOGLOCK` en laisse une appliquer les changesets. Les autres attendent le verrou, puis n'ont plus rien à faire.
+- Un changeset doit rester compatible avec la version encore en marche pendant un déploiement progressif : on ajoute une colonne d'abord, on l'utilise à la version suivante, on supprime l'ancienne plus tard.
 
 ### Les tests et une base réutilisée
 
 Chaque contexte d'intégration ou de tranche migre sa base au démarrage. Avec la réutilisation de Testcontainers (guide 30), la base de test garde son `DATABASECHANGELOG` d'un lancement à l'autre, d'une branche à l'autre.
 
-Modifier un changeset appliqué, ou changer de branche pour d'autres migrations, fait échouer le lancement suivant sur une somme de contrôle : on supprime les conteneurs de test et on relance (README, « Tests fail at startup with a Liquibase checksum error »).
+Modifier un changeset appliqué, ou changer de branche pour d'autres migrations, fait échouer le lancement suivant sur une somme de contrôle. On supprime alors les conteneurs de test et on relance (README, « Tests fail at startup with a Liquibase checksum error »).
 
 ## Pièges à éviter
 
@@ -399,7 +399,7 @@ Modifier un changeset appliqué, ou changer de branche pour d'autres migrations,
 
 ## En résumé
 
-**À retenir :** Liquibase applique des changesets numérotés au démarrage et Hibernate ne fait que valider. On génère depuis les entités quand c'est utile, mais on relit chaque fichier, on nomme chaque contrainte à la main, et on ne touche jamais un changeset appliqué.
+**À retenir :** Liquibase applique des changesets numérotés au démarrage, et Hibernate ne fait que valider. On génère depuis les entités quand c'est utile, mais on relit chaque fichier, on nomme chaque contrainte à la main et on ne touche jamais un changeset appliqué.
 
 - [ ] `spring-boot-starter-liquibase`, un changelog maître avec `includeAll`
 - [ ] Fichiers `NNN-nom.yaml`, `id` lisible, `author` réel, `comment` qui dit pourquoi
@@ -415,7 +415,7 @@ Modifier un changeset appliqué, ou changer de branche pour d'autres migrations,
 
 | Fichier | Rôle |
 |---|---|
-| [`db.changelog-master.yaml`][master] | un seul `includeAll` sur `db/changelog/changes` (24 changesets, de `001` à `024`) |
+| [`db.changelog-master.yaml`][master] | un seul `includeAll` sur `db/changelog/changes` (24 fichiers, de `001` à `024`) |
 | [`001-users.yaml`][users] | généré depuis les entités : ids `1790251247142-N`, auteur `julien-metral (generated)`, gardés tels quels |
 | [`016-user-profiles.yaml`][profiles] | migration de données et de clés étrangères, puis un second changeset correctif |
 | [`021-scheduler-locks.yaml`][locks] | table écrite par ShedLock seul, colonnes sans fuseau (guide 21) |
@@ -446,8 +446,8 @@ Ce qui est propre au dépôt :
 
 - La convention de nommage : `<table>_<column>UQ`, `<table>_<column>FK`, `<table>PK`. Exemples : `users_emailUQ`, `tasks_referenceUQ`, `user_roles_userFK`, `tasksPK`, `rate_limit_countersPK`. Les index suivent `<table>_<column>IDX`.
 - Les clés primaires valent `uuidv7()` par défaut dans les changesets (`defaultValueComputed: uuidv7()`), comme `@ColumnDefault("uuidv7()")` sur les entités (guide 12).
-- Les changesets 001 à 003 gardent leur id et leur auteur générés : les renommer les ferait rejouer. Les suivants ont des ids lisibles (`014-create-outbox-messages`, `024-create-data-exports`).
-- `016-user-profiles.yaml` déplace les données de profil de `users` vers `user_profiles`, repointe toutes les clés étrangères, et supprime les comptes déjà anonymisés. Un second changeset, `016-clear-photos-of-anonymized-profiles`, corrige le premier (les photos des comptes anonymisés avaient été copiées et ne seraient jamais purgées) au lieu de le modifier.
+- Les changesets 001 à 003 gardent leur id et leur auteur générés, car les renommer les ferait rejouer. Les suivants ont des ids lisibles (`014-create-outbox-messages`, `024-create-data-exports`).
+- `016-user-profiles.yaml` déplace les données de profil de `users` vers `user_profiles`, repointe toutes les clés étrangères, et supprime les comptes déjà anonymisés. Un second changeset, `016-clear-photos-of-anonymized-profiles`, corrige le premier au lieu de le modifier : les photos des comptes anonymisés avaient été copiées et ne seraient jamais purgées.
 - Les tables écrites en SQL seulement gardent une entité `@Immutable` : `ScheduledJobLock` (021), `RateLimitCounter` (015), `TaskReminder` (011). Les tables de Spring Batch (023) sont exclues du diff dans le `pom.xml`.
 - Une fois, 7 clés étrangères ont disparu du modèle à cause de `@NotFound(IGNORE)` (guide 12).
 

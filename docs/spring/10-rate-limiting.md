@@ -4,10 +4,10 @@
 
 ## Contexte
 
-- **Problème** : empêcher un client d'essayer des milliers de mots de passe, de créer des comptes en boucle ou de faire envoyer des e-mails sans fin par l'API, sur des endpoints que tout le monde peut appeler.
-- **Quand l'utiliser** : les endpoints publics (connexion, inscription, réinitialisation de mot de passe), et tout endpoint dont l'appel coûte quelque chose hors de l'API (un e-mail, un appel HTTP sortant).
-- **Quand s'en passer** : des endpoints internes authentifiés, où les quotas sont une question de produit ; ou une passerelle devant l'API qui limite déjà par adresse.
-- **Dans ce dépôt** : `RateLimiter` limite la connexion (par adresse et par e-mail), l'inscription (par adresse), la demande de réinitialisation (par adresse et par e-mail) et sa confirmation (par adresse), le renvoi de vérification (par utilisateur) et les événements de test des webhooks (par utilisateur). Des fenêtres fixes comptées dans une table PostgreSQL, sans Redis ; au-delà d'une limite, 429 avec `Retry-After`.
+- **Problème** : empêcher un client d'essayer des milliers de mots de passe, de créer des comptes en boucle ou de faire envoyer des e-mails sans fin, sur des endpoints que tout le monde peut appeler.
+- **Quand l'utiliser** : les endpoints publics (connexion, inscription, réinitialisation de mot de passe), et tout endpoint dont l'appel coûte hors de l'API (un e-mail, un appel HTTP sortant).
+- **Quand s'en passer** : des endpoints internes authentifiés, où les quotas sont une question de produit, ou une passerelle devant l'API qui limite déjà par adresse.
+- **Dans ce dépôt** : `RateLimiter` limite la connexion (par adresse et par e-mail), l'inscription (par adresse), la demande de réinitialisation (par adresse et par e-mail) et sa confirmation (par adresse), le renvoi de vérification (par utilisateur) et les événements de test des webhooks (par utilisateur). Les fenêtres fixes sont comptées dans une table PostgreSQL, sans Redis. Au-delà d'une limite, la réponse est un 429 avec `Retry-After`.
 - **Prérequis** : guides 13 (SQL avec JdbcTemplate) et 14 (transactions). Versions : Spring Boot 4.1, PostgreSQL 18.
 
 Les façons de limiter les appels :
@@ -24,14 +24,14 @@ Les façons de limiter les appels :
 ### Vocabulaire
 
 - **Rate limiting** : refuser les requêtes d'un appelant au-delà d'un nombre par période.
-- **Fenêtre fixe** (fixed window) : une période au début fixe (chaque heure pile) ; le compte repart à zéro à la suivante.
-- **Clé de comptage** : ce que le compte concerne : une adresse, un e-mail, un utilisateur, pour un endpoint (`login:ip:<hash>`).
-- **429 Too Many Requests** : le statut HTTP d'une requête refusée (RFC 6585), avec `Retry-After` : le nombre de secondes à attendre.
+- **Fenêtre fixe** (fixed window) : une période au début fixe (chaque heure pile). Le compte repart à zéro à la suivante.
+- **Clé de comptage** : ce que le compte concerne, soit une adresse, un e-mail ou un utilisateur, pour un endpoint (`login:ip:<hash>`).
+- **429 Too Many Requests** : le statut HTTP d'une requête refusée (RFC 6585). L'en-tête `Retry-After` donne le nombre de secondes à attendre.
 - **Upsert** : une seule instruction SQL qui insère une ligne, ou la modifie si elle existe.
 
 ### Les algorithmes
 
-La fenêtre fixe compte par période, sans mémoire de la précédente : c'est le plus simple, et celui de ce guide. La fenêtre glissante compte les requêtes des N dernières secondes, et le seau à jetons rend des jetons à débit constant ; les deux demandent plus d'état à partager.
+La fenêtre fixe compte par période, sans mémoire de la précédente. C'est le plus simple, et celui de ce guide. La fenêtre glissante compte les requêtes des N dernières secondes. Le seau à jetons rend des jetons à débit constant. Les deux demandent plus d'état partagé.
 
 L'effet de bord d'une fenêtre fixe :
 
@@ -46,11 +46,11 @@ L'effet de bord d'une fenêtre fixe :
                      20 requêtes en une minute
 ```
 
-Contre l'abus d'une connexion ou d'une réinitialisation, cet effet est acceptable.
+Cet effet est acceptable ici.
 
 ### Le compteur atomique
 
-Lire puis écrire laisse passer trop de requêtes ; une seule instruction les compte bien :
+Lire puis écrire laisse passer trop de requêtes, alors qu'une seule instruction les compte bien :
 
 ```
   lire puis écrire (deux requêtes)        une seule requête
@@ -61,9 +61,9 @@ Lire puis écrire laisse passer trop de requêtes ; une seule instruction les co
        --> 11 requêtes passent                  --> B est refusée
 ```
 
-- Postgres sérialise les deux upserts sur la ligne : chaque requête reçoit son propre compte, sur une instance comme sur plusieurs. Pas besoin de Redis.
-- Le compte inclut la requête courante : `count > requests` refuse.
-- Le début de fenêtre est calculé par l'application, `floor(now / window) * window` depuis l'époque : toutes les instances calculent la même clé, sans horloge de la base.
+- Postgres sérialise les deux upserts sur la ligne. Chaque requête reçoit son propre compte, sur une instance comme sur plusieurs, sans Redis.
+- Le compte inclut la requête courante, et `count > requests` refuse.
+- L'application calcule le début de fenêtre, `floor(now / window) * window` depuis l'époque. Toutes les instances obtiennent la même clé, sans horloge de la base.
 
 ### Ce qui compte, et ce qui ne compte pas
 
@@ -87,14 +87,14 @@ Voici le trajet d'une connexion :
   AuthService.login --------- mauvais mot de passe --> 401 (le +1 reste)
 ```
 
-- `REQUIRES_NEW` valide le compte avant le traitement de la requête : une connexion ratée compte quand même, bien que sa propre transaction soit annulée.
-- La requête refusée lève l'exception dans cette transaction à part : ses incréments sont annulés, elle ne consomme rien.
-- Le limiteur est appelé dans le contrôleur, après la validation des arguments : un corps invalide n'est jamais compté.
-- La limite par e-mail compte tous les e-mails, qu'un compte les utilise ou non : un 429 ne doit pas révéler quels e-mails existent.
+- `REQUIRES_NEW` valide le compte avant le traitement de la requête. Une connexion ratée compte donc quand même, bien que sa propre transaction soit annulée.
+- Une requête refusée ne consomme rien : l'exception annule les incréments de cette transaction à part.
+- Le limiteur est appelé dans le contrôleur, après la validation des arguments. Un corps invalide n'est jamais compté.
+- La limite par e-mail compte tous les e-mails, qu'un compte les utilise ou non, pour qu'un 429 ne révèle pas quels e-mails existent.
 
 ### L'adresse du client
 
-Derrière un reverse proxy, l'adresse vue par l'application dépend d'un réglage :
+L'adresse vue par l'application derrière un reverse proxy dépend d'un réglage :
 
 ```
   client 203.0.113.7
@@ -113,10 +113,10 @@ Derrière un reverse proxy, l'adresse vue par l'application dépend d'un réglag
                                                 dans l'en-tête : contournement
 ```
 
-- `HttpServletRequest.getRemoteAddr()` donne le pair TCP : derrière un reverse proxy, le proxy lui-même.
+- `HttpServletRequest.getRemoteAddr()` donne le pair TCP, donc le proxy lui-même derrière un reverse proxy.
 - `server.forward-headers-strategy` vaut `native` (le support du conteneur : la `RemoteIpValve` de Tomcat), `framework` (le `ForwardedHeaderFilter` de Spring) ou `none` (en-têtes ignorés).
-- `native` ne lit l'en-tête que si le pair TCP est un proxy de confiance (`server.tomcat.remoteip.internal-proxies`, les plages privées par défaut) ; `framework` le lit pour toute requête.
-- Non défini, le réglage laisse Spring Boot choisir `native` s'il détecte une plateforme cloud (Kubernetes...). L'écrire à `none` coupe cette détection.
+- `native` ne lit l'en-tête que si le pair TCP est un proxy de confiance (`server.tomcat.remoteip.internal-proxies`, les plages privées par défaut). `framework` le lit pour toute requête.
+- Si le réglage n'est pas défini, Spring Boot choisit `native` quand il détecte une plateforme cloud (Kubernetes...). L'écrire à `none` coupe cette détection.
 - Un client IPv6 détient en général tout un /64 : on compte le /64, pas chaque adresse.
 
 ## Implémentation avec Spring
@@ -146,7 +146,7 @@ L'exemple est un formulaire public `POST /quote-requests` (une demande de devis)
 
 ### Un compteur partagé en base
 
-**Étape 1. Créer la table des compteurs.** Une ligne par clé et par fenêtre ; la clé primaire est ce sur quoi l'upsert entre en conflit (migration, guide 18).
+**Étape 1. Créer la table des compteurs.** Une ligne par clé et par fenêtre. La clé primaire est ce sur quoi l'upsert entre en conflit (migration, guide 18).
 
 ```sql
 CREATE TABLE rate_limit_counters (
@@ -183,7 +183,7 @@ public class RateLimitCounters {
 }
 ```
 
-**Étape 3. Écrire les limites en configuration.** Un record typé et validé (guide 01) ; la fenêtre est bornée pour ne jamais valoir zéro ni survivre à la purge.
+**Étape 3. Écrire les limites en configuration.** Un record typé et validé (guide 01). La fenêtre est bornée pour ne jamais valoir zéro ni survivre à la purge.
 
 ```java
 @Validated
@@ -210,7 +210,7 @@ rate-limit:
 
 Le record s'enregistre avec `@EnableConfigurationProperties(RateLimitProperties.class)`.
 
-**Étape 4. Écrire le limiteur.** Sa transaction à part valide le compte avant le reste de la requête, et l'exception porte le temps d'attente.
+**Étape 4. Écrire le limiteur.** Sa transaction à part valide le compte avant le reste de la requête. L'exception porte le temps d'attente.
 
 ```java
 @Service
@@ -261,7 +261,7 @@ public class RateLimitExceededException extends RuntimeException {
 }
 ```
 
-**Étape 5. Appeler le limiteur dans le contrôleur.** Après `@Valid`, pour qu'un corps invalide ne soit jamais compté, et avant le service.
+**Étape 5. Appeler le limiteur dans le contrôleur.** Après `@Valid`, pour ne jamais compter un corps invalide, et avant le service.
 
 ```java
 @RestController
@@ -297,7 +297,7 @@ ResponseEntity<ProblemDetail> handleRateLimitExceeded(RateLimitExceededException
 
 ### Des clés sûres, et l'entretien
 
-**Étape 7. Construire des clés sans donnée personnelle.** Un SHA-256 garde une longueur fixe et aucune adresse ni e-mail en clair ; un client IPv6 compte pour son /64. `InetAddress.ofLiteral` existe depuis Java 22 et ne fait pas de requête DNS.
+**Étape 7. Construire des clés sans donnée personnelle.** Un SHA-256 garde une longueur fixe et aucune adresse ni e-mail en clair. Un client IPv6 compte pour son /64. `InetAddress.ofLiteral` existe depuis Java 22 et ne fait pas de requête DNS.
 
 ```java
 public final class RateLimitKeys {
@@ -336,7 +336,7 @@ public final class RateLimitKeys {
 }
 ```
 
-**Étape 8. Purger les vieilles fenêtres.** Une ligne par clé et par fenêtre s'accumule ; une fenêtre dure au plus un jour, donc les lignes plus anciennes ne servent plus (ShedLock, guide 21).
+**Étape 8. Purger les vieilles fenêtres.** Les lignes s'accumulent, une par clé et par fenêtre. Une fenêtre dure au plus un jour, donc les lignes plus anciennes ne servent plus (ShedLock, guide 21).
 
 ```java
 // dans RateLimitCounters
@@ -362,7 +362,7 @@ class RateLimitPurgeJob {
 }
 ```
 
-**Étape 9. Vérifier.** Les limites sont basses et actives dans cette seule classe ; chaque test prend sa propre adresse, car les compteurs sont partagés et survivent d'une exécution à l'autre sur une base réutilisée.
+**Étape 9. Vérifier.** Les limites sont basses et actives dans cette seule classe. Chaque test prend sa propre adresse, car les compteurs survivent d'une exécution à l'autre sur une base réutilisée.
 
 ```java
 @SpringBootTest(properties = {
@@ -410,27 +410,27 @@ Les réglages de l'adresse du client :
 | | `framework` | le filtre `ForwardedHeaderFilter` de Spring les applique |
 | | non défini | `native` si Spring Boot détecte une plateforme cloud, sinon ignorés |
 
-Les en-têtes et statuts :
+Les statuts et en-têtes :
 
 | Élément | Sens |
 |---|---|
 | `429 Too Many Requests` | limite dépassée (RFC 6585) |
 | `Retry-After: 37` | secondes à attendre avant de réessayer |
 
-Limites de cette version : une fenêtre fixe autorise une rafale à la frontière, et chaque requête comptée coûte une écriture en base.
+Limites de cette version : une fenêtre fixe autorise une rafale à la frontière. Chaque requête comptée coûte aussi une écriture en base.
 
 ## Concepts avancés
 
 ### Sous le capot : la fenêtre alignée sur l'époque
 
 - `floorDiv(now, window) * window` aligne les fenêtres sur 1970-01-01T00:00Z (UTC).
-- `Retry-After` est le temps restant dans la fenêtre, arrondi à la seconde supérieure, au moins 1.
-- Une fenêtre de zéro diviserait par zéro (`floorDiv` par 0) ; une fenêtre plus longue que le jour de la purge serait supprimée alors qu'elle compte encore. D'où `@DurationMin(seconds = 1)` et `@DurationMax(days = 1)`.
+- `Retry-After` est le temps restant dans la fenêtre, arrondi au-dessus, et vaut au moins 1.
+- Une fenêtre de zéro diviserait par zéro (`floorDiv` par 0). Une fenêtre plus longue que le jour de la purge serait supprimée alors qu'elle compte encore. D'où `@DurationMin(seconds = 1)` et `@DurationMax(days = 1)`.
 
 ### Plusieurs instances
 
-- La table est l'état partagé : les limites tiennent entre instances sans service de plus. Sous un très fort trafic, elle devient un point chaud (alors Redis ou une passerelle).
-- Chaque instance doit voir la même adresse de client : la même `forward-headers-strategy` partout.
+- La table est l'état partagé, donc les limites tiennent entre instances sans service de plus. Sous un très fort trafic, elle devient un point chaud : on passe alors à Redis ou à une passerelle.
+- Chaque instance doit voir la même adresse de client, donc la même `forward-headers-strategy` partout.
 
 ## Pièges à éviter
 
@@ -462,7 +462,7 @@ Limites de cette version : une fenêtre fixe autorise une rafale à la frontièr
 
 ## En résumé
 
-**À retenir :** un compteur par clé et par fenêtre fixe, incrémenté par un seul upsert Postgres dans sa propre transaction, avec des clés hachées et l'adresse réelle du client ; au-delà, 429 et `Retry-After` arrondi au-dessus.
+**À retenir :** un compteur par clé et par fenêtre fixe, incrémenté par un seul upsert Postgres dans sa propre transaction, avec des clés hachées et l'adresse réelle du client. Au-delà de la limite, la réponse est un 429 avec `Retry-After` arrondi au-dessus.
 
 - [ ] Une table de compteurs, clé primaire `(clé, début de fenêtre)`
 - [ ] Un seul `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` par requête comptée
@@ -508,12 +508,12 @@ Les limites, sous `rate-limit` dans `application.yaml` :
 
 Ce qui est propre au dépôt :
 
-- Les appels sont dans `AuthController` (connexion, renvoi de vérification, demande et confirmation de réinitialisation) et `UserController.signUp` (inscription), tous avec `request.getRemoteAddr()` après `@Valid`. `WebhookEndpointService.sendTest` appelle le limiteur après avoir trouvé l'endpoint (un test sur un webhook inconnu ne compte pas) ; un test envoyé par un admin compte pour le propriétaire. L'endpoint de rafraîchissement n'est pas limité.
-- La demande et la confirmation de réinitialisation partagent un compteur par adresse (la même clé `password-reset:ip:...`).
-- La connexion vérifie d'abord l'adresse, puis l'e-mail : refusée sur l'adresse, l'e-mail n'est pas compté ; refusée sur l'e-mail, l'incrément de l'adresse est annulé avec lui.
+- Les appels sont dans `AuthController` (connexion, renvoi de vérification, demande et confirmation de réinitialisation) et `UserController.signUp` (inscription), tous avec `request.getRemoteAddr()` après `@Valid`. `WebhookEndpointService.sendTest` appelle le limiteur après avoir trouvé l'endpoint, donc un test sur un webhook inconnu ne compte pas. Un test envoyé par un admin compte pour le propriétaire. L'endpoint de rafraîchissement n'est pas limité.
+- La demande et la confirmation de réinitialisation partagent la clé `password-reset:ip:...`.
+- La connexion vérifie d'abord l'adresse, puis l'e-mail. Refusée sur l'adresse, elle ne compte pas l'e-mail. Refusée sur l'e-mail, l'incrément de l'adresse est annulé avec lui.
 - Les clés sont hachées à cause d'un échec mesuré : un e-mail long, ou que la mise en minuscules allonge, débordait la colonne et la requête échouait en 409. Les e-mails passent en minuscules avec `Locale.ROOT`.
-- `RateLimitCleanupJob` garde un jour, plus que toute fenêtre configurée ; verrou `rate-limit-purge`, `lockAtMostFor = "PT30M"`, `lockAtLeastFor = "PT1M"` (guide 21).
-- Les tests éteignent les limites (`rate-limit.enabled: false` dans `src/test/resources/config/application.yaml`), sauf `RateLimitTests`, qui tourne dans son propre contexte avec des limites basses, une horloge figée (`TestClock` en 2100) et un cron de purge qui ne se déclenche jamais pendant l'exécution.
+- `RateLimitCleanupJob` garde un jour, plus que toute fenêtre configurée. Son verrou est `rate-limit-purge`, avec `lockAtMostFor = "PT30M"` et `lockAtLeastFor = "PT1M"` (guide 21).
+- Les tests éteignent les limites (`rate-limit.enabled: false` dans `src/test/resources/config/application.yaml`), sauf `RateLimitTests`. Cette classe a son propre contexte, avec des limites basses, une horloge figée (`TestClock` en 2100) et un cron de purge qui ne se déclenche jamais pendant l'exécution.
 
 Les tests :
 

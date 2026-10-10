@@ -4,9 +4,9 @@
 
 ## Contexte
 
-- **Problème** : sortir du code tout ce qui change d'un poste à l'autre (adresses, secrets, délais, limites), le typer, et refuser une valeur fausse au démarrage plutôt qu'à la première requête.
-- **Quand l'utiliser** : pour tout réglage ; dès qu'une fonctionnalité en a plusieurs, un record `@ConfigurationProperties` par bloc.
-- **Quand s'en passer** : une constante qui ne change jamais reste dans le code ; un réglage qui doit changer sans redémarrage relève de la base ou d'un service de configuration.
+- **Problème** : sortir du code ce qui change d'un poste à l'autre (adresses, secrets, délais, limites). Typer ces valeurs, et refuser une valeur fausse au démarrage plutôt qu'à la première requête.
+- **Quand l'utiliser** : pour tout réglage. Dès qu'une fonctionnalité en a plusieurs, un record `@ConfigurationProperties` par bloc.
+- **Quand s'en passer** : une constante qui ne change jamais reste dans le code. Un réglage modifiable sans redémarrage relève de la base ou d'un service de configuration.
 - **Dans ce dépôt** : un bloc YAML par fonctionnalité dans `application.yaml`, un record validé par bloc, les secrets locaux dans `.env`, et des beans choisis par configuration (driver de stockage, jobs, antivirus).
 - **Prérequis** : aucun. Versions : Spring Boot 4.1, Hibernate Validator 9.1.
 
@@ -30,7 +30,7 @@ Trois façons de lire un réglage :
 
 ### D'où viennent les valeurs
 
-Spring empile les sources ; pour une même clé, la plus haute gagne :
+Spring empile les sources. Pour une même clé, la plus haute gagne :
 
 ```
   arguments de ligne de commande     --storage.bucket=media     la plus forte
@@ -48,9 +48,11 @@ Spring empile les sources ; pour une même clé, la plus haute gagne :
   application.yaml                   les valeurs par défaut     la plus faible
 ```
 
-- Un fichier importé par `spring.config.import` passe devant le fichier qui l'importe.
-- `classpath:/config/application.yaml` passe devant `classpath:/application.yaml` : un fichier de test surcharge le principal sans le remplacer.
-- Une variable d'environnement atteint une propriété de deux façons : par le binding souple (`SPRING_RABBITMQ_HOST` remplit `spring.rabbitmq.host` : majuscules, points changés en `_`, tirets retirés), ou par un placeholder (`host: ${MAIL_HOST:localhost}`) qui donne un nom court et un défaut.
+- Un fichier importé par `spring.config.import` passe devant celui qui l'importe.
+- `classpath:/config/application.yaml` passe devant `classpath:/application.yaml`. Un fichier de test surcharge ainsi le principal sans le remplacer.
+- Une variable d'environnement atteint une propriété de deux façons.
+  - Le binding souple : `SPRING_RABBITMQ_HOST` remplit `spring.rabbitmq.host` (majuscules, points changés en `_`, tirets retirés).
+  - Un placeholder (`host: ${MAIL_HOST:localhost}`), qui donne un nom court et un défaut.
 
 ### Les placeholders
 
@@ -63,7 +65,7 @@ Ce que donne chaque écriture :
 | `${MAIL_HOST}`, lu par un record | le texte `${MAIL_HOST}`, sans erreur | une chaîne vide |
 | `${MAIL_HOST}`, lu par `@Value` | échec au démarrage | une chaîne vide |
 
-Le binding garde tel quel un placeholder qu'il ne sait pas résoudre (troisième ligne). Le guide 02 montre comment arrêter le démarrage dans ce cas.
+Le binding garde tel quel un placeholder qu'il ne sait pas résoudre (troisième ligne). Le guide 02 arrête alors le démarrage.
 
 ### Les durées et les tailles
 
@@ -92,7 +94,7 @@ Chaque clé devient un composant du record, les tirets devenant du camelCase :
       window: PT1M           -------->    Duration window
 ```
 
-- Spring appelle le constructeur du record (objet immuable), convertit chaque valeur, puis valide l'ensemble : une contrainte violée arrête le démarrage.
+- Spring appelle le constructeur du record (un objet immuable), convertit chaque valeur, puis valide l'ensemble. Une contrainte violée arrête le démarrage.
 - Une clé absente prend la valeur de `@DefaultValue`, sinon `null` pour un objet, `0` ou `false` pour un type primitif.
 
 ### Les beans conditionnels
@@ -113,8 +115,6 @@ Une propriété choisit l'implémentation qui existera :
                            v
               un seul bean ObjectStorage
 ```
-
-- Le reste du code ne connaît que l'interface `ObjectStorage`.
 
 ## Implémentation avec Spring
 
@@ -145,7 +145,7 @@ src/test/java/.../
 
 ### Un bloc de réglages typé
 
-**Étape 1. Écrire un bloc par fonctionnalité.** Un commentaire au-dessus du bloc dit à quoi il sert ; ce qui change selon l'environnement passe par un placeholder.
+**Étape 1. Écrire un bloc par fonctionnalité.** Un commentaire au-dessus du bloc dit à quoi il sert. Ce qui change selon l'environnement passe par un placeholder.
 
 ```yaml
 # Factures : purge des factures payées après leur durée de conservation
@@ -163,7 +163,7 @@ spring:
     import: optional:file:.env[.properties]     # étape 2
 ```
 
-**Étape 2. Mettre les secrets locaux dans `.env`.** Le fichier reste hors de git ; `.env.example`, versionné, liste les clés à remplir.
+**Étape 2. Mettre les secrets locaux dans `.env`.** Le fichier reste hors de git. `.env.example`, versionné, liste les clés à remplir.
 
 ```properties
 # .env.example : copier en .env (ignoré par git), puis remplir
@@ -172,11 +172,11 @@ MAIL_FROM=no-reply@example.local
 ```
 
 - `optional:` : sans fichier, le démarrage continue.
-- `[.properties]` : `.env` n'a pas d'extension connue, Spring le lit comme un fichier `.properties`.
-- `file:.env` est relatif au dossier courant : on lance l'application depuis la racine du projet.
+- `[.properties]` : `.env` n'a pas d'extension connue, Spring le lit donc comme un fichier `.properties`.
+- `file:.env` est relatif au dossier courant, d'où le lancement depuis la racine du projet.
 - Docker Compose lit le même fichier pour les `${...}` de `compose.yaml`.
 
-**Étape 3. Laisser Docker Compose fournir les services en développement.** `./mvnw spring-boot:run` démarre `compose.yaml` et branche l'application sur ses conteneurs, sans URL à écrire.
+**Étape 3. Laisser Docker Compose fournir les services en développement.** `./mvnw spring-boot:run` démarre `compose.yaml` et branche l'application sur ses conteneurs.
 
 ```xml
 <dependency>
@@ -187,11 +187,11 @@ MAIL_FROM=no-reply@example.local
 </dependency>
 ```
 
-- Spring Boot lit les ports et identifiants des conteneurs reconnus (Postgres, RabbitMQ...) et crée les détails de connexion.
+- Spring Boot lit les ports et identifiants des conteneurs reconnus (Postgres, RabbitMQ...) et en tire les détails de connexion.
 - Le plugin Maven retire cette dépendance du jar final, et elle reste éteinte pendant les tests.
-- Si des services du projet tournent déjà, elle ne lance pas `docker compose up` : un service ajouté plus tard demande un `docker compose up -d` à la main.
+- Si des services du projet tournent déjà, elle ne lance pas `docker compose up`. Un service ajouté plus tard demande donc un `docker compose up -d` à la main.
 
-**Étape 4. Écrire le record.** `@Validated` active les contraintes, et chaque `@param` devient la documentation de la clé dans l'IDE.
+**Étape 4. Écrire le record.** `@Validated` active les contraintes. Chaque `@param` documente la clé dans l'IDE.
 
 ```java
 /**
@@ -221,7 +221,7 @@ public record InvoiceProperties(
 }
 ```
 
-- `@DefaultValue` sans valeur sur `pdf` crée un `Pdf` rempli de ses défauts quand le bloc manque ; `@Valid` fait descendre la validation dedans.
+- `@DefaultValue` sans valeur sur `pdf` crée un `Pdf` rempli de ses défauts quand le bloc manque. `@Valid` fait descendre la validation dedans.
 - `@DurationMin` et `@DurationMax` viennent de Hibernate Validator (`spring-boot-starter-validation`).
 
 **Étape 5. Enregistrer le record dans la configuration de la fonctionnalité.**
@@ -252,7 +252,7 @@ class InvoiceService {
 }
 ```
 
-**Étape 7. Injecter une horloge plutôt qu'appeler `Instant.now()`.** Un test peut alors fixer l'heure ou l'avancer, sans attendre.
+**Étape 7. Injecter une horloge plutôt qu'appeler `Instant.now()`.** Un test fixe ou avance alors l'heure, sans attendre.
 
 ```java
 @Configuration
@@ -271,7 +271,7 @@ Clock fixed = Clock.fixed(Instant.parse("2026-01-01T00:00:00Z"), ZoneOffset.UTC)
 InvoiceService service = new InvoiceService(properties, invoiceRepository, fixed);
 ```
 
-**Étape 8. Générer les métadonnées.** Le processeur écrit `META-INF/spring-configuration-metadata.json` à la compilation : l'IDE complète les clés, affiche le `@param` et le défaut.
+**Étape 8. Générer les métadonnées.** À la compilation, le processeur écrit `META-INF/spring-configuration-metadata.json`. L'IDE complète alors les clés et affiche le `@param` et le défaut.
 
 ```xml
 <plugin>
@@ -307,7 +307,7 @@ Une entrée du fichier généré :
 
 ### Choisir les beans par configuration
 
-**Étape 9. Choisir une implémentation par une propriété.** Les propriétés s'enregistrent dans une configuration toujours chargée, pour que la validation tourne même si la valeur ne correspond à aucun driver.
+**Étape 9. Choisir une implémentation par une propriété.** Les propriétés s'enregistrent dans une configuration toujours chargée. La validation tourne ainsi même si la valeur ne correspond à aucun driver.
 
 ```java
 @Validated
@@ -342,7 +342,7 @@ class LocalStorageConfiguration {
 }
 ```
 
-**Étape 10. Rendre un job désactivable.** Le job tourne par défaut ; une propriété l'éteint sur une instance ou dans les tests (guide 21).
+**Étape 10. Rendre un job désactivable.** Le job tourne par défaut. Une propriété l'éteint sur une instance ou dans les tests (guide 21).
 
 ```java
 @Component
@@ -365,7 +365,7 @@ invoices:
   purge-enabled: false
 ```
 
-**Étape 11. Remplacer une implémentation sans condition quand il faut prévenir.** Un `if` dans la méthode `@Bean` garde un bean toujours présent, et laisse une trace au démarrage quand une protection est coupée.
+**Étape 11. Remplacer une implémentation sans condition quand il faut prévenir.** Un `if` dans la méthode `@Bean` garde un bean toujours présent. Il laisse aussi une trace au démarrage quand une protection est coupée.
 
 ```java
 @Slf4j
@@ -384,7 +384,7 @@ class AntivirusConfiguration {
 }
 ```
 
-**Étape 12. Vérifier.** `ApplicationContextRunner` démarre un petit contexte avec la seule configuration testée, sans base ni serveur.
+**Étape 12. Vérifier.** `ApplicationContextRunner` démarre un petit contexte avec la seule configuration testée, sans base.
 
 ```java
 class InvoicePropertiesTest {
@@ -423,7 +423,7 @@ Annotations d'un record de propriétés :
 | `@EnableConfigurationProperties(X.class)` | enregistre le record comme bean |
 | `@Validated` | active les contraintes au démarrage |
 | `@Valid` | valide aussi un record imbriqué |
-| `@DefaultValue("...")` | valeur quand la clé manque ; sans valeur, un record imbriqué rempli de ses défauts |
+| `@DefaultValue("...")` | valeur d'une clé absente ; sans valeur, un record imbriqué rempli de ses défauts |
 | `@DurationUnit`, `@DataSizeUnit` | unité d'un nombre écrit sans unité |
 | `@DurationMin`, `@DurationMax` | bornes d'une `Duration` (Hibernate Validator) |
 
@@ -436,13 +436,6 @@ Conditions les plus utiles :
 | `@ConditionalOnMissingBean` | aucun bean du même type n'existe, surtout dans une auto-configuration |
 | `@ConditionalOnClass` | une classe est sur le classpath |
 | `@Profile("prod")` | le profil est actif (guide 02) |
-
-Deux réglages de Boot contre une erreur silencieuse :
-
-| Réglage | Effet |
-|---|---|
-| `spring.cache.cache-names` | fige la liste des caches : un nom mal écrit n'obtient aucun cache |
-| `spring.jackson.datatype.enum.fail-on-numbers-for-enums` | refuse un nombre à la place du nom d'une constante d'enum |
 
 Limites de cette version : une valeur se lit au démarrage, la changer demande un redémarrage.
 
@@ -469,18 +462,18 @@ Du disque au bean :
   le record, enregistré comme bean
 ```
 
-- En cas d'échec, Spring Boot affiche un rapport : la propriété, la valeur refusée, son origine (fichier et ligne, ou variable) et la raison.
+- En cas d'échec, Spring Boot affiche un rapport. Il donne la propriété, la valeur refusée, son origine (fichier et ligne, ou variable) et la raison.
 - Une liste s'écrit en YAML ou en une chaîne séparée par des virgules : `allowed-origins: https://a.example,https://b.example` remplit un `List<String>`.
-- Le binding accepte plusieurs écritures d'une clé (`max-page-size`, `maxPageSize`, `MAX_PAGE_SIZE`) ; la forme en tirets est canonique dans les fichiers.
+- Le binding accepte plusieurs écritures d'une clé (`max-page-size`, `maxPageSize`, `MAX_PAGE_SIZE`). Dans les fichiers, on écrit la forme en tirets.
 
 ### Sous le capot : quand les conditions sont évaluées
 
-Spring lit les classes de configuration avant de créer les beans et décide alors lesquelles garder. Une condition sur une propriété ne pose pas de problème : l'`Environment` est complet. `@ConditionalOnBean` et `@ConditionalOnMissingBean` dépendent des définitions déjà lues : Spring Boot les réserve aux auto-configurations, lues après les configurations du projet.
+Spring lit les classes de configuration avant de créer les beans, et décide alors lesquelles garder. Une condition sur une propriété est sûre, car l'`Environment` est complet. `@ConditionalOnBean` et `@ConditionalOnMissingBean` dépendent des définitions déjà lues. Spring Boot les réserve donc aux auto-configurations, lues après les configurations du projet.
 
 ### Plusieurs instances
 
 - Toutes les instances lisent les mêmes fichiers ; seules leurs variables d'environnement diffèrent (guide 02).
-- Un interrupteur par instance (`invoices.purge-enabled`) réserve un job à certaines instances. Avec ShedLock (guide 21), un seul passage par tour est déjà garanti : l'interrupteur répartit la charge.
+- Un interrupteur par instance (`invoices.purge-enabled`) réserve un job à certaines instances. ShedLock (guide 21) garantit déjà un seul passage par tour : l'interrupteur sert à répartir la charge.
 
 ## Pièges à éviter
 
@@ -488,27 +481,27 @@ Spring lit les classes de configuration avant de créer les beans et décide alo
 
 | Piège | Ce qui se passe | Parade |
 |---|---|---|
-| Écrire un secret dans `application.yaml` | il part dans git et dans le jar | Écrire `${JWT_SECRET}` et garder la valeur dans `.env` |
-| Mettre des guillemets dans `.env` | Spring lit un fichier properties : les guillemets restent dans la valeur | Écrire `CLE=valeur` sans guillemets |
-| Lancer l'application depuis un autre dossier | `.env` n'est pas trouvé, sans erreur à cause d'`optional:` | Lancer depuis la racine du projet |
-| Nommer la variable `STATUS_CACHE_TTL` | le binding souple retire les tirets : la clé reste vide | Écrire `STATUSCACHE_TTL`, ou un placeholder |
+| Écrire un secret dans `application.yaml` | il part dans git et le jar | Écrire `${JWT_SECRET}`, valeur dans `.env` |
+| Mettre des guillemets dans `.env` | les guillemets restent dans la valeur | Écrire `CLE=valeur` sans guillemets |
+| Lancer l'application depuis un autre dossier | `.env` est introuvable, sans erreur (`optional:`) | Lancer depuis la racine du projet |
+| Nommer la variable `STATUS_CACHE_TTL` | le binding retire les tirets : la clé reste vide | Écrire `STATUSCACHE_TTL`, ou un placeholder |
 | Écrire `500` pour une durée | Spring lit 500 millisecondes | Toujours écrire l'unité : `500s`, `PT5M` |
-| Ajouter un service à `compose.yaml` | d'autres services tournent : Boot ne relance pas `docker compose up` | Lancer `docker compose up -d` une fois |
+| Ajouter un service à `compose.yaml` | Boot ne relance pas `docker compose up` si d'autres services tournent | Lancer `docker compose up -d` une fois |
 
 ### Records et validation
 
 | Piège | Ce qui se passe | Parade |
 |---|---|---|
-| Oublier `@Validated`, ou `@Valid` sur un record imbriqué | les contraintes sont ignorées | Les mettre sur le record et sur le composant imbriqué |
-| Laisser un `boolean` de protection sans défaut | une clé absente vaut `false` : la protection s'éteint | Ajouter `@DefaultValue("true")` |
-| Laisser un placeholder sans défaut dans un record | la clé reçoit le texte `${VAR}`, sans erreur | Donner un défaut, ou vérifier au démarrage (guide 02) |
+| Oublier `@Validated`, ou `@Valid` sur un imbriqué | les contraintes sont ignorées | Les mettre sur le record et sur le composant imbriqué |
+| Laisser un `boolean` de protection sans défaut | une clé absente vaut `false`, la protection s'éteint | Ajouter `@DefaultValue("true")` |
+| Placeholder sans défaut dans un record | la clé reçoit le texte `${VAR}`, sans erreur | Donner un défaut, ou vérifier au démarrage (guide 02) |
 | Lister `annotationProcessorPaths` sans le processeur | plus de métadonnées, plus de complétion | Ajouter `spring-boot-configuration-processor` |
 
 ### Beans conditionnels
 
 | Piège | Ce qui se passe | Parade |
 |---|---|---|
-| Enregistrer les propriétés dans une configuration conditionnelle | valeur inconnue : erreur sur un bean manquant | Les enregistrer sans condition |
+| Enregistrer les propriétés dans une configuration conditionnelle | une valeur inconnue donne un bean manquant | Les enregistrer sans condition |
 | Utiliser `@ConditionalOnBean` dans une configuration du projet | le résultat dépend de l'ordre de lecture | Le réserver aux auto-configurations |
 | Oublier `matchIfMissing = true` sur un job | une clé absente l'éteint sans bruit | Écrire `matchIfMissing = true` |
 | Couper une protection sans trace | personne ne sait que l'antivirus est éteint | Logger un WARN au démarrage |
@@ -517,7 +510,7 @@ Spring lit les classes de configuration avant de créer les beans et décide alo
 
 **À retenir :** un bloc YAML par fonctionnalité, lu par un record `@ConfigurationProperties` validé et documenté, des secrets hors de git, et des beans choisis par une propriété dont la validation tourne toujours.
 
-- [ ] Un bloc par fonctionnalité, commenté, avec `${VAR:défaut}` pour ce qui varie
+- [ ] Un bloc commenté par fonctionnalité, `${VAR:défaut}` pour ce qui varie
 - [ ] Secrets dans `.env` (ignoré par git), clés listées dans `.env.example`
 - [ ] Un record par bloc : `@Validated`, contraintes, `@DefaultValue`, `@Valid` sur les imbriqués
 - [ ] Un `@param` par composant, et le processeur de métadonnées dans le `pom.xml`
@@ -526,11 +519,11 @@ Spring lit les classes de configuration avant de créer les beans et décide alo
 - [ ] Un bean `Clock` injecté à la place de `Instant.now()`
 - [ ] Drivers choisis par `@ConditionalOnProperty`, propriétés enregistrées sans condition
 - [ ] Jobs désactivables par `@ConditionalOnBooleanProperty(matchIfMissing = true)`
-- [ ] Un test `ApplicationContextRunner` par record : défauts, bornes, échecs
+- [ ] Un test `ApplicationContextRunner` par record
 
 ## Dans ce dépôt
 
-Le trajet du réglage `storage.driver` :
+Le trajet de `storage.driver` :
 
 ```
   .env (poste de développement)        variables du déploiement
@@ -561,7 +554,7 @@ Le trajet du réglage `storage.driver` :
 |---|---|
 | [`application.yaml`][yaml] | un bloc commenté par fonctionnalité, défauts de développement |
 | [`.env.example`][env-example] | les clés de `.env`, dont `JWT_SECRET` et `WEBHOOK_ENCRYPTION_KEY` |
-| [`RateLimitProperties`][rate-limit] | records imbriqués validés, bornes `@DurationMin` et `@DurationMax` |
+| [`RateLimitProperties`][rate-limit] | records imbriqués, bornes `@DurationMin` et `@DurationMax` |
 | [`RealtimeProperties`][realtime] | `@DefaultValue` partout, `DataSize`, liste d'origines |
 | [`ExportProperties`][export] | durées bornées, interrupteurs des jobs d'export |
 | [`WebhookProperties`][webhook] | un record imbriqué rempli par `@DefaultValue` |
@@ -585,14 +578,14 @@ Les réglages transverses :
 Ce qui est propre au dépôt :
 
 - Chaque fonctionnalité enregistre ses records dans sa propre configuration (`ExportConfiguration`, `WebhookConfiguration`, `RealtimeConfiguration`...), sans `@ConfigurationPropertiesScan`.
-- Un `@param` par composant : la seule Javadoc que la convention du dépôt exige, car elle documente la clé YAML.
-- `StorageConfiguration` existe pour un défaut mesuré : avec les propriétés enregistrées dans les seules configurations des drivers, une valeur inconnue ne chargeait rien, la validation ne tournait pas, et le démarrage échouait sur un bean manquant.
-- Sept jobs portent `@ConditionalOnBooleanProperty(matchIfMissing = true)` : rappels, rétention, nettoyage des médias, réessais et purge des webhooks, purge et reprise des exports. La configuration de test les éteint tous ([`config/application.yaml`][test-yaml]).
-- Les services qui raisonnent sur le temps (rétention, rappels, exports, outbox, rate limiting) injectent `Clock` ; en intégration, [`TestClock`][test-clock] le remplace (guide 31). Des horodatages simples utilisent encore `Instant.now()`.
+- Le `@param` par composant est la seule Javadoc exigée, car il documente la clé YAML.
+- `StorageConfiguration` répare un défaut mesuré. Quand les propriétés étaient enregistrées dans les seules configurations des drivers, une valeur inconnue ne chargeait rien. La validation ne tournait pas, et le démarrage échouait sur un bean manquant.
+- Sept jobs portent `@ConditionalOnBooleanProperty(matchIfMissing = true)` : rappels, rétention, nettoyage des médias, réessais et purge des webhooks, purge et reprise des exports. La configuration de test les éteint ([`config/application.yaml`][test-yaml]).
+- Les services qui raisonnent sur le temps (rétention, rappels, exports, outbox, rate limiting) injectent `Clock`. En intégration, [`TestClock`][test-clock] le remplace (guide 31). Des horodatages simples utilisent encore `Instant.now()`.
 
-Les tests : [`RateLimitConfigurationTest`][rate-limit-test], [`StorageConfigurationTest`][storage-test], [`RealtimeConfigurationTest`][realtime-test], [`ExportConfigurationTest`][export-test] et [`AntivirusConfigurationTest`][antivirus-test] démarrent chacun un `ApplicationContextRunner` : défauts livrés dans `application.yaml`, valeurs hors bornes qui arrêtent le démarrage, beans présents ou absents selon les interrupteurs.
+Les tests : [`RateLimitConfigurationTest`][rate-limit-test], [`StorageConfigurationTest`][storage-test], [`RealtimeConfigurationTest`][realtime-test], [`ExportConfigurationTest`][export-test] et [`AntivirusConfigurationTest`][antivirus-test] démarrent chacun un `ApplicationContextRunner`. Ils vérifient les défauts de `application.yaml`, l'arrêt du démarrage sur une valeur hors bornes, et les beans présents ou absents selon les interrupteurs.
 
-Pour ajouter un réglage : la clé dans le bloc de la fonctionnalité, le composant du record avec son `@param`, sa contrainte et son défaut, puis un cas dans le test de configuration.
+Pour ajouter un réglage : la clé dans le bloc, le composant du record avec `@param`, contrainte et défaut, puis un cas de test.
 
 ## Voir aussi
 

@@ -4,7 +4,7 @@
 
 ## Contexte
 
-- **Problème** : un service distant tombe, ralentit ou refuse. L'application doit réessayer ce qui peut l'être, sans doublon, sans s'acharner sur un hôte en panne, et sans qu'un hôte lent bloque les appels vers les autres.
+- **Problème** : un service distant tombe, ralentit ou refuse. L'application doit réessayer ce qui peut l'être, sans doublon et sans s'acharner sur un hôte en panne. Un hôte lent ne doit pas bloquer les appels vers les autres.
 - **Quand l'utiliser** : tout appel réseau sortant dont l'échec ne doit pas être définitif (webhooks, API de partenaires).
 - **Quand s'en passer** : une lecture interne rapide (la base) ; un appel dont l'utilisateur attend le résultat tout de suite ; une opération non idempotente qu'on ne sait pas dédupliquer.
 - **Dans ce dépôt** : la livraison des webhooks. Un réessai immédiat, un disjoncteur et une cloison par hôte, puis un calendrier de réessais en base sur environ 17 h.
@@ -89,9 +89,9 @@ Il a trois états :
 
 - Fermé : tout passe, et les résultats sont comptés sur une fenêtre.
 - Ouvert : tout est refusé sans appel. L'hôte souffle, et les threads ne l'attendent plus.
-- Demi-ouvert : quelques appels de test ; leur succès referme le disjoncteur. Avec Resilience4j, le passage d'ouvert à demi-ouvert a lieu à la première demande après l'attente.
+- Demi-ouvert : quelques appels de test passent, et leur succès referme le disjoncteur. Avec Resilience4j, le passage d'ouvert à demi-ouvert a lieu à la première demande après l'attente.
 - Un disjoncteur par hôte : un récepteur en panne n'arrête pas les autres.
-- Les défauts de Resilience4j 2.4 : taux d'échec de 50 %, fenêtre et minimum de 100 appels, 60 s d'ouverture, 10 appels de test. Un hôte peu sollicité n'atteint jamais 100 appels : il faut régler la fenêtre et le minimum.
+- Les défauts de Resilience4j 2.4 : taux d'échec de 50 %, fenêtre et minimum de 100 appels, 60 s d'ouverture, 10 appels de test. Un hôte peu sollicité n'atteint jamais 100 appels. Il faut donc régler la fenêtre et le minimum.
 
 ### La cloison
 
@@ -109,9 +109,9 @@ Avec une attente nulle, une cloison pleine refuse tout de suite.
 
 ### En mémoire ou en base
 
-- Un réessai en mémoire dort sur un thread et disparaît avec l'instance : bon pour quelques centaines de ms.
+- Un réessai en mémoire dort sur un thread et disparaît avec l'instance. Il convient pour quelques centaines de ms.
 - Un calendrier en base survit aux arrêts et se partage entre instances.
-- Disjoncteur et cloison restent en mémoire : les perdre au redémarrage ne coûte qu'un peu de prudence.
+- Disjoncteur et cloison restent en mémoire. Les perdre au redémarrage ne coûte qu'un peu de prudence.
 
 ## Implémentation avec Spring
 
@@ -144,9 +144,9 @@ class CallbackClientConfiguration {
 }
 ```
 
-`EnableResilientMethods` est dans `org.springframework.resilience.annotation`.
+`EnableResilientMethods` vient de `org.springframework.resilience.annotation`.
 
-**Étape 2. Réessayer seulement ce qui n'a pas pu arriver.** Sans connexion, la requête n'est jamais partie : la renvoyer ne crée pas de doublon. Tout le reste est laissé au calendrier.
+**Étape 2. Réessayer seulement ce qui n'a pas pu arriver.** Sans connexion, la requête n'est jamais partie, donc la renvoyer ne crée pas de doublon. Tout le reste est laissé au calendrier.
 
 ```java
 public interface CallbackClient {
@@ -160,12 +160,12 @@ public interface CallbackClient {
 ```
 
 - `ConnectException` vient de `java.net`, et `ConnectTimeoutException` de `org.apache.hc.client5.http`.
-- `includes` se compare à l'exception levée et à ses causes. `RestClient` enveloppe la `ConnectException` dans une `ResourceAccessException`, et le réessai s'applique quand même.
-- Avec `delay = 200` et `jitter = 100`, l'attente est entre 200 et 300 ms : la gigue ne descend jamais sous le délai de base.
+- `includes` se compare à l'exception levée et à ses causes. Le réessai s'applique donc même quand `RestClient` enveloppe la `ConnectException` dans une `ResourceAccessException`.
+- Avec `delay = 200` et `jitter = 100`, l'attente est entre 200 et 300 ms. La gigue ne descend jamais sous le délai de base.
 
 ### Un disjoncteur et une cloison par hôte
 
-**Étape 3. Ajouter Resilience4j.** Les annotations de Spring ne savent pas choisir un disjoncteur selon l'hôte de l'URL. Les modules de base de Resilience4j s'utilisent depuis le code.
+**Étape 3. Ajouter Resilience4j.** Les annotations de Spring ne savent pas choisir un disjoncteur selon l'hôte de l'URL. On utilise donc les modules de base de Resilience4j depuis le code.
 
 ```xml
 <dependency>
@@ -180,9 +180,9 @@ public interface CallbackClient {
 </dependency>
 ```
 
-Boot ne gère pas ces versions. Le dépôt laisse de côté le starter de Resilience4j, dont la prise en charge de Boot 4.1 n'est pas confirmée.
+Boot ne gère pas ces versions. Le dépôt n'utilise pas le starter de Resilience4j, dont la prise en charge de Boot 4.1 n'est pas confirmée.
 
-**Étape 4. Créer un disjoncteur et une cloison par hôte.** Le registre crée l'instance d'une clé à la première demande. On demande un passage avant l'appel, et on le rend après, avec le résultat.
+**Étape 4. Créer un disjoncteur et une cloison par hôte.** Le registre crée l'instance d'une clé à la première demande. On demande un passage avant l'appel et on le rend après, avec le résultat.
 
 ```java
 @Component
@@ -261,7 +261,7 @@ Une livraison reportée reçoit pour prochain essai l'heure actuelle plus la dur
 
 ### Des réessais durables, en base
 
-**Étape 6. Planifier l'essai suivant.** Chaque échec date le prochain essai, avec une gigue de 20 % et le `Retry-After` du serveur s'il est plus long. Après le dernier délai, la livraison est abandonnée.
+**Étape 6. Planifier l'essai suivant.** Chaque échec date le prochain essai, avec une gigue de 20 %. Le `Retry-After` du serveur l'emporte s'il est plus long. Après le dernier délai, la livraison est abandonnée.
 
 ```java
 static final List<Duration> RETRY_DELAYS = List.of(Duration.ofSeconds(5), Duration.ofMinutes(5),
@@ -286,7 +286,7 @@ void recordFailure(CallbackDelivery delivery, Duration retryAfter, Instant now) 
 }
 ```
 
-**Étape 7. Reprendre les essais dus.** Un poller sur chaque instance réserve un lot avec `SKIP LOCKED` et repousse leur date d'un bail. Un essai interrompu par un arrêt redevient dû à la fin du bail (guides 15 et 21).
+**Étape 7. Reprendre les essais dus.** Un poller sur chaque instance réserve un lot avec `SKIP LOCKED` et repousse la date des essais d'un bail. Un essai interrompu par un arrêt redevient dû à la fin du bail (guides 15 et 21).
 
 ```sql
 UPDATE callback_deliveries
@@ -357,13 +357,13 @@ Les attributs de `@Retryable` :
 
 `@ConcurrencyLimit(n)` limite à n les appels simultanés d'une méthode.
 
-Limites de cette version : l'état du disjoncteur est propre à chaque instance ; chacune découvre la panne d'un hôte de son côté.
+Limites de cette version : l'état du disjoncteur est propre à chaque instance, et chacune découvre seule la panne d'un hôte.
 
 ## Concepts avancés
 
 ### Sous le capot : `@Retryable`
 
-`@EnableResilientMethods` place un proxy Spring devant les beans annotés : un appel depuis l'intérieur de la classe le contourne. Le réessai dort sur le thread de l'appelant : acceptable pour 200 ms.
+`@EnableResilientMethods` place un proxy Spring devant les beans annotés. Un appel depuis l'intérieur de la classe le contourne. Le réessai dort sur le thread de l'appelant, ce qui est acceptable pour 200 ms.
 
 ### Ce qui compte comme un échec de l'hôte
 
@@ -379,14 +379,13 @@ Un 429 limite un client (un webhook Slack), pas l'hôte entier.
 
 ### Plusieurs instances
 
-- Disjoncteurs et cloisons sont en mémoire : chaque instance apprend la panne seule.
-- Le calendrier en base est partagé : le poller tourne partout sans ShedLock, `SKIP LOCKED` répartit les lignes, et le bail rattrape un essai interrompu (guides 15 et 21).
+- Le poller tourne sur chaque instance sans ShedLock. `SKIP LOCKED` répartit les lignes, et le bail rattrape un essai interrompu (guides 15 et 21).
 - La livraison est « au moins une fois » : l'identifiant stable permet au récepteur d'écarter un doublon.
 
 ### Abandonner un récepteur mort
 
 - Un 410 Gone désactive l'endpoint (raison `GONE`) et termine la livraison.
-- Des échecs pendant `webhooks.disable-after` (3 jours, comptés depuis `failing_since`, que tout succès efface) désactivent l'endpoint (raison `FAILING`) et préviennent son propriétaire par mail.
+- Des échecs pendant `webhooks.disable-after` (3 jours depuis `failing_since`, que tout succès efface) désactivent l'endpoint (raison `FAILING`). Son propriétaire est prévenu par mail.
 
 ### Surveiller
 
@@ -415,7 +414,7 @@ Les disjoncteurs n'ont qu'une série agrégée, pour ne pas grandir avec les abo
 
 | Piège | Ce qui se passe | Parade |
 |---|---|---|
-| Un seul disjoncteur pour tous les hôtes | un récepteur en panne bloque tous les autres | Créer un disjoncteur par hôte |
+| Garder un seul disjoncteur pour tous les hôtes | un récepteur en panne bloque tous les autres | Créer un disjoncteur par hôte |
 | Garder les défauts de Resilience4j | il faut 100 appels pour ouvrir : un hôte calme n'ouvre jamais | Régler la fenêtre et le minimum |
 | Consommer un essai quand le disjoncteur refuse | les livraisons meurent pendant la panne | Reporter sans compter l'essai |
 | Laisser la cloison attendre une place | les threads attendent l'hôte lent | Mettre `maxWaitDuration` à zéro, et reporter |
@@ -502,14 +501,14 @@ Ce qui est propre au dépôt :
 - Un report (`postpone`) pose `next_attempt_at` à maintenant plus `open-duration` plus 1 s, avec `last_error = HostUnavailable` et le compteur `postponed`, sans incrémenter `attempts`.
 - Ne se réessaient pas : un 410 (endpoint `GONE`), `DestinationNotAllowed`, et pour Slack les 403 et 404 (`GONE`) et le 400.
 - Les tests appellent `WebhookResilience.forgetAllHosts()`, car tous leurs récepteurs partagent `127.0.0.1`.
-- La fabrique de listeners de `webhook.deliver` n'a pas de réessais : le réessai global dormirait sur le thread consommateur, et un récepteur qui expire retiendrait un consommateur pendant des minutes.
+- La fabrique de listeners de `webhook.deliver` n'a pas de réessais. Le réessai global dormirait sur le thread consommateur, et un récepteur qui expire le retiendrait pendant des minutes.
 
 Les tests :
 
 - [`WebhookResilienceTest`][resilience-test] : 23 tests du disjoncteur, de la cloison et de la jauge.
 - [`WebhookDeliveryTests`][delivery-tests] : calendrier complet, `Retry-After`, réessai rapide d'une connexion refusée, report sans essai consommé.
 
-Pour protéger un autre appel sortant : `@Retryable` limité aux échecs de connexion, un `tryAcquire` et un `release` par hôte si plusieurs destinations partagent les consommateurs, et un calendrier en base si l'échec doit être rattrapé.
+Pour protéger un autre appel sortant, on combine `@Retryable` limité aux échecs de connexion, un `tryAcquire` et un `release` par hôte si plusieurs destinations partagent les consommateurs, et un calendrier en base si l'échec doit être rattrapé.
 
 ## Voir aussi
 

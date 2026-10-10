@@ -4,9 +4,9 @@
 
 ## Contexte
 
-- **Problème** : un changement en base et le message qui l'annonce doivent exister tous les deux, ou aucun des deux, alors que la base et le broker n'ont pas de transaction commune.
-- **Quand l'utiliser** : dès qu'un message découle d'une écriture en base : le mail de vérification d'un compte créé, le traitement d'une photo enregistrée.
-- **Quand s'en passer** : un message qui ne dépend d'aucune écriture ; une perte rare acceptable (`@TransactionalEventListener` suffit, guide 16).
+- **Problème** : un changement en base et le message qui l'annonce doivent exister tous les deux, ou aucun. Or la base et le broker n'ont pas de transaction commune.
+- **Quand l'utiliser** : dès qu'un message découle d'une écriture en base, comme le mail de vérification d'un compte créé.
+- **Quand s'en passer** : un message sans écriture associée, ou une perte rare acceptable (`@TransactionalEventListener` suffit, guide 16).
 - **Dans ce dépôt** : chaque message RabbitMQ (mails, photos, webhooks, exports, temps réel) passe par la classe `Outbox`.
 - **Prérequis** : guides 14 (transactions), 15 (`SKIP LOCKED`) et 19 (RabbitMQ). Versions : Spring Boot 4.1, Spring AMQP 4.1, PostgreSQL 18.
 
@@ -14,25 +14,25 @@ Les façons d'envoyer un message lié à une écriture :
 
 | Solution | Principe | Limite |
 |---|---|---|
-| Publier dans la transaction | `convertAndSend` avant le commit | le message part pour un changement annulé |
-| Publier après le commit | `@TransactionalEventListener`, puis `RabbitTemplate` | perdu si le broker ne répond pas, ou si l'instance s'arrête |
+| Publier dans la transaction | `convertAndSend` avant le commit | le message part même si le changement est annulé |
+| Publier après le commit | `@TransactionalEventListener`, puis `RabbitTemplate` | perdu si le broker ne répond pas ou si l'instance s'arrête |
 | Outbox et relais (ce guide) | une ligne écrite dans la transaction, publiée ensuite | une table, un poller, des doublons possibles |
 | Capture des changements (CDC) | Debezium lit le journal de Postgres et publie | un service de plus à déployer et à surveiller |
-| Spring Modulith | enregistre en base chaque événement à traiter, le relance s'il échoue | une bibliothèque et ses conventions en plus |
+| Spring Modulith | enregistre chaque événement en base et le relance s'il échoue | une bibliothèque et ses conventions en plus |
 
 ## Concepts clés
 
 ### Vocabulaire
 
-- **Double écriture** (dual write) : écrire dans deux systèmes, la base et le broker, sans transaction commune.
-- **Outbox** : la table où l'on écrit les messages dans la transaction métier, avant de les publier.
+- **Double écriture** (dual write) : écrire dans la base et dans le broker sans transaction commune.
+- **Outbox** : la table où l'on écrit les messages, dans la transaction métier, avant de les publier.
 - **Relais** : le composant qui lit l'outbox, publie vers le broker et marque les lignes publiées.
 - **Confirmation** : l'accusé du broker pour un message publié (guide 19).
 - **Poller** : un job qui relit la table à intervalle régulier pour rattraper ce qui n'est pas parti.
 
 ### Le problème de la double écriture
 
-Les deux ordres possibles échouent, chacun à sa façon :
+Les deux ordres échouent, chacun à sa façon :
 
 ```
  publier, puis valider                  valider, puis publier
@@ -45,12 +45,12 @@ Les deux ordres possibles échouent, chacun à sa façon :
  mail pour un compte inexistant         compte créé, mail perdu
 ```
 
-- Aucune transaction ne couvre les deux : RabbitMQ ne gère pas les transactions distribuées (XA).
-- Réessayer en mémoire ne suffit pas : un arrêt de l'instance efface les réessais.
+- Aucune transaction ne couvre les deux, car RabbitMQ ne gère pas les transactions distribuées (XA).
+- Réessayer en mémoire ne suffit pas, car un arrêt de l'instance efface les réessais.
 
 ### L'outbox
 
-Le message devient une ligne, écrite par la même transaction que le changement :
+Le message devient une ligne, écrite par la transaction du changement :
 
 ```
  transaction métier
@@ -69,11 +69,11 @@ Le message devient une ligne, écrite par la même transaction que le changement
 ```
 
 - Un rollback efface le message avec le changement. Un broker en panne ne perd rien : la ligne attend.
-- Le relais publie juste après le commit, pour la vitesse ; un poller rattrape les échecs, pour la sûreté.
+- Le relais publie juste après le commit, pour la vitesse. Un poller rattrape les échecs, pour la sûreté.
 
 ### Au moins une fois
 
-Le relais marque la ligne publiée après la confirmation, dans sa propre transaction. Un arrêt entre les deux republie le message :
+Le relais marque la ligne publiée après la confirmation, dans sa propre transaction. Un arrêt entre les deux fait republier le message :
 
 ```
  relais : publie --> confirmation reçue --> s'arrête avant son COMMIT
@@ -81,7 +81,7 @@ Le relais marque la ligne publiée après la confirmation, dans sa propre transa
  poller : publie la ligne de nouveau            (message reçu deux fois)
 ```
 
-L'outbox échange « parfois perdu » contre « parfois en double ». Les consommateurs doivent donc être idempotents (guide 19).
+L'outbox échange « parfois perdu » contre « parfois en double ». Les consommateurs doivent être idempotents (guide 19).
 
 ## Implémentation avec Spring
 
@@ -121,7 +121,7 @@ CREATE TABLE outbox_messages (
 CREATE INDEX outbox_messages_pendingIDX ON outbox_messages (published_at, next_attempt_at);
 ```
 
-**Étape 2. Mapper l'entité.** Le contenu est une `Map` rangée en `jsonb` : le relais n'a pas besoin de connaître la classe du message.
+**Étape 2. Mapper l'entité.** Le contenu est une `Map` rangée en `jsonb`, donc le relais n'a pas besoin de connaître la classe du message.
 
 ```java
 @Entity
@@ -182,7 +182,7 @@ public interface OutboxMessageRepository extends JpaRepository<OutboxMessage, UU
 }
 ```
 
-**Étape 4. Écrire le message dans la transaction de l'appelant.** `MANDATORY` refuse un appel sans transaction ; la publication est demandée pour l'après-commit.
+**Étape 4. Écrire le message dans la transaction de l'appelant.** `MANDATORY` refuse un appel sans transaction. La publication est demandée pour l'après-commit.
 
 ```java
 @Service
@@ -214,7 +214,7 @@ public class Outbox {
 }
 ```
 
-**Étape 5. Activer les confirmations.** Comme au guide 19 : un accusé par message, et le retour d'un message qu'aucune file ne reçoit.
+**Étape 5. Activer les confirmations.** Comme au guide 19 : un accusé par message, et le retour d'un message sans file.
 
 ```yaml
 spring:
@@ -225,7 +225,7 @@ spring:
       mandatory: true
 ```
 
-**Étape 6. Publier sur un autre thread, dans une nouvelle transaction.** `@Async` rend la main à la requête ; la ligne n'est marquée publiée qu'au commit du relais.
+**Étape 6. Publier sur un autre thread, dans une nouvelle transaction.** `@Async` rend la main à la requête. La ligne n'est marquée publiée qu'au commit du relais.
 
 ```java
 @Slf4j
@@ -314,7 +314,7 @@ private void send(OutboxMessage message) {
 }
 ```
 
-**Étape 8. Rattraper avec un poller, puis purger.** Le poller tourne sur chaque instance, sans ShedLock : `SKIP LOCKED` partage les lignes (guide 21). La purge est verrouillée.
+**Étape 8. Rattraper avec un poller, puis purger.** Le poller tourne sur chaque instance, sans ShedLock, car `SKIP LOCKED` partage les lignes (guide 21). La purge est verrouillée.
 
 ```java
 @Component
@@ -339,7 +339,7 @@ public class OutboxRelayJob {
 }
 ```
 
-**Étape 9. Vérifier.** Contre de vrais Postgres et RabbitMQ (guide 30).
+**Étape 9. Vérifier.** Avec de vrais Postgres et RabbitMQ (guide 30).
 
 ```java
 @SpringBootTest
@@ -382,7 +382,7 @@ class OutboxTests {
 ```
 
 ```java
-// dans OutboxTests ; InvoiceRequested(UUID orderId) est le message du guide 19
+// dans OutboxTests ; InvoiceRequested est le message du guide 19
 private long rows(UUID orderId, String condition) {
     return jdbcTemplate.queryForObject(
             "SELECT count(*) FROM outbox_messages WHERE payload ->> 'orderId' = ? AND " + condition,
@@ -425,13 +425,13 @@ Deux threads, deux transactions :
  réponse HTTP                               UPDATE published_at, COMMIT
 ```
 
-- Pendant `afterCommit()`, les ressources de la transaction terminée sont encore liées au thread : une méthode `@Transactional` ordinaire appelée là rejoint cette transaction finie, et ses écritures ne sont jamais validées. La Javadoc de Spring conseille `REQUIRES_NEW` ; `@Async` change de thread.
+- Pendant `afterCommit()`, les ressources de la transaction terminée sont encore liées au thread. Une méthode `@Transactional` ordinaire appelée là rejoint cette transaction finie, et ses écritures ne sont jamais validées. La Javadoc de Spring conseille `REQUIRES_NEW`. `@Async` change de thread.
 - Une exception levée dans `afterCommit()` remonte à l'appelant, alors que le changement est déjà validé.
-- Si l'instance s'arrête entre le commit et la publication, la ligne reste due : le poller la publie.
+- Si l'instance s'arrête entre le commit et la publication, la ligne reste due et le poller la publie.
 
 ### Sous le capot : de la ligne au message
 
-Le relais ne reconstruit jamais l'objet Java : il envoie le JSON tel quel.
+Le relais ne reconstruit jamais l'objet Java. Il envoie le JSON tel quel.
 
 | Colonne | Dans le message AMQP |
 |---|---|
@@ -442,7 +442,7 @@ Le relais ne reconstruit jamais l'objet Java : il envoie le JSON tel quel.
 
 ### Plusieurs instances
 
-Chaque instance fait tourner le poller, et `publishNow` peut viser la même ligne au même moment :
+Chaque instance fait tourner le poller, et `publishNow` peut viser la même ligne en même temps :
 
 ```
  ligne 42, due
@@ -455,11 +455,11 @@ Chaque instance fait tourner le poller, et `publishNow` peut viser la même lign
 ```
 
 - Pas de ShedLock sur le poller : une seule instance publierait pendant que le retard grossit (guide 21).
-- L'ordre n'est pas garanti : `publishNow` tourne sur des threads parallèles, et une ligne en échec repart après ses voisines. Un consommateur qui en dépend compare des dates ou des versions.
+- L'ordre n'est pas garanti, car `publishNow` tourne sur des threads parallèles et une ligne en échec repart après ses voisines. Un consommateur qui en dépend compare des dates ou des versions.
 
 ### Surveiller
 
-Deux jauges lues en base à chaque collecte (les deux compteurs sont incrémentés par le relais) :
+Deux jauges lues en base à chaque collecte. Le relais incrémente les deux compteurs :
 
 ```java
 // dans OutboxMessageRepository
@@ -508,8 +508,8 @@ public class OutboxMetrics implements MeterBinder {
 
 | Piège | Ce qui se passe | Parade |
 |---|---|---|
-| Écrire le message en `REQUIRES_NEW` ou `REQUIRED` | il est validé même si le changement est annulé, ou hors transaction | Le déclarer `MANDATORY` |
-| Appeler une méthode `@Transactional` dans `afterCommit()` | elle rejoint la transaction finie : rien n'est validé | Passer par `@Async`, ou `REQUIRES_NEW` |
+| Écrire le message en `REQUIRES_NEW` ou `REQUIRED` | il est validé même si le changement est annulé, ou écrit hors transaction | Le déclarer `MANDATORY` |
+| Appeler une méthode `@Transactional` dans `afterCommit()` | elle rejoint la transaction finie : rien n'est validé | Passer par `@Async` ou `REQUIRES_NEW` |
 | Mettre une entité JPA dans le message | le JSON suit le schéma de la base et charge les associations | Un record dédié, avec des ids |
 | Renommer la classe d'un message | les lignes en attente gardent l'ancien `__TypeId__` | Garder le nom tant que des lignes l'utilisent |
 
@@ -537,7 +537,7 @@ public class OutboxMetrics implements MeterBinder {
 
 ## En résumé
 
-**À retenir :** le message est une ligne écrite dans la transaction du changement ; un relais la publie après le commit, attend la confirmation du broker et la marque publiée, un poller rattrape les échecs, et les consommateurs tolèrent les doublons.
+**À retenir :** le message est une ligne écrite dans la transaction du changement. Un relais la publie après le commit, attend la confirmation du broker et la marque publiée. Un poller rattrape les échecs, et les consommateurs tolèrent les doublons.
 
 - [ ] Table `outbox_messages` créée par migration, avec l'index des lignes dues
 - [ ] `enqueue` en `MANDATORY`, jamais en `REQUIRES_NEW`
@@ -552,7 +552,7 @@ public class OutboxMetrics implements MeterBinder {
 
 ## Dans ce dépôt
 
-Le trajet d'un message, de la transaction métier au broker :
+Le trajet d'un message :
 
 ```
   service @Transactional              transaction de la requête
@@ -580,9 +580,9 @@ Le trajet d'un message, de la transaction métier au broker :
 | Fichier | Rôle |
 |---|---|
 | [`Outbox`][outbox] | `enqueue` vers une file, `broadcast` vers un exchange, dans la transaction de l'appelant |
-| [`OutboxRelay`][relay] | publication, attente de la confirmation, contrôle du retour, réessais, compteurs |
+| [`OutboxRelay`][relay] | publication, confirmation, contrôle du retour, réessais, compteurs |
 | [`OutboxRelayJob`][job] | le poller sans verrou, la purge verrouillée |
-| [`OutboxMessage`][entity] | la ligne : file ou exchange, type, contenu `jsonb`, tentatives |
+| [`OutboxMessage`][entity] | la ligne : file ou exchange, type, contenu, tentatives |
 | [`OutboxMessageRepository`][repository] | `lockUnpublished`, `lockDue`, la purge, les lectures des jauges |
 | [`OutboxMetrics`][metrics] | les deux jauges |
 | [`OutboxProperties`][properties] | les réglages `messaging.outbox` |
@@ -602,19 +602,19 @@ Les réglages, sous `messaging.outbox` dans `application.yaml` :
 
 Ce qui est propre au dépôt :
 
-- Une ligne vise une file (par l'exchange par défaut) ou un exchange de diffusion (clé vide), jamais les deux. Une diffusion qu'aucune file ne reçoit est marquée publiée : aucune instance n'écoute.
-- `payload` est une `Map<String, Object>` et non un `JsonNode` : Hibernate mappe les colonnes JSON avec Jackson 2, alors que l'application utilise Jackson 3. Le `JsonMapper` de Jackson 3 convertit le message, et écrit les UUID en texte.
+- Une ligne vise une file (par l'exchange par défaut) ou un exchange de diffusion (clé vide), jamais les deux. Une diffusion sans file est marquée publiée, car aucune instance n'écoute.
+- `payload` est une `Map<String, Object>` et non un `JsonNode`, car Hibernate mappe les colonnes JSON avec Jackson 2 alors que l'application utilise Jackson 3. Le `JsonMapper` de Jackson 3 convertit le message et écrit les UUID en texte.
 - L'id de la ligne devient le `message-id` AMQP : les événements temps réel s'en servent comme id d'événement, le même sur toutes les instances (guide 24).
 - `MailService.send` est `@Transactional` sans propagation particulière : hors transaction, il en ouvre une. `RealtimeBroadcasts` fait de même avec un `TransactionTemplate`, pour un changement de compte publié hors transaction.
+- En test, `poll-interval` vaut une heure. Les conteneurs réutilisés partagent une base, et un poller publierait les lignes d'un autre contexte vers son propre broker.
 - La classe d'un message doit appartenir à un paquet de confiance du convertisseur (guide 19).
-- En test, `poll-interval` vaut une heure : les conteneurs réutilisés partagent une base, et un poller publierait les lignes d'un autre contexte vers son propre broker.
 
 Les tests :
 
 - [`OutboxTest`][outbox-test] : la ligne écrite, la publication au commit seulement.
 - [`OutboxRelayTest`][relay-test] : confirmation, refus, retour, délai qui double, erreur tronquée, compteurs, diffusions.
-- [`OutboxTests`][outbox-tests] : contre les vrais conteneurs ; rollback sans ligne, `SKIP LOCKED` vu d'une autre connexion, file inexistante (`NO_ROUTE`), purge.
-- [`OutboxBrokerFailureTests`][broker-failure-tests] : un espion du `RabbitTemplate` simule la panne ; la ligne garde l'erreur, réessaie à 5 s puis 10 s, et le mail part une seule fois au retour du broker. L'espion lui donne un contexte à part.
+- [`OutboxTests`][outbox-tests] : contre les vrais conteneurs. Il couvre le rollback sans ligne, `SKIP LOCKED` vu d'une autre connexion, la file inexistante (`NO_ROUTE`) et la purge.
+- [`OutboxBrokerFailureTests`][broker-failure-tests] : un espion du `RabbitTemplate` simule la panne. La ligne garde l'erreur, réessaie à 5 s puis 10 s, et le mail part une seule fois au retour du broker. L'espion lui donne un contexte à part.
 - [`RealtimeBroadcastTests`][broadcast-tests] : une diffusion sans file est marquée publiée, sans réessai.
 
 Pour ajouter un message : un record dans un paquet de confiance, un appel à `outbox.enqueue(file, message)` dans la transaction du changement, et un listener idempotent sur la file (guide 19).

@@ -4,35 +4,33 @@
 
 ## Contexte
 
-- **Problème** : exposer des données en JSON sans exposer les entités ni lancer de requêtes cachées pendant l'écriture de la réponse, avec des statuts et une pagination fiables.
+- **Problème** : exposer des données en JSON sans exposer les entités, ni lancer de requêtes cachées pendant l'écriture de la réponse. Les statuts et la pagination doivent être fiables.
 - **Quand l'utiliser** : toute API REST servie par Spring MVC (le modèle servlet, un thread par requête).
-- **Quand s'en passer** : une application réactive (Spring WebFlux) ; des événements poussés au client (guide 24).
+- **Quand s'en passer** : une application réactive (Spring WebFlux), ou des événements poussés au client (guide 24).
 - **Dans ce dépôt** : 11 contrôleurs sous `/api/v1` : tâches, commentaires, pièces jointes, historique, comptes, exports, webhooks, identicônes.
 - **Prérequis** : guides 11 (Spring Data JPA) et 14 (transactions). Versions : Spring Boot 4.1, Spring Framework 7, Spring Data Commons 4.1, Jackson 3.
 
-Où transformer l'entité en DTO :
+Où convertir l'entité en DTO :
 
 | Solution | Principe | Quand la choisir |
 |---|---|---|
-| Le contrôleur convertit | le service renvoie l'entité chargée, le contrôleur construit le record | cas courant ; choix de ce dépôt |
-| Le service renvoie des DTO | la conversion a lieu dans la transaction | lectures complexes, services appelés seulement par l'API |
+| Le contrôleur convertit | le service renvoie l'entité chargée, le contrôleur construit le record | cas courant, choix du dépôt |
+| Le service renvoie des DTO | la conversion a lieu dans la transaction | lectures complexes, services propres à l'API |
 | MapStruct | un convertisseur généré à la compilation | beaucoup de champs copiés à l'identique |
-| Renvoyer l'entité | Jackson sérialise l'entité JPA | à éviter : champs internes, chargements cachés, contrat lié aux tables |
+| Renvoyer l'entité | Jackson sérialise l'entité JPA | à éviter : champs internes, chargements cachés |
 
 ## Concepts clés
 
 ### Vocabulaire
 
-- **Contrôleur** : une classe `@RestController` dont chaque méthode répond à un endpoint.
-- **DTO** (Data Transfer Object) : un objet qui ne sert qu'à transporter des données entre l'API et le client ; ici, un record.
-- **Open-in-view** : un réglage qui garde la session Hibernate ouverte jusqu'à la fin de l'écriture de la réponse.
-- **Association paresseuse** (LAZY) : une association chargée seulement quand on la lit, par une requête de plus.
-- **Multipart** : le format d'un formulaire qui transporte des champs et des fichiers dans une seule requête.
-- **ETag** : une étiquette de version d'une réponse, que le client renvoie pour savoir si sa copie est à jour.
+- **DTO** (Data Transfer Object) : un objet qui ne sert qu'à transporter des données entre l'API et le client. Ici, c'est un record.
+- **Open-in-view** : un réglage qui garde la session Hibernate ouverte jusqu'à la fin de la réponse.
+- **Association paresseuse** (LAZY) : une association chargée à la lecture, par une requête de plus.
+- **ETag** : l'étiquette de version d'une réponse, que le client renvoie pour vérifier sa copie.
 
 ### Le trajet d'une lecture
 
-Le service ouvre la transaction, charge tout ce que la réponse lira, puis la valide. Le contrôleur convertit ensuite l'entité, hors transaction :
+Le service charge dans sa transaction tout ce que la réponse lira, puis la valide. Le contrôleur convertit ensuite l'entité, hors transaction :
 
 ```
   Contrôleur              Service (@Transactional)          Base
@@ -48,10 +46,9 @@ Le service ouvre la transaction, charge tout ce que la réponse lira, puis la va
   JSON écrit par Jackson
 ```
 
-- Le service reste réutilisable par un job ou un listener, sans HTTP.
-- Le DTO ne lit que ce que le service a chargé : une association oubliée se voit tout de suite, à condition de couper open-in-view.
+- Le DTO ne lit que ce que le service a chargé. Une association oubliée se voit tout de suite, si open-in-view est coupé.
 
-Spring Boot active open-in-view par défaut (avec un avertissement au démarrage). Le réglage décide de ce qui arrive quand le DTO lit une association non chargée :
+Spring Boot active open-in-view par défaut (`true`), avec un avertissement au démarrage. Ce réglage décide du sort d'une association non chargée que le DTO lit :
 
 ```
  open-in-view: true (défaut)
@@ -70,12 +67,12 @@ Spring Boot active open-in-view par défaut (avec un avertissement au démarrage
                                           --> LazyInitializationException
 ```
 
-- Activé, il cache le problème N+1 : une page de 20 factures lance 20 requêtes de plus, hors transaction, sans erreur.
-- Coupé, l'erreur part en test dès la première lecture oubliée. On la corrige dans le service, avec un `@EntityGraph` (guide 11).
+- Activé, il cache le problème N+1 : une page de 20 factures lance 20 requêtes de plus, sans erreur.
+- Coupé, il fait échouer le test dès la première lecture oubliée, qu'on corrige dans le service par un `@EntityGraph` (guide 11).
 
 ### Les réponses : statut et en-têtes
 
-Chaque opération a son code de succès, et certains codes demandent un en-tête :
+Chaque opération a son code de succès :
 
 | Code | Quand | En-tête | Corps |
 |---|---|---|---|
@@ -85,22 +82,22 @@ Chaque opération a son code de succès, et certains codes demandent un en-tête
 | 204 No Content | suppression, action sans résultat | | aucun |
 | 304 Not Modified | la copie du client est à jour | `ETag` | aucun |
 
-Une action métier (archiver, annuler) est un `POST` sur une sous-ressource (`/tasks/{id}/archive`) ; une modification partielle est un `PATCH`.
+Une action métier (archiver, annuler) est un `POST` sur une sous-ressource (`/tasks/{id}/archive`), une modification partielle un `PATCH`.
 
 ### La pagination
 
-Spring Data lit `page`, `size` et `sort` dans l'URL et les passe à la méthode sous la forme d'un `Pageable`. Ce qui part au client, en revanche, dépend de ce que la méthode renvoie :
+Spring Data lit `page`, `size` et `sort` dans l'URL et les passe à la méthode dans un `Pageable`. Le JSON dépend du type renvoyé :
 
 | Type renvoyé | JSON produit | Stabilité |
 |---|---|---|
-| `Page<T>` | tous les champs de `PageImpl`, dont `pageable` et `sort` | aucune garantie, et Spring Data log un avertissement |
-| `PagedModel<T>` | `content`, puis `page` : `size`, `number`, `totalElements`, `totalPages` | structure fixe, faite pour être exposée |
+| `Page<T>` | tous les champs de `PageImpl`, dont `pageable` et `sort` | aucune, et un avertissement dans les logs |
+| `PagedModel<T>` | `content`, puis `page` : `size`, `number`, `totalElements`, `totalPages` | structure fixe, faite pour l'API |
 
-Les bornes s'appliquent sans erreur : une taille au-delà de `max-page-size` est ramenée à ce maximum, une valeur illisible ou négative est remplacée. Le client lit la taille utilisée dans `page.size`.
+Les bornes s'appliquent sans erreur : une taille au-delà de `max-page-size` est ramenée à ce maximum, et une valeur illisible ou négative est remplacée. Le client lit la taille utilisée dans `page.size`.
 
 ### Le cache HTTP
 
-Une ressource qui ne change jamais peut rester dans le cache du navigateur. L'`ETag` sert quand le navigateur redemande quand même :
+Une ressource immuable peut rester dans le cache du navigateur. L'`ETag` sert quand il redemande quand même :
 
 ```
   Navigateur                                       API
@@ -116,8 +113,8 @@ Une ressource qui ne change jamais peut rester dans le cache du navigateur. L'`E
 ```
 
 - **`max-age`** : la durée pendant laquelle la copie est utilisable sans demander.
-- **`immutable`** : le navigateur ne revalide pas pendant `max-age`, même quand l'utilisateur recharge la page.
-- **`public`** ou **`private`** : `public` autorise les caches partagés (reverse proxies, CDN) ; `private`, le navigateur seul.
+- **`immutable`** : le navigateur ne revalide pas pendant `max-age`, même au rechargement de la page.
+- **`public`** ou **`private`** : `public` autorise les caches partagés (reverse proxies, CDN), `private` le navigateur seul.
 
 ## Implémentation avec Spring
 
@@ -142,7 +139,7 @@ src/test/java/.../
 
 ### Un CRUD paginé
 
-**Étape 1. Écrire les entités et les DTO.** Le DTO de réponse se construit depuis l'entité par un second constructeur.
+**Étape 1. Écrire les entités et les DTO.** Le DTO de réponse se construit depuis l'entité, par un second constructeur.
 
 ```java
 @Entity
@@ -191,7 +188,7 @@ public record InvoiceResponseDto(UUID id, String number, BigDecimal amount, Stri
 }
 ```
 
-**Étape 2. Charger dans le service ce que le DTO lira.** Le DTO lit `customer` : le repository le charge dans la même requête.
+**Étape 2. Charger dans le service ce que le DTO lira.** Le DTO lit `customer`, donc le repository le charge dans la même requête.
 
 ```java
 public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
@@ -241,7 +238,7 @@ public class InvoiceService {
 }
 ```
 
-**Étape 3. Couper open-in-view et borner les pages.** La session se ferme avec la transaction, et aucun client ne demande 2000 lignes d'un coup.
+**Étape 3. Couper open-in-view et borner les pages.** La session se ferme avec la transaction, et aucun client ne demande 2000 lignes.
 
 ```yaml
 spring:
@@ -253,7 +250,7 @@ spring:
         max-page-size: 100       # 2000 par défaut ; une taille plus grande est ramenée à 100
 ```
 
-**Étape 4. Lire l'appelant depuis le jeton.** Un bean lit l'identifiant dans l'authentification courante ; le contrôleur et les services le partagent.
+**Étape 4. Lire l'appelant depuis le jeton.** Un bean lit l'identifiant dans l'authentification courante, et le contrôleur comme les services l'utilisent.
 
 ```java
 @Component
@@ -269,7 +266,7 @@ public class CurrentUser {
 }
 ```
 
-**Étape 5. Écrire le contrôleur.** Le chemin est relatif à l'API ; chaque méthode appelle le service, puis construit la réponse.
+**Étape 5. Écrire le contrôleur.** Le `@RestController` a un chemin relatif à l'API. Ses méthodes appellent le service puis construisent la réponse.
 
 ```java
 @RestController
@@ -309,7 +306,7 @@ public class InvoiceController {
 }
 ```
 
-**Étape 6. Paginer la liste.** Le `Pageable` arrive tout fait ; la méthode renvoie un `PagedModel`, jamais le `Page` lui-même.
+**Étape 6. Paginer la liste.** Le `Pageable` arrive tout fait. La méthode renvoie un `PagedModel`, jamais le `Page` lui-même.
 
 ```java
 // dans InvoiceController
@@ -332,7 +329,7 @@ public PagedModel<InvoiceResponseDto> listInvoices(
 }
 ```
 
-**Étape 7. Vérifier.** Un test de la couche web, le service simulé.
+**Étape 7. Vérifier.** Un test de la couche web, avec un service simulé.
 
 ```java
 @WebMvcTest(InvoiceController.class)
@@ -388,7 +385,7 @@ class InvoiceControllerTests {
 
 ### Fichiers et cache HTTP
 
-**Étape 8. Accepter un formulaire avec des fichiers.** Une seconde méthode sur la même URL, choisie par `consumes` : les champs remplissent le même record par `@ModelAttribute`, les fichiers arrivent par `@RequestPart`.
+**Étape 8. Accepter des fichiers.** Une seconde méthode sur la même URL, choisie par `consumes`. `@ModelAttribute` remplit le même record avec les champs, et `@RequestPart` reçoit les fichiers.
 
 ```java
 // dans InvoiceController
@@ -401,9 +398,9 @@ public ResponseEntity<InvoiceResponseDto> createInvoiceWithFiles(
 }
 ```
 
-Sans fichier, `files` vaut `null` et non une liste vide.
+Sans fichier, `files` vaut `null`.
 
-**Étape 9. Régler les limites d'upload.** Les valeurs par défaut (1 Mo par fichier, 10 Mo par requête) refusent le moindre PDF scanné.
+**Étape 9. Régler les limites d'upload.** Les défauts (`1MB` par fichier, `10MB` par requête) refusent un PDF scanné.
 
 ```yaml
 spring:
@@ -413,9 +410,9 @@ spring:
       max-request-size: 26MB      # tous les fichiers et champs d'une requête
 ```
 
-Au-delà, Spring lève `MaxUploadSizeExceededException`, un 413 (guide 05). Une limite par usage se vérifie dans le service (guide 28).
+Au-delà, Spring lève `MaxUploadSizeExceededException`, un 413 (guide 05). Le service vérifie les limites propres à chaque usage (guide 28).
 
-**Étape 10. Servir une ressource immuable avec un cache HTTP.** Une facture émise ne change plus : son PDF peut rester un an chez le client, en cache privé puisqu'il appartient à un compte.
+**Étape 10. Servir une ressource immuable avec un cache HTTP.** Le PDF d'une facture émise ne change plus. Il peut rester un an chez le client, en cache privé car il appartient à un compte.
 
 ```java
 // dans InvoiceController
@@ -428,9 +425,9 @@ public ResponseEntity<byte[]> getInvoicePdf(@PathVariable UUID id) {
 }
 ```
 
-Quand la requête porte `If-None-Match` avec cet `ETag`, Spring répond 304 sans corps.
+Si la requête porte cet `ETag` dans `If-None-Match`, Spring répond 304 sans corps.
 
-**Étape 11. Vérifier.** Un formulaire multipart passe ses fichiers au service, et un `ETag` connu reçoit un 304.
+**Étape 11. Vérifier.** Un multipart passe ses fichiers au service, et un `ETag` connu reçoit un 304.
 
 ```java
 // dans InvoiceControllerTests
@@ -462,7 +459,7 @@ void aKnownEtagIsAnsweredNotModified() throws Exception {
 
 ### Référence rapide
 
-Ce qu'une méthode de contrôleur peut recevoir :
+Ce qu'une méthode de contrôleur reçoit :
 
 | Paramètre | Source | Remarque |
 |---|---|---|
@@ -474,24 +471,9 @@ Ce qu'une méthode de contrôleur peut recevoir :
 | `Pageable` | `page`, `size`, `sort` | défauts par `@PageableDefault` |
 | `JwtAuthenticationToken` | l'appelant authentifié | `null` pour un appel anonyme |
 
-Les réponses de `ResponseEntity` :
+Les appels de `ResponseEntity` : `ok(body)` (200), `created(uri).body(body)` (201), `accepted().location(uri).body(body)` (202) et `noContent().build()` (204).
 
-| Appel | Statut | Usage |
-|---|---|---|
-| `ok(body)` | 200 | lecture, modification |
-| `created(uri).body(body)` | 201 | création, avec `Location` |
-| `accepted().location(uri).body(body)` | 202 | travail en arrière-plan |
-| `noContent().build()` | 204 | suppression |
-
-Les réglages :
-
-| Réglage | Défaut | Rôle |
-|---|---|---|
-| `spring.jpa.open-in-view` | `true`, avec un avertissement | session ouverte jusqu'à la fin de la réponse |
-| `spring.data.web.pageable.max-page-size` | `2000` | taille maximale d'une page |
-| `spring.data.web.pageable.serialization-mode` | `direct` | `via-dto` convertit tout `Page` renvoyé en `PagedModel` |
-| `spring.servlet.multipart.max-file-size` | `1MB` | taille maximale d'un fichier |
-| `spring.servlet.multipart.max-request-size` | `10MB` | taille maximale d'une requête multipart |
+Par défaut, `max-page-size` vaut `2000` et `spring.data.web.pageable.serialization-mode` vaut `direct`. La valeur `via-dto` convertit tout `Page` renvoyé en `PagedModel`, sans `new PagedModel<>(page)`.
 
 Limites de cette version : le contrat des erreurs (guide 05), la version dans l'URL (guide 04) et la documentation (guide 06) restent à ajouter.
 
@@ -499,7 +481,7 @@ Limites de cette version : le contrat des erreurs (guide 05), la version dans l'
 
 ### Sous le capot : de la requête à la méthode, puis au JSON
 
-Le `DispatcherServlet` choisit la méthode, prépare chaque argument, puis écrit ce qu'elle renvoie :
+Le `DispatcherServlet` choisit la méthode, prépare ses arguments, puis écrit le résultat :
 
 ```
  requête HTTP
@@ -527,13 +509,13 @@ Le `DispatcherServlet` choisit la méthode, prépare chaque argument, puis écri
  corps écrit par Jackson
 ```
 
-- `@ResponseStatus` et `ResponseEntity` peuvent cohabiter : le second fixe le statut en dernier. Le premier sert alors à la documentation.
+- `@ResponseStatus` et `ResponseEntity` peuvent cohabiter. Le second fixe le statut en dernier, et le premier sert alors à la documentation.
 - Le 304 automatique ne vaut que pour un `ResponseEntity` en 200, sur `GET` ou `HEAD`.
-- Spring trouve le nom d'un paramètre (`id`) grâce à l'option `-parameters` du compilateur, que le parent Maven de Spring Boot active.
+- Le nom d'un paramètre (`id`) vient de l'option `-parameters` du compilateur, que le parent Maven de Spring Boot active.
 
 ### Le 304 sans calculer le corps
 
-À l'étape 10, le PDF est produit avant la comparaison de l'`ETag`. Quand le corps coûte cher, on compare d'abord :
+À l'étape 10, le PDF est produit avant la comparaison de l'`ETag`. Si le corps coûte cher, on compare d'abord :
 
 ```java
 @GetMapping(path = "/{id}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
@@ -548,23 +530,23 @@ public ResponseEntity<byte[]> getInvoicePdf(@PathVariable UUID id, WebRequest re
 }
 ```
 
-Le filtre `ShallowEtagHeaderFilter` fait l'inverse : il calcule un `ETag` depuis le corps déjà produit. Il économise la bande passante, pas le travail du serveur.
+`ShallowEtagHeaderFilter` fait l'inverse : il calcule l'`ETag` depuis le corps déjà produit. Il économise la bande passante, pas le travail du serveur.
 
 ### Spring Security et les en-têtes de cache
 
-Spring Security ajoute à chaque réponse `Cache-Control: no-cache, no-store, max-age=0, must-revalidate`, avec `Pragma` et `Expires`. Il s'abstient quand la réponse porte déjà un de ces en-têtes : le `cacheControl(...)` du contrôleur l'emporte, endpoint par endpoint.
+Spring Security ajoute à chaque réponse `Cache-Control: no-cache, no-store, max-age=0, must-revalidate`, avec `Pragma` et `Expires`. Il s'abstient quand la réponse porte déjà un de ces en-têtes. Le `cacheControl(...)` du contrôleur l'emporte donc, endpoint par endpoint.
 
 ### Plusieurs instances
 
-Un contrôleur sans état tourne à l'identique sur chaque instance. Deux points demandent de l'attention :
+Un contrôleur sans état tourne à l'identique sur chaque instance. Deux points demandent attention :
 
-- **L'`ETag`** se calcule depuis le contenu, l'id ou la version de la ligne, jamais depuis un état propre à l'instance : sinon une requête qui change d'instance ne reçoit jamais de 304.
-- **Une URL absolue** construite depuis la requête (`ServletUriComponentsBuilder`) reprend le schéma et l'hôte vus par l'application : derrière un reverse proxy, souvent `http` et une adresse interne, sauf si `server.forward-headers-strategy` est réglé (guide 10). Un `Location` relatif évite la question.
+- **L'`ETag`** se calcule depuis le contenu, l'id ou la version de la ligne, jamais depuis un état propre à l'instance. Sinon une requête qui change d'instance ne reçoit jamais de 304.
+- **Une URL absolue** construite depuis la requête (`ServletUriComponentsBuilder`) reprend le schéma et l'hôte vus par l'application. Derrière un reverse proxy, c'est souvent `http` et une adresse interne, sauf si `server.forward-headers-strategy` est réglé (guide 10). Un `Location` relatif évite ce piège.
 
 ### Surveiller
 
-- Micrometer mesure chaque requête dans `http.server.requests`, avec le modèle de l'URL (pas l'id réel), le statut et le nom de l'exception (guide 32).
-- Le message `Serializing PageImpl instances as-is is not supported` dans les logs signale un `Page` renvoyé tel quel.
+- Micrometer mesure chaque requête dans `http.server.requests` (guide 32), par modèle d'URL, statut et exception.
+- Le message `Serializing PageImpl instances as-is is not supported` signale un `Page` renvoyé tel quel.
 
 ## Pièges à éviter
 
@@ -604,7 +586,7 @@ Un contrôleur sans état tourne à l'identique sur chaque instance. Deux points
 
 ## En résumé
 
-**À retenir :** le service charge et renvoie l'entité dans sa transaction, le contrôleur la transforme en record et choisit le statut ; open-in-view coupé fait échouer en test toute lecture oubliée, et `PagedModel` donne aux listes une forme stable.
+**À retenir :** le service charge et renvoie l'entité dans sa transaction, le contrôleur la transforme en record et choisit le statut. Open-in-view coupé fait échouer en test toute lecture oubliée, et `PagedModel` donne aux listes une forme stable.
 
 - [ ] Chemins relatifs dans `@RequestMapping`, la version ajoutée ailleurs (guide 04)
 - [ ] Records pour les requêtes et les réponses, réponse construite depuis l'entité
@@ -645,14 +627,14 @@ Le trajet de `GET /api/v1/tasks?size=500` :
 
 | Fichier | Rôle |
 |---|---|
-| [`TaskController`][task-controller] | CRUD des tâches, liste paginée et filtrée, actions en `POST` |
+| [`TaskController`][task-controller] | CRUD des tâches, liste filtrée, actions en `POST` |
 | [`TaskCommentController`][comment-controller] | commentaire en JSON ou en multipart sur la même URL |
 | [`DataExportController`][export-controller] | 202 avec `Location`, appelant lu par `CurrentUser` |
 | [`UserController`][user-controller] | inscription en 201, photo de profil en multipart et en 202 |
 | [`IdenticonController`][identicon-controller] | image publique, `Cache-Control` d'un an, `ETag` |
 | [`CurrentUser`][current-user] | l'id du claim `uid`, en `Optional` |
-| [`TaskResponseDto`][task-dto], [`UserProfileResponseDto`][profile-dto] | records construits depuis l'entité ; le compte tel que les autres le voient |
-| [`ProfilesForDisplay`][profiles] | charge un profil et sa photo avant la fin de la transaction |
+| [`TaskResponseDto`][task-dto], [`UserProfileResponseDto`][profile-dto] | records construits depuis l'entité, le compte tel que les autres le voient |
+| [`ProfilesForDisplay`][profiles] | charge un profil et sa photo dans la transaction |
 | [`TaskRepository`][task-repository] | les `@EntityGraph` qui nourrissent les réponses |
 
 Les réglages, dans `application.yaml` :
@@ -661,28 +643,28 @@ Les réglages, dans `application.yaml` :
 |---|---|---|
 | `spring.jpa.open-in-view` | `false` | la session se ferme avec la transaction du service |
 | `spring.data.web.pageable.max-page-size` | `100` | taille maximale d'une page |
-| `spring.jpa.properties.hibernate.default_batch_fetch_size` | `50` | collections d'une page chargées par lots (guide 11) |
-| `spring.servlet.multipart.max-file-size` | `25MB` | égal à `media.attachment-max-size`, la plus grosse limite par usage |
-| `spring.servlet.multipart.max-request-size` | `26MB` | tous les fichiers d'une requête, champs compris |
+| `spring.jpa.properties.hibernate.default_batch_fetch_size` | `50` | collections chargées par lots (guide 11) |
+| `spring.servlet.multipart.max-file-size` | `25MB` | égal à `media.attachment-max-size`, la plus grosse limite |
+| `spring.servlet.multipart.max-request-size` | `26MB` | fichiers et champs d'une requête |
 
 Ce qui est propre au dépôt :
 
-- Les constructeurs des DTO reçoivent [`MediaUrls`][media-urls], qui calcule l'URL de chaque photo de profil. MapStruct est dans le `pom.xml`, mais rien ne l'utilise.
-- Les `Location` sont des chemins relatifs, préfixe compris (`/api/v1/tasks/...`). Les liens rendus dans les corps passent par `ApiVersioningConfiguration.CURRENT_PATH`, et `IdenticonController.urlOf` les rend absolus depuis la requête courante.
-- `@PageableDefault` ne donne pas de taille : une page fait 10 éléments par défaut. Tris : tâches et exports par `createdAt` décroissant, commentaires par `createdAt` croissant, historique et livraisons de webhooks par date puis `id`, décroissants (l'id départage deux lignes créées au même instant).
-- Un tri sur une propriété inconnue devient une `validation-error` sur le paramètre `sort` (guide 05). Un commentaire porte 5 fichiers au plus, vérifié par le service : au-delà, une erreur sur le paramètre `files`.
-- La photo de profil répond 202 sans `Location` : le traitement se suit sur le compte lui-même (`avatarPending`).
-- Les variables de chemin s'appellent `id`, parce que les annotations de sécurité lisent `#id` (guide 08).
+- Les constructeurs des DTO reçoivent [`MediaUrls`][media-urls], qui calcule l'URL des photos. MapStruct est dans le `pom.xml`, mais rien ne l'utilise.
+- Les `Location` sont des chemins relatifs, préfixe compris (`/api/v1/tasks/...`). Les liens des corps passent par `ApiVersioningConfiguration.CURRENT_PATH`. `IdenticonController.urlOf` les rend absolus.
+- `@PageableDefault` ne donne pas de taille : une page fait 10 éléments par défaut. Tâches et exports sont triés par `createdAt` décroissant, commentaires par `createdAt` croissant, historique et livraisons de webhooks par date puis `id`, décroissants. L'id départage deux lignes créées au même instant.
+- Un tri sur une propriété inconnue devient une `validation-error` sur le paramètre `sort` (guide 05). Un commentaire porte 5 fichiers au plus, vérifiés par le service, sinon l'erreur porte sur `files`.
+- La photo de profil répond 202 sans `Location`. Le traitement se suit sur le compte lui-même (`avatarPending`).
+- Les variables de chemin s'appellent `id`, car les annotations de sécurité lisent `#id` (guide 08).
+- [`NotificationStreamController`][stream-controller] reçoit `JwtAuthenticationToken`, car il lui faut l'expiration du jeton (guide 24).
 - Chaque 201, 202 et 204 porte `@ResponseStatus` en plus du `ResponseEntity`, pour la documentation (guide 06).
-- [`NotificationStreamController`][stream-controller] reçoit `JwtAuthenticationToken` : il a besoin de l'expiration du jeton (guide 24).
 
 Les tests :
 
 - [`TaskListApiTests`][list-tests] : structure de la page, tri par défaut, taille ramenée à 100, tri inconnu.
-- [`TaskQueryCountTests`][task-count] et [`UserQueryCountTests`][user-count] : autant de requêtes SQL pour une longue liste que pour une courte (guide 31).
-- [`TaskCommentControllerWebMvcTests`][comment-tests], [`IdenticonControllerWebMvcTests`][identicon-tests] (`Cache-Control`, `ETag`, 304) et [`DataExportControllerWebMvcTests`][export-tests] (202 et `Location`).
+- [`TaskQueryCountTests`][task-count] et [`UserQueryCountTests`][user-count] : autant de requêtes pour une longue liste que pour une courte (guide 31).
+- [`TaskCommentControllerWebMvcTests`][comment-tests], [`IdenticonControllerWebMvcTests`][identicon-tests] (`Cache-Control`, `ETag`, 304) et [`DataExportControllerWebMvcTests`][export-tests] (202, `Location`).
 
-Pour ajouter un endpoint : un chemin relatif dans un contrôleur du package de la fonctionnalité, un service qui charge tout ce que le record lira, le `ResponseEntity` du bon statut, puis ce que la documentation demande (guide 06).
+Pour ajouter un endpoint : un chemin relatif dans le contrôleur de la fonctionnalité, un service qui charge tout ce que le record lira, le bon statut, puis la documentation (guide 06).
 
 ## Voir aussi
 

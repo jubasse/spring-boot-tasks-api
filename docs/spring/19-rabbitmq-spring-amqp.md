@@ -4,9 +4,9 @@
 
 ## Contexte
 
-- **Problème** : faire un travail lent ou fragile (un mail, une image à retraiter, un appel HTTP) hors de la requête, sans le perdre quand il échoue.
-- **Quand l'utiliser** : un travail différé avec réessais ; plusieurs instances qui se le partagent ; un événement à diffuser à toutes les instances.
-- **Quand s'en passer** : un travail court dont la perte est acceptable (`@Async`, guide 16) ; un traitement à heure fixe (guide 21) ; un gros volume par paquets (guide 22).
+- **Problème** : faire un travail lent ou fragile (un mail, une image, un appel HTTP) hors de la requête, sans le perdre s'il échoue.
+- **Quand l'utiliser** : un travail différé avec réessais, partagé entre instances, ou un événement à diffuser à toutes les instances.
+- **Quand s'en passer** : un travail court dont la perte est acceptable (`@Async`, guide 16), un traitement à heure fixe (guide 21) ou un gros volume (guide 22).
 - **Dans ce dépôt** : quatre files de travail (`mail.send`, `avatar.process`, `webhook.deliver`, `export.run`), chacune avec sa dead letter, et un exchange fanout pour le temps réel.
 - **Prérequis** : guides 14 (transactions) et 16 (événements applicatifs). Versions : Spring Boot 4.1, Spring AMQP 4.1, RabbitMQ 4.3.
 
@@ -14,25 +14,25 @@ Les façons de sortir un travail de la requête :
 
 | Solution | Principe | Quand la choisir |
 |---|---|---|
-| `@Async` | un autre thread de la même instance | travail court, perte acceptable si l'instance s'arrête |
-| Table en base et poller | les lignes servent de file, lues avec `SKIP LOCKED` | petit volume, aucun service en plus |
-| RabbitMQ | un broker garde les messages et les distribue | réessais, dead letters, plusieurs instances |
-| Kafka | un journal d'événements qu'on peut relire | gros débit, relecture de l'historique |
+| `@Async` | un autre thread de l'instance | travail court, perte acceptable |
+| Table en base et poller | les lignes servent de file (`SKIP LOCKED`) | petit volume, aucun service en plus |
+| RabbitMQ | un broker garde et distribue les messages | réessais, dead letters, plusieurs instances |
+| Kafka | un journal d'événements relisible | gros débit, relecture de l'historique |
 
 ## Concepts clés
 
 ### Vocabulaire
 
 - **Message** : un contenu (ici du JSON) avec des en-têtes, publié par un producteur.
-- **File** (queue) : où les messages attendent un consommateur ; le broker les garde jusqu'à l'acquittement.
-- **Exchange** : la porte d'entrée du broker ; il ne garde rien et copie chaque message vers des files.
+- **File** (queue) : où les messages attendent un consommateur, jusqu'à leur acquittement.
+- **Exchange** : la porte d'entrée du broker. Il ne garde rien et copie chaque message vers des files.
 - **Binding** : la règle qui relie une file à un exchange, souvent avec une clé de routage.
 - **Acquittement** (ack) : le signal du consommateur, « message traité, on peut l'effacer ».
-- **Dead letter** : un message écarté après ses échecs, rangé dans une file à part pour être examiné.
+- **Dead letter** : un message écarté après ses échecs, rangé à part pour examen.
 
 ### Le trajet d'un message
 
-Un producteur ne publie jamais directement dans une file : il publie vers un exchange, avec une clé de routage.
+Un producteur publie vers un exchange, avec une clé de routage, jamais dans une file.
 
 ```
  producteur
@@ -46,7 +46,7 @@ Un producteur ne publie jamais directement dans une file : il publie vers un exc
                             consommateur -- ack --> message effacé
 ```
 
-Le type de l'exchange décide des files qui reçoivent une copie :
+Le type de l'exchange décide quelles files reçoivent une copie :
 
 | Type | Routage | Exemple dans ce dépôt |
 |---|---|---|
@@ -55,11 +55,11 @@ Le type de l'exchange décide des files qui reçoivent une copie :
 | `fanout` | toutes les files liées, clé ignorée | `tasks.realtime` |
 | `topic` | les files dont le motif correspond à la clé (`task.*`) | aucun |
 
-L'exchange par défaut existe toujours, chaque file y est liée sous son nom : une file de travail n'a besoin d'aucun exchange déclaré.
+L'exchange par défaut existe toujours et lie chaque file sous son nom. Une file de travail n'a donc besoin d'aucun exchange déclaré.
 
 ### Acquittement, réessais et dead letter
 
-Le broker garde un message jusqu'à son acquittement. Si le traitement échoue :
+Si le traitement échoue :
 
 ```
  file mail.send
@@ -78,13 +78,13 @@ Le broker garde un message jusqu'à son acquittement. Si le traitement échoue :
                                             file mail.send.dead-letter
 ```
 
-- Un rejet avec remise en file (requeue) redonne aussitôt le message : si l'échec est permanent, la boucle ne s'arrête jamais.
-- Un rejet sans remise en file envoie le message au dead letter exchange (DLX) de la file, s'il en a un ; sinon, il est supprimé. Le broker ajoute alors un en-tête `x-death` (file d'origine, raison, nombre de passages).
-- Un message empoisonné (poison message) échouera toujours : adresse invalide, identifiant inconnu. On le rejette tout de suite, sans réessai.
+- Un rejet avec remise en file (requeue) redonne aussitôt le message. Si l'échec est permanent, la boucle est infinie.
+- Un rejet sans remise en file envoie le message au dead letter exchange (DLX) de la file, ou le supprime sans DLX. Le broker ajoute un en-tête `x-death` (file d'origine, raison, nombre de passages).
+- Un message empoisonné (poison message) échouera toujours, comme une adresse invalide. On le rejette sans réessai.
 
 ### Livraison au moins une fois
 
-L'acquittement part après le traitement : un arrêt entre les deux fait livrer le message deux fois :
+L'acquittement part après le traitement. Un arrêt entre les deux livre le message deux fois :
 
 ```
  consommateur A : envoie le mail --> s'arrête avant l'ack
@@ -92,7 +92,7 @@ L'acquittement part après le traitement : un arrêt entre les deux fait livrer 
  consommateur B : envoie le mail --> ack              (mail reçu deux fois)
 ```
 
-RabbitMQ garantit « au moins une fois », jamais « exactement une fois » : un consommateur doit être idempotent (vérifier un état en base avant d'agir, ou accepter un doublon sans gravité).
+RabbitMQ garantit « au moins une fois », jamais « exactement une fois ». Un consommateur doit donc être idempotent : vérifier un état en base avant d'agir, ou accepter un doublon sans gravité.
 
 ## Implémentation avec Spring
 
@@ -125,7 +125,7 @@ src/test/java/.../
 </dependency>
 ```
 
-**Étape 2. Configurer la connexion.** Sans réglage, Boot vise `localhost:5672` avec `guest`/`guest` ; en développement, `spring-boot-docker-compose` fournit celle de `compose.yaml`.
+**Étape 2. Configurer la connexion.** Sans réglage, Boot vise `localhost:5672` avec `guest`/`guest`. En développement, `spring-boot-docker-compose` fournit la connexion de `compose.yaml`.
 
 ```yaml
 spring:
@@ -149,7 +149,7 @@ class MessagingConfiguration {
 }
 ```
 
-**Étape 4. Déclarer la file et sa dead letter.** Des beans `Queue` suffisent : le `RabbitAdmin` de Boot les déclare au broker à la connexion. La dead letter passe par l'exchange par défaut.
+**Étape 4. Déclarer la file et sa dead letter.** Des beans `Queue` suffisent : le `RabbitAdmin` de Boot les déclare à la connexion. La dead letter passe par l'exchange par défaut.
 
 ```java
 @Configuration
@@ -173,7 +173,7 @@ public class InvoiceQueues {
 }
 ```
 
-**Étape 5. Publier un message.** Avec l'exchange par défaut, la clé de routage est le nom de la file. Spring AMQP publie en mode persistant : le message survit au redémarrage du broker.
+**Étape 5. Publier un message.** Avec l'exchange par défaut, la clé de routage est le nom de la file. Le message est persistant : il survit à un redémarrage du broker.
 
 ```java
 public record InvoiceRequested(UUID orderId) {
@@ -188,13 +188,13 @@ class InvoicePublisher {
     private final RabbitTemplate rabbitTemplate;
 
     void requestInvoice(UUID orderId) {
-        // part tout de suite, même si la transaction en cours est annulée ensuite (guide 20)
+        // part même si la transaction en cours est annulée (guide 20)
         rabbitTemplate.convertAndSend("", InvoiceQueues.GENERATE, new InvoiceRequested(orderId));
     }
 }
 ```
 
-**Étape 6. Activer les réessais.** Sans eux, une exception remet le message en file sans fin. Avec eux, Spring réessaie, puis rejette sans remise en file : dead letter.
+**Étape 6. Activer les réessais.** Sans eux, une exception remet le message en file sans fin. Avec eux, Spring réessaie puis rejette le message vers la dead letter.
 
 ```yaml
 spring:
@@ -210,7 +210,7 @@ spring:
           max-interval: 1m
 ```
 
-**Étape 7. Consommer.** Une méthode qui se termine normalement acquitte le message ; une exception déclenche les réessais.
+**Étape 7. Consommer.** Une méthode qui se termine normalement acquitte le message, une exception déclenche les réessais.
 
 ```java
 @Component
@@ -226,7 +226,7 @@ class InvoiceListener {
 }
 ```
 
-**Étape 8. Rejeter tout de suite un message empoisonné.** Le listener lève `AmqpRejectAndDontRequeueException` ; les réessais de Boot réessaient toute exception, un prédicat l'exclut.
+**Étape 8. Rejeter un message empoisonné.** Le listener lève `AmqpRejectAndDontRequeueException`. Les réessais de Boot reprennent toute exception : un prédicat exclut celle-ci.
 
 ```java
 // dans InvoiceListener
@@ -247,7 +247,7 @@ RabbitListenerRetrySettingsCustomizer noRetryForRejectedMessages() {
     return settings -> settings.setExceptionPredicate(exception -> !isRejected(exception));
 }
 
-// Spring enveloppe l'exception du listener : on remonte la chaîne des causes
+// Spring enveloppe l'exception du listener : on remonte les causes
 private static boolean isRejected(Throwable exception) {
     for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
         if (cause instanceof AmqpRejectAndDontRequeueException) {
@@ -258,7 +258,7 @@ private static boolean isRejected(Throwable exception) {
 }
 ```
 
-**Étape 9. Vérifier.** Un vrai RabbitMQ en conteneur (guide 30), des réessais raccourcis, un service qui échoue : le message finit dans la dead letter.
+**Étape 9. Vérifier.** Avec un vrai RabbitMQ en conteneur (guide 30), des réessais raccourcis et un service qui échoue, le message doit finir dans la dead letter.
 
 ```java
 @SpringBootTest(properties = {
@@ -288,11 +288,12 @@ class InvoiceQueueTests {
 }
 ```
 
+
 En manuel, la console de RabbitMQ (image `-management`, port 15672) montre les files et les dead letters.
 
 ### Une fabrique de listeners à part
 
-**Étape 10. Créer une fabrique sans réessais.** Pour un travail long, ou dont les réessais vivent en base : réglages de Boot sans les réessais, un message réservé à la fois.
+**Étape 10. Créer une fabrique sans réessais.** Elle sert aux travaux longs, ou dont les réessais vivent en base. Elle reprend les réglages de Boot sans réessais, avec un seul message réservé.
 
 ```java
 // dans InvoiceQueues
@@ -331,7 +332,7 @@ spring:
       mandatory: true                    # ... quand l'envoi le demande
 ```
 
-**Étape 12. Attendre l'accusé.** Un `ack` ne suffit pas : RabbitMQ confirme aussi un message rangé dans aucune file.
+**Étape 12. Attendre l'accusé.** Un `ack` ne suffit pas : RabbitMQ confirme aussi un message sans file.
 
 ```java
 // dans InvoicePublisher
@@ -392,9 +393,9 @@ Propriétés sous `spring.rabbitmq` :
 | `listener.simple.retry.enabled` | false | réessais dans le consommateur |
 | `listener.simple.retry.max-retries` | 3 | réessais après le premier essai |
 | `publisher-confirm-type` | aucun | `correlated` : un accusé par message |
-| `publisher-returns`, `template.mandatory` | false | recevoir les messages qu'aucune file n'a pris |
+| `publisher-returns`, `template.mandatory` | false | recevoir les messages sans file |
 
-Attributs utiles de `@RabbitListener` : `queues` (`"#{bean.name}"` pour un nom calculé), `containerFactory` (sinon celle de Boot), `id`, `concurrency` (pour ce listener seulement).
+Attributs de `@RabbitListener` : `queues` (`"#{bean.name}"` pour un nom calculé), `containerFactory` (sinon celle de Boot), `id`, `concurrency` (pour ce listener seul).
 
 Limites de cette version : un message publié dans une transaction part même si elle est annulée, et un message publié quand le broker est injoignable est perdu (guide 20).
 
@@ -402,7 +403,7 @@ Limites de cette version : un message publié dans une transaction part même si
 
 ### Sous le capot : le réessai dort sur le thread du consommateur
 
-Les réessais de Boot tournent dans le consommateur : le message reste non acquitté et le thread attend entre deux essais :
+Les réessais de Boot tournent dans le consommateur, qui attend entre deux essais avec le message non acquitté :
 
 ```
  consommateur 1 : essai -- échec --> dort 2 s --> essai -- échec --> dort 6 s
@@ -410,8 +411,8 @@ Les réessais de Boot tournent dans le consommateur : le message reste non acqui
  file           : les messages suivants attendent, plus personne ne consomme
 ```
 
-- Avec deux consommateurs, deux messages en échec bloquent la file pendant 1,5 min ; un échec lent (15 s) multiplié par cinq essais occupe un consommateur plusieurs minutes.
-- Le compteur d'essais vit en mémoire : si l'instance s'arrête, le message repart de zéro ailleurs.
+- Avec deux consommateurs, deux messages en échec bloquent la file 1,5 min. Un échec lent (15 s) sur cinq essais occupe un consommateur plusieurs minutes.
+- Le compteur d'essais vit en mémoire. Si l'instance s'arrête, le message repart de zéro.
 - Pour des délais longs, on planifie les réessais en base (webhooks, guide 27) ou dans une file d'attente dont la `x-message-ttl` expire vers la file de travail.
 
 ### Sous le capot : le type d'un message
@@ -430,9 +431,8 @@ Le convertisseur JSON écrit la classe dans l'en-tête `__TypeId__`. À la réce
      oui --> cette classe                 non --> refusé
 ```
 
-- Sans liste, seuls `java.lang` et `java.util` sont de confiance : sinon un émetteur ferait instancier n'importe quelle classe de l'application.
+- Sans liste, seuls `java.lang` et `java.util` sont de confiance. Sinon un émetteur ferait instancier n'importe quelle classe.
 - La comparaison est exacte : `com.example` ne couvre pas `com.example.invoice`.
-- Un listener posé sur la classe, avec une méthode `@RabbitHandler` par type, dépend entièrement de l'en-tête.
 
 ### Sous le capot : confirmation et retour
 
@@ -449,11 +449,11 @@ Avec `mandatory`, le broker répond ainsi :
 ```
 
 - Un `ack` veut dire « le broker en prend la responsabilité », pas « une file l'a reçu ».
-- Le retour arrive avant l'`ack` et Spring AMQP le range dans la `CorrelationData` avant de compléter son `Future` : après l'attente, `getReturned()` est fiable.
+- Le retour arrive avant l'`ack` et Spring AMQP le range dans la `CorrelationData` avant de compléter son `Future`. Après l'attente, `getReturned()` est fiable.
 
 ### Plusieurs instances
 
-Une file nommée écoutée par toutes les instances partage le travail : chaque message va à un seul consommateur.
+Une file nommée, écoutée par toutes les instances, partage le travail : chaque message va à un seul consommateur.
 
 ```
                          file mail.send
@@ -465,7 +465,7 @@ Une file nommée écoutée par toutes les instances partage le travail : chaque 
      message 1            message 2            message 3
 ```
 
-Pour diffuser à toutes les instances, chacune déclare sa propre file, liée à un exchange fanout :
+Pour diffuser, chaque instance déclare sa propre file, liée à un exchange fanout :
 
 ```java
 @Bean
@@ -486,8 +486,7 @@ Binding realtimeBinding(FanoutExchange realtimeExchange, AnonymousQueue realtime
 }
 ```
 
-- Une `AnonymousQueue` est exclusive et supprimée avec sa connexion ; les messages publiés pendant une coupure sont perdus pour cette instance (rattrapage côté client : guide 24). Le `RabbitAdmin` la redéclare, sous le même nom, après une reconnexion.
-- Avec plusieurs consommateurs ou un préchargement, l'ordre d'arrivée n'est pas garanti ; un seul consommateur par file le garde.
+- Une `AnonymousQueue` est exclusive et supprimée avec sa connexion. Les messages d'une coupure sont perdus pour l'instance (rattrapage côté client : guide 24). Le `RabbitAdmin` la redéclare, sous le même nom, à la reconnexion.
 
 ### Surveiller
 
@@ -521,7 +520,7 @@ public class DeadLetterQueueMetrics implements MeterBinder {
 }
 ```
 
-`rabbitmq.dead.letter.messages` au-dessus de 0 : quelqu'un doit regarder. Boot publie aussi `rabbitmq.connections`, `rabbitmq.rejected` et `rabbitmq.unrouted_published`.
+Au-dessus de 0, `rabbitmq.dead.letter.messages` demande un examen. Boot publie aussi `rabbitmq.connections`, `rabbitmq.rejected` et `rabbitmq.unrouted_published`.
 
 ## Pièges à éviter
 
@@ -561,13 +560,13 @@ public class DeadLetterQueueMetrics implements MeterBinder {
 
 ## En résumé
 
-**À retenir :** une file durable avec sa dead letter, des messages JSON dont les paquets sont listés, des réessais courts qui épargnent les messages empoisonnés, des confirmations avec `mandatory` à l'envoi, et des consommateurs idempotents, car un message peut arriver deux fois.
+**À retenir :** une file durable avec sa dead letter, des paquets JSON listés, des réessais courts qui épargnent les messages empoisonnés, des confirmations avec `mandatory`, et des consommateurs idempotents.
 
 - [ ] `JacksonJsonMessageConverter` avec la liste exacte des paquets des messages
 - [ ] Chaque file durable, avec `x-dead-letter-exchange` et sa file de dead letter
 - [ ] Réessais bornés (ou fabrique sans réessais), `AmqpRejectAndDontRequeueException` pour un message empoisonné
 - [ ] `prefetch` à 1 pour les travaux longs
-- [ ] Confirmations `correlated`, `mandatory`, vérification du retour ; consommateurs idempotents
+- [ ] Confirmations `correlated`, `mandatory`, vérification du retour, consommateurs idempotents
 - [ ] Diffusion par `AnonymousQueue` et exchange fanout, avec `x-max-length`
 - [ ] Une jauge et une alerte sur chaque dead letter
 - [ ] Un vrai RabbitMQ en test, des délais de réessai raccourcis
@@ -578,20 +577,20 @@ Les files et leurs consommateurs :
 
 | File | Message | Listener | Fabrique |
 |---|---|---|---|
-| `mail.send` | `MailMessage` | `MailQueueListener` | celle de Boot : 2 consommateurs, réessais |
-| `avatar.process` | `AvatarUploaded` | `AvatarProcessingListener` | celle de Boot : 2 consommateurs, réessais |
+| `mail.send` | `MailMessage` | `MailQueueListener` | celle de Boot (2 consommateurs, réessais) |
+| `avatar.process` | `AvatarUploaded` | `AvatarProcessingListener` | celle de Boot (2 consommateurs, réessais) |
 | `webhook.deliver` | `WebhookDeliveryRequested` | `WebhookDeliveryListener` | 4 consommateurs, prefetch 1, sans réessais |
 | `export.run` | `DataExportRequested` | `DataExportListener` | 1 consommateur, prefetch 1, sans réessais |
 | file de l'instance | `UserNotification`, `TaskRoomEvent`... | `RealtimeListener` | 1 consommateur, sans réessais |
 
 | Fichier | Rôle |
 |---|---|
-| [`MailQueues`][mail-queues], [`AvatarQueues`][avatar-queues] | le modèle simple : file, dead letter par l'exchange par défaut, fabrique de Boot |
-| [`WebhookQueues`][webhook-queues] | fabrique sans réessais, car ils sont planifiés en base |
-| [`ExportQueues`][export-queues] | fabrique : un export à la fois, acquitté une fois le job terminé |
-| [`RealtimeConfiguration`][realtime-config] | exchange fanout, file anonyme de l'instance, fabrique à un consommateur |
-| [`MessagingConfiguration`][messaging-config] | le convertisseur et ses paquets, le prédicat de réessai, les jauges |
-| [`MailQueueListener`][mail-listener] | rejette tout de suite un mail impossible à construire |
+| [`MailQueues`][mail-queues], [`AvatarQueues`][avatar-queues] | le modèle simple : file, dead letter, fabrique de Boot |
+| [`WebhookQueues`][webhook-queues] | fabrique sans réessais, planifiés en base |
+| [`ExportQueues`][export-queues] | un export à la fois, acquitté une fois le job terminé |
+| [`RealtimeConfiguration`][realtime-config] | exchange fanout, file anonyme, fabrique à un consommateur |
+| [`MessagingConfiguration`][messaging-config] | convertisseur et paquets, prédicat de réessai, jauges |
+| [`MailQueueListener`][mail-listener] | rejette un mail impossible à construire |
 | [`RealtimeListener`][realtime-listener] | listener sur la classe, une méthode `@RabbitHandler` par type |
 | [`DeadLetterQueueMetrics`][dlq-metrics] | une jauge par dead letter |
 | [`OutboxRelay`][relay] | le seul code qui publie, avec confirmation et retour |
@@ -600,30 +599,28 @@ Réglages de `application.yaml` :
 
 | Réglage | Valeur | Rôle |
 |---|---|---|
-| `publisher-confirm-type` | `correlated` | un accusé du broker par message |
-| `publisher-returns`, `template.mandatory` | `true` | un message sans file revient au relais |
-| `listener.simple.concurrency` | 2 | consommateurs par listener de la fabrique de Boot |
-| `listener.simple.retry` | 4 réessais, 2 s, x3, 1 min au plus | environ 1,5 min avant la dead letter |
+| `publisher-confirm-type`, `publisher-returns`, `template.mandatory` | `correlated`, `true` | accusé par message, retour d'un message sans file |
+| `listener.simple.retry` | 4 réessais, 2 s, x3, 1 min au plus | 2 consommateurs par listener, environ 1,5 min avant la dead letter |
 | `realtime.queue-max-length` | 10000 | taille maximale de la file d'une instance |
 | `webhooks.concurrent-deliveries` | 4 | consommateurs de `webhook.deliver` |
 
 Ce qui est propre au dépôt :
 
-- Aucun code ne publie avec `RabbitTemplate` : tout passe par l'outbox, que seul `OutboxRelay` publie (guide 20).
+- Aucun code ne publie avec `RabbitTemplate`. Tout passe par l'outbox, que seul `OutboxRelay` publie (guide 20).
 - Cinq paquets de confiance : `mail`, `identity.messaging`, `notification.webhook`, `realtime.messaging`, `export.messaging`.
-- Idempotence : la photo vérifie que l'upload est toujours en attente, l'export se réserve par un `UPDATE` conditionnel, la livraison de webhook ignore une livraison terminée, l'événement temps réel porte un id. Un mail en double est accepté.
-- Un message en dead letter y reste : on l'examine ou on le déplace à la main depuis la console (http://localhost:15672 en développement).
-- `RealtimeListener` relance un `resync` des flux au redémarrage de son consommateur, sa file anonyme étant partie avec la connexion (guide 24).
+- Idempotence : la photo vérifie que l'upload est en attente, l'export se réserve par un `UPDATE` conditionnel, la livraison de webhook ignore une livraison terminée et l'événement temps réel porte un id. Un mail en double est accepté.
+- Un message en dead letter y reste, examiné ou déplacé à la main depuis la console (http://localhost:15672 en développement).
+- `RealtimeListener` relance un `resync` des flux au redémarrage de son consommateur (guide 24), car sa file anonyme a disparu.
 
 Les tests :
 
 - [`MessagingConfigurationTest`][messaging-config-test] : le JSON, l'en-tête de type, le refus des classes hors des paquets de confiance.
-- [`MailQueueTests`][mail-queue-tests] : file durable et ses arguments (lus par l'API de la console), message en attente sans consommateur.
-- [`MailQueueDeadLetterTests`][mail-dead-letter-tests] et [`AvatarQueueDeadLetterTests`][avatar-dead-letter-tests] : réessais, dead letter, `x-death`, rejet immédiat d'un mail impossible, sous [`@DeadLetterIntegrationTest`][dead-letter-annotation] (2 réessais de 50 ms, SMTP simulé, stockage espionné, un seul contexte).
-- [`DeadLetterQueueMetricsTest`][dlq-metrics-test] : la jauge, et `NaN` quand le broker ne répond pas.
-- [`TestcontainersConfiguration`][containers] : RabbitMQ n'est jamais réutilisé (les tests de dead letter font échouer les listeners).
+- [`MailQueueTests`][mail-queue-tests] : file durable, ses arguments (lus par l'API de la console), message en attente.
+- [`MailQueueDeadLetterTests`][mail-dead-letter-tests] et [`AvatarQueueDeadLetterTests`][avatar-dead-letter-tests] : réessais, dead letter, `x-death`, rejet immédiat d'un mail impossible. Ils utilisent [`@DeadLetterIntegrationTest`][dead-letter-annotation] (2 réessais de 50 ms, SMTP simulé, stockage espionné, un seul contexte).
+- [`DeadLetterQueueMetricsTest`][dlq-metrics-test] : la jauge, et `NaN` sans réponse du broker.
+- [`TestcontainersConfiguration`][containers] : RabbitMQ n'est jamais réutilisé, car les tests de dead letter font échouer les listeners.
 
-Pour ajouter une file : une classe `...Queues` (file durable et dead letter), le message dans un paquet de confiance, la dead letter dans la liste de `DeadLetterQueueMetrics`, l'envoi par `Outbox.enqueue`, un listener et un test `@DeadLetterIntegrationTest`.
+Pour ajouter une file : une classe `...Queues`, le message dans un paquet de confiance, la dead letter dans `DeadLetterQueueMetrics`, l'envoi par `Outbox.enqueue`, un listener et un test `@DeadLetterIntegrationTest`.
 
 ## Voir aussi
 

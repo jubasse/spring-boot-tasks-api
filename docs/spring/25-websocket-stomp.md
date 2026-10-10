@@ -4,30 +4,30 @@
 
 ## Contexte
 
-- **Problème** : pousser les changements d'un même objet (une tâche) à tous ceux qui le regardent, et laisser le client parler sur la même connexion.
-- **Quand l'utiliser** : des abonnements par sujet (« tout ce qui arrive à la tâche 42 »), des échanges dans les deux sens.
-- **Quand s'en passer** : un flux personnel que le client se contente d'écouter (SSE, guide 24) ; des données qui changent rarement (un rafraîchissement suffit).
+- **Problème** : pousser les changements d'un objet (une tâche) à tous ceux qui le regardent, et laisser le client parler sur la même connexion.
+- **Quand l'utiliser** : des abonnements par sujet (« tout ce qui arrive à la tâche 42 ») ou des échanges dans les deux sens.
+- **Quand s'en passer** : un flux personnel que le client écoute seulement (SSE, guide 24), ou des données qui changent rarement.
 - **Dans ce dépôt** : les salons de tâches, `/topic/tasks/{id}` sur `/ws`. Le client s'abonne, apprend que la tâche a changé, puis la relit par l'API.
-- **Prérequis** : guides 07 (JWT), 08 (autorisations) et 24 (diffusion à toutes les instances). Versions : Spring Boot 4.1, Spring Framework 7, Spring Security 7, `@stomp/stompjs` 7.
+- **Prérequis** : guides 07 (JWT), 08 (autorisations) et 24 (diffusion). Versions : Spring Boot 4.1, Spring Framework 7, Spring Security 7, `@stomp/stompjs` 7.
 
-Ce qu'apporte chaque option :
+Les options :
 
 | Critère | SSE (guide 24) | WebSocket seul | WebSocket et STOMP |
 |---|---|---|---|
 | Sens | serveur vers client | deux sens | deux sens |
-| Format des messages | texte, une ligne par champ | libre, à inventer | trames normalisées : commande, en-têtes, corps |
+| Format des messages | texte, une ligne par champ | libre, à inventer | trames : commande, en-têtes, corps |
 | Abonnements | un flux par requête | à écrire soi-même | `SUBSCRIBE` à une destination |
 
 ## Concepts clés
 
 ### Vocabulaire
 
-- **WebSocket** : une connexion ouverte par une requête HTTP, puis gardée ouverte dans les deux sens.
-- **Poignée de main** (handshake) : cette première requête HTTP, `GET` avec l'en-tête `Upgrade: websocket` ; une fois acceptée, HTTP s'efface.
-- **STOMP** : un protocole texte simple, posé sur WebSocket, qui découpe l'échange en trames.
-- **Trame** (frame) : une commande, des en-têtes et un corps, comme `SUBSCRIBE` ou `MESSAGE`.
-- **Destination** : le nom d'un canal, comme `/topic/tasks/42` ; on s'y abonne, on y publie.
-- **Broker STOMP** : le composant qui retient qui est abonné à quoi, et remet chaque message aux abonnés de sa destination.
+- **WebSocket** : une connexion ouverte par une requête HTTP, puis gardée dans les deux sens.
+- **Poignée de main** (handshake) : cette première requête HTTP, un `GET` avec l'en-tête `Upgrade: websocket`. Une fois acceptée, HTTP s'efface.
+- **STOMP** : un protocole texte, posé sur WebSocket, qui découpe l'échange en trames.
+- **Trame** (frame) : une commande, des en-têtes et un corps (`SUBSCRIBE`, `MESSAGE`).
+- **Destination** : le nom d'un canal, comme `/topic/tasks/42`. On s'y abonne, on y publie.
+- **Broker STOMP** : le composant qui retient qui est abonné à quoi et remet chaque message aux abonnés de sa destination.
 
 ### La connexion et ses trames
 
@@ -57,7 +57,7 @@ Les trames utiles :
 | `SUBSCRIBE`, `UNSUBSCRIBE` | client vers serveur | s'abonne à une destination, ou s'en retire |
 | `SEND` | client vers serveur | publie un message vers une destination |
 | `MESSAGE` | serveur vers client | remet un message d'une destination suivie |
-| `ERROR` | serveur vers client | refuse une trame, la raison dans l'en-tête `message` ; la connexion se ferme |
+| `ERROR` | serveur vers client | refuse une trame (raison dans l'en-tête `message`), puis la connexion se ferme |
 
 Une trame est du texte : commande, un en-tête par ligne, ligne vide, corps, octet nul (`^@`) :
 
@@ -76,29 +76,29 @@ Spring range les destinations par préfixe :
 | Préfixe | Qui la traite | Pour quoi |
 |---|---|---|
 | `/topic/...` | le broker | diffusion à tous les abonnés |
-| `/queue/...` | le broker | par convention, un message pour un seul destinataire |
+| `/queue/...` | le broker | par convention, un seul destinataire |
 | `/app/...` | une méthode `@MessageMapping` | un message du client que le serveur traite |
-| `/user/...` | Spring, puis le broker | la destination privée d'un utilisateur connecté |
+| `/user/...` | Spring, puis le broker | la destination privée d'un utilisateur |
 
 ### Broker simple ou relais
 
-Le broker peut vivre dans l'application ou dans un serveur à part :
+Le broker vit dans l'application ou dans un serveur à part :
 
 | Critère | Broker simple (`enableSimpleBroker`) | Relais (`enableStompBrokerRelay`) |
 |---|---|---|
 | Abonnements | en mémoire de l'instance | dans RabbitMQ ou ActiveMQ, avec leur plugin STOMP |
 | Plusieurs instances | chacune ne connaît que ses clients | le broker externe distribue à tous |
-| Quand le choisir | une instance, ou une diffusion déjà en place (guide 24) | beaucoup de clients, des messages à garder |
+| Quand le choisir | une instance, ou une diffusion déjà en place | beaucoup de clients |
 
 ### Où placer le jeton
 
-L'API JavaScript `WebSocket` ne laisse ajouter aucun en-tête à la poignée de main. Il reste trois places :
+L'API JavaScript `WebSocket` ne permet aucun en-tête à la poignée de main. Il reste trois places :
 
 | Place | Conséquence |
 |---|---|
-| Paramètre d'URL (`/ws?token=...`) | le jeton finit dans les logs des reverse proxies |
-| Cookie de session | n'importe quelle page peut ouvrir la connexion avec le cookie du visiteur : il faut vérifier l'origine et un jeton CSRF |
-| En-tête de la trame `CONNECT` | la poignée de main reste publique, et la session STOMP est authentifiée par sa première trame |
+| Paramètre d'URL (`/ws?token=...`) | le jeton finit dans les logs des proxies |
+| Cookie de session | n'importe quelle page peut ouvrir la connexion avec le cookie du visiteur : origine et jeton CSRF à vérifier |
+| En-tête de la trame `CONNECT` | la poignée de main reste publique, et la première trame authentifie la session STOMP |
 
 ## Implémentation avec Spring
 
@@ -123,7 +123,7 @@ src/test/java/.../
 
 ### Une instance : le broker simple
 
-**Étape 1. Ajouter les dépendances.** `spring-security-messaging` sert à partir de l'étape 10.
+**Étape 1. Ajouter les dépendances.** `spring-security-messaging` sert dès l'étape 10.
 
 ```xml
 <dependency>
@@ -136,7 +136,7 @@ src/test/java/.../
 </dependency>
 ```
 
-**Étape 2. Déclarer l'endpoint et le broker.** `/ws`, broker simple sur `/topic`, `/app` réservé aux messages des clients.
+**Étape 2. Déclarer l'endpoint et le broker.** `/ws`, broker simple sur `/topic`, `/app` pour les messages des clients.
 
 ```java
 @Configuration
@@ -166,7 +166,7 @@ public class StompConfiguration implements WebSocketMessageBrokerConfigurer {
 }
 ```
 
-**Étape 3. Publier vers un sujet, après le commit.** `SimpMessagingTemplate` remet le message au broker, qui l'envoie en JSON aux abonnés.
+**Étape 3. Publier vers un sujet, après le commit.** `SimpMessagingTemplate` remet le message au broker, qui l'envoie en JSON.
 
 ```java
 public record TaskChanged(UUID taskId, String type) {
@@ -187,7 +187,7 @@ class TaskRooms {
 }
 ```
 
-**Étape 4. Recevoir un message du client.** Ce que SSE ne permet pas : le client envoie `SEND /app/tasks/42/typing`, et la méthode reçoit la destination sans `/app`.
+**Étape 4. Recevoir un message du client.** SSE ne le permet pas : le client envoie `SEND /app/tasks/42/typing`, et la méthode reçoit la destination sans `/app`.
 
 ```java
 public record Typing(String displayName) {
@@ -208,7 +208,7 @@ class TypingController {
 }
 ```
 
-**Étape 5. Rendre son planificateur à Boot.** `@EnableWebSocketMessageBroker` déclare le bean `messageBrokerTaskScheduler`. Boot voit un planificateur déjà présent et ne crée plus le sien : les jobs `@Scheduled` (guide 21) partent alors sur les threads des heartbeats. On redéclare `taskScheduler` comme Boot le déclare ; avec deux planificateurs, les jobs prennent celui qui s'appelle `taskScheduler`.
+**Étape 5. Rendre son planificateur à Boot.** `@EnableWebSocketMessageBroker` déclare le bean `messageBrokerTaskScheduler`. Boot voit un planificateur et ne crée plus le sien, donc les jobs `@Scheduled` (guide 21) partent sur les threads des heartbeats. On redéclare `taskScheduler` comme Boot le fait. Avec deux planificateurs, les jobs prennent celui qui s'appelle `taskScheduler`.
 
 ```java
 // dans StompConfiguration
@@ -229,7 +229,7 @@ static class ApplicationTaskScheduler {
 }
 ```
 
-**Étape 6. S'abonner côté navigateur.** `@stomp/stompjs` gère `CONNECT`, les heartbeats et la reconnexion ; `beforeConnect` place un jeton frais.
+**Étape 6. S'abonner dans le navigateur.** `@stomp/stompjs` gère `CONNECT`, les heartbeats et la reconnexion. `beforeConnect` place un jeton frais.
 
 ```js
 import { Client } from '@stomp/stompjs';
@@ -254,7 +254,7 @@ function sendTyping() {
 }
 ```
 
-**Étape 7. Vérifier.** Un vrai serveur sur un port libre et un client STOMP Java.
+**Étape 7. Vérifier.** Un vrai serveur sur un port libre, et un client STOMP Java.
 
 ```java
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -295,7 +295,7 @@ class TaskRoomTests {
 
 ### Plusieurs utilisateurs : authentifier et autoriser les trames
 
-**Étape 8. Laisser passer la poignée de main.** Le navigateur l'envoie sans jeton ; il est vérifié sur la trame `CONNECT` (filtres HTTP, guide 07).
+**Étape 8. Laisser passer la poignée de main.** Le navigateur l'envoie sans jeton, vérifié sur la trame `CONNECT` (filtres HTTP, guide 07).
 
 ```java
 http.authorizeHttpRequests(auth -> auth
@@ -304,7 +304,7 @@ http.authorizeHttpRequests(auth -> auth
 );
 ```
 
-**Étape 9. Authentifier la trame `CONNECT`.** Un `ChannelInterceptor` lit le jeton, le décode avec le `JwtDecoder` de l'API et attache l'utilisateur à la session STOMP, pour toutes les trames suivantes.
+**Étape 9. Authentifier la trame `CONNECT`.** Un `ChannelInterceptor` lit le jeton, le décode avec le `JwtDecoder` de l'API et attache l'utilisateur à la session STOMP.
 
 ```java
 @Component
@@ -392,7 +392,7 @@ class TaskRoomAuthorization implements AuthorizationManager<MessageAuthorization
 }
 ```
 
-**Étape 11. Donner la raison du refus.** L'exception d'un intercepteur arrive enveloppée dans une `MessageDeliveryException` au message générique (« Failed to send message ») ; on renvoie sa cause dans la trame `ERROR`.
+**Étape 11. Donner la raison du refus.** Une exception d'intercepteur arrive enveloppée dans une `MessageDeliveryException` au message générique (« Failed to send message »). On renvoie sa cause dans l'`ERROR`.
 
 ```java
 // dans registerStompEndpoints
@@ -442,15 +442,15 @@ Les réglages de `WebSocketMessageBrokerConfigurer` :
 | `configureMessageBroker` | `enableSimpleBroker`, `setApplicationDestinationPrefixes`, `setPreservePublishOrder` | aucun broker |
 | `configureWebSocketTransport` | `setMessageSizeLimit` | 64 Ko par trame reçue |
 | `configureWebSocketTransport` | `setTimeToFirstMessage` | 60 s pour envoyer `CONNECT` |
-| `configureWebSocketTransport` | `setSendTimeLimit`, `setSendBufferSizeLimit` | 10 s, 512 Ko vers un client lent |
+| `configureWebSocketTransport` | `setSendTimeLimit`, `setSendBufferSizeLimit` | 10 s, 512 Ko par client lent |
 
 Les règles de `MessageMatcherDelegatingAuthorizationManager` :
 
 | Règle | Trames visées |
 |---|---|
-| `simpSubscribeDestMatchers("/topic/x/{id}")` | `SUBSCRIBE` à ce motif ; `{id}` lisible dans le contexte |
+| `simpSubscribeDestMatchers("/topic/x/{id}")` | `SUBSCRIBE` à ce motif, `{id}` lisible dans le contexte |
 | `simpMessageDestMatchers("/app/**")` | `SEND` à ce motif |
-| `simpDestMatchers(...)` | toute trame vers cette destination, quel que soit son type |
+| `simpDestMatchers(...)` | toute trame vers cette destination |
 
 Limites de cette version : une session survit à l'expiration de son jeton et à la désactivation du compte, et chaque instance ne parle qu'à ses propres clients.
 
@@ -477,13 +477,13 @@ Côté serveur, chaque trame traverse des canaux de messages :
                    trame MESSAGE vers chaque abonné
 ```
 
-- Les intercepteurs tournent sur le thread qui a lu la trame. Une exception remonte au gestionnaire STOMP, qui répond `ERROR` puis ferme la connexion (code 1002).
-- Les traitements suivants passent par un pool de threads : sans `setPreservePublishOrder`, deux messages pour un même client peuvent sortir dans le désordre.
-- `SimpMessagingTemplate` publie sur `brokerChannel` : le broker ne distingue pas le serveur d'un client, d'où le refus de tout `SEND` vers `/topic`.
+- Les intercepteurs tournent sur le thread qui a lu la trame. Une exception remonte au gestionnaire STOMP, qui répond `ERROR` puis ferme la connexion (1002).
+- Les traitements suivants passent par un pool de threads. Sans `setPreservePublishOrder`, deux messages d'un même client peuvent sortir dans le désordre.
+- `SimpMessagingTemplate` publie sur `brokerChannel`, et le broker ne distingue pas le serveur d'un client : d'où le refus de tout `SEND` vers `/topic`.
 
 ### La session qui survit au jeton
 
-STOMP n'authentifie qu'une fois, sur `CONNECT`. Ensuite, chaque trame porte l'utilisateur de la session, même quand son jeton a expiré ou que son compte vient d'être désactivé. On ferme donc la connexion soi-même :
+STOMP n'authentifie qu'une fois, sur `CONNECT`. Ensuite, chaque trame porte l'utilisateur de la session, même si son jeton a expiré ou son compte été désactivé. On ferme donc soi-même la connexion :
 
 ```
   CONNECT accepté, jeton valable jusqu'à 10:15
@@ -546,7 +546,7 @@ public class StompSessions {
 ```
 
 - Le code 1008 (« violation de règle ») dit au client de ne pas revenir avec les mêmes identifiants.
-- Annuler la fermeture planifiée quand la connexion se termine, sinon les tâches s'accumulent jusqu'à l'expiration des jetons.
+- Annuler la fermeture planifiée quand la connexion se termine, sinon les tâches s'accumulent.
 - Pour la désactivation, même ordre que pour SSE (guide 24) : enregistrer la session, puis lire le compte.
 
 ### Plusieurs instances
@@ -569,14 +569,14 @@ Le broker simple ne connaît que les abonnés de son instance. On diffuse donc l
        abonnés de /topic/tasks/42 connectés à B
 ```
 
-Un relais STOMP (tableau plus haut) est l'alternative. Des sessions collantes seules ne changent rien : l'événement naît sur une autre instance que la session.
+Un relais STOMP (tableau plus haut) est l'alternative. Des sessions collantes ne changent rien : l'événement naît sur une autre instance.
 
-- Pour qu'un client ignore un doublon, l'id de l'événement doit être le même sur toutes les instances : celui de la ligne d'outbox convient.
-- Un changement de compte est diffusé aussi : chaque instance ferme les sessions qu'elle porte.
+- Pour qu'un client ignore un doublon, l'id doit être le même sur toutes les instances : celui de la ligne d'outbox convient.
+- Un changement de compte est aussi diffusé : chaque instance ferme ses sessions.
 
 ### Surveiller
 
-Spring écrit toutes les 30 minutes, au niveau INFO, une ligne de `WebSocketMessageBrokerStats` : sessions ouvertes, sessions fermées faute de `CONNECT`, trames `CONNECT` et `ERROR`, files des pools. Le bean `webSocketMessageBrokerStats` expose les mêmes chiffres.
+Spring écrit toutes les 30 minutes, au niveau INFO, une ligne de `WebSocketMessageBrokerStats` : sessions ouvertes ou fermées faute de `CONNECT`, trames `CONNECT` et `ERROR`, files des pools. Le bean `webSocketMessageBrokerStats` expose les mêmes chiffres.
 
 ## Pièges à éviter
 
@@ -611,22 +611,22 @@ Spring écrit toutes les 30 minutes, au niveau INFO, une ligne de `WebSocketMess
 
 ## En résumé
 
-**À retenir :** la poignée de main reste publique, la trame `CONNECT` porte le jeton, trois intercepteurs authentifient puis autorisent chaque trame avec un refus par défaut, et le serveur ferme lui-même la session quand le jeton expire ou que le compte change.
+**À retenir :** la poignée de main reste publique et la trame `CONNECT` porte le jeton. Trois intercepteurs authentifient puis autorisent chaque trame, avec un refus par défaut. Le serveur ferme lui-même la session quand le jeton expire ou que le compte change.
 
 - [ ] `spring-boot-starter-websocket`, `@EnableWebSocketMessageBroker`, endpoint et origines listées
-- [ ] Heartbeats du broker avec `messageBrokerTaskScheduler`, et `taskScheduler` redéclaré
-- [ ] Publication après le commit, des messages qui disent ce qui s'est passé
+- [ ] Heartbeats avec `messageBrokerTaskScheduler`, et `taskScheduler` redéclaré
+- [ ] Publication après le commit, de messages qui disent ce qui s'est passé
 - [ ] `GET /ws` public, jeton lu puis retiré de la trame `CONNECT`
 - [ ] Intercepteurs dans l'ordre : authentification, contexte, autorisation
-- [ ] Règles par type et par destination, terminées par `anyMessage().denyAll()`
+- [ ] Règles par type et destination, terminées par `anyMessage().denyAll()`
 - [ ] Raison du refus dans la trame `ERROR`, sans `setPreserveReceiveOrder`
-- [ ] Session fermée en 1008 à l'expiration du jeton et quand le compte n'est plus actif
+- [ ] Session fermée en 1008 à l'expiration du jeton ou quand le compte n'est plus actif
 - [ ] Diffusion à toutes les instances, un id par événement
-- [ ] Un test contre un vrai serveur : poignée de main, refus, codes de fermeture
+- [ ] Un test contre un vrai serveur
 
 ## Dans ce dépôt
 
-Le trajet d'un événement de salon, du changement au client :
+Le trajet d'un événement de salon :
 
 ```
   TaskService                          transaction
@@ -655,56 +655,56 @@ Le trajet d'un événement de salon, du changement au client :
 
 | Fichier | Rôle |
 |---|---|
-| [`StompConfiguration`][config] | endpoint `/ws`, broker simple, intercepteurs, règles des trames, `RefusalReasons`, `taskScheduler` |
-| [`StompAuthentication`][auth] | authentifie `CONNECT`, retire l'en-tête, enregistre la session puis lit le compte en base |
-| [`TaskRoomAuthorization`][room-auth] | `SUBSCRIBE` à un salon : statut actif (cache, guide 17) et tâche existante |
-| [`StompSessions`][sessions] | connexions de l'instance, fermées en 1008 à l'expiration du jeton ou à la désactivation |
-| [`TaskRooms`][rooms], [`TaskRoomEvent`][event] | publie dans le salon, avec `event-id` : tâche, ligne d'historique, type, auteur, date |
-| [`RealtimeBroadcasts`][broadcasts] | diffuse l'événement par l'outbox, dans la transaction du changement |
-| [`RealtimeListener`][listener] | reçoit les diffusions de l'instance, ferme les sessions d'un compte changé |
-| [`SecurityConfiguration`][security] | `GET /ws` public, en-tête `Authorization` ignoré sur ce chemin |
+| [`StompConfiguration`][config] | endpoint `/ws`, broker simple, intercepteurs, règles, `RefusalReasons`, `taskScheduler` |
+| [`StompAuthentication`][auth] | authentifie `CONNECT`, retire l'en-tête, enregistre la session puis lit le compte |
+| [`TaskRoomAuthorization`][room-auth] | `SUBSCRIBE` : statut actif (cache, guide 17) et tâche existante |
+| [`StompSessions`][sessions] | connexions de l'instance, fermées en 1008 |
+| [`TaskRooms`][rooms], [`TaskRoomEvent`][event] | publie dans le salon, avec `event-id` : tâche, historique, type, auteur, date |
+| [`RealtimeBroadcasts`][broadcasts] | diffuse l'événement par l'outbox, dans la transaction |
+| [`RealtimeListener`][listener] | reçoit les diffusions, ferme les sessions d'un compte changé |
+| [`SecurityConfiguration`][security] | `GET /ws` public, `Authorization` ignoré |
 
 Les réglages, sous `realtime.rooms` dans `application.yaml` (lus par [`RealtimeProperties`][properties]) :
 
 | Réglage | Valeur | Rôle |
 |---|---|---|
-| `allowed-origins` | `${REALTIME_ALLOWED_ORIGINS:}`, vide | origines autorisées, en motifs ; vide : l'origine de l'API seule |
-| `heartbeat` | 10s | heartbeats dans les deux sens |
-| `message-size-limit` | 16KB | plus grande trame acceptée d'un client |
-| `time-to-first-message` | 10s | délai pour envoyer `CONNECT` après la poignée de main |
+| `allowed-origins` | `${REALTIME_ALLOWED_ORIGINS:}`, vide | origines autorisées ; vide : l'origine de l'API seule |
+| `heartbeat` | 10s | heartbeats |
+| `message-size-limit` | 16KB | plus grande trame acceptée |
+| `time-to-first-message` | 10s | délai pour envoyer `CONNECT` |
 
-Les refus et leur réponse, tous vérifiés contre un vrai serveur :
+Les refus, vérifiés contre un vrai serveur :
 
 | Situation | Réponse |
 |---|---|
-| poignée de main depuis une origine non listée | 403, pas de WebSocket |
+| poignée de main d'une origine non listée | 403, pas de WebSocket |
 | `CONNECT` sans en-tête `Bearer` | `ERROR` « A bearer access token is required », puis fermeture 1002 |
 | jeton invalide, expiré ou signé par une autre clé | `ERROR` « Invalid access token » |
 | compte non vérifié, désactivé ou supprimé | `ERROR` « The account is not active » |
-| `SUBSCRIBE` hors des salons, ou au salon d'une tâche inconnue | `ERROR` « Access Denied » |
-| tout `SEND`, même vers un salon | `ERROR` « Access Denied » |
+| `SUBSCRIBE` hors des salons ou à une tâche inconnue | `ERROR` « Access Denied » |
+| tout `SEND` | `ERROR` « Access Denied » |
 | jeton expiré pendant la session | fermeture 1008 « Access token expired » |
 | compte désactivé pendant la session | fermeture 1008 « Account not active » |
 
 Ce qui est propre au dépôt :
 
-- Aucune méthode `@MessageMapping` : les clients ne font que s'abonner, et le préfixe `/app` n'est pas déclaré.
-- `CONNECT` lit le compte en base ; `SUBSCRIBE` lit le statut en cache, évincé sur chaque instance par `AccountStatusChanged`.
-- L'en-tête `event-id` est l'id de la ligne d'outbox. Pour une suppression, `TaskRoomEvent.eventId` est `null` : elle n'écrit pas d'historique.
-- Rien n'est rejoué : après une reconnexion, le client relit la tâche.
-- La fermeture à l'expiration utilise le planificateur du broker ; `forget` l'annule quand la connexion se termine ou que `CONNECT` est refusé.
-- Le contrat pour les clients est dans le [README du dépôt, « Follow a task live »](../../README.md#follow-a-task-live).
+- Aucune méthode `@MessageMapping` : les clients s'abonnent seulement, et le préfixe `/app` n'est pas déclaré.
+- `CONNECT` lit le compte en base. `SUBSCRIBE` lit le statut en cache, évincé sur chaque instance par `AccountStatusChanged`.
+- L'en-tête `event-id` est l'id de la ligne d'outbox. Pour une suppression, `TaskRoomEvent.eventId` est `null`, car elle n'écrit pas d'historique.
+- Rien n'est rejoué : le client relit la tâche après une reconnexion.
+- La fermeture à l'expiration utilise le planificateur du broker. `forget` l'annule quand la connexion se termine ou que `CONNECT` est refusé.
+- Le contrat pour les clients : [README, « Follow a task live »](../../README.md#follow-a-task-live).
 
-Les tests : [`StompConfigurationTest`][config-test] (ordre des intercepteurs, règles, trame `ERROR`), [`StompAuthenticationTest`][auth-test] (jeton, en-tête retiré, enregistrement avant la lecture), [`StompSessionsTest`][sessions-test], [`TaskRoomAuthorizationTest`][room-auth-test], [`TaskRoomsTest`][rooms-test], [`TaskRoomsWebSocketTests`][websocket-tests] (vrai serveur : origine, refus, codes de fermeture, événements), [`ApplicationTaskSchedulerTests`][scheduler-tests] (jobs sur `taskScheduler`, heartbeats sur le pool du broker).
+Les tests : [`StompConfigurationTest`][config-test] (intercepteurs, règles, trame `ERROR`), [`StompAuthenticationTest`][auth-test] (jeton, en-tête retiré, enregistrement avant la lecture), [`StompSessionsTest`][sessions-test], [`TaskRoomAuthorizationTest`][room-auth-test], [`TaskRoomsTest`][rooms-test], [`TaskRoomsWebSocketTests`][websocket-tests] (vrai serveur : origine, refus, fermetures, événements) et [`ApplicationTaskSchedulerTests`][scheduler-tests] (jobs sur `taskScheduler`, heartbeats sur le pool du broker).
 
 Pour ajouter un salon : une règle `simpSubscribeDestMatchers` avant `anyMessage().denyAll()`, un `AuthorizationManager` comme `TaskRoomAuthorization`, et une méthode de publication appelée par `RealtimeListener`.
 
 ## Voir aussi
 
-- [07. Chaîne de filtres et JWT](07-securite-jwt.md) : le `JwtDecoder` et le convertisseur réutilisés sur `CONNECT`.
+- [07. Chaîne de filtres et JWT](07-securite-jwt.md) : le `JwtDecoder` et le convertisseur réutilisés.
 - [17. Cache Caffeine](17-cache-caffeine.md) : le statut en cache lu à chaque `SUBSCRIBE`.
 - [21. Jobs planifiés et ShedLock](21-jobs-planifies-shedlock.md) : le `taskScheduler` des jobs.
-- [24. Flux de notifications (SSE)](24-flux-notifications-sse.md) : la diffusion à toutes les instances, et l'ordre « enregistrer, puis lire ».
+- [24. Flux de notifications (SSE)](24-flux-notifications-sse.md) : la diffusion et l'ordre « enregistrer, puis lire ».
 - Documentation officielle : [STOMP dans Spring](https://docs.spring.io/spring-framework/reference/web/websocket/stomp.html), [WebSocket et Spring Security](https://docs.spring.io/spring-security/reference/servlet/integrations/websocket.html), [spécification STOMP 1.2](https://stomp.github.io/stomp-specification-1.2.html).
 
 [Sommaire](README.md) | [< 24. Flux de notifications (SSE)](24-flux-notifications-sse.md) | [26. Clients HTTP et filtre SSRF >](26-clients-http-ssrf.md)

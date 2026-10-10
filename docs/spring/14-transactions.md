@@ -6,8 +6,8 @@
 
 - **Problème** : plusieurs écritures doivent réussir ou échouer ensemble, et certains travaux ne doivent se faire qu'une fois la transaction validée (un fichier supprimé, un message envoyé), ou doivent survivre à un échec (un essai compté).
 - **Quand l'utiliser** : chaque méthode de service qui écrit, et chaque lecture qui demande une vue cohérente ou un chargement paresseux.
-- **Quand s'en passer** : un appel externe lent (HTTP, SMTP, envoi S3) : il ne doit pas tenir une connexion et des verrous de lignes ; on découpe autour de lui.
-- **Dans ce dépôt** : les services portent les transactions et les contrôleurs n'en ont pas (guide 11) ; l'historique et l'outbox exigent la transaction de l'appelant (`MANDATORY`) ; les comptages du rate limiting valident seuls (`REQUIRES_NEW`) ; les appels de webhook tournent entre deux transactions courtes.
+- **Quand s'en passer** : un appel externe lent (HTTP, SMTP, envoi S3), qui ne doit pas tenir une connexion ni des verrous de lignes. On découpe autour de lui.
+- **Dans ce dépôt** : les services portent les transactions et les contrôleurs n'en ont pas (guide 11). L'historique et l'outbox exigent la transaction de l'appelant (`MANDATORY`). Les comptages du rate limiting valident seuls (`REQUIRES_NEW`). Les appels de webhook tournent entre deux transactions courtes.
 - **Prérequis** : guide 11. Versions : Spring Boot 4.1, Spring Framework 7, Hibernate 7.4, PostgreSQL 18.
 
 Les deux façons de délimiter une transaction :
@@ -29,7 +29,7 @@ Les deux façons de délimiter une transaction :
 
 ### Le proxy Spring
 
-`@Transactional` agit par le proxy Spring placé devant le bean : seul un appel qui passe par lui, depuis un autre bean, ouvre une transaction. Un `this.methode()` dans la classe le contourne, et l'annotation de la méthode appelée est ignorée. Une méthode `private` n'est jamais interceptée, car le proxy ne peut pas la redéfinir.
+`@Transactional` agit par le proxy Spring placé devant le bean. Seul un appel qui passe par lui, depuis un autre bean, ouvre une transaction. Un `this.methode()` dans la classe le contourne, et l'annotation de la méthode appelée est ignorée. Une méthode `private` n'est jamais interceptée, car le proxy ne peut pas la redéfinir.
 
 ```
  InvoiceController
@@ -57,9 +57,9 @@ Ce que fait une méthode appelée pendant une transaction :
 | `REQUIRES_NEW` | la suspend, en ouvre une autre, la valide à part | en ouvre une |
 | `NOT_SUPPORTED` | la suspend, s'exécute sans | s'exécute sans |
 
-`MANDATORY` sans transaction lève : « No existing transaction found for transaction marked with propagation 'mandatory' ».
+Sans transaction, `MANDATORY` lève « No existing transaction found for transaction marked with propagation 'mandatory' ».
 
-Avec `REQUIRES_NEW`, le comptage est validé tout de suite, et l'échec de l'appelant ne l'annule pas :
+Avec `REQUIRES_NEW`, le comptage est validé tout de suite. L'échec de l'appelant ne l'annule pas, mais deux connexions du pool sont tenues pendant ce temps :
 
 ```
  login()                          transaction A (connexion 1)
@@ -73,13 +73,11 @@ Avec `REQUIRES_NEW`, le comptage est validé tout de suite, et l'échec de l'app
  ROLLBACK A                       le comptage reste
 ```
 
-Pendant que B tourne, deux connexions du pool sont tenues.
-
 ### Quand une exception annule
 
-Par défaut, une `RuntimeException` ou une `Error` qui sort du proxy annule la transaction ; une exception vérifiée la valide. `rollbackFor` ajoute des types, `noRollbackFor` en retire.
+Par défaut, une `RuntimeException` ou une `Error` qui sort du proxy annule la transaction, alors qu'une exception vérifiée la valide. `rollbackFor` ajoute des types, `noRollbackFor` en retire.
 
-Le piège : quand une méthode `REQUIRED` interne lève par son propre proxy, elle marque la transaction partagée « rollback-only ». La méthode externe peut attraper l'exception : au commit, Spring annule quand même et lève `UnexpectedRollbackException` (« Transaction silently rolled back because it has been marked as rollback-only »). `noRollbackFor` doit donc figurer sur chaque méthode transactionnelle que l'exception traverse, pas seulement celle qui lève.
+Le piège : quand une méthode `REQUIRED` interne lève par son propre proxy, elle marque la transaction partagée « rollback-only ». La méthode externe peut attraper l'exception, mais Spring annule quand même au commit et lève `UnexpectedRollbackException` (« Transaction silently rolled back because it has been marked as rollback-only »). `noRollbackFor` doit donc figurer sur chaque méthode transactionnelle que l'exception traverse, pas seulement celle qui lève.
 
 ```
  refresh()   @Transactional(noRollbackFor = InvalidTokenException)
@@ -94,7 +92,7 @@ Le piège : quand une méthode `REQUIRED` interne lève par son propre proxy, el
 
 ### Après le commit
 
-Certaines actions ne s'annulent pas : supprimer un fichier, publier un message, envoyer un email. Faites dans la transaction, elles ont lieu même si elle est annulée. `TransactionSynchronizationManager.registerSynchronization(...)` enregistre un rappel :
+Certaines actions ne s'annulent pas, comme supprimer un fichier, publier un message ou envoyer un email. Faites dans la transaction, elles ont lieu même si elle est annulée. `TransactionSynchronizationManager.registerSynchronization(...)` enregistre un rappel :
 
 - `afterCommit()` ne s'exécute qu'après un commit réussi.
 - `afterCompletion(status)` s'exécute après le commit ou le rollback, avec `STATUS_COMMITTED`, `STATUS_ROLLED_BACK` ou `STATUS_UNKNOWN`.
@@ -115,11 +113,11 @@ src/test/java/.../
   InvoiceTransactionTests.java    la vérification (étape 7)
 ```
 
-Spring Boot active les transactions par annotation et fournit un bean `TransactionTemplate` (`TransactionAutoConfiguration`) : aucun `@EnableTransactionManagement` à écrire.
+Spring Boot active les transactions par annotation et fournit un bean `TransactionTemplate` (`TransactionAutoConfiguration`). Aucun `@EnableTransactionManagement` à écrire.
 
 ### Des transactions sur les services
 
-**Étape 1. Placer la transaction sur le service.** La méthode de service est l'unité de travail ; les lectures reçoivent `readOnly`, qui évite à Hibernate le suivi des changements.
+**Étape 1. Placer la transaction sur le service.** La méthode de service est l'unité de travail. Les lectures reçoivent `readOnly`, qui évite à Hibernate le suivi des changements.
 
 ```java
 @Service
@@ -148,7 +146,7 @@ public class InvoiceService {
 
 `InvoiceNotFoundException` est une `RuntimeException` du domaine d'exemple.
 
-**Étape 2. Exiger la transaction de l'appelant.** Une ligne d'historique ne doit jamais exister sans le changement qu'elle décrit : `MANDATORY` refuse un appel hors transaction, au lieu de valider la ligne seule.
+**Étape 2. Exiger la transaction de l'appelant.** Une ligne d'historique ne doit jamais exister sans le changement qu'elle décrit. `MANDATORY` refuse un appel hors transaction, au lieu de valider la ligne seule.
 
 ```java
 @Component
@@ -164,7 +162,7 @@ public class InvoiceHistory {
 }
 ```
 
-**Étape 3. Valider à part ce qui doit survivre à un échec.** Un essai de paiement raté doit rester compté même si la requête échoue ensuite : `REQUIRES_NEW` valide avant de rendre la main. La méthode renvoie le compte et l'appelant lève : une exception levée dans la méthode `REQUIRES_NEW` annulerait son propre incrément.
+**Étape 3. Valider à part ce qui doit survivre à un échec.** Un essai de paiement raté doit rester compté même si la requête échoue ensuite, et `REQUIRES_NEW` valide avant de rendre la main. La méthode renvoie le compte et l'appelant lève, car une exception levée dans la méthode `REQUIRES_NEW` annulerait son propre incrément.
 
 ```java
 @Component
@@ -188,7 +186,7 @@ if (paymentAttempts.count(customerId, windowStart) > 5) {
 }
 ```
 
-**Étape 4. Garder une écriture malgré l'exception.** Une révocation faite juste avant de lever doit être validée : `noRollbackFor` va sur chaque méthode transactionnelle que l'exception traverse.
+**Étape 4. Garder une écriture malgré l'exception.** Une révocation faite juste avant de lever doit être validée. `noRollbackFor` va sur chaque méthode transactionnelle que l'exception traverse.
 
 ```java
 // dans TokenService
@@ -210,11 +208,11 @@ public Tokens refresh(String rawToken) {
 }
 ```
 
-`revokeFamily` est une requête `@Modifying` (guide 11) ; `Token`, `Tokens`, `hash` et `tokens` sont du domaine d'exemple.
+`revokeFamily` est une requête `@Modifying` (guide 11). `Token`, `Tokens`, `hash` et `tokens` sont du domaine d'exemple.
 
 ### Travail hors de la transaction
 
-**Étape 5. Faire l'appel lent entre deux transactions courtes.** Pendant un appel HTTP de plusieurs secondes, une transaction tiendrait une connexion du pool et ses verrous de lignes.
+**Étape 5. Faire l'appel lent entre deux transactions courtes.** Pendant un appel HTTP de plusieurs secondes, une transaction tiendrait une connexion du pool et des verrous de lignes.
 
 ```java
 // dans InvoiceService ; transactions : un TransactionTemplate injecté (bean de Spring Boot)
@@ -233,7 +231,7 @@ public void collect(UUID invoiceId) {                      // pas de @Transactio
 }
 ```
 
-La seconde transaction relit la ligne. Quand deux copies du même travail peuvent enregistrer en même temps, on la verrouille (`findByIdForUpdate`, guide 15).
+La seconde transaction relit la ligne. Si deux copies du même travail peuvent enregistrer en même temps, on la verrouille (`findByIdForUpdate`, guide 15).
 
 **Étape 6. Agir après le commit.** Un fichier supprimé dans la transaction serait perdu même si elle était annulée.
 
@@ -265,7 +263,7 @@ public class InvoiceFiles {
 }
 ```
 
-Pour le cas inverse, un fichier écrit avant le commit et retiré si la transaction échoue, on utilise `afterCompletion` :
+Pour le cas inverse, un fichier écrit avant le commit et retiré si la transaction échoue, `afterCompletion` convient :
 
 ```java
 TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -278,7 +276,7 @@ TransactionSynchronizationManager.registerSynchronization(new TransactionSynchro
 });
 ```
 
-**Étape 7. Vérifier.** On prouve que `MANDATORY` refuse un appel seul et qu'il ne reste rien après un rollback.
+**Étape 7. Vérifier.** Deux tests suffisent : `MANDATORY` refuse un appel seul, et il ne reste rien après un rollback.
 
 ```java
 @SpringBootTest
@@ -308,7 +306,7 @@ class InvoiceTransactionTests {
 }
 ```
 
-`findByInvoiceId` est une requête dérivée de `InvoiceEventRepository` (guide 11). Côté test, trois outils :
+`findByInvoiceId` est une requête dérivée de `InvoiceEventRepository` (guide 11). Trois outils côté test :
 
 - Une méthode de test `@Transactional` s'annule à sa fin.
 - `@Transactional(propagation = NOT_SUPPORTED)` la lance sans transaction, pour que chaque appel valide (guide 13, étape 8).
@@ -336,15 +334,15 @@ L'API programmatique :
 | `TransactionSynchronizationManager.isActualTransactionActive()` | une transaction est-elle en cours sur ce thread ? |
 | `registerSynchronization(...)` | `afterCommit`, `afterCompletion(status)`, `beforeCommit(readOnly)` |
 
-Limites de cette version : un travail de `afterCommit` est perdu si l'instance s'arrête juste après le commit. Pour ce qui doit absolument avoir lieu (un message), on l'écrit dans la transaction et on le publie ensuite : l'outbox, guide 20.
+Limites de cette version : un travail de `afterCommit` est perdu si l'instance s'arrête juste après le commit. Pour ce qui doit absolument avoir lieu (un message), on l'écrit dans la transaction et on le publie ensuite : c'est l'outbox (guide 20).
 
 ## Concepts avancés
 
 ### Sous le capot : une connexion par transaction
 
-Le gestionnaire de transactions (`JpaTransactionManager` avec JPA) prend une connexion du pool au `begin`, la lie au thread courant, et la rend au commit ou au rollback. Chaque appel de repository ou de `JdbcTemplate` sur ce thread l'utilise (guide 13).
+Le gestionnaire de transactions (`JpaTransactionManager` avec JPA) prend une connexion du pool au `begin` et la lie au thread courant. Il la rend au commit ou au rollback. Tout appel de repository ou de `JdbcTemplate` sur ce thread l'utilise (guide 13).
 
-Le pool HikariCP compte 10 connexions par défaut. Dix requêtes bloquées dans un appel lent, à l'intérieur d'une transaction, l'épuisent ; et avec un `REQUIRES_NEW` dans chaque requête, dix requêtes peuvent chacune tenir une connexion en attendant la seconde, jusqu'au délai d'attente du pool (`connectionTimeout`, 30 s par défaut), puis échouer.
+Le pool HikariCP compte 10 connexions par défaut. Dix requêtes bloquées dans un appel lent, à l'intérieur d'une transaction, l'épuisent. Avec un `REQUIRES_NEW` dans chaque requête, dix requêtes peuvent aussi tenir chacune une connexion en attendant la seconde. Elles échouent alors au délai d'attente du pool (`connectionTimeout`, 30 s par défaut).
 
 ```
  pool : 10 connexions
@@ -353,11 +351,9 @@ Le pool HikariCP compte 10 connexions par défaut. Dix requêtes bloquées dans 
  requête 11 : attend une connexion  --> délai dépassé
 ```
 
-Avec Hibernate, `readOnly` passe le flush en mode `MANUAL`, rend la session en lecture seule (aucune copie gardée pour le dirty checking) et appelle `Connection.setReadOnly(true)` : Postgres refuse alors une écriture.
+Avec Hibernate, `readOnly` passe le flush en mode `MANUAL` et rend la session en lecture seule (aucune copie gardée pour le dirty checking). Il appelle aussi `Connection.setReadOnly(true)`, et Postgres refuse alors une écriture.
 
 ### Ce qui ne doit pas tourner dans une transaction
-
-Les cas de ce dépôt, et leur guide :
 
 | Travail | Pourquoi hors transaction | Guide |
 |---|---|---|
@@ -366,7 +362,7 @@ Les cas de ce dépôt, et leur guide :
 | démarrage d'un job Spring Batch | Batch refuse de démarrer dans une transaction existante | 22 |
 | envoi d'un email | un rollback ne le rappelle pas | 20, 23 |
 
-Une transaction est locale à une connexion : elle ne coordonne rien entre les instances (guide 15).
+Une transaction est locale à une connexion et ne coordonne rien entre les instances (guide 15).
 
 ## Pièges à éviter
 
@@ -394,7 +390,7 @@ Une transaction est locale à une connexion : elle ne coordonne rien entre les i
 
 ## En résumé
 
-**À retenir :** une transaction par méthode de service, rejointe par défaut ; `MANDATORY` pour ce qui ne peut pas exister seul, `REQUIRES_NEW` pour ce qui doit survivre à un échec, `noRollbackFor` sur chaque méthode que l'exception traverse ; les appels lents entre deux transactions courtes, les actions irréversibles après le commit.
+**À retenir :** une transaction par méthode de service, rejointe par défaut. `MANDATORY` sert à ce qui ne peut pas exister seul, `REQUIRES_NEW` à ce qui doit survivre à un échec, et `noRollbackFor` va sur chaque méthode que l'exception traverse. Les appels lents se placent entre deux transactions courtes, les actions irréversibles après le commit.
 
 - [ ] `@Transactional` sur les méthodes publiques des services, rien dans les contrôleurs
 - [ ] `readOnly = true` sur les lectures
@@ -437,13 +433,13 @@ Une tentative de webhook, entre deux transactions courtes :
 
 Ce qui est propre au dépôt :
 
-- Les services portent les transactions et rendent des entités ; les contrôleurs les enveloppent dans des DTO après le commit, `open-in-view` étant coupé (guide 11). Les lectures sont en `@Transactional(readOnly = true)` (`TaskService.findAll`, `findById`, `findByReference`, `TaskCommentService.findAll`, `UserService`, `DataExportService.findOwn`).
-- `RateLimiter` est appelé par des contrôleurs (`AuthController`, `UserController`) et par `WebhookEndpointService.sendTest`, non transactionnel. `REQUIRES_NEW` valide chaque comptage avant le traitement : un login qui échoue ensuite compte quand même.
-- `RefreshTokenService.rotate` révoque toute la famille quand un jeton révoqué est rejoué, puis lève : `noRollbackFor` sur `rotate` et sur `AuthService.refresh` garde la révocation (la méthode externe en a besoin aussi).
-- `WebhookDeliveryService` construit son `TransactionTemplate` à partir du `PlatformTransactionManager`, dans son constructeur ; `prepare` et `record` y tournent, et `record` verrouille la livraison et son endpoint (guide 15).
-- `MediaService.delete` retire la ligne tout de suite et l'objet S3 après le commit (un échec est logué, l'orphelin est balayé par le nettoyage des médias, guide 28). Un upload stocké est supprimé si la transaction de l'appelant est annulée (`deleteObjectIfRolledBack`, `afterCompletion`). `MediaCleanupService` supprime aussi ses objets dans `afterCommit()`.
+- Les services portent les transactions et rendent des entités, que les contrôleurs enveloppent dans des DTO après le commit (`open-in-view` est coupé, guide 11). Les lectures sont en `@Transactional(readOnly = true)` (`TaskService.findAll`, `findById`, `findByReference`, `TaskCommentService.findAll`, `UserService`, `DataExportService.findOwn`).
+- `RateLimiter` est appelé par des contrôleurs (`AuthController`, `UserController`) et par `WebhookEndpointService.sendTest`, non transactionnel. Chaque comptage est validé avant le traitement, donc un login qui échoue ensuite compte quand même.
+- `RefreshTokenService.rotate` révoque toute la famille quand un jeton révoqué est rejoué, puis lève. `noRollbackFor` sur `rotate` et sur `AuthService.refresh` garde la révocation.
+- `WebhookDeliveryService` construit son `TransactionTemplate` à partir du `PlatformTransactionManager`, dans son constructeur. `prepare` et `record` y tournent, et `record` verrouille la livraison et son endpoint (guide 15).
+- `MediaService.delete` retire la ligne tout de suite et l'objet S3 après le commit. Un échec est logué, et le nettoyage des médias balaie l'orphelin (guide 28). Un upload stocké est supprimé si la transaction de l'appelant est annulée (`deleteObjectIfRolledBack`, `afterCompletion`). `MediaCleanupService` supprime aussi ses objets dans `afterCommit()`.
 - `MailService.send` est `@Transactional` : appelé hors transaction, il en ouvre une pour la ligne d'outbox (guide 20).
-- `RealtimeBroadcasts.onAccountStateChanged` ouvre une transaction seulement s'il n'y en a pas : un listener peut être appelé dans une transaction ou hors d'elle, et `MANDATORY` échouerait dans le second cas.
+- `RealtimeBroadcasts.onAccountStateChanged` ouvre une transaction seulement s'il n'y en a pas. Un listener peut être appelé dans une transaction ou hors d'elle, et `MANDATORY` échouerait dans le second cas.
 
 ```java
 if (TransactionSynchronizationManager.isActualTransactionActive()) {
@@ -453,11 +449,11 @@ if (TransactionSynchronizationManager.isActualTransactionActive()) {
 }
 ```
 
-- L'isolation est celle de Postgres (`READ COMMITTED`) ; les exécutions Spring Batch sont créées en read committed aussi (guide 22).
+- L'isolation est celle de Postgres (`READ COMMITTED`), et les exécutions Spring Batch sont créées en read committed aussi (guide 22).
 
 Les tests :
 
-- [`OutboxTests`][outbox-tests] : `enqueueOutsideATransactionIsRefusedAndWritesNothing` attend `IllegalTransactionStateException` ; une transaction annulée (`status.setRollbackOnly()`) ne laisse aucune ligne et n'envoie rien.
+- [`OutboxTests`][outbox-tests] : `enqueueOutsideATransactionIsRefusedAndWritesNothing` attend `IllegalTransactionStateException`, et une transaction annulée (`status.setRollbackOnly()`) ne laisse aucune ligne et n'envoie rien.
 - `MailQueueTests.emailSentInRolledBackTransactionIsNeverQueued`.
 - [`RefreshTokenApiTests`][refresh-tests] : `replayingUsedRefreshTokenRevokesWholeFamily`, la révocation survit au 401.
 - [`RealtimeBroadcastsTest`][broadcasts-test] : dans une transaction, ou dans la sienne.

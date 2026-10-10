@@ -4,10 +4,10 @@
 
 ## Contexte
 
-- **Problème** : déployer le même jar en recette et en production sans qu'un défaut `localhost` se glisse dans un déploiement, et arrêter le démarrage quand un réglage manque, plutôt qu'au premier mail ou au premier upload.
+- **Problème** : déployer le même jar en recette et en production, sans qu'un défaut `localhost` se glisse dans un déploiement. Arrêter le démarrage quand un réglage manque, plutôt qu'au premier mail ou au premier upload.
 - **Quand l'utiliser** : dès que l'application tourne ailleurs que sur un poste de développement.
 - **Quand s'en passer** : une démonstration jetable, ou un outil qui ne tourne qu'en local.
-- **Dans ce dépôt** : un seul profil `prod` (`application-prod.yaml`) pour tout environnement déployé, recette comprise ; les environnements ne diffèrent que par leurs variables. `RequiredPropertiesCheck` vérifie les réglages obligatoires au démarrage ; les logs sont en JSON ECS, Swagger UI est coupé, l'arrêt propre dure 20 s au plus.
+- **Dans ce dépôt** : un seul profil `prod` (`application-prod.yaml`) pour tout environnement déployé, recette comprise. Les environnements ne diffèrent que par leurs variables. `RequiredPropertiesCheck` vérifie les réglages obligatoires au démarrage. Les logs sont en JSON ECS, Swagger UI est coupé, l'arrêt propre dure 20 s au plus.
 - **Prérequis** : guide 01 (configuration, placeholders). Versions : Spring Boot 4.1, Spring Framework 7.
 
 Les façons de faire varier la configuration d'un environnement à l'autre :
@@ -23,7 +23,7 @@ Les façons de faire varier la configuration d'un environnement à l'autre :
 ### Vocabulaire
 
 - **Profil** : un nom (`prod`) qui active `application-prod.yaml` et les beans marqués `@Profile("prod")`.
-- **Réglage obligatoire** : un réglage sans valeur sûre en production (secret, URL de base, hôte SMTP) ; il doit venir de l'environnement.
+- **Réglage obligatoire** : un réglage sans valeur sûre en production (secret, URL de base, hôte SMTP). Il doit venir de l'environnement.
 - **Arrêt propre** (graceful shutdown) : à l'arrêt, le serveur refuse les nouvelles requêtes et laisse finir celles en cours, dans une limite de temps.
 - **Période de grâce** : le temps que l'orchestrateur (Kubernetes, Docker) attend après SIGTERM avant de tuer le processus (SIGKILL).
 - **Logs structurés** : un objet JSON par ligne de log, lu par une plateforme de logs plutôt que par un humain.
@@ -46,8 +46,8 @@ Le même jar sert partout. Seules les variables changent d'un environnement à l
    API_DOCS_ENABLED=true        (rien : documentation coupée)
 ```
 
-- Un fichier propre à un profil l'emporte toujours sur les fichiers sans profil, où qu'ils soient. `application-prod.yaml` passe donc devant `application.yaml` et devant le `classpath:/config/application.yaml` des tests. C'est pourquoi le profil ne doit jamais être actif en test (voir les pièges).
-- Un profil par environnement duplique les réglages : la recette cesse de tester ce que la production exécute.
+- Un fichier propre à un profil l'emporte toujours sur les fichiers sans profil. `application-prod.yaml` passe donc devant `application.yaml` et devant le `classpath:/config/application.yaml` des tests. Le profil ne doit jamais être actif en test (voir les pièges).
+- Un profil par environnement duplique les réglages, et la recette cesse de tester ce que la production exécute.
 
 ### Le réglage manquant
 
@@ -67,9 +67,9 @@ Voici ce qui arrive à `mail.from` quand sa variable manque, selon la façon de 
 ```
 
 - Dans le profil `prod`, un réglage sans valeur sûre reçoit un défaut vide (`${MAIL_FROM:}`) et une entrée dans la liste des obligatoires. Un défaut `localhost` laisserait un déploiement démarrer contre rien.
-- Le contrôle est un `BeanFactoryPostProcessor`. Il passe une fois la configuration lue et avant la création de tout bean ordinaire, donc avant que la base, le broker ou Liquibase soient touchés.
-- Il lit tous les noms de la liste et signale tous les manquants dans un seul message : un déploiement se corrige en un passage.
-- `ConfigurableEnvironment.setRequiredProperties(...)` suivi de `validateRequiredProperties()`, fournis par Spring Framework, ne refusent qu'une clé absente (`null`). Un `${VAR:}` vide passe. D'où le contrôle maison, qui refuse aussi les valeurs vides et non résolues.
+- Le contrôle est un `BeanFactoryPostProcessor`. Il passe une fois la configuration lue, avant la création de tout bean ordinaire. La base, le broker et Liquibase ne sont donc pas encore touchés.
+- Il signale tous les réglages manquants dans un seul message, pour corriger un déploiement en un passage.
+- `ConfigurableEnvironment.setRequiredProperties(...)` puis `validateRequiredProperties()`, fournis par Spring Framework, ne refusent qu'une clé absente (`null`). Un `${VAR:}` vide passe. D'où le contrôle maison, qui refuse aussi les valeurs vides et non résolues.
 
 ### L'arrêt propre
 
@@ -90,10 +90,10 @@ La chronologie d'un arrêt, du signal à la fin du processus :
   t = 30 s  orchestrateur --> SIGKILL si le processus vit encore
 ```
 
-- L'arrêt propre est actif par défaut dans Spring Boot 4 (`server.shutdown` vaut `graceful`), pour Tomcat, Jetty et Reactor Netty. Tomcat cesse d'accepter au niveau du réseau, et refuse aussi les requêtes sur les connexions inactives déjà ouvertes.
-- `spring.lifecycle.timeout-per-shutdown-phase` (`30s` par défaut) borne l'attente de chaque phase d'arrêt ; le serveur web s'arrête dans la première.
+- L'arrêt propre est actif par défaut dans Spring Boot 4 (`server.shutdown` vaut `graceful`). Tomcat cesse d'accepter au niveau du réseau, et refuse aussi les requêtes sur les connexions inactives déjà ouvertes.
+- `spring.lifecycle.timeout-per-shutdown-phase` (`30s` par défaut) borne l'attente de chaque phase d'arrêt. Le serveur web s'arrête dans la première.
 - Règle : le délai de l'application reste sous la période de grâce de l'orchestrateur. Kubernetes attend 30 s par défaut (`terminationGracePeriodSeconds`). Avec deux valeurs égales, le kill peut tomber pendant que le contexte se ferme encore.
-- Une réponse de longue durée (un flux SSE) retiendrait l'arrêt propre jusqu'à son délai : le guide 24 ferme les flux sur `ContextClosedEvent`.
+- Un flux SSE retiendrait l'arrêt propre jusqu'à son délai. Le guide 24 ferme donc les flux sur `ContextClosedEvent`.
 
 ## Implémentation avec Spring
 
@@ -111,11 +111,9 @@ src/test/java/.../config/
   RequiredSettingsCheckTest.java        la vérification (étape 7)
 ```
 
-L'exemple est une application de facturation (`invoices.*`), avec un service de mail et un service PDF.
-
 ### Un profil vérifié au démarrage
 
-**Étape 1. Écrire le profil de production.** Il ne surcharge que ce qui diffère du développement : des défauts vides pour ce que chaque déploiement doit fournir, les outils de développement coupés, des logs JSON.
+**Étape 1. Écrire le profil de production.** Il ne surcharge que ce qui diffère du développement : des défauts vides pour ce que chaque déploiement fournit, les outils de développement coupés, des logs JSON.
 
 ```yaml
 # src/main/resources/application-prod.yaml
@@ -148,7 +146,7 @@ logging:
         environment: ${DEPLOYMENT_ENVIRONMENT:production}
 ```
 
-La bannière est déjà coupée par défaut quand les logs sont structurés ; l'écrire dit l'intention.
+La bannière est déjà coupée avec des logs structurés. L'écrire dit l'intention.
 
 **Étape 2. Activer le profil au déploiement, et seulement là.** C'est une variable du déploiement, jamais une clé dans un fichier du jar.
 
@@ -176,7 +174,7 @@ app:
     - invoices.pdf-service-url
 ```
 
-**Étape 4. Écrire le contrôle.** Un `BeanFactoryPostProcessor` passe avant tout bean ordinaire ; il lit la liste avec le `Binder` et refuse une valeur vide ou non résolue.
+**Étape 4. Écrire le contrôle.** Un `BeanFactoryPostProcessor` passe avant tout bean ordinaire. Il lit la liste avec le `Binder` et refuse une valeur vide ou non résolue.
 
 ```java
 class RequiredSettingsCheck implements BeanFactoryPostProcessor, EnvironmentAware {
@@ -217,7 +215,7 @@ class RequiredSettingsCheck implements BeanFactoryPostProcessor, EnvironmentAwar
 }
 ```
 
-**Étape 5. Le déclarer par une méthode `static`.** Une méthode `@Bean` non statique qui renvoie un `BeanFactoryPostProcessor` force la création de sa classe de configuration avant que les autres post-processeurs aient tourné.
+**Étape 5. Le déclarer par une méthode `static`.** Une méthode `@Bean` non statique qui renvoie un `BeanFactoryPostProcessor` force la création de sa classe de configuration avant les autres post-processeurs.
 
 ```java
 @Configuration
@@ -239,9 +237,7 @@ spring:
     timeout-per-shutdown-phase: 20s   # sous les 30 s de Kubernetes
 ```
 
-Côté Kubernetes, 30 s est déjà la valeur par défaut de `terminationGracePeriodSeconds`.
-
-**Étape 7. Vérifier.** Un `ApplicationContextRunner` démarre la seule configuration, en quelques millisecondes. Retirer les variables du poste garde le test indépendant du shell du développeur.
+**Étape 7. Vérifier.** Un `ApplicationContextRunner` démarre la seule configuration, en quelques millisecondes. Retirer les variables du poste rend le test indépendant du shell.
 
 ```java
 class RequiredSettingsCheckTest {
@@ -279,7 +275,7 @@ class RequiredSettingsCheckTest {
 }
 ```
 
-En manuel, lancer le jar avec le profil et sans variable : le démarrage s'arrête sur une ligne qui liste tous les réglages manquants.
+En manuel, lancer le jar avec le profil et sans variable. Le démarrage s'arrête sur une ligne qui liste tous les réglages manquants.
 
 ```bash
 SPRING_PROFILES_ACTIVE=prod java -jar target/app.jar
@@ -301,7 +297,7 @@ Les réglages d'exploitation de Spring Boot :
 | `spring.main.banner-mode` | `off` avec des logs structurés, `console` sinon | la bannière au démarrage |
 | `server.forward-headers-strategy` | aucun (détection de la plateforme) | lire `X-Forwarded-For` (guide 10) |
 
-Limites de cette version : le contrôle prouve qu'une valeur existe, pas qu'elle fonctionne. Un mauvais mot de passe échoue encore à la première connexion ; les sondes de santé du guide 32 couvrent ce cas.
+Limites de cette version : le contrôle prouve qu'une valeur existe, pas qu'elle fonctionne. Un mauvais mot de passe échoue encore à la première connexion, ce que couvrent les sondes de santé du guide 32.
 
 ## Concepts avancés
 
@@ -325,18 +321,18 @@ Le contrôle s'exécute entre la lecture des définitions de beans et la créati
   création des beans : DataSource, Liquibase, RabbitMQ, Tomcat...
 ```
 
-- Le post-processeur est créé très tôt : le dépôt reçoit l'`Environment` par `EnvironmentAware`.
-- Avec une méthode `@Bean` non statique, Spring logue en INFO que la méthode renvoie un `BeanFactoryPostProcessor`, ce qui fait échouer les annotations comme `@Autowired`, `@Resource` et `@PostConstruct` dans sa classe de configuration.
+- Le post-processeur est créé très tôt, donc le contrôle reçoit l'`Environment` par `EnvironmentAware`.
+- Avec une méthode `@Bean` non statique, Spring logue en INFO que la méthode renvoie un `BeanFactoryPostProcessor`. Dans sa classe de configuration, `@Autowired`, `@Resource` et `@PostConstruct` échouent alors.
 - `Binder.get(environment).bind(..., Bindable.listOf(String.class))` lit une liste YAML ou une chaîne séparée par des virgules.
 - `environment.getProperty` résout les placeholders imbriqués et lève `IllegalArgumentException` sur un `${VAR}` non résolu. Le test `contains("${")` couvre un environnement configuré pour ignorer les placeholders non résolvables. Les deux sont nécessaires.
 
 ### Plusieurs instances
 
-- Chaque instance de chaque environnement exécute le même jar et le même `application-prod.yaml` ; seules les variables diffèrent. Un secret partagé entre instances (le secret JWT, les clés de chiffrement) doit être identique partout (le guide 07 le dit pour `JWT_SECRET`).
+- Chaque instance exécute le même jar et le même `application-prod.yaml`. Seules les variables diffèrent. Un secret partagé (le secret JWT, les clés de chiffrement) doit être identique partout, comme le dit le guide 07 pour `JWT_SECRET`.
 
 ### Surveiller
 
-- Les lignes JSON ECS portent `service.name` (issu de `spring.application.name`) et `service.environment` : une seule plateforme de logs peut séparer la recette de la production.
+- Les lignes JSON ECS portent `service.name` (issu de `spring.application.name`) et `service.environment`. Une seule plateforme de logs sépare ainsi la recette de la production.
 
 ## Pièges à éviter
 
@@ -362,7 +358,7 @@ Le contrôle s'exécute entre la lecture des définitions de beans et la créati
 
 ## En résumé
 
-**À retenir :** un seul profil `prod` pour tout déploiement, activé par une variable, avec des défauts vides pour ce que chaque déploiement doit fournir, vérifiés avant la création du premier bean, et un arrêt propre plus court que la période de grâce.
+**À retenir :** un seul profil `prod` pour tout déploiement, activé par une variable. Des défauts vides pour ce que chaque déploiement fournit, vérifiés avant le premier bean. Un arrêt propre plus court que la période de grâce.
 
 - [ ] Un fichier `application-prod.yaml`, aucun profil par environnement
 - [ ] `SPRING_PROFILES_ACTIVE=prod` posé par le déploiement, jamais dans un fichier du jar
@@ -421,17 +417,17 @@ Leurs variables sont décrites dans la section « Deploy the API » du README.
 
 Ce qui est propre au dépôt :
 
-- Le fichier `prod` porte en tête un commentaire d'avertissement : jamais `spring.profiles.active` dans un fichier du jar, jamais `SPRING_PROFILES_ACTIVE` exporté globalement, sinon `application-prod.yaml` passe devant `src/test/resources/config/application.yaml` dans les tests.
-- La Javadoc de `RequiredPropertiesCheck` garde l'échec mesuré : sans le contrôle, l'application démarrait avec un hôte de mail littéralement nommé `${MAIL_HOST}` (un `${VAR}` non résolu est lié comme texte, issue Spring Boot 18816).
-- `server.forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}` est dans `application.yaml`, pas dans `prod`. Écrit explicitement à `none`, il coupe aussi la détection de plateforme de Spring Boot : sans valeur, Tomcat utilise la stratégie native sur une plateforme cloud détectée, comme Kubernetes. Le guide 10 explique pourquoi.
-- `SPRING_PROFILES_ACTIVE=prod` est posé dans l'image après l'entraînement AOT, qui ne doit pas exiger les réglages de production. Une image lancée sans lui prendrait les défauts de développement, `localhost` compris.
+- Le fichier `prod` porte en tête un avertissement : jamais `spring.profiles.active` dans un fichier du jar, jamais `SPRING_PROFILES_ACTIVE` exporté globalement. Sinon `application-prod.yaml` passe devant `src/test/resources/config/application.yaml` dans les tests.
+- La Javadoc de `RequiredPropertiesCheck` garde l'échec mesuré. Sans le contrôle, l'application démarrait avec un hôte de mail littéralement nommé `${MAIL_HOST}` (un `${VAR}` non résolu est lié comme texte, issue Spring Boot 18816).
+- `server.forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}` est dans `application.yaml`, pas dans `prod`. Écrit explicitement à `none`, il coupe aussi la détection de plateforme de Spring Boot. Sans valeur, Tomcat utilise la stratégie native sur une plateforme cloud détectée, comme Kubernetes. Le guide 10 explique pourquoi.
+- `SPRING_PROFILES_ACTIVE=prod` est posé dans l'image après l'entraînement AOT, qui ne doit pas exiger les réglages de production. Sans lui, l'image prendrait les défauts de développement, `localhost` compris.
 - `NotificationStreams` termine les flux SSE sur `ContextClosedEvent`, avant que l'arrêt propre les attende (guide 24).
 - Aucune classe du dépôt n'utilise `@Profile` : le profil ne change que des valeurs.
 
 Les tests :
 
-- [`ProdProfileTest`][prod-test] vérifie que le fichier `prod` n'active aucun profil (`spring.profiles.active` et `spring.profiles.include` absents), que sa liste égale les 13 clés attendues, que le profil sans variables échoue en nommant les 13, que la documentation est coupée, que `storage.driver` vaut `aws-s3` et que le format de console est `ecs`.
-- [`RequiredPropertiesCheckTest`][check-test] couvre l'absence de liste (le contexte démarre), les valeurs présentes (il démarre), un `${MAIL_FROM}` manquant, vide ou non résolu (échec), `${MAIL_FROM:default}` (démarre), le message unique « Required settings without a value: mail.from, spring.mail.host. » qui nomme tous les manquants, et l'échec avant la création de tout autre bean. Les deux retirent les sources des variables et des propriétés système, car le poste peut exporter `MAIL_FROM` ou `S3_BUCKET`.
+- [`ProdProfileTest`][prod-test] vérifie cinq points. Le fichier `prod` n'active aucun profil (`spring.profiles.active` et `spring.profiles.include` absents). Sa liste égale les 13 clés attendues, et le profil sans variables échoue en nommant les 13. La documentation est coupée. `storage.driver` vaut `aws-s3` et le format de console est `ecs`.
+- [`RequiredPropertiesCheckTest`][check-test] couvre l'absence de liste (le contexte démarre) et les valeurs présentes (il démarre). Il couvre aussi un `${MAIL_FROM}` manquant, vide ou non résolu (échec), `${MAIL_FROM:default}` (démarre), le message unique « Required settings without a value: mail.from, spring.mail.host. » et l'échec avant tout autre bean. Les deux retirent les sources des variables et des propriétés système, car le poste peut exporter `MAIL_FROM` ou `S3_BUCKET`.
 
 Pour ajouter un réglage obligatoire : un défaut vide dans `application-prod.yaml`, sa clé dans `deployment.required-properties`, sa clé dans `ProdProfileTest.REQUIRED_PROPERTIES`, sa variable dans le tableau « Deploy the API » du README.
 

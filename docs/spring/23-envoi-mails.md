@@ -4,27 +4,27 @@
 
 ## Contexte
 
-- **Problème** : envoyer un mail (vérification d'adresse, réinitialisation de mot de passe, notification) sans faire attendre la requête, sans mail pour un changement annulé, et sans perdre le mail quand le serveur SMTP est en panne.
+- **Problème** : envoyer un mail (vérification, réinitialisation de mot de passe, notification) sans faire attendre la requête, sans mail pour un changement annulé, et sans perdre le mail si le serveur SMTP est en panne.
 - **Quand l'utiliser** : tout mail transactionnel, déclenché par une action.
-- **Quand s'en passer** : les envois de masse et les newsletters (un service d'emailing dédié, avec désinscription et statistiques) ; une alerte qui doit arriver tout de suite à coup sûr (un autre canal).
-- **Dans ce dépôt** : six sortes de mails (vérification, réinitialisation, avertissement d'inactivité, notifications de tâches, export prêt ou échoué, webhook désactivé), tous en texte brut, tous par la file `mail.send`.
+- **Quand s'en passer** : les envois de masse et les newsletters (un service d'emailing dédié), ou une alerte qui doit arriver tout de suite à coup sûr (un autre canal).
+- **Dans ce dépôt** : six sortes de mails (vérification, réinitialisation, avertissement d'inactivité, notifications de tâches, export prêt ou échoué, webhook désactivé), tous en texte brut et par la file `mail.send`.
 - **Prérequis** : guides 16 (événements), 19 (RabbitMQ) et 20 (outbox). Versions : Spring Boot 4.1, Jakarta Mail 2.1 (Angus Mail 2.0), Mailpit 1.31.
 
-Les trois façons d'envoyer :
+Trois façons d'envoyer :
 
 | Façon | Ce qui se passe | Quand la choisir |
 |---|---|---|
 | Dans la requête | la réponse attend le serveur SMTP | jamais pour une API |
-| Après le commit, `@Async` | un thread envoie ; un arrêt ou une panne SMTP perd le mail | petite application, perte acceptable |
+| Après le commit, `@Async` | un thread envoie, un arrêt ou une panne SMTP perd le mail | petite application, perte acceptable |
 | Outbox puis file | le mail attend dans RabbitMQ, réessayé, puis mis de côté | dès que le mail compte (cas du dépôt) |
 
 ## Concepts clés
 
 ### Vocabulaire
 
-- **SMTP** : le protocole d'envoi des mails ; l'application parle à un serveur SMTP (Mailpit, un fournisseur), qui livre.
-- **`JavaMailSender`** : l'interface de Spring qui envoie un mail ; Spring Boot la crée dès que `spring.mail.host` est réglé.
-- **Expéditeur** : l'adresse `From` du mail ; elle doit appartenir à un domaine configuré chez le fournisseur.
+- **SMTP** : le protocole d'envoi des mails. L'application parle à un serveur SMTP (Mailpit, un fournisseur), qui livre.
+- **`JavaMailSender`** : l'interface de Spring qui envoie un mail. Spring Boot la crée dès que `spring.mail.host` est réglé.
+- **Expéditeur** : l'adresse `From` du mail, qui doit appartenir à un domaine configuré chez le fournisseur.
 - **Mailpit** : un faux serveur SMTP qui garde chaque mail reçu, avec une interface web et une API, pour le développement et les tests.
 - **Dead letter** : la file où un message est mis de côté après ses réessais (guide 19).
 
@@ -53,9 +53,9 @@ Le mail se prépare dans la transaction de la requête, et part après le commit
    +-- échec --> réessais, puis mail.send.dead-letter   (guide 19)
 ```
 
-- Écrire le mail (le contenu) et l'envoyer (le SMTP) sont deux étapes séparées. Le contenu est écrit dans la transaction, avec les données du moment ; l'envoi se fait plus tard, ailleurs.
-- Un changement annulé n'écrit pas de ligne d'outbox : aucun mail ne part.
-- La livraison est « au moins une fois » : un arrêt entre l'envoi SMTP et l'acquittement renvoie le mail. Un mail en double est accepté (guide 19).
+- Écrire le mail et l'envoyer sont deux étapes. Le contenu est écrit dans la transaction, avec les données du moment. L'envoi se fait plus tard, ailleurs.
+- Un changement annulé n'écrit pas de ligne d'outbox, donc aucun mail ne part.
+- La livraison est « au moins une fois » : un arrêt entre l'envoi SMTP et l'acquittement renvoie le mail. Un doublon est accepté (guide 19).
 
 ### Les échecs SMTP
 
@@ -72,7 +72,7 @@ Le listener de la file ne rejette tout de suite que les deux dernières. Les deu
 
 ### Les délais SMTP
 
-- Par défaut, certains délais de JavaMail sont infinis : un serveur qui ne répond plus bloque le thread qui envoie.
+- Par défaut, certains délais de JavaMail sont infinis : un serveur muet bloque le thread qui envoie.
 - On les borne avec `mail.smtp.connectiontimeout`, `mail.smtp.timeout` et `mail.smtp.writetimeout`, en millisecondes, sous `spring.mail.properties`.
 
 ## Implémentation avec Spring
@@ -109,7 +109,7 @@ src/test/java/.../
 </dependency>
 ```
 
-**Étape 2. Configurer le serveur SMTP.** Boot ne crée le `JavaMailSender` que si `spring.mail.host` est réglé ; les délais évitent un thread bloqué pour toujours.
+**Étape 2. Configurer le serveur SMTP.** Boot ne crée le `JavaMailSender` que si `spring.mail.host` est réglé. Les délais évitent un thread bloqué pour toujours.
 
 ```yaml
 spring:
@@ -135,7 +135,7 @@ services:
       - "8025:8025"     # interface web : http://localhost:8025
 ```
 
-**Étape 3. Décrire le mail et l'expéditeur.** Un record suffit pour un mail texte ; l'expéditeur est une propriété validée au démarrage (guide 01).
+**Étape 3. Décrire le mail et l'expéditeur.** Un record suffit pour un mail texte. L'expéditeur est une propriété validée au démarrage (guide 01).
 
 ```java
 public record MailMessage(String to, String subject, String text) {
@@ -149,9 +149,9 @@ public record AppMailProperties(@NotBlank @Email String from) {
 }
 ```
 
-La classe doit être enregistrée par `@EnableConfigurationProperties(AppMailProperties.class)` sur une configuration, comme au guide 01.
+On l'enregistre par `@EnableConfigurationProperties(AppMailProperties.class)` sur une configuration, comme au guide 01.
 
-**Étape 4. Écrire le mail dans un listener.** Le service métier ne connaît pas les mails ; le listener écrit le contenu dans la transaction, avec les données du moment (guide 16).
+**Étape 4. Écrire le mail dans un listener.** Le service métier ne connaît pas les mails. Le listener écrit le contenu dans la transaction (guide 16).
 
 ```java
 @Component
@@ -174,7 +174,7 @@ class OrderConfirmationEmailSender {
 }
 ```
 
-**Étape 5. Envoyer après le commit, sur un autre thread.** Rien ne part pour une commande annulée, et la requête n'attend pas le serveur SMTP. Il faut `@EnableAsync` (guide 16).
+**Étape 5. Envoyer après le commit, sur un autre thread.** Rien ne part pour une commande annulée, et la requête n'attend pas le serveur SMTP. `@EnableAsync` est requis (guide 16).
 
 ```java
 @Service
@@ -202,11 +202,11 @@ public class MailService {
 }
 ```
 
-`deliver` est appelée par le mécanisme d'événements, donc à travers le proxy Spring : `@Async` s'applique. Cette version perd le mail si l'instance s'arrête ou si le serveur SMTP échoue.
+`deliver` est appelée par le mécanisme d'événements, donc à travers le proxy Spring, et `@Async` s'applique. Cette version perd le mail si l'instance s'arrête ou si le serveur SMTP échoue.
 
 ### Aucun mail perdu : une file
 
-**Étape 6. Écrire le mail dans l'outbox.** Le mail existe si et seulement si la transaction est validée, et il survit à une panne du broker (guide 20). La signature de `send` ne change pas : le listener de l'étape 4 non plus.
+**Étape 6. Écrire le mail dans l'outbox.** Le mail existe si et seulement si la transaction est validée, et il survit à une panne du broker (guide 20). La signature de `send` ne change pas, ni le listener de l'étape 4.
 
 ```java
 @Service
@@ -222,9 +222,9 @@ public class MailService {
 }
 ```
 
-**Étape 7. Déclarer la file et sa dead letter.** On déclare `mail.send` durable, avec `mail.send.dead-letter` pour dead letter, exactement comme l'exemple du guide 19. Les réessais du listener se règlent sous `spring.rabbitmq.listener.simple.retry` (guide 19).
+**Étape 7. Déclarer la file et sa dead letter.** On déclare `mail.send` durable, avec `mail.send.dead-letter` pour dead letter, comme dans l'exemple du guide 19. Les réessais se règlent sous `spring.rabbitmq.listener.simple.retry` (guide 19).
 
-**Étape 8. Envoyer depuis le listener de la file.** Une panne SMTP lève une exception, donc des réessais ; un mail impossible à construire part aussitôt en dead letter.
+**Étape 8. Envoyer depuis le listener de la file.** Une panne SMTP lève une exception, donc des réessais. Un mail impossible à construire part aussitôt en dead letter.
 
 ```java
 @Component
@@ -251,9 +251,9 @@ class MailQueueListener {
 }
 ```
 
-Le prédicat de réessai qui exclut `AmqpRejectAndDontRequeueException` se trouve à l'étape 8 du guide 19. Le package de `MailMessage` doit être de confiance pour le convertisseur JSON (étape 3 du même guide).
+Le prédicat de réessai qui exclut `AmqpRejectAndDontRequeueException` se trouve à l'étape 8 du guide 19. Le package de `MailMessage` doit être de confiance pour le convertisseur JSON (étape 3).
 
-**Étape 9. Vérifier avec Mailpit.** Un vrai serveur SMTP en conteneur reçoit le mail, et son API dit ce qui est arrivé. L'envoi est asynchrone : le test attend.
+**Étape 9. Vérifier avec Mailpit.** Un vrai serveur SMTP en conteneur reçoit le mail, et son API dit ce qui est arrivé. L'envoi est asynchrone, donc le test attend.
 
 ```java
 @TestConfiguration(proxyBeanMethods = false)
@@ -303,7 +303,7 @@ class OrderConfirmationMailTests {
 }
 ```
 
-`JsonNode` vient de Jackson 3 (`tools.jackson.databind`), et `await` d'Awaitility, fourni par `spring-boot-starter-test`. En manuel, l'interface web de Mailpit est sur http://localhost:8025.
+`JsonNode` vient de Jackson 3 (`tools.jackson.databind`), et `await` d'Awaitility, fourni par `spring-boot-starter-test`. L'interface web de Mailpit est sur http://localhost:8025.
 
 ### Référence rapide
 
@@ -311,7 +311,7 @@ Les réglages `spring.mail` :
 
 | Réglage | Défaut | Rôle |
 |---|---|---|
-| `host` | aucun | serveur SMTP ; sans lui, pas de `JavaMailSender` |
+| `host` | aucun | serveur SMTP (sans lui, pas de `JavaMailSender`) |
 | `port` | aucun | port SMTP (souvent 587 en production) |
 | `username`, `password` | aucun | identifiants |
 | `protocol` | `smtp` | protocole |
@@ -320,29 +320,29 @@ Les réglages `spring.mail` :
 | `test-connection` | false | tester le serveur au démarrage |
 | `management.health.mail.enabled` | true | indicateur de santé `mail` (Actuator) |
 
-Limites de cette version : la file ne déduplique pas ; un mail peut partir deux fois (livraison au moins une fois, guide 19).
+Limites de cette version : la file ne déduplique pas. Un mail peut partir deux fois (livraison au moins une fois, guide 19).
 
 ## Concepts avancés
 
 ### Sous le capot : la configuration de Boot
 
 - `MailSenderAutoConfiguration` crée un `JavaMailSenderImpl` si aucun `MailSender` n'existe et si `spring.mail.host` (ou `spring.mail.jndi-name`) est réglé.
-- L'indicateur de santé `mail` (`MailHealthIndicator`) appelle `testConnection()` du `JavaMailSenderImpl` : il ouvre une connexion SMTP à chaque contrôle. Un `JavaMailSender` simulé n'est pas un `JavaMailSenderImpl` : le dépôt éteint `management.health.mail.enabled` là où le SMTP est simulé (`@DeadLetterIntegrationTest`).
-- Le groupe de disponibilité (readiness) ne contient que `readinessState` et `db`. Un serveur SMTP en panne ne fait que retarder les mails, qui attendent dans la file (guide 32).
+- L'indicateur de santé `mail` (`MailHealthIndicator`) appelle `testConnection()` du `JavaMailSenderImpl` et ouvre donc une connexion SMTP à chaque contrôle. Un `JavaMailSender` simulé n'est pas un `JavaMailSenderImpl`, d'où `management.health.mail.enabled` éteint dans le dépôt là où le SMTP est simulé (`@DeadLetterIntegrationTest`).
+- Le groupe readiness ne contient que `readinessState` et `db`. Un serveur SMTP en panne ne fait que retarder les mails, qui attendent dans la file (guide 32).
 
 ### En production
 
-- Port 587 avec STARTTLS et authentification ; identifiants par variables d'environnement (`SPRING_MAIL_USERNAME`, `SPRING_MAIL_PASSWORD`).
-- Le profil `prod` du dépôt règle `spring.mail.host: ${MAIL_HOST:}`, sans valeur par défaut, listé avec `mail.from` dans `deployment.required-properties` (guide 02). Il règle aussi `port: ${MAIL_PORT:587}`, `mail.smtp.auth: ${MAIL_SMTP_AUTH:true}`, et `mail.smtp.starttls.enable` et `mail.smtp.starttls.required` à `${MAIL_STARTTLS:true}`.
+- Port 587 avec STARTTLS et authentification, identifiants par variables d'environnement (`SPRING_MAIL_USERNAME`, `SPRING_MAIL_PASSWORD`).
+- Le profil `prod` du dépôt règle `spring.mail.host: ${MAIL_HOST:}`, sans valeur par défaut, listé avec `mail.from` dans `deployment.required-properties` (guide 02). Il règle aussi `port: ${MAIL_PORT:587}`, `mail.smtp.auth: ${MAIL_SMTP_AUTH:true}`, ainsi que `mail.smtp.starttls.enable` et `mail.smtp.starttls.required` à `${MAIL_STARTTLS:true}`.
 
 ### Écrire un bon mail transactionnel
 
-- Un lien vers une page de l'application plutôt qu'un lien de téléchargement qui expire en quelques minutes (`DataExportEmailSender`).
-- Jamais de secret ni d'URL complète d'un tiers : seulement l'hôte (`WebhookDeliveryService.notifyDisabled`).
+- Un lien vers une page de l'application, pas vers un téléchargement qui expire en quelques minutes (`DataExportEmailSender`).
+- Jamais de secret ni d'URL complète d'un tiers, seulement l'hôte (`WebhookDeliveryService.notifyDisabled`).
 
 ### Plusieurs instances
 
-Chaque instance consomme `mail.send`, et RabbitMQ répartit les mails (guide 19). Seul l'`@Async` de l'étape 5 reste local à une instance.
+Chaque instance consomme `mail.send`, et RabbitMQ répartit les mails (guide 19). Seul l'`@Async` de l'étape 5 reste local.
 
 ## Pièges à éviter
 
@@ -370,7 +370,7 @@ Chaque instance consomme `mail.send`, et RabbitMQ répartit les mails (guide 19)
 
 ## En résumé
 
-**À retenir :** le mail est écrit dans la transaction, publié par l'outbox après le commit, envoyé par le listener de la file avec réessais et dead letter ; Mailpit le reçoit en développement et en test.
+**À retenir :** le mail est écrit dans la transaction, publié par l'outbox après le commit, puis envoyé par le listener de la file avec réessais et dead letter. Mailpit le reçoit en développement et en test.
 
 - [ ] `spring-boot-starter-mail`, `spring.mail.host` et des délais SMTP réglés
 - [ ] Une adresse d'expédition validée au démarrage
@@ -384,7 +384,7 @@ Chaque instance consomme `mail.send`, et RabbitMQ répartit les mails (guide 19)
 
 ## Dans ce dépôt
 
-Qui écrit des mails, et le trajet jusqu'au serveur SMTP :
+Qui écrit des mails, et le trajet jusqu'au SMTP :
 
 ```
   VerificationEmailSender      EmailVerificationRequested (inscription, renvoi)
@@ -407,9 +407,9 @@ Qui écrit des mails, et le trajet jusqu'au serveur SMTP :
 
 | Fichier | Rôle |
 |---|---|
-| [`MailService`][mail-service] | le point d'entrée : `@Transactional`, écrit dans l'outbox (une transaction à lui s'il n'y en a pas) |
+| [`MailService`][mail-service] | le point d'entrée : `@Transactional`, écrit dans l'outbox |
 | [`MailMessage`][mail-message] | `to`, `subject`, `text` ; texte brut seulement |
-| [`MailProperties`][mail-props] | `mail.from`, `@NotBlank @Email` (le guide l'a appelée `AppMailProperties` pour éviter le nom de celle de Boot) |
+| [`MailProperties`][mail-props] | `mail.from`, `@NotBlank @Email` (appelée `AppMailProperties` dans le guide, pour éviter le nom de celle de Boot) |
 | [`MailConfiguration`][mail-config] | enregistre `MailProperties` ; porte aussi `@EnableAsync` (guide 16) |
 | [`MailQueues`][mail-queues] | `mail.send` et `mail.send.dead-letter` |
 | [`MailQueueListener`][mail-listener] | envoie ; `MailParseException` et `MailPreparationException` deviennent `AmqpRejectAndDontRequeueException` |
@@ -428,16 +428,15 @@ Les réglages :
 
 Ce qui est propre au dépôt :
 
-- `TaskNotificationSender` : seul l'assigné concerné (ou la personne mentionnée) reçoit un mail, jamais pour sa propre action, seulement si son compte est actif (`UserStatus.ACTIVE`, lu en base) et si l'interrupteur correspondant est allumé (`NotificationSettingsService.isEnabled`). Un assigné mentionné reçoit le mail de mention au lieu du mail de commentaire, sauf s'il a éteint les mentions.
+- `TaskNotificationSender` : seul l'assigné concerné (ou la personne mentionnée) reçoit un mail. Jamais pour sa propre action, seulement si son compte est actif (`UserStatus.ACTIVE`, lu en base) et si l'interrupteur correspondant est allumé (`NotificationSettingsService.isEnabled`). Un assigné mentionné reçoit le mail de mention au lieu du mail de commentaire, sauf s'il a éteint les mentions.
 - Les dates des mails sont en UTC, écrites avec « UTC ». Le mail « webhook désactivé » ne cite que l'hôte.
 - En production, `spring.mail.host` et `mail.from` n'ont pas de valeur par défaut et sont vérifiés au démarrage (`deployment.required-properties`, guide 02).
-- Le mail n'est pas dédupliqué : un plantage entre l'envoi SMTP et l'acquittement l'envoie deux fois.
 
 Les tests :
 
-- [`Mailpit`][mailpit] lit les mails par l'API de Mailpit ; `latestTextTo` attend jusqu'à 5 s (sondage toutes les 100 ms), `countTo` compte, `latestVerificationTokenFor` extrait le jeton de 43 caractères.
+- [`Mailpit`][mailpit] lit les mails par l'API de Mailpit. `latestTextTo` attend jusqu'à 5 s (sondage toutes les 100 ms), `countTo` compte, `latestVerificationTokenFor` extrait le jeton de 43 caractères.
 - [`TestcontainersConfiguration`][containers] porte le conteneur Mailpit, réutilisé, et règle `spring.mail.host`, `spring.mail.port` et `mailpit.api-url` par un `DynamicPropertyRegistrar`.
-- [`MailQueueTests`][mail-queue-tests] joue le trajet complet : un mail validé arrive, attend dans la file tant qu'aucun consommateur ne tourne, et n'existe pas après un rollback (délai de grâce de 800 ms avant de compter).
+- [`MailQueueTests`][mail-queue-tests] joue le trajet complet : un mail validé arrive, attend dans la file sans consommateur, et n'existe pas après un rollback (délai de grâce de 800 ms avant de compter).
 - [`MailQueueListenerTest`][listener-test] teste le listener seul : envoi, réessais sur les échecs SMTP, rejet immédiat.
 - Les réessais et la dead letter sont testés par `MailQueueDeadLetterTests` (guide 19).
 

@@ -4,9 +4,9 @@
 
 ## Contexte
 
-- **Problème** : certains comportements se testent mal tels quels : le temps qui passe, l'asynchrone, le nombre de requêtes SQL, un serveur HTTP distant. Et certaines conventions (« chaque job a un verrou ») ne sont protégées par rien : on les oublie sur la classe suivante.
-- **Quand l'utiliser** : une horloge contrôlée dès qu'un service raisonne sur le temps ; Awaitility pour tout résultat asynchrone ; un compteur de requêtes sur les listes ; un faux serveur HTTP pour un client sortant ; un test garde-fou pour chaque convention que le compilateur ne voit pas.
-- **Quand s'en passer** : un test unitaire qui reçoit déjà une `Clock` fixe (`Clock.fixed`, guide 01) ; une convention qu'un type ou une annotation obligatoire impose déjà.
+- **Problème** : certains comportements se testent mal tels quels : le temps qui passe, l'asynchrone, le nombre de requêtes SQL, un serveur HTTP distant. Certaines conventions (« chaque job a un verrou ») ne sont protégées par rien, et on les oublie sur la classe suivante.
+- **Quand l'utiliser** : une horloge contrôlée dès qu'un service raisonne sur le temps, Awaitility pour tout résultat asynchrone, un compteur de requêtes sur les listes, un faux serveur HTTP pour un client sortant. Chaque convention que le compilateur ne voit pas gagne un test garde-fou.
+- **Quand s'en passer** : un test unitaire qui reçoit déjà une `Clock` fixe (`Clock.fixed`, guide 01), ou une convention qu'un type ou une annotation obligatoire impose déjà.
 - **Dans ce dépôt** : `TestClock`, `Mailpit`, `SqlStatementCounter`, MockWebServer, et des tests qui parcourent le code (`AccessDescriptionTest`, `ScheduledJobLocksTest`) ou les fichiers de configuration (`ProdProfileTest`).
 - **Prérequis** : guides 29 (contextes) et 01 (`Clock`, `ApplicationContextRunner`). Versions : Spring Boot 4.1, JUnit 6, AssertJ 3, Awaitility 4.3, MockWebServer 5.5 (`mockwebserver3`), Hibernate 7.
 
@@ -24,7 +24,7 @@ Les outils et le risque qu'ils couvrent :
 
 ### Vocabulaire
 
-- **Horloge injectée** : un bean `java.time.Clock` que les services lisent au lieu de `Instant.now()` ; un test peut le remplacer.
+- **Horloge injectée** : un bean `java.time.Clock` que les services lisent au lieu de `Instant.now()`. Un test peut le remplacer.
 - **Attente active** (polling) : relire un état à intervalle court jusqu'à ce qu'il soit vrai ou qu'un délai expire, au lieu d'un `Thread.sleep` fixe.
 - **Inspecteur de requêtes** (`StatementInspector`) : un point d'accroche de Hibernate qui voit chaque requête SQL avant son envoi.
 - **Test garde-fou** : un test qui ne vérifie pas un comportement mais une règle sur le code lui-même (annotations, noms, dépendances).
@@ -32,7 +32,7 @@ Les outils et le risque qu'ils couvrent :
 
 ### Le temps sous contrôle
 
-Les services lisent l'horloge ; le test choisit laquelle :
+Les services lisent l'horloge, et le test choisit laquelle :
 
 ```
  service : clock.instant()
@@ -51,8 +51,8 @@ Les services lisent l'horloge ; le test choisit laquelle :
                                       reset() après chaque test
 ```
 
-- Une seule horloge sert tous les tests du contexte, ceux qui figent l'heure et ceux qui n'en ont pas besoin. La remise à zéro après chaque test évite qu'un test laisse l'heure figée au suivant.
-- Remplacer `Clock` par `@MockitoBean` dans une classe créerait un contexte de plus (guide 29) ; un bean de test toujours présent n'en crée aucun.
+- Une seule horloge sert tous les tests du contexte. La remise à zéro après chaque test évite qu'un test laisse l'heure figée au suivant.
+- Remplacer `Clock` par `@MockitoBean` dans une classe créerait un contexte de plus (guide 29). Un bean de test toujours présent n'en crée aucun.
 - `advance` ne déclenche pas les jobs planifiés : le test appelle le service lui-même.
 
 ### Attendre l'asynchrone
@@ -70,7 +70,7 @@ On relit l'état jusqu'à ce qu'il soit vrai, ou jusqu'à l'échec :
             +-- 5 s écoulées --> échec, avec le dernier message d'assertion
 ```
 
-- Un `Thread.sleep(2000)` est trop long quand tout va bien et trop court sur une CI chargée ; l'attente active s'arrête dès que la condition est vraie.
+- Un `Thread.sleep(2000)` est trop long quand tout va bien et trop court sur une CI chargée. L'attente active s'arrête dès que la condition est vraie.
 - Prouver qu'une chose n'arrive pas (« un seul mail ») demande au contraire un délai de grâce : on attend un peu, puis on compte. Le dépôt a une constante `NO_MAIL_GRACE_PERIOD` pour cela.
 
 ### Les tests garde-fous
@@ -94,7 +94,7 @@ Un garde-fou lit le code compilé et liste les écarts à une règle :
 
 - Il tourne en millisecondes, sans démarrer Spring.
 - Il se teste lui-même deux fois : le scan trouve des classes (un scan vide passerait toujours), et une fixture fautive est signalée.
-- Le message d'échec nomme la classe, la méthode et la parade : il documente la convention au moment où on l'enfreint.
+- Le message d'échec nomme la classe, la méthode et la parade. Il documente la convention au moment où on l'enfreint.
 
 ## Implémentation avec Spring
 
@@ -116,7 +116,7 @@ src/test/resources/config/application.yaml   l'inspecteur (étape 4)
 
 ### Le temps, l'asynchrone, le SQL
 
-**Étape 1. Écrire une horloge de test.** Elle suit l'heure système tant qu'un test ne la fige pas, et se remet à zéro. Les champs sont `volatile` parce que les threads des listeners la lisent.
+**Étape 1. Écrire une horloge de test.** Elle suit l'heure système tant qu'un test ne la fige pas, et se remet à zéro. Les champs sont `volatile`, car les threads des listeners la lisent.
 
 ```java
 @TestComponent                                   // jamais pris par le scan de l'application
@@ -163,7 +163,7 @@ public class TestClock extends Clock {
 }
 ```
 
-**Étape 2. La brancher dans l'annotation d'intégration, et la remettre à zéro.** Importée par l'annotation de la famille, elle ne crée aucun contexte ; une extension JUnit la remet à l'heure après chaque test.
+**Étape 2. La brancher dans l'annotation d'intégration, et la remettre à zéro.** Importée par l'annotation de la famille, elle ne crée aucun contexte. Une extension JUnit la remet à l'heure après chaque test.
 
 ```java
 public final class ResetClockAfterEach implements AfterEachCallback {
@@ -222,7 +222,7 @@ await().atMost(Duration.ofSeconds(5))
 // import static org.awaitility.Awaitility.await ; mailbox : un client de Mailpit (guide 23)
 ```
 
-**Étape 4. Compter les requêtes SQL sur le thread du test.** Hibernate appelle l'inspecteur pour chaque requête ; une propriété l'enregistre dans tous les contextes, sans bean ni contexte de plus.
+**Étape 4. Compter les requêtes SQL sur le thread du test.** Hibernate appelle l'inspecteur pour chaque requête. Une propriété l'enregistre dans tous les contextes, sans bean ni contexte de plus.
 
 ```java
 public class SqlStatementCounter implements StatementInspector {   // org.hibernate.resource.jdbc.spi
@@ -265,7 +265,7 @@ spring:
       hibernate.session_factory.statement_inspector: com.example.invoices.support.SqlStatementCounter
 ```
 
-**Étape 5. Comparer une liste courte et une liste longue.** Un nombre fixe casse au moindre changement ; « autant de requêtes pour 20 lignes que pour 2 » attrape le N+1, qui grandit avec la liste.
+**Étape 5. Comparer une liste courte et une liste longue.** Un nombre fixe casse au moindre changement. « Autant de requêtes pour 20 lignes que pour 2 » attrape le N+1, qui grandit avec la liste.
 
 ```java
 @IntegrationTest
@@ -294,7 +294,7 @@ class InvoiceQueryCountTests {
 
 ### Les appels HTTP sortants
 
-**Étape 6. Simuler le serveur distant avec MockWebServer.** Le vrai client part pour de vrai sur un port local ; on vérifie la requête envoyée, les délais et les codes d'erreur.
+**Étape 6. Simuler le serveur distant avec MockWebServer.** Le vrai client appelle un port local. On vérifie la requête envoyée, les délais et les codes d'erreur.
 
 ```java
 class PaymentClientTests {
@@ -436,7 +436,7 @@ MockWebServer 5 (`mockwebserver3`) :
 | `takeRequest(1, SECONDS)` | la requête reçue : `getMethod()`, `getTarget()`, `getHeaders()`, `getBody()` |
 | `close()` | arrête le serveur |
 
-Limites de cette version : le compteur ne voit pas le SQL de `JdbcTemplate`, et un garde-fou par scan ne contrôle que ce qu'on lui a appris à chercher.
+Limites de cette version : le compteur ne voit pas le SQL de `JdbcTemplate`. Un garde-fou par scan ne contrôle que ce qu'on lui a appris à chercher.
 
 ## Concepts avancés
 
@@ -444,11 +444,11 @@ Limites de cette version : le compteur ne voit pas le SQL de `JdbcTemplate`, et 
 
 - `ApplicationContextRunner` démarre un petit contexte avec la seule configuration testée (guide 01).
 - Pour un seul fichier YAML : `YamlPropertySourceLoader`, puis un `Binder` (`ProdProfileTest`).
-- Il faut retirer les variables d'environnement et les propriétés système de l'`Environment` testé : la machine qui lance les tests peut exporter `MAIL_FROM` et fausser le résultat.
+- Il faut retirer les variables d'environnement et les propriétés système de l'`Environment` testé. La machine qui lance les tests peut exporter `MAIL_FROM` et fausser le résultat.
 
 ### ArchUnit, l'outil dédié
 
-ArchUnit lit le bytecode et exprime les règles dans un DSL : dépendances entre packages, couches, annotations. Il est plus concis qu'un scanner écrit à la main dès qu'il y a plusieurs règles, mais ce dépôt ne l'utilise pas encore. La dépendance est `com.tngtech.archunit:archunit-junit6` (version 1.5.1).
+ArchUnit lit le bytecode et exprime les règles dans un DSL : dépendances entre packages, couches, annotations. Il est plus concis qu'un scanner écrit à la main dès qu'il y a plusieurs règles. Ce dépôt ne l'utilise pas encore. La dépendance est `com.tngtech.archunit:archunit-junit6` (version 1.5.1).
 
 ```java
 @AnalyzeClasses(packages = "com.example.invoices")
@@ -463,9 +463,9 @@ class ArchitectureTest {
 
 ### Sous le capot : pourquoi un `ThreadLocal`
 
-- MockMvc traite la requête sur le thread du test : ce que le test mesure tombe sur ce thread.
-- L'outbox, les listeners RabbitMQ et les jobs interrogent la base sur leurs threads : un compteur global mélangerait leurs requêtes aux siennes.
-- Hibernate crée lui-même l'instance de l'inspecteur à partir du nom de classe : d'où l'état `static`.
+- MockMvc traite la requête sur le thread du test, donc ce que le test mesure tombe sur ce thread.
+- L'outbox, les listeners RabbitMQ et les jobs interrogent la base sur leurs threads. Un compteur global mélangerait leurs requêtes aux siennes.
+- Hibernate crée lui-même l'instance de l'inspecteur à partir du nom de classe, d'où l'état `static`.
 
 ## Pièges à éviter
 
@@ -498,7 +498,7 @@ class ArchitectureTest {
 
 ## En résumé
 
-**À retenir :** ce qui dépend du temps, d'un autre thread, du nombre de requêtes ou d'un serveur distant se teste avec un outil dédié qui ne crée aucun contexte de plus, et chaque convention que le compilateur ne voit pas gagne un test garde-fou qui se teste lui-même.
+**À retenir :** ce qui dépend du temps, d'un autre thread, du nombre de requêtes ou d'un serveur distant se teste avec un outil dédié qui ne crée aucun contexte de plus. Chaque convention que le compilateur ne voit pas gagne un test garde-fou qui se teste lui-même.
 
 - [ ] Les services lisent un bean `Clock`, les tests d'intégration un `TestClock` remis à zéro après chaque test
 - [ ] `await()` pour l'asynchrone, un délai de grâce pour prouver une absence
@@ -536,8 +536,8 @@ Les réglages de test, dans [`config/application.yaml`][test-yaml] :
 Ce qui est propre au dépôt :
 
 - `@IntegrationTest` importe `TestClock` et `Mailpit` et porte `@ExtendWith({TestClock.ResetAfterEach.class, ClearCachesAfterEach.class})`. Le contexte de `MonitoringTests` n'importe ni l'un ni l'autre.
-- `ClockConfiguration` fournit `Clock.systemUTC()` en production ; une vingtaine de classes de `src/main` injectent `Clock`.
-- `Mailpit.latestTextTo(email, containing)` : les mails passent par l'outbox et RabbitMQ, donc deux mails envoyés à la suite peuvent arriver dans le désordre. On cherche le plus récent qui contient un texte, pas le dernier de tous. Boucle écrite à la main : lecture toutes les 100 ms, échéance de 5 s. `latestVerificationTokenFor(email)` extrait le jeton de 43 caractères.
+- `ClockConfiguration` fournit `Clock.systemUTC()` en production, et une vingtaine de classes de `src/main` injectent `Clock`.
+- `Mailpit.latestTextTo(email, containing)` : les mails passent par l'outbox et RabbitMQ, donc deux mails envoyés à la suite peuvent arriver dans le désordre. On cherche le plus récent qui contient un texte, pas le dernier de tous. La boucle est écrite à la main, avec une lecture toutes les 100 ms et une échéance de 5 s. `latestVerificationTokenFor(email)` extrait le jeton de 43 caractères.
 - Délai de grâce : une constante `NO_MAIL_GRACE_PERIOD` dans les classes qui prouvent qu'un mail ne part pas, ou une seule fois. Elle vaut 800 ms le plus souvent (`MailQueueTests`, `OutboxTests`, `TaskNotificationApiTests`), 500 ms dans `RateLimitTests` et 1 s dans les tests de webhooks.
 - Les bornes mesurées dans `TaskQueryCountTests` : 2 requêtes pour une page de tâches, 1 pour une tâche, 3 pour une page d'événements, 6 pour une page de commentaires, 2 pour la liste des pièces jointes, avec le statut de l'appelant déjà en cache (une requête de plus au premier appel, vérifiée par `callerStatusIsReadOnceWhileItIsCached`). La taille de page est 50, plus grande que toutes les listes.
 - MockWebServer est démarré à la main sur `127.0.0.1` plutôt qu'avec `@StartStop`, qui se lie à ce que `localhost` résout d'abord, parfois `::1`. `WebhookDeliveryTests` vérifie la signature des webhooks avec la bibliothèque officielle Standard Webhooks.
@@ -546,7 +546,7 @@ Ce qui est propre au dépôt :
 - `ProdProfileTest` vérifie qu'aucun profil n'est activé par le fichier, la liste `deployment.required-properties`, la documentation d'API éteinte, le driver `aws-s3` et les logs `ecs`.
 - `OpenApiSpecTests` est le snapshot du document OpenAPI (guide 06).
 
-Les garde-fous tournent sans Docker ; les tests de comptage sont des tests d'intégration. Pour ajouter un garde-fou : une classe `*Test` sans Spring, un test « le scan trouve des classes connues », la règle qui renvoie des messages, puis une fixture par cas signalé.
+Les garde-fous tournent sans Docker, alors que les tests de comptage sont des tests d'intégration. Pour ajouter un garde-fou, on écrit une classe `*Test` sans Spring, un test « le scan trouve des classes connues », la règle qui renvoie des messages, puis une fixture par cas signalé.
 
 ## Voir aussi
 

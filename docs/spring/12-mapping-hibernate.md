@@ -4,9 +4,9 @@
 
 ## Contexte
 
-- **Problème** : décrire des tables dans des classes Java pour qu'Hibernate les lise et les écrive, tout en laissant à la base ses règles (ids, contraintes uniques, clés étrangères) et sans perdre de données à la suppression.
+- **Problème** : décrire des tables dans des classes Java pour qu'Hibernate les lise et les écrive, en laissant à la base ses règles (ids, contraintes uniques, clés étrangères) et sans perdre de données à la suppression.
 - **Quand l'utiliser** : toute table que l'application modifie par JPA.
-- **Quand s'en passer** : une table écrite seulement par du SQL atomique (compteurs, verrous) : une entité en lecture seule suffit, ou aucune (guides 13 et 18).
+- **Quand s'en passer** : une table écrite seulement par du SQL atomique (compteurs, verrous). Une entité en lecture seule suffit, ou aucune (guides 13 et 18).
 - **Dans ce dépôt** : la classe de base `AuditableEntity` (audit et suppression logique) pour `User` et `Task`, des clés primaires UUIDv7 produites par Postgres 18, compte et profil en deux tables qui partagent un id, `@Version` sur `Task`, `@DynamicUpdate` sur `User` et `UserProfile`, des charges `jsonb`.
 - **Prérequis** : guides 11 (Spring Data JPA) et 18 (migrations). Versions : Spring Boot 4.1, Hibernate 7.4, PostgreSQL 18.
 
@@ -26,12 +26,12 @@ Les façons de supprimer une ligne :
 - **Mapping** : la description d'une table dans une classe Java (les annotations de l'entité).
 - **Suppression logique** (soft delete) : la ligne reste, une colonne la marque supprimée, et les lectures l'ignorent.
 - **Audit** : les dates de création et de modification, remplies automatiquement.
-- **Dirty checking** : au commit, Hibernate compare chaque entité chargée à son état initial et écrit un `UPDATE` pour ce qui a changé, sans `save()`.
-- **UUIDv7** : un UUID dont les premiers bits sont une date, si bien que les nouveaux ids se rangent après les anciens.
+- **Dirty checking** : au commit, Hibernate compare chaque entité chargée à son état initial. Il écrit un `UPDATE` pour ce qui a changé, sans `save()`.
+- **UUIDv7** : un UUID dont les premiers bits sont une date, donc les nouveaux ids se rangent après les anciens.
 
 ### La suppression logique
 
-Avec `@SoftDelete(strategy = TIMESTAMP, columnName = "deleted_at")`, `repository.delete()` devient un `UPDATE ... SET deleted_at = <horloge de la base>`, et Hibernate ajoute `deleted_at IS NULL` à chaque requête qu'il écrit (JPQL, requêtes dérivées, `findById`, associations). La colonne n'est pas un attribut de l'entité : Hibernate la gère. La date vient de l'horloge de la base, pas d'une `Clock` de test. `@SoftDelete` est `@Incubating` dans Hibernate 7.4 : son API peut changer.
+Avec `@SoftDelete(strategy = TIMESTAMP, columnName = "deleted_at")`, `repository.delete()` devient un `UPDATE ... SET deleted_at = <horloge de la base>`. Hibernate ajoute aussi `deleted_at IS NULL` à chaque requête qu'il écrit (JPQL, requêtes dérivées, `findById`, associations). La colonne n'est pas un attribut de l'entité, Hibernate la gère. La date vient de l'horloge de la base, pas d'une `Clock` de test. `@SoftDelete` est `@Incubating` dans Hibernate 7.4, donc son API peut changer.
 
 ```
  customerRepository.delete(customer)
@@ -54,11 +54,11 @@ Qui voit une ligne supprimée logiquement :
 | `@Query(nativeQuery = true)`, `JdbcTemplate` | oui : il faut écrire `deleted_at IS NULL` soi-même |
 | contrainte `UNIQUE`, clé étrangère | oui |
 
-Conséquence : un contrôle d'existence écrit en JPQL répond « libre » pour un email que détient un utilisateur supprimé, et l'`INSERT` casse la contrainte. Le contrôle doit être natif. Un insert concurrent peut encore passer entre le contrôle et l'insertion : la contrainte reste le dernier garde-fou (guide 15).
+Un contrôle d'existence écrit en JPQL répond donc « libre » pour un email que détient un utilisateur supprimé, et l'`INSERT` casse la contrainte. Le contrôle doit être natif. Un insert concurrent peut encore passer entre le contrôle et l'insertion, et la contrainte reste le dernier garde-fou (guide 15).
 
 ### L'id généré par la base
 
-Avec `@Id @Generated @ColumnDefault("uuidv7()")`, Hibernate laisse l'id hors de l'`INSERT`, Postgres 18 le remplit avec `uuidv7()`, et Hibernate le relit dans la même instruction (`RETURNING`, géré par le dialecte Postgres). Un UUIDv7 croît avec le temps : l'index reçoit les insertions à la fin comme avec une séquence, les ids se trient par création, et rien n'est devinable comme 1, 2, 3. On n'assigne jamais l'id en Java.
+Avec `@Id @Generated @ColumnDefault("uuidv7()")`, Hibernate laisse l'id hors de l'`INSERT`. Postgres 18 le remplit avec `uuidv7()`, et Hibernate le relit dans la même instruction (`RETURNING`, géré par le dialecte Postgres). Un UUIDv7 croît avec le temps. L'index reçoit les insertions à la fin comme avec une séquence, les ids se trient par création, et rien n'est devinable comme 1, 2, 3. On n'assigne jamais l'id en Java.
 
 ```
  invoiceRepository.save(invoice)          invoice.id == null
@@ -72,7 +72,7 @@ Avec `@Id @Generated @ColumnDefault("uuidv7()")`, Hibernate laisse l'id hors de 
 
 ### Ce qu'écrit un UPDATE
 
-Par défaut, l'`UPDATE` d'Hibernate contient toutes les colonnes, avec les valeurs de l'entité telles que chargées dans cette transaction, plus ses changements. Deux transactions qui changent des colonnes différentes d'une même ligne s'écrasent alors : la seconde réécrit la colonne de la première avec l'ancienne valeur qu'elle avait chargée.
+Par défaut, l'`UPDATE` d'Hibernate contient toutes les colonnes, avec les valeurs de l'entité chargées dans cette transaction, plus ses changements. Deux transactions qui changent des colonnes différentes d'une même ligne s'écrasent alors. La seconde réécrit la colonne de la première avec l'ancienne valeur qu'elle avait chargée.
 
 ```
  transaction A (worker)               transaction B (admin)
@@ -86,7 +86,7 @@ Par défaut, l'`UPDATE` d'Hibernate contient toutes les colonnes, avec les valeu
  --> le compte désactivé par B est réactivé
 ```
 
-`@DynamicUpdate` n'écrit que les colonnes modifiées (Hibernate génère le SQL à l'exécution, pour un petit coût) : l'`UPDATE` devient `UPDATE customers SET avatar_id = ? WHERE id = ?`, et le changement de B survit. Cela protège des colonnes différentes ; deux écritures sur la même colonne demandent `@Version` ou un verrou (guide 15).
+`@DynamicUpdate` n'écrit que les colonnes modifiées. Hibernate génère le SQL à l'exécution, pour un petit coût. L'`UPDATE` devient `UPDATE customers SET avatar_id = ? WHERE id = ?`, et le changement de B survit. Cela protège des colonnes différentes. Deux écritures sur la même colonne demandent `@Version` ou un verrou (guide 15).
 
 ## Implémentation avec Spring
 
@@ -137,7 +137,7 @@ class JpaAuditingConfiguration {
 
 `@SoftDelete` et `SoftDeleteType` viennent de `org.hibernate.annotations`, `@CreatedDate` et `@LastModifiedDate` de `org.springframework.data.annotation`.
 
-**Étape 2. Laisser Postgres générer l'id.** La base possède l'id ; Hibernate le relit après l'insertion.
+**Étape 2. Laisser Postgres générer l'id.** La base possède l'id, et Hibernate le relit après l'insertion.
 
 ```java
 @Entity
@@ -160,7 +160,7 @@ public class Customer extends AuditableEntity {
 
 La migration déclare le même défaut : `defaultValueComputed: uuidv7()` (guide 18).
 
-**Étape 3. Nommer les contraintes.** Une contrainte nommée se lit clairement dans une erreur et dans la migration, et suit la convention vérifiée à la main (guide 18).
+**Étape 3. Nommer les contraintes.** Une contrainte nommée se lit clairement dans une erreur et dans la migration. Elle suit la convention, vérifiée à la main (guide 18).
 
 ```java
 @Table(
@@ -203,7 +203,7 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
 
 Le service l'appelle avant l'insertion et répond 409 si elle renvoie `true` (guide 15 pour l'insertion concurrente).
 
-**Étape 7. Pointer vers une entité supprimée logiquement.** Hibernate refuse un to-one `LAZY` vers une entité qui porte `@SoftDelete`, et l'erreur n'apparaît qu'au démarrage.
+**Étape 7. Pointer vers une entité supprimée logiquement.** Hibernate refuse un to-one `LAZY` vers une entité qui porte `@SoftDelete`. L'erreur n'apparaît qu'au démarrage.
 
 ```java
 @Entity
@@ -283,21 +283,21 @@ Les annotations de ce guide :
 | `@MapsId` | `jakarta.persistence` | l'id de l'entité est celui de l'association |
 | `@CreatedDate`, `@LastModifiedDate` | `org.springframework.data.annotation` | audit, avec `@EnableJpaAuditing` |
 
-Limites de cette version : les lignes supprimées logiquement restent hors de portée de JPA ; les purger, les anonymiser ou les joindre demande du SQL natif (guide 13).
+Limites de cette version : les lignes supprimées logiquement restent hors de portée de JPA. Les purger, les anonymiser ou les joindre demande du SQL natif (guide 13).
 
 ## Concepts avancés
 
 ### Sous le capot : le refus du `LAZY`
 
-Hibernate 7 lève à la construction de la session factory : « To-one attribute (X.y) cannot be mapped as LAZY as its associated entity is defined with @SoftDelete » (`UnsupportedMappingException`). Un proxy `LAZY` devrait charger une ligne que le filtre peut cacher ; Hibernate préfère échouer. L'erreur n'apparaît qu'au démarrage, jamais à la compilation.
+Hibernate 7 lève à la construction de la session factory : « To-one attribute (X.y) cannot be mapped as LAZY as its associated entity is defined with @SoftDelete » (`UnsupportedMappingException`). Un proxy `LAZY` devrait charger une ligne que le filtre peut cacher, et Hibernate préfère échouer. L'erreur n'apparaît qu'au démarrage, jamais à la compilation.
 
 Dans ce dépôt, les pièces jointes d'une tâche supprimée ne se chargent plus par JPA : leur purge passe par des requêtes natives.
 
 ### Compte et profil : deux tables, un id
 
-Une tâche ou un historique doit encore afficher un utilisateur supprimé (« Deleted user »), alors que son compte (email, hash du mot de passe) doit disparaître après la durée de rétention. Le dépôt sépare donc `users` (le compte, `@SoftDelete` par `AuditableEntity`) et `user_profiles` (nom affiché, photo, copie du statut, sans suppression logique), qui partagent un UUID. Toute référence (tâches, commentaires, historique, médias) vise le profil, jamais supprimé logiquement : le `LAZY` y est permis.
+Une tâche ou un historique doit encore afficher un utilisateur supprimé (« Deleted user »). Pourtant son compte (email, hash du mot de passe) doit disparaître après la durée de rétention. Le dépôt sépare donc `users` (le compte, `@SoftDelete` par `AuditableEntity`) et `user_profiles` (nom affiché, photo, copie du statut, sans suppression logique). Les deux partagent un UUID. Toute référence (tâches, commentaires, historique, médias) vise le profil, jamais supprimé logiquement, donc le `LAZY` y est permis.
 
-`@MapsId` sur `User.profile` donne au compte l'id du profil. La clé étrangère va de `users.id` vers `user_profiles.id`, jamais dans l'autre sens, si bien que supprimer la ligne du compte laisse le profil.
+`@MapsId` sur `User.profile` donne au compte l'id du profil. La clé étrangère va de `users.id` vers `user_profiles.id`, jamais dans l'autre sens. Supprimer la ligne du compte laisse donc le profil.
 
 ```java
 // dans Account (le compte) ; Profile n'a pas de @SoftDelete
@@ -323,19 +323,19 @@ private Profile profile = new Profile();                   // créé avec le com
 
 ### Unicité d'une association : `@ManyToOne` plutôt que `@OneToOne`
 
-Un `@OneToOne` fait ajouter à Hibernate une contrainte unique implicite au nom généré, que `liquibase:diff` signale face à celle qui est nommée. Le dépôt mappe donc `UserProfile.avatar`, `UserProfile.pendingAvatar` et `TaskAttachment.media` en `@ManyToOne`, avec la contrainte unique nommée dans `@Table(uniqueConstraints = ...)`.
+Un `@OneToOne` fait ajouter à Hibernate une contrainte unique implicite au nom généré. `liquibase:diff` la signale face à celle qui est nommée. Le dépôt mappe donc `UserProfile.avatar`, `UserProfile.pendingAvatar` et `TaskAttachment.media` en `@ManyToOne`, avec la contrainte unique nommée dans `@Table(uniqueConstraints = ...)`.
 
 ### Le piège `@NotFound(IGNORE)`
 
-Cette annotation tolère un utilisateur manquant, mais elle implique « pas de clé étrangère » dans le modèle (`ConstraintMode.NO_CONSTRAINT`) et rend le to-one non paresseux. Dans ce dépôt, le diff a alors proposé de supprimer les vraies contraintes : 7 clés étrangères ont un jour disparu du modèle (côté diff : guide 18).
+Cette annotation tolère un utilisateur manquant, mais elle implique « pas de clé étrangère » dans le modèle (`ConstraintMode.NO_CONSTRAINT`) et rend le to-one non paresseux. Le diff a alors proposé de supprimer les vraies contraintes : 7 clés étrangères ont un jour disparu du modèle (côté diff : guide 18).
 
 ### Entités en lecture seule
 
-Avec `@Immutable`, les changements faits en mémoire ne sont jamais écrits, sans erreur, et Hibernate ne garde aucune copie pour le dirty checking. Le dépôt l'utilise pour les tables écrites seulement par SQL (`ScheduledJobLock`, `RateLimitCounter`, `TaskReminder`) : l'entité garde la table dans le modèle d'Hibernate, donc `ddl-auto: validate` la vérifie et le diff ne propose pas de la supprimer (guide 18).
+Avec `@Immutable`, les changements faits en mémoire ne sont jamais écrits, sans erreur, et Hibernate ne garde aucune copie pour le dirty checking. Le dépôt l'utilise pour les tables écrites seulement par SQL (`ScheduledJobLock`, `RateLimitCounter`, `TaskReminder`). L'entité garde la table dans le modèle d'Hibernate. `ddl-auto: validate` la vérifie donc, et le diff ne propose pas de la supprimer (guide 18).
 
 ### Le JSON et Jackson
 
-Hibernate sérialise les colonnes JSON avec son propre mapper Jackson, pas le `JsonMapper` de Spring. Jackson 2 n'est sur le classpath de ce dépôt que pour cela, d'où les charges en `Map<String, Object>` et non en `JsonNode` de Jackson 3.
+Hibernate sérialise les colonnes JSON avec son propre mapper Jackson, pas le `JsonMapper` de Spring. Jackson 2 n'est sur le classpath de ce dépôt que pour cela. D'où les charges en `Map<String, Object>` et non en `JsonNode` de Jackson 3.
 
 ## Pièges à éviter
 
@@ -367,7 +367,7 @@ Hibernate sérialise les colonnes JSON avec son propre mapper Jackson, pas le `J
 
 ## En résumé
 
-**À retenir :** une classe de base pour l'audit et la suppression logique, des ids et des défauts laissés à Postgres, des contraintes toutes nommées, du SQL natif partout où les lignes supprimées comptent, `EAGER` vers une entité `@SoftDelete`, et `@DynamicUpdate` dès que deux écrivains touchent la même ligne.
+**À retenir :** une classe de base pour l'audit et la suppression logique, des ids et des défauts laissés à Postgres, des contraintes toutes nommées et du SQL natif partout où les lignes supprimées comptent. Les associations vers une entité `@SoftDelete` sont `EAGER`, et `@DynamicUpdate` s'impose dès que deux écrivains touchent la même ligne.
 
 - [ ] Classe de base `@MappedSuperclass` avec audit et `@SoftDelete`, `@EnableJpaAuditing` déclaré
 - [ ] Ids `@Generated` + `@ColumnDefault("uuidv7()")`, jamais assignés en Java
@@ -398,10 +398,10 @@ Hibernate sérialise les colonnes JSON avec son propre mapper Jackson, pas le `J
 Ce qui est propre au dépôt :
 
 - La convention de noms : `<table>_<column>UQ`, `<table>_<column>FK`, `<table>PK` (`users_emailUQ`, `tasks_referenceUQ`, `tasks_created_byFK`, `users_profileFK`, `tasksPK`). Les index suivent `<table>_<column>IDX` (`tasks_due_atIDX`, `task_attachments_task_idIDX`).
-- `users_emailUQ` et `tasks_referenceUQ` couvrent aussi les lignes supprimées logiquement : l'email d'un utilisateur supprimé et la référence d'une tâche supprimée restent pris, l'email jusqu'à l'anonymisation, qui supprime la ligne `users` (guide 13). `ApiExceptionHandler` répond 409 à une `DataIntegrityViolationException` restante, deux insertions concurrentes par exemple (guide 15).
-- `User.markDeleted()` s'appelle avant `delete()` : Hibernate pose `deleted_at` sans passer par l'entité, donc la copie du statut du profil (`DELETED`) s'écrit à la main.
-- `UserProfile.status` est une copie de l'état du compte, écrite par `User` à chaque transition (`setEnabled`, `setEmailVerifiedAt`, `markDeleted`) ; les contrôles d'accès lisent le compte lui-même.
-- Les associations vers `UserProfile` et `Media` sont `LAZY` ; celles vers `Task` sont `EAGER` (`TaskAttachment.task`, `TaskEvent.task`, `TaskComment.task`, `TaskReminder.task`).
+- `users_emailUQ` et `tasks_referenceUQ` couvrent aussi les lignes supprimées logiquement. L'email d'un utilisateur supprimé et la référence d'une tâche supprimée restent pris, l'email jusqu'à l'anonymisation, qui supprime la ligne `users` (guide 13). `ApiExceptionHandler` répond 409 à une `DataIntegrityViolationException` restante, deux insertions concurrentes par exemple (guide 15).
+- `User.markDeleted()` s'appelle avant `delete()`. Hibernate pose `deleted_at` sans passer par l'entité, donc la copie du statut du profil (`DELETED`) s'écrit à la main.
+- `UserProfile.status` est une copie de l'état du compte, écrite par `User` à chaque transition (`setEnabled`, `setEmailVerifiedAt`, `markDeleted`). Les contrôles d'accès lisent le compte lui-même.
+- Les associations vers `UserProfile` et `Media` sont `LAZY`. Celles vers `Task` sont `EAGER` (`TaskAttachment.task`, `TaskEvent.task`, `TaskComment.task`, `TaskReminder.task`).
 - `@DynamicUpdate` sur `User` et `UserProfile` : le worker de la photo réécrivait toute la ligne et réactivait un compte qu'un admin venait de désactiver.
 
 Les tests :

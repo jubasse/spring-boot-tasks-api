@@ -4,9 +4,9 @@
 
 ## Contexte
 
-- **Problème** : refuser une requête invalide avant qu'elle ne touche aux données, et répondre à toute erreur dans un format unique que le client sait lire.
+- **Problème** : refuser une requête invalide avant qu'elle touche aux données. Répondre à toute erreur dans un format unique, que le client sait lire.
 - **Quand l'utiliser** : toute API REST, dès le premier endpoint.
-- **Quand s'en passer** : une application à pages HTML (Thymeleaf), qui affiche les erreurs dans le formulaire plutôt qu'en JSON.
+- **Quand s'en passer** : une application à pages HTML (Thymeleaf), qui affiche les erreurs dans le formulaire.
 - **Dans ce dépôt** : `ApiExceptionHandler`, 14 types documentés dans `docs/problems.md`, une liste `errors` qui situe chaque valeur invalide.
 - **Prérequis** : guide 03 (contrôleurs MVC). Versions : Spring Boot 4.1, Spring Framework 7, Hibernate Validator 9.1, Jackson 3.
 
@@ -14,21 +14,20 @@ Les façons de répondre à une erreur :
 
 | Solution | Principe | Quand la choisir |
 |---|---|---|
-| `ProblemDetail` et un advice global | le format de la RFC 9457, rempli par du code | cas général, et toute API utilisée par d'autres équipes |
-| `spring.mvc.problemdetails.enabled` | Boot traduit les exceptions de Spring MVC, sans code | un point de départ : les exceptions métier restent des 500 |
+| `ProblemDetail` et un advice global | le format de la RFC 9457, rempli par du code | cas général, API utilisée par d'autres équipes |
+| `spring.mvc.problemdetails.enabled` | Boot traduit les exceptions de Spring MVC, sans code | point de départ : les exceptions métier restent des 500 |
 | Format maison `{code, message}` | un objet propre à l'API | à éviter : chaque client doit l'apprendre |
-| Page d'erreur de Boot (`/error`) | `timestamp`, `status`, `error`, `path` | un prototype : rien ne dit au client quoi corriger |
+| Page d'erreur de Boot (`/error`) | `timestamp`, `status`, `error`, `path` | un prototype : le client ne sait pas quoi corriger |
 
 ## Concepts clés
 
 ### Vocabulaire
 
-- **Bean Validation** : le standard Jakarta de validation par annotations (`@NotBlank`, `@Size`), implémenté par Hibernate Validator.
-- **Contrainte** : une annotation qui pose une règle sur une valeur ; une violation produit un message.
-- **Problème** : le corps d'erreur défini par la RFC 9457, servi en `application/problem+json`.
+- **Bean Validation** : le standard Jakarta de validation par annotations (`@NotBlank`, `@Size`), implémenté par Hibernate Validator. Une violation de contrainte produit un message.
+- **Problème** : le corps d'erreur de la RFC 9457, servi en `application/problem+json`.
 - **Type de problème** : une URI qui nomme une catégorie d'erreur, que le client compare pour réagir.
-- **JSON Pointer** : un chemin vers une valeur dans un document JSON, comme `#/items/0/name` (RFC 6901).
-- **Advice** : une classe `@RestControllerAdvice`, dont les méthodes `@ExceptionHandler` s'appliquent à tous les contrôleurs.
+- **JSON Pointer** : le chemin d'une valeur dans un document JSON, comme `#/items/0/name` (RFC 6901).
+- **Advice** : une classe `@RestControllerAdvice`, dont les méthodes `@ExceptionHandler` valent pour tous les contrôleurs.
 
 ### Le format d'un problème
 
@@ -36,14 +35,14 @@ Un problème est un objet JSON aux membres fixés par la RFC :
 
 | Membre | Rôle | Exemple |
 |---|---|---|
-| `type` | URI de la catégorie ; absent, il vaut `about:blank` | `.../problems.md#email-taken` |
-| `title` | résumé fixe, le même pour chaque occurrence du type | `Email already in use` |
-| `status` | le code HTTP, répété dans le corps | `409` |
-| `detail` | explication de cette occurrence, pour un humain | `User already exists with email: ...` |
-| `instance` | l'occurrence ; ici, le chemin de la requête | `/api/v1/users` |
+| `type` | URI de la catégorie, `about:blank` si absent | `.../problems.md#email-taken` |
+| `title` | résumé fixe, le même pour chaque occurrence | `Email already in use` |
+| `status` | le code HTTP, répété | `409` |
+| `detail` | explication de cette occurrence | `User already exists with email: ...` |
+| `instance` | l'occurrence, ici le chemin de la requête | `/api/v1/users` |
 | extension | tout autre membre, propre au type | `errors` |
 
-Une erreur de validation, avec l'extension `errors` :
+Une erreur de validation, avec `errors` :
 
 ```
 {
@@ -59,12 +58,12 @@ Une erreur de validation, avec l'extension `errors` :
 }
 ```
 
-- `pointer` situe une valeur du corps JSON ; `parameter` nomme un paramètre de requête, de chemin, de formulaire ou une part multipart.
-- Le client affiche `detail`, sans le parser : sa formulation peut changer.
+- `pointer` situe une valeur du corps JSON. `parameter` nomme un paramètre de requête, de chemin ou de formulaire, ou une part multipart.
+- Le client affiche `detail` sans le parser : sa formulation peut changer.
 
 ### Typé ou `about:blank`
 
-Chaque erreur ne mérite pas un type :
+Toute erreur ne mérite pas un type :
 
 ```
                     une erreur à renvoyer
@@ -80,12 +79,12 @@ Chaque erreur ne mérite pas un type :
           (409 email-taken, 422 invalid-mention...)
 ```
 
-- Un 404 ou un 503 se suffisent. Deux 409, « email déjà pris » et « modifié en même temps », demandent deux réactions : deux types.
-- L'URI d'un type pointe vers sa documentation. Le type et le titre sont un contrat : les renommer casse les clients qui les comparent.
+- Un 404 ou un 503 se suffisent. Deux 409, « email déjà pris » et « modifié en même temps », demandent deux types.
+- L'URI d'un type pointe vers sa documentation. Type et titre forment un contrat : les renommer casse les clients qui les comparent.
 
 ### Le trajet d'une erreur
 
-Chaque étape peut lever une exception, et toutes finissent dans l'advice :
+Toute étape peut lever une exception, qui finit dans l'advice :
 
 ```
   requête
@@ -111,9 +110,9 @@ Chaque étape peut lever une exception, et toutes finissent dans l'advice :
                                               application/problem+json
 ```
 
-- `ResponseEntityExceptionHandler`, une classe de Spring, traite déjà les vingt exceptions de Spring MVC (405, 415, corps illisible, validation...). On l'étend et on surcharge ses méthodes pour changer une réponse.
-- Les messages de Bean Validation suivent l'en-tête `Accept-Language` (« ne doit pas être vide »).
-- Un record peut normaliser ses valeurs dans son constructeur compact : Jackson l'appelle avant la validation, qui voit la valeur nettoyée.
+- `ResponseEntityExceptionHandler`, une classe de Spring, traite déjà les vingt exceptions de Spring MVC (405, 415, corps illisible, validation...). On l'étend, et on surcharge ses méthodes pour changer une réponse.
+- Les messages de Bean Validation suivent `Accept-Language` (« ne doit pas être vide »).
+- Jackson appelle le constructeur compact d'un record avant la validation, qui voit donc la valeur nettoyée.
 
 ## Implémentation avec Spring
 
@@ -155,7 +154,7 @@ public record CreateInvoiceDto(
 }
 ```
 
-**Étape 2. Demander la validation dans le contrôleur.** Sans `@Valid`, les contraintes du record sont ignorées.
+**Étape 2. Demander la validation dans le contrôleur.** Sans `@Valid`, les contraintes sont ignorées.
 
 ```java
 @RestController
@@ -173,7 +172,7 @@ class InvoiceController {
 }
 ```
 
-Pour un formulaire ou un multipart : `@Valid @ModelAttribute`, le même record lu champ par champ (guide 03).
+Pour un formulaire ou un multipart, on écrit `@Valid @ModelAttribute` (guide 03).
 
 **Étape 3. Créer le gestionnaire global.** Son dernier recours ne dit rien de l'exception au client.
 
@@ -196,7 +195,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 }
 ```
 
-**Étape 4. Traduire chaque exception métier.** Elle reste une `RuntimeException` sans rien de HTTP ; son message est écrit pour le client.
+**Étape 4. Traduire chaque exception métier.** Elle reste une `RuntimeException` sans HTTP, avec un message écrit pour le client.
 
 ```java
 public class InvoiceNotFoundException extends RuntimeException {
@@ -222,7 +221,7 @@ public ProblemDetail handleDataIntegrityViolation(DataIntegrityViolationExceptio
 }
 ```
 
-**Étape 5. Refuser les nombres à la place des enums.** Par défaut, Jackson lit `"kind": 1` comme la deuxième constante de l'enum.
+**Étape 5. Refuser les nombres à la place des enums.** Par défaut, Jackson lit `"kind": 1` comme la deuxième constante.
 
 ```yaml
 spring:
@@ -234,7 +233,7 @@ spring:
 
 ### Des erreurs que le client peut traiter
 
-**Étape 6. Déclarer les types de problèmes.** Un enum garde ensemble statut, URI et titre ; chaque type a une section dans la documentation des clients.
+**Étape 6. Déclarer les types de problèmes.** Un enum garde ensemble statut, URI et titre. Chaque type a une section dans la documentation des clients.
 
 ```java
 public enum ProblemType {
@@ -271,7 +270,7 @@ public ProblemDetail handleAlreadyPaid(InvoiceAlreadyPaidException ex) {
 }
 ```
 
-**Étape 7. Situer chaque valeur invalide.** Par défaut, Spring répond « Invalid request content. » sans dire quoi corriger : on surcharge sa méthode.
+**Étape 7. Situer chaque valeur invalide.** Spring répond « Invalid request content. » sans dire quoi corriger. On surcharge donc sa méthode.
 
 ```java
 // Jackson 3 garde ses annotations dans com.fasterxml.jackson.annotation
@@ -305,14 +304,14 @@ private static String pointer(String field) {         // items[0].name --> #/ite
 }
 ```
 
-**Étape 8. Reformuler les détails de Spring.** Certains parlent d'implémentation (« No static resource... »). Une clé `problemDetail.<classe complète>` dans `messages.properties` les remplace, sans code.
+**Étape 8. Reformuler les détails de Spring.** Certains parlent d'implémentation (« No static resource... »). Une clé `problemDetail.<classe complète>` dans `messages.properties` les remplace.
 
 ```properties
 problemDetail.org.springframework.web.servlet.resource.NoResourceFoundException=No endpoint matches this path
 problemDetail.org.springframework.web.multipart.MaxUploadSizeExceededException=The request exceeds the maximum upload size
 ```
 
-**Étape 9. Vérifier.** Un corps invalide : la forme du problème, et le service jamais appelé.
+**Étape 9. Vérifier.** Un corps invalide : forme du problème, et service jamais appelé.
 
 ```java
 @SpringBootTest
@@ -347,12 +346,12 @@ Contraintes courantes de `jakarta.validation.constraints` :
 | Contrainte | Refuse | Remarque |
 |---|---|---|
 | `@NotNull` | `null` | tout type |
-| `@NotBlank` | `null`, `""`, `"  "` | chaînes seulement |
+| `@NotBlank` | `null`, `""`, `"  "` | chaînes seulement ; préférer à `@NotNull` pour un texte |
 | `@NotEmpty` | `null`, vide | chaînes, collections, maps |
 | `@Size(min, max)` | une longueur hors bornes | accepte `null` |
 | `@Email`, `@Pattern(regexp)` | un texte mal formé | acceptent `null` |
 | `@Min`, `@Max`, `@Positive` | un nombre hors bornes | acceptent `null` |
-| `@Past`, `@Future` | une date du mauvais côté de maintenant | acceptent `null` |
+| `@Past`, `@Future` | une date du mauvais côté | acceptent `null` |
 | `@Valid` sur un champ | rien par lui-même | fait valider l'objet ou la liste imbriqués |
 
 Méthodes de `ResponseEntityExceptionHandler` les plus surchargées :
@@ -360,30 +359,34 @@ Méthodes de `ResponseEntityExceptionHandler` les plus surchargées :
 | Méthode | Cause | Statut |
 |---|---|---|
 | `handleMethodArgumentNotValid` | `@Valid` sur un corps ou un `@ModelAttribute` | 400 |
-| `handleHandlerMethodValidationException` | une contrainte posée sur un paramètre | 400 |
+| `handleHandlerMethodValidationException` | une contrainte sur un paramètre | 400 |
 | `handleHttpMessageNotReadable` | JSON illisible, ou valeur du mauvais type | 400 |
 | `handleTypeMismatch` | paramètre de requête ou de chemin mal formé | 400 |
 | `handleMissingServletRequestParameter`, `...Part` | paramètre ou part manquants | 400 |
 | `handleNoResourceFoundException` | aucun endpoint pour ce chemin | 404 |
 | `handleHttpRequestMethodNotSupported` | méthode HTTP refusée | 405 |
-| `handleMaxUploadSizeExceededException` | upload au-delà de la limite multipart | 413 |
+| `handleMaxUploadSizeExceededException` | upload au-delà de la limite | 413 |
 | `handleHttpMediaTypeNotSupported` | `Content-Type` refusé | 415 |
 
-Clés de `messages.properties` lues pour les exceptions de Spring : `problemDetail.<classe complète>` remplace le `detail`, `problemDetail.title.<classe complète>` le `title`, `problemDetail.type.<classe complète>` le `type`.
+Pour les exceptions de Spring, `messages.properties` lit `problemDetail.<classe complète>` pour le `detail`, `problemDetail.title.<classe complète>` pour le `title` et `problemDetail.type.<classe complète>` pour le `type`.
 
-Limites de cette version : les erreurs levées par un filtre (la sécurité) n'atteignent pas l'advice, et les messages métier ne suivent pas la langue de la requête.
+Limites de cette version : les erreurs d'un filtre (la sécurité) n'atteignent pas l'advice, et les messages métier ignorent la langue de la requête.
 
 ## Concepts avancés
 
 ### Sous le capot : le choix du handler
 
-Spring MVC essaie trois résolveurs, dans cet ordre : `ExceptionHandlerExceptionResolver` (les `@ExceptionHandler` du contrôleur, puis des advices), `ResponseStatusExceptionResolver` (les exceptions annotées `@ResponseStatus`), `DefaultHandlerExceptionResolver` (les exceptions de Spring MVC sans advice).
+Spring MVC essaie trois résolveurs, dans cet ordre :
 
-- Dans un advice, Spring retient le `@ExceptionHandler` dont le type est le plus proche de l'exception ; `Exception.class` ne sert qu'en dernier.
-- Spring ne regarde la cause d'une exception que si rien ne correspond à l'exception elle-même. Avec un handler `Exception`, quelque chose correspond toujours.
-- Deux méthodes pour la même exception : le contexte refuse de démarrer.
+1. `ExceptionHandlerExceptionResolver` : les `@ExceptionHandler` du contrôleur, puis des advices.
+2. `ResponseStatusExceptionResolver` : les exceptions annotées `@ResponseStatus`.
+3. `DefaultHandlerExceptionResolver` : les exceptions de Spring MVC sans advice.
 
-`@PreAuthorize` est vérifié par un proxy Spring autour du contrôleur : son refus sort donc du contrôleur, et passe par l'advice :
+- Dans un advice, Spring retient le `@ExceptionHandler` au type le plus proche de l'exception. `Exception.class` passe en dernier.
+- Spring n'examine la cause d'une exception que si rien ne correspond à l'exception elle-même. Avec un handler `Exception`, quelque chose correspond toujours.
+- Deux méthodes pour la même exception empêchent le contexte de démarrer.
+
+Un proxy Spring autour du contrôleur vérifie `@PreAuthorize`. Son refus sort donc du contrôleur et passe par l'advice :
 
 ```
   requête
@@ -409,34 +412,34 @@ Spring MVC essaie trois résolveurs, dans cet ordre : `ExceptionHandlerException
                                    (401 si l'appelant est anonyme)
 ```
 
-- Relancer l'exception fait passer Spring au résolveur suivant, sans rien journaliser. Répondre à la place transforme le refus en 500.
+- Relancer l'exception laisse Spring passer au résolveur suivant. Y répondre transformerait le refus en 500.
 
 ### Sous le capot : d'où viennent les membres
 
 - **`title`** : sans titre posé, `ProblemDetail.getTitle()` renvoie la phrase du statut (« Not Found »).
 - **`detail`** des exceptions de Spring : cherché d'abord dans le `MessageSource`, sous `problemDetail.<classe>`. Boot charge `messages.properties` sans réglage.
-- **`instance`** et **`Content-Type`** : le chemin de la requête, et `application/problem+json`, sont posés à l'écriture de la réponse.
+- **`instance`** et **`Content-Type`** : le chemin de la requête et `application/problem+json` sont posés à l'écriture.
 
 ### Une contrainte sur un paramètre
 
-Depuis Spring Framework 6.1, une contrainte posée directement sur un paramètre déclenche la validation de méthode :
+Depuis Spring Framework 6.1, une contrainte posée sur un paramètre déclenche la validation de méthode :
 
 ```java
 @GetMapping
 PagedModel<InvoiceResponseDto> list(@RequestParam @Max(100) int size) { ... }
 ```
 
-- L'erreur est une `HandlerMethodValidationException`, pas une `MethodArgumentNotValidException` ; les `@Valid` de la même méthode passent aussi par là.
-- Sa réponse par défaut dit seulement « Validation failure » : on surcharge `handleHandlerMethodValidationException` pour garder la liste `errors`.
+- L'erreur est une `HandlerMethodValidationException`, pas une `MethodArgumentNotValidException`. Les `@Valid` de la même méthode passent aussi par là.
+- Sa réponse par défaut dit seulement « Validation failure ». Sans la surcharge de `handleHandlerMethodValidationException`, la liste `errors` disparaît.
 
 ### Une alternative : `ErrorResponseException`
 
-Une exception qui étend `ErrorResponseException` porte elle-même son `ProblemDetail`, et `ResponseEntityExceptionHandler` la traite sans handler à écrire. En échange, le code métier dépend de HTTP, ce qui n'a pas de sens dans un listener ou un job. Ce dépôt garde des `RuntimeException` simples, et un seul endroit décide du statut.
+Une exception qui étend `ErrorResponseException` porte son propre `ProblemDetail`, sans handler à écrire. Mais le code métier dépend alors de HTTP, ce qui n'a pas de sens dans un listener ou un job. Ce dépôt garde des `RuntimeException` simples, et un seul endroit décide du statut.
 
 ### Surveiller
 
-- Le dernier recours journalise en ERROR, avec la trace ; les handlers des 4xx ne journalisent rien.
-- `http.server.requests` porte les tags `status` et `outcome` : une alerte sur `outcome=SERVER_ERROR` signale les 500.
+- Le dernier recours journalise en ERROR, avec la trace. Les handlers 4xx ne journalisent rien.
+- Une alerte sur le tag `outcome=SERVER_ERROR` de `http.server.requests` signale les 500.
 
 ## Pièges à éviter
 
@@ -469,7 +472,7 @@ Une exception qui étend `ErrorResponseException` porte elle-même son `ProblemD
 
 ## En résumé
 
-**À retenir :** des contraintes sur des records et `@Valid` refusent l'entrée invalide, puis un seul advice qui étend `ResponseEntityExceptionHandler` traduit chaque exception en `ProblemDetail` : un type stable quand le client peut réagir, `about:blank` sinon, et jamais le message d'une exception imprévue.
+**À retenir :** des contraintes sur des records et `@Valid` refusent l'entrée invalide. Un seul advice, qui étend `ResponseEntityExceptionHandler`, traduit chaque exception en `ProblemDetail`. Le type est stable quand le client peut réagir, `about:blank` sinon, et le message d'une exception imprévue n'est jamais renvoyé.
 
 - [ ] Contraintes sur les records d'entrée, `@Valid` sur chaque `@RequestBody` et `@ModelAttribute`
 - [ ] Un `@RestControllerAdvice` qui étend `ResponseEntityExceptionHandler`
@@ -482,7 +485,7 @@ Une exception qui étend `ErrorResponseException` porte elle-même son `ProblemD
 
 ## Dans ce dépôt
 
-Ce que devient une exception dans [`ApiExceptionHandler`][handler] :
+Le sort d'une exception dans [`ApiExceptionHandler`][handler] :
 
 ```
   exception levée pendant la requête
@@ -509,7 +512,7 @@ Ce que devient une exception dans [`ApiExceptionHandler`][handler] :
 
 | Fichier | Rôle |
 |---|---|
-| [`ApiExceptionHandler`][handler] | les handlers des exceptions métier, et les surcharges de `ResponseEntityExceptionHandler` |
+| [`ApiExceptionHandler`][handler] | les handlers métier, et les surcharges de `ResponseEntityExceptionHandler` |
 | [`ProblemType`][problem-type] | les 14 types : statut, titre, URI vers leur section de `docs/problems.md` |
 | [`InvalidValue`][invalid-value] | un élément de `errors`, et les messages dans les termes du client |
 | [`messages.properties`][messages] | les détails reformulés des exceptions de Spring MVC |
@@ -517,15 +520,15 @@ Ce que devient une exception dans [`ApiExceptionHandler`][handler] :
 | [`CreateTaskDto`][create-task] | un record validé, nettoyé dans son constructeur compact |
 | [`TaskCommentController`][comment-controller] | le même DTO en JSON (`@RequestBody`) et en multipart (`@ModelAttribute`) |
 
-Les traductions qui demandent une explication :
+Les traductions à expliquer :
 
 | Exception | Réponse | Pourquoi |
 |---|---|---|
-| `OptimisticLockingFailureException` | 409 `version-conflict` | deux requêtes ont modifié la même ligne au même moment (guide 15) |
-| `DataIntegrityViolationException` | 409 sans type, détail générique | une course entre une vérification et l'insertion (guide 15) |
-| `TooManyCommentAttachmentsException` | 400 `validation-error` sur `files` | une erreur d'entrée, même si le service la détecte |
-| `PropertyReferenceException` | 400 `validation-error` sur `sort` | un tri sur une propriété inconnue |
-| `RateLimitExceededException` | 429 et `Retry-After` | un `ResponseEntity<ProblemDetail>`, pour poser l'en-tête |
+| `OptimisticLockingFailureException` | 409 `version-conflict` | deux requêtes ont modifié la même ligne (guide 15) |
+| `DataIntegrityViolationException` | 409 sans type, détail générique | course entre une vérification et l'insertion (guide 15) |
+| `TooManyCommentAttachmentsException` | 400 `validation-error` sur `files` | erreur d'entrée, même détectée par le service |
+| `PropertyReferenceException` | 400 `validation-error` sur `sort` | tri sur une propriété inconnue |
+| `RateLimitExceededException` | 429 et `Retry-After` | un `ResponseEntity<ProblemDetail>` pose l'en-tête |
 | `AntivirusUnavailableException` | 503, détail fixe | la cause nomme l'hôte de ClamAV |
 
 Les réglages :
@@ -533,28 +536,28 @@ Les réglages :
 | Réglage | Valeur | Rôle |
 |---|---|---|
 | `fail-on-numbers-for-enums` (`spring.jackson.datatype.enum`) | `true` | `"kind": 1` créait un webhook Slack |
-| `max-request-size` (`spring.servlet.multipart`) | `26MB` | au-delà, 413 avec le détail de `messages.properties` |
+| `max-request-size` (`spring.servlet.multipart`) | `26MB` | au-delà, 413 (détail de `messages.properties`) |
 
 [`messages.properties`][messages] reformule aussi `InvalidApiVersionException` : « This API version is not supported: use /api/v1 » (guide 04).
 
 Ce qui est propre au dépôt :
 
-- Le dépôt surcharge aussi `handleHttpMessageNotReadable`, `handleTypeMismatch`, `handleMissingServletRequestParameter` et `handleMissingServletRequestPart`. Une valeur du mauvais type donne un pointeur et un message dans les termes du client (« must be a UUID », « must be one of LOW, MEDIUM, HIGH, URGENT ») ; un JSON illisible garde « Failed to read request », sans `errors`.
-- Pour un enum du corps JSON, la liste donne les noms du JSON (`task.assigned`, lus sur `@JsonValue`), non ceux des constantes.
-- `errors` est trié par pointeur ou paramètre, puis par détail. Une erreur sur l'objet entier, et non sur un champ, a le pointeur `#`.
-- Le `detail` d'un problème typé reste en anglais ; seuls les messages de Bean Validation suivent `Accept-Language`, donc les tests vérifient `pointer` et `parameter`, ou fixent la langue.
+- Le dépôt surcharge aussi `handleHttpMessageNotReadable`, `handleTypeMismatch`, `handleMissingServletRequestParameter` et `handleMissingServletRequestPart`. Une valeur du mauvais type donne un pointeur et un message simple (« must be a UUID », « must be one of LOW, MEDIUM, HIGH, URGENT »). Un JSON illisible garde « Failed to read request », sans `errors`.
+- Pour un enum du corps JSON, la liste donne les noms du JSON (`task.assigned`, lus sur `@JsonValue`), pas ceux des constantes.
+- `errors` est trié par pointeur ou paramètre, puis par détail. Une erreur sur l'objet entier, non sur un champ, a le pointeur `#`.
+- Le `detail` d'un problème typé reste en anglais. Seuls les messages de Bean Validation suivent `Accept-Language` : les tests vérifient `pointer` et `parameter`, ou fixent la langue.
 - Les 401 et 403 des filtres de sécurité viennent de Spring Security, sans corps (guide 07).
 
 Les tests :
 
 - [`ApiExceptionHandlerTest`][handler-test] appelle chaque handler : statut, type, titre, aucun détail interne (SQL, hôte, classe).
-- [`ApiExceptionHandlerWebMvcTests`][handler-web-test] passe par la vraie chaîne : 404 sans endpoint, 405, 415, et un 500 qui ne cite pas le message.
-- [`ProblemTypeTest`][problem-type-test] vérifie que chaque type pointe vers une section de `docs/problems.md` de même statut et même titre, et l'inverse.
+- [`ApiExceptionHandlerWebMvcTests`][handler-web-test] passe par la vraie chaîne : 404, 405, 415, et un 500 sans message.
+- [`ProblemTypeTest`][problem-type-test] vérifie que chaque type pointe vers une section de `docs/problems.md` de même statut et titre, et inversement.
 - [`InvalidValueTest`][invalid-value-test] couvre les pointeurs (index, échappement de `~` et `/`).
-- [`Problems`][problems-matchers] fournit les matchers `typedProblem`, `untypedProblem`, `invalidBodyValue`, `invalidParameter` et `withoutJavaTypeNames`. Les types y sont écrits en toutes lettres : un renommage casse un test.
+- [`Problems`][problems-matchers] fournit les matchers `typedProblem`, `untypedProblem`, `invalidBodyValue`, `invalidParameter` et `withoutJavaTypeNames`. Les types y sont écrits en clair : un renommage casse un test.
 - [`UserControllerWebMvcTests`][user-web-test] vérifie l'ordre de `errors` et des messages en français (`Accept-Language: fr`).
 
-Pour ajouter une exception métier : l'exception dans le paquet `exceptions` de sa fonctionnalité, avec un message écrit pour le client ; son handler dans `ApiExceptionHandler`. Si le client peut réagir, une constante de `ProblemType` et une section de `docs/problems.md` qui commence par `**Status NNN, title "...".**`, puis `@DocumentedProblems` sur l'endpoint (guide 06). Enfin un test du handler, et un test web avec les matchers de `Problems`.
+Pour ajouter une exception métier : l'exception dans le paquet `exceptions` de sa fonctionnalité, son handler dans `ApiExceptionHandler`, puis un test du handler et un test web avec les matchers de `Problems`. Si le client peut réagir, ajouter aussi une constante de `ProblemType`, une section de `docs/problems.md` qui commence par `**Status NNN, title "...".**`, et `@DocumentedProblems` sur l'endpoint (guide 06).
 
 ## Voir aussi
 

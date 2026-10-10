@@ -4,9 +4,9 @@
 
 ## Contexte
 
-- **Problème** : certaines opérations tiennent en une instruction SQL que JPA ne sait pas écrire (un upsert qui renvoie le nouveau compte, un lot réservé avec `SKIP LOCKED`), ou touchent des lignes qu'Hibernate cache (les lignes supprimées logiquement).
+- **Problème** : JPA ne sait pas écrire certaines instructions SQL (un upsert qui renvoie le nouveau compte, un lot réservé avec `SKIP LOCKED`) et ne voit pas les lignes supprimées logiquement.
 - **Quand l'utiliser** : compteurs atomiques, enregistrements « une seule fois », lots partagés entre plusieurs instances, purges et anonymisations sur des lignes supprimées logiquement, rapports.
-- **Quand s'en passer** : un CRUD simple sur des entités (guide 11) : JPA apporte gratuitement le dirty checking, `@Version`, l'audit et la suppression logique.
+- **Quand s'en passer** : un CRUD simple sur des entités (guide 11). JPA apporte gratuitement le dirty checking, `@Version`, l'audit et la suppression logique.
 - **Dans ce dépôt** : une classe `...Queries` par besoin (`RateLimitQueries`, `TaskReminderQueries`, `WebhookDeliveryQueries`, `UserRetentionQueries`, `MediaCleanupQueries`, `PersonalDataQueries`, `BatchMetadataQueries`).
 - **Prérequis** : guides 12 (suppression logique) et 14 (transactions). Versions : Spring Boot 4.1, Spring Framework 7 (`spring-jdbc`), PostgreSQL 18.
 
@@ -31,8 +31,6 @@ Les façons d'envoyer du SQL écrit à la main :
 
 ### Quand sortir de JPA
 
-Ce que JPA fait bien, et ce qu'il ne sait pas écrire :
-
 | Besoin | JPA | SQL écrit à la main |
 |---|---|---|
 | lire et modifier une entité | oui, dirty checking | inutile |
@@ -42,11 +40,11 @@ Ce que JPA fait bien, et ce qu'il ne sait pas écrire :
 | toucher les lignes supprimées logiquement | non : filtrées | SQL natif |
 | mettre à jour des milliers de lignes | lent, ligne par ligne | un seul `UPDATE` |
 
-Pourquoi « lire puis écrire » perd des incréments sous concurrence : guide 15.
+Pourquoi « lire puis écrire » perd des incréments : guide 15.
 
 ### Une instruction qui répond
 
-`RETURNING` fait d'une écriture une lecture : l'appelant apprend le nouveau compte, les lignes insérées ou les ids réservés sans seconde requête, donc sans fenêtre entre les deux. Avec `ON CONFLICT DO NOTHING`, `RETURNING` ne renvoie que les lignes réellement insérées : les lignes déjà présentes manquent, ce qui dit exactement « ce qui est nouveau ».
+`RETURNING` fait d'une écriture une lecture. L'appelant apprend le nouveau compte, les lignes insérées ou les ids réservés sans seconde requête, donc sans fenêtre entre les deux. Avec `ON CONFLICT DO NOTHING`, il ne renvoie que les lignes réellement insérées, ce qui dit exactement « ce qui est nouveau ».
 
 ```
  INSERT ... ON CONFLICT (bucket_key, window_start)
@@ -75,11 +73,11 @@ src/test/java/.../
   QuotaQueriesTests.java         les vérifications (étapes 7 et 8)
 ```
 
-Dans les exemples, la table `invoices` a `id`, `reference`, `due_at`, `paid_at`, `deleted_at`, `anonymized_at` et `customer_name`. `invoice_reminders` a une contrainte unique sur `(invoice_id, due_at)`, `quota_counters` une clé primaire `(bucket_key, window_start)`, et `print_jobs` les colonnes `id`, `status` et `next_attempt_at`. Les tables viennent de migrations (guide 18).
+Dans les exemples, `invoices` a les colonnes `id`, `reference`, `due_at`, `paid_at`, `deleted_at`, `anonymized_at` et `customer_name`. `invoice_reminders` a une contrainte unique sur `(invoice_id, due_at)`, `quota_counters` une clé primaire `(bucket_key, window_start)`, et `print_jobs` les colonnes `id`, `status` et `next_attempt_at`. Des migrations créent ces tables (guide 18).
 
 ### Une classe de requêtes
 
-**Étape 1. Créer la classe de requêtes.** Une classe regroupe le SQL d'un besoin ; Spring Boot fournit déjà `NamedParameterJdbcTemplate` comme bean. Les erreurs SQL arrivent en `DataAccessException`.
+**Étape 1. Créer la classe de requêtes.** Une classe regroupe le SQL d'un besoin. Spring Boot fournit déjà `NamedParameterJdbcTemplate` comme bean, et les erreurs SQL arrivent en `DataAccessException`.
 
 ```java
 @Repository
@@ -90,7 +88,7 @@ public class InvoiceQueries {
 }
 ```
 
-**Étape 2. Lire des lignes en records.** Un bloc de texte garde le SQL lisible, et une lambda transforme chaque ligne.
+**Étape 2. Lire des lignes en records.** Un bloc de texte garde le SQL lisible, et une lambda transforme chaque ligne en record.
 
 ```java
 // dans InvoiceQueries
@@ -116,9 +114,9 @@ public List<OverdueInvoice> overdueAt(Instant now, int limit) {
 }
 ```
 
-`deleted_at IS NULL` s'écrit à la main (guide 12). L'`Instant` passe par `Timestamp.from` : le typage JDBC de Spring n'a pas d'entrée pour `Instant` (il en a une pour `OffsetDateTime`), et le dépôt convertit à chaque fois.
+`deleted_at IS NULL` s'écrit à la main (guide 12). Le typage JDBC de Spring ne connaît pas `Instant` (il connaît `OffsetDateTime`), donc le dépôt le convertit chaque fois par `Timestamp.from`.
 
-**Étape 3. Compter sans perdre d'appel.** Une seule instruction insère ou incrémente, et renvoie le compte : deux appels concurrents ne lisent jamais la même valeur (guide 15).
+**Étape 3. Compter sans perdre d'appel.** Une seule instruction insère ou incrémente, et renvoie le compte. Deux appels concurrents ne lisent jamais la même valeur (guide 15).
 
 ```java
 @Repository
@@ -148,7 +146,7 @@ public class QuotaQueries {
 
 `ON CONFLICT (colonnes)` demande une contrainte unique ou une clé primaire sur exactement ces colonnes.
 
-**Étape 4. N'enregistrer qu'une fois, et savoir ce qui est nouveau.** La contrainte unique tranche ; `RETURNING` ne donne que les lignes insérées par cet appel, donc un second passage (ou une autre instance) n'obtient rien.
+**Étape 4. N'enregistrer qu'une fois, et savoir ce qui est nouveau.** La contrainte unique tranche, et `RETURNING` ne donne que les lignes insérées par cet appel. Un second passage, ou une autre instance, n'obtient rien.
 
 ```java
 // dans InvoiceQueries
@@ -177,7 +175,7 @@ L'appelant n'envoie un rappel que pour les ids renvoyés. Une échéance déplac
 
 ### Plusieurs instances et lignes cachées
 
-**Étape 5. Réserver un lot sans attendre les autres instances.** Chaque instance prend ses propres lignes ; celles qu'une autre réserve sont sautées, pas attendues, et le bail les tient à l'écart du tour suivant (concept : guide 15).
+**Étape 5. Réserver un lot sans attendre les autres instances.** Chaque instance prend ses propres lignes. Celles qu'une autre réserve sont sautées, pas attendues, et le bail les tient à l'écart du tour suivant (concept : guide 15).
 
 ```java
 @Repository
@@ -209,9 +207,9 @@ public class PrintJobQueries {
 }
 ```
 
-La méthode est appelée dans un service `@Transactional` : les verrous de lignes durent jusqu'au commit, et le `next_attempt_at` repoussé leur survit.
+La méthode est appelée dans un service `@Transactional`. Les verrous de lignes durent jusqu'au commit, et le `next_attempt_at` repoussé leur survit.
 
-**Étape 6. Atteindre les lignes supprimées logiquement.** JPA ne les charge jamais : une purge ou une anonymisation doit être native. Une collection liée à `:ids` se développe en `IN (?, ?, ...)`.
+**Étape 6. Atteindre les lignes supprimées logiquement.** JPA ne les charge jamais, donc une purge ou une anonymisation doit être native. Une collection liée à `:ids` se développe en `IN (?, ?, ...)`.
 
 ```java
 // dans InvoiceQueries
@@ -236,7 +234,7 @@ public List<UUID> anonymizeDeletedBefore(Instant cutoff, Instant now) {
 }
 ```
 
-**Étape 7. Vérifier contre un vrai Postgres.** Seule la vraie base vérifie le SQL ; une annotation charge toutes les classes `...Queries` dans un contexte de test partagé (guide 29). Chaque test tourne dans une transaction annulée à sa fin.
+**Étape 7. Vérifier contre un vrai Postgres.** Seule la vraie base vérifie le SQL. Une annotation charge toutes les classes `...Queries` dans un contexte de test partagé (guide 29), et chaque test tourne dans une transaction annulée à sa fin.
 
 ```java
 @Target(ElementType.TYPE)
@@ -266,7 +264,7 @@ class QuotaQueriesTests {
 }
 ```
 
-**Étape 8. Vérifier la concurrence.** Une transaction de test annulée masque la concurrence : le test sort de la transaction, pour que chaque appel valide sur sa propre connexion, comme des requêtes séparées.
+**Étape 8. Vérifier la concurrence.** Une transaction de test annulée masque la concurrence. Le test en sort, pour que chaque appel valide sur sa propre connexion, comme des requêtes séparées.
 
 ```java
 // dans QuotaQueriesTests ; jdbc : un JdbcTemplate injecté
@@ -305,13 +303,13 @@ Les méthodes les plus utiles de `NamedParameterJdbcTemplate` :
 | `update(sql, params)` | `int` | lignes modifiées par `INSERT`, `UPDATE`, `DELETE` |
 | `update(sql, params, keyHolder)` | `int` | lire des clés générées |
 
-Limites de cette version : rien ne vérifie le SQL à la compilation ni au démarrage ; une faute de frappe se voit au premier appel, d'où un test de slice par classe.
+Limites de cette version : rien ne vérifie le SQL à la compilation ni au démarrage. Une faute de frappe se voit au premier appel, d'où un test de slice par classe.
 
 ## Concepts avancés
 
 ### Sous le capot : la même connexion que JPA
 
-Dans une transaction gérée par `JpaTransactionManager`, `JdbcTemplate` utilise la même connexion JDBC : les écritures JPA et JDBC valident ou s'annulent ensemble. En revanche, `JdbcTemplate` ignore Hibernate : les changements d'entités pas encore écrits lui sont invisibles. Il faut appeler `repository.flush()` avant une requête JDBC qui doit les voir.
+Dans une transaction gérée par `JpaTransactionManager`, `JdbcTemplate` utilise la même connexion JDBC. Les écritures JPA et JDBC valident ou s'annulent donc ensemble. En revanche, `JdbcTemplate` ignore Hibernate et ne voit pas les changements d'entités pas encore écrits. Il faut appeler `repository.flush()` avant une requête JDBC qui doit les voir.
 
 ```
  @Transactional service
@@ -327,11 +325,11 @@ Dans une transaction gérée par `JpaTransactionManager`, `JdbcTemplate` utilise
 
 ### Écrire du SQL qui touche un compte
 
-Une instruction native contourne le code de l'entité qui garde les données dérivées à jour. Dans ce dépôt, un SQL natif qui change un compte doit aussi mettre à jour `user_profiles.status` et publier `AccountStateChanged`, sinon le statut en cache laisse un compte désactivé actif jusqu'à la fin du TTL (guide 17). `UserRetentionQueries.anonymizeUsersDeletedBefore` écrit ainsi `status = 'DELETED'` sur le profil, dans le même `UPDATE`.
+Une instruction native contourne le code de l'entité qui garde les données dérivées à jour. Dans ce dépôt, un SQL natif qui change un compte doit aussi mettre à jour `user_profiles.status` et publier `AccountStateChanged`. Sinon, le statut en cache laisse un compte désactivé actif jusqu'à la fin du TTL (guide 17). `UserRetentionQueries.anonymizeUsersDeletedBefore` écrit ainsi `status = 'DELETED'` sur le profil, dans le même `UPDATE`.
 
 ### Plusieurs instances
 
-Chaque motif de ce guide est sûr avec plusieurs instances, car Postgres sérialise les lignes en conflit : l'upsert verrouille la ligne du compteur, `DO NOTHING` s'appuie sur l'index unique, `SKIP LOCKED` donne à chaque instance des lignes différentes. C'est pourquoi `WebhookRetryJob` et `OutboxRelayJob` tournent sur chaque instance sans ShedLock (guide 21).
+Chaque motif de ce guide est sûr avec plusieurs instances, car Postgres sérialise les lignes en conflit : l'upsert verrouille la ligne du compteur, `DO NOTHING` s'appuie sur l'index unique, `SKIP LOCKED` sépare les lots. C'est pourquoi `WebhookRetryJob` et `OutboxRelayJob` tournent sur chaque instance sans ShedLock (guide 21).
 
 ## Pièges à éviter
 
@@ -364,7 +362,7 @@ Chaque motif de ce guide est sûr avec plusieurs instances, car Postgres sérial
 
 ## En résumé
 
-**À retenir :** on sort de JPA quand une instruction Postgres fait le travail de façon atomique (upsert, insertion unique, lot réservé par `SKIP LOCKED`) ou quand les lignes sont cachées par la suppression logique ; on l'écrit dans une classe `...Queries` avec des paramètres nommés, `RETURNING` pour la réponse, et un test de slice contre la vraie base.
+**À retenir :** on sort de JPA quand une instruction Postgres fait le travail de façon atomique (upsert, insertion unique, lot réservé par `SKIP LOCKED`) ou quand la suppression logique cache les lignes. On l'écrit dans une classe `...Queries` avec des paramètres nommés, `RETURNING` pour la réponse, et un test de slice contre la vraie base.
 
 - [ ] Une classe `...Queries` par besoin, avec `NamedParameterJdbcTemplate`
 - [ ] Paramètres nommés, jamais de concaténation
@@ -392,10 +390,10 @@ Chaque motif de ce guide est sûr avec plusieurs instances, car Postgres sérial
 Ce qui est propre au dépôt :
 
 - Chaque classe `...Queries` est un `@Repository` avec `@RequiredArgsConstructor` et un `NamedParameterJdbcTemplate`. Le SQL est en blocs de texte, avec `MapSqlParameterSource` et `Timestamp.from` pour chaque `Instant`. Les lignes deviennent des records imbriqués (`TaskReminderQueries.Reminder`, `UserRetentionQueries.InactiveUser`).
-- Les entités des tables écrites par ces seules classes sont `@Immutable` (`RateLimitCounter`, `TaskReminder`, guide 12) : le schéma reste dans le modèle d'Hibernate.
-- `TaskReminderQueries` nomme la contrainte : `ON CONFLICT ON CONSTRAINT "task_reminders_task_id_kind_due_at_recipient_idUQ"`, entre guillemets à cause du `UQ` en majuscules. Il saute les tâches supprimées, archivées, sans assigné, ou `DONE`, `CANCELLED`, `ARCHIVED`, et renvoie les rappels triés par échéance puis référence.
+- Les tables écrites par ces seules classes ont une entité `@Immutable` (`RateLimitCounter`, `TaskReminder`, guide 12), pour que le schéma reste dans le modèle d'Hibernate.
+- `TaskReminderQueries` nomme la contrainte entre guillemets, à cause du `UQ` en majuscules : `ON CONFLICT ON CONSTRAINT "task_reminders_task_id_kind_due_at_recipient_idUQ"`. Il saute les tâches supprimées, archivées, sans assigné, ou `DONE`, `CANCELLED`, `ARCHIVED`, et renvoie les rappels triés par échéance puis référence.
 - `UserRetentionQueries.anonymizeUsersDeletedBefore` transforme le profil en « Deleted user », statut `DELETED`, sans photo. Il supprime ensuite, pour ces ids, les livraisons et événements de webhook, puis `webhook_endpoints`, `notification_settings`, `refresh_tokens`, `email_verification_tokens`, `password_reset_tokens`, `user_roles`, et enfin les lignes `users`. Tâches et historique gardent leur référence vers le profil. Les requêtes d'inactivité excluent les admins par un `NOT EXISTS` sur `user_roles`.
-- `WebhookDeliveryQueries.claimDue` repousse les livraisons réservées à la fin d'un bail (`webhooks.delivery-lease`), pour qu'une tentative plantée soit due à nouveau plus tard.
+- `WebhookDeliveryQueries.claimDue` repousse les livraisons réservées à la fin d'un bail (`webhooks.delivery-lease`), pour qu'une tentative plantée redevienne due.
 
 Les tests :
 
@@ -404,7 +402,7 @@ Les tests :
 - [`UserRetentionQueriesTests`][retention-tests] et [`MediaCleanupQueriesTests`][media-tests].
 - Un test qui doit valider depuis une autre connexion utilise [`Transactions.inNewTransaction`][transactions] (guide 14).
 
-Pour ajouter une requête : la mettre dans la classe `...Queries` de sa fonctionnalité (le nom doit finir par `Queries` pour que `@JdbcSliceTest` la charge), écrire `deleted_at IS NULL` si besoin, puis un test de ce slice avec des données datées en 2000 et des clés uniques.
+Pour ajouter une requête : la mettre dans la classe `...Queries` de sa fonctionnalité (son nom finit par `Queries`, pour que `@JdbcSliceTest` la charge), écrire `deleted_at IS NULL` si besoin, puis un test de ce slice avec des données datées en 2000 et des clés uniques.
 
 ## Voir aussi
 

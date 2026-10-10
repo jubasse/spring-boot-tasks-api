@@ -6,7 +6,7 @@
 
 - **Problème** : savoir de l'extérieur si l'application vit, si elle peut recevoir du trafic, et ce qu'elle fait (files en retard, erreurs, temps de réponse), sans lire les logs.
 - **Quand l'utiliser** : toute application déployée derrière un orchestrateur (Kubernetes, ECS) ou un load balancer, et suivie par Prometheus ou un outil équivalent.
-- **Quand s'en passer** : un outil en ligne de commande, un batch lancé et terminé ; on garde alors seulement les logs.
+- **Quand s'en passer** : un outil en ligne de commande ou un batch lancé et terminé. On garde alors seulement les logs.
 - **Dans ce dépôt** : Actuator sur le port 8081, sondes `/livez` et `/readyz` sur le port de l'API, deux indicateurs de santé maison, des jauges sur l'outbox et les dead letters.
 - **Prérequis** : guides 07 (chaîne de filtres) et 01 (configuration). Versions : Spring Boot 4.1 (modules `spring-boot-health`, `spring-boot-micrometer-metrics`), Micrometer 1.17, `micrometer-registry-prometheus`.
 
@@ -24,10 +24,10 @@ Les trois questions, et qui les pose :
 
 - **Endpoint Actuator** : une URL de supervision fournie par Spring Boot (`health`, `info`, `metrics`, `prometheus`, `sbom`).
 - **Port de gestion** : un second port HTTP, réservé aux endpoints Actuator (`management.server.port`).
-- **Sonde** (probe) : une URL que l'orchestrateur appelle à intervalle régulier ; 200 = oui, 503 = non.
+- **Sonde** (probe) : une URL que l'orchestrateur appelle à intervalle régulier. Un 200 veut dire oui, un 503 non.
 - **Indicateur de santé** (health indicator) : un composant qui vérifie une dépendance (base, broker, stockage) et répond UP ou DOWN.
 - **Groupe de santé** : une sélection d'indicateurs exposée sous son propre chemin, avec ses propres réglages (`liveness`, `readiness`, ou un groupe maison).
-- **Jauge, compteur** : une jauge monte et descend (taille d'une file), un compteur ne fait que monter (messages publiés). Une **série** est une métrique avec une combinaison de tags.
+- **Jauge, compteur** : une jauge monte et descend (taille d'une file), et un compteur ne fait que monter (messages publiés). Une **série** est une métrique avec une combinaison de tags.
 
 ### Vie et disponibilité
 
@@ -44,9 +44,9 @@ Deux sondes, deux conséquences différentes :
                                      sans redémarrer
 ```
 
-- La sonde de vie ne regarde que l'état interne : si elle incluait la base, une panne de base ferait redémarrer toutes les instances en boucle, sans rien réparer.
-- La sonde de disponibilité inclut ce sans quoi aucune requête ne peut aboutir. Une dépendance qui ne bloque qu'une partie de l'API (mails, fichiers) reste hors de la sonde : sa panne apparaît dans la santé globale, et l'instance sert le reste.
-- `readinessState` passe à « refuse le trafic » dès le début de l'arrêt : le load balancer cesse d'envoyer des requêtes avant l'arrêt du serveur.
+- La sonde de vie ne regarde que l'état interne. Avec la base, une panne de base ferait redémarrer toutes les instances en boucle, sans rien réparer.
+- La sonde de disponibilité inclut ce sans quoi aucune requête ne peut aboutir. Une dépendance qui ne bloque qu'une partie de l'API (mails, fichiers) reste hors de la sonde. Sa panne apparaît dans la santé globale, et l'instance sert le reste.
+- `readinessState` passe à « refuse le trafic » dès le début de l'arrêt, donc le load balancer cesse d'envoyer des requêtes avant l'arrêt du serveur.
 
 ### Deux ports
 
@@ -65,8 +65,8 @@ L'API et la supervision n'écoutent pas au même endroit :
                  +---------------------------------+
 ```
 
-- Le port de gestion n'a pas d'authentification : une règle réseau le limite à la supervision.
-- Une sonde sur le seul port de gestion peut réussir alors que le port de l'API ne répond plus (threads saturés, connecteur arrêté) : les sondes sont donc servies aussi sur le port de l'API, sans détails.
+- Le port de gestion n'a pas d'authentification. Une règle réseau le limite à la supervision.
+- Une sonde sur le seul port de gestion peut réussir alors que le port de l'API ne répond plus (threads saturés, connecteur arrêté). Les sondes sont donc servies aussi sur le port de l'API, sans détails.
 
 ### Métriques et cardinalité
 
@@ -86,9 +86,9 @@ Le code et Spring alimentent un même registre, lu par Prometheus :
                   Prometheus --> alertes
 ```
 
-- Une jauge est lue à chaque scrape : elle peut interroger la base ou le broker, à condition d'être rapide et de ne jamais lever d'exception (elle renvoie `NaN` si la source ne répond pas).
-- Chaque combinaison de tags est une série que Prometheus garde. Un tag par utilisateur, par URL complète ou par hôte de client fait grandir les séries sans fin : on agrège (une jauge « nombre de disjoncteurs ouverts » plutôt qu'une par hôte).
-- Les points des noms Micrometer deviennent des tirets bas, un compteur gagne `_total` et une unité son suffixe : `outbox.messages.oldest.pending.age` devient `outbox_messages_oldest_pending_age_seconds`.
+- Une jauge est lue à chaque scrape. Elle peut interroger la base ou le broker, à condition d'être rapide et de ne jamais lever d'exception (elle renvoie `NaN` si la source ne répond pas).
+- Chaque combinaison de tags est une série que Prometheus garde. Un tag par utilisateur, par URL complète ou par hôte de client fait grandir les séries sans fin. On agrège donc : une jauge « nombre de disjoncteurs ouverts » plutôt qu'une par hôte.
+- Les points des noms Micrometer deviennent des tirets bas, un compteur gagne `_total` et une unité gagne son suffixe. Ainsi `outbox.messages.oldest.pending.age` devient `outbox_messages_oldest_pending_age_seconds`.
 
 ## Implémentation avec Spring
 
@@ -109,7 +109,7 @@ src/test/java/com/example/invoices/
 
 ### Santé et sondes
 
-**Étape 1. Ajouter Actuator et le registre Prometheus.** Actuator fournit les endpoints ; le registre ajoute `/actuator/prometheus`.
+**Étape 1. Ajouter Actuator et le registre Prometheus.** Actuator fournit les endpoints, et le registre ajoute `/actuator/prometheus`.
 
 ```xml
 <dependency>
@@ -137,7 +137,7 @@ management:
       show-details: always                 # sur le port de gestion seulement
 ```
 
-**Étape 3. Définir les sondes et les publier sur le port de l'API.** On crée deux groupes à soi, avec un chemin sur le port de l'API et sans détails ; la disponibilité ne dépend que de la base. L'ancre YAML (`&readiness` puis `*readiness`) réutilise la même liste d'indicateurs.
+**Étape 3. Définir les sondes et les publier sur le port de l'API.** On crée deux groupes à soi, avec un chemin sur le port de l'API et sans détails. La disponibilité ne dépend que de la base. L'ancre YAML (`&readiness` puis `*readiness`) réutilise la même liste d'indicateurs.
 
 ```yaml
 management:
@@ -158,7 +158,7 @@ management:
           additional-path: server:/readyz
 ```
 
-**Étape 4. Ouvrir le port de gestion et les sondes dans la sécurité.** La chaîne de filtres s'applique aussi au port de gestion : elle doit laisser passer tout ce qui y arrive, et les sondes du port de l'API, sans jeton.
+**Étape 4. Ouvrir le port de gestion et les sondes dans la sécurité.** La chaîne de filtres s'applique aussi au port de gestion. Elle doit laisser passer tout ce qui y arrive, et les sondes du port de l'API, sans jeton.
 
 ```java
 @Bean
@@ -178,7 +178,7 @@ SecurityFilterChain securityFilterChain(HttpSecurity http, Environment environme
 
 Un client de sonde qui garde un vieux jeton dans son en-tête `Authorization` recevrait 401. Un `BearerTokenResolver` qui renvoie `null` sur ces deux chemins ignore alors l'en-tête (guide 07).
 
-**Étape 5. Écrire un indicateur de santé.** `AbstractHealthIndicator` transforme toute exception en DOWN avec son message ; le nom du bean sans le suffixe `HealthIndicator` devient le nom du composant (`invoiceArchive`).
+**Étape 5. Écrire un indicateur de santé.** `AbstractHealthIndicator` transforme toute exception en DOWN avec son message. Le nom du bean sans le suffixe `HealthIndicator` devient le nom du composant (`invoiceArchive`).
 
 ```java
 @Component
@@ -197,7 +197,7 @@ public class InvoiceArchiveHealthIndicator extends AbstractHealthIndicator {   /
 }
 ```
 
-Un indicateur doit répondre vite, avec un délai court : il est appelé à chaque appel de `/actuator/health`.
+Un indicateur doit répondre vite, avec un délai court, car il est appelé à chaque appel de `/actuator/health`.
 
 ### Métriques
 
@@ -219,7 +219,7 @@ public class InvoiceMetrics implements MeterBinder {
 }
 ```
 
-**Étape 7. Compter un événement avec un tag borné.** On fait un compteur par résultat ; le tag ne prend que quelques valeurs connues.
+**Étape 7. Compter un événement avec un tag borné.** On fait un compteur par résultat, et le tag ne prend que quelques valeurs connues.
 
 ```java
 @Service
@@ -243,7 +243,7 @@ public class InvoiceSender {
 }
 ```
 
-**Étape 8. Publier la version et la liste des dépendances.** `/actuator/info` affiche la version construite, `/actuator/sbom/application` les bibliothèques du jar, pour vérifier une alerte de sécurité.
+**Étape 8. Publier la version et la liste des dépendances.** `/actuator/info` affiche la version construite, et `/actuator/sbom/application` les bibliothèques du jar, pour vérifier une alerte de sécurité.
 
 ```xml
 <plugin>
@@ -265,7 +265,7 @@ public class InvoiceSender {
 
 Le parent Spring Boot fait écrire `META-INF/sbom/application.cdx.json` par CycloneDX, et Actuator le trouve tout seul.
 
-**Étape 9. Vérifier.** Seul un vrai serveur a deux ports (MockMvc ignore les ports). `@AutoConfigureMetrics` est nécessaire : sans lui, les tests ne gardent qu'un registre en mémoire et `/actuator/prometheus` n'existe pas. La dépendance de test est `spring-boot-starter-actuator-test`.
+**Étape 9. Vérifier.** Seul un vrai serveur a deux ports, car MockMvc les ignore. `@AutoConfigureMetrics` est nécessaire. Sans lui, les tests ne gardent qu'un registre en mémoire et `/actuator/prometheus` n'existe pas. La dépendance de test est `spring-boot-starter-actuator-test`.
 
 ```java
 @AutoConfigureMetrics   // org.springframework.boot.micrometer.metrics.test.autoconfigure
@@ -323,17 +323,17 @@ Limites de cette version : une jauge qui interroge la base à chaque scrape ajou
 
 ### Sous le capot : les sondes et `add-additional-paths`
 
-Avec `add-additional-paths: true`, Spring Boot publie les groupes `liveness` et `readiness` eux-mêmes sur `/livez` et `/readyz` : un seul groupe sert les deux ports, et masquer les détails sur `/readyz` les masque aussi sur le port de gestion. Deux groupes à soi avec `additional-path` gardent des réglages séparés.
+Avec `add-additional-paths: true`, Spring Boot publie les groupes `liveness` et `readiness` eux-mêmes sur `/livez` et `/readyz`. Un seul groupe sert alors les deux ports, et masquer les détails sur `/readyz` les masque aussi sur le port de gestion. Deux groupes à soi avec `additional-path` gardent des réglages séparés.
 
 ### Sous le capot : le port de gestion
 
 - Spring Boot démarre un second serveur web dans un contexte enfant, et publie son port réel dans `local.management.port`, même aléatoire (`management.server.port=0` en test). Si la gestion partage le port de l'API, la propriété est absente et la règle ne correspond à rien.
-- La chaîne de filtres de sécurité s'applique aussi à ce port. N'autoriser que les chemins des endpoints laisse la page d'erreur derrière l'authentification : chaque 404 ou 406 du port de gestion répondait 401. D'où une règle sur le port entier.
+- La chaîne de filtres de sécurité s'applique aussi à ce port. N'autoriser que les chemins des endpoints laisse la page d'erreur derrière l'authentification, et chaque 404 ou 406 du port de gestion répondait 401. D'où une règle sur le port entier.
 
 ### Surveiller
 
-- Une requête de 15 minutes (flux SSE) fausse `http.server.requests` : un `ObservationPredicate` l'exclut (guide 24).
-- Une jauge par hôte de webhook grandirait avec les abonnés : on publie `webhook.circuit.breakers.open`, agrégée (guide 27).
+- Une requête de 15 minutes (flux SSE) fausse `http.server.requests`, donc un `ObservationPredicate` l'exclut (guide 24).
+- Une jauge par hôte de webhook grandirait avec les abonnés. On publie `webhook.circuit.breakers.open`, agrégée (guide 27).
 - Les métriques des jobs : guide 21. Celles des caches : guide 17.
 
 ## Pièges à éviter
@@ -409,10 +409,10 @@ Les réglages sont ceux de l'étape 3, avec l'ancre nommée `&readiness-componen
 
 Ce qui est propre au dépôt :
 
-- Readiness = `db` seul : RabbitMQ en panne retarde seulement les mails et les photos (l'outbox les garde, guide 20), le stockage ou l'antivirus en panne bloque seulement les fichiers.
-- `SecurityConfiguration` permet toute requête arrivée sur `local.management.port`, page d'erreur comprise : n'autoriser que les endpoints faisait répondre 401 à chaque erreur de ce port. Elle permet `GET /livez` et `GET /readyz`, et son `BearerTokenResolver` ignore l'en-tête `Authorization` sur eux (un `POST /livez` reste 401). Les endpoints Actuator n'existent pas sur 8080 (401 ou 404).
-- `AntivirusHealthIndicator` envoie `zPING\0`, attend `PONG`, et plafonne son délai à `min(antivirus.timeout, 5 s)` : le délai d'un scan (une minute) ne convient pas à une sonde.
-- L'image expose 8080 et 8081 (guide 33) ; `compose.production.yaml` publie 8081 sur `127.0.0.1:18081` seulement.
+- Readiness = `db` seul. RabbitMQ en panne retarde seulement les mails et les photos (l'outbox les garde, guide 20), et le stockage ou l'antivirus en panne bloque seulement les fichiers.
+- `SecurityConfiguration` permet toute requête arrivée sur `local.management.port`, page d'erreur comprise. N'autoriser que les endpoints faisait répondre 401 à chaque erreur de ce port. Elle permet `GET /livez` et `GET /readyz`, et son `BearerTokenResolver` ignore l'en-tête `Authorization` sur eux (un `POST /livez` reste 401). Les endpoints Actuator n'existent pas sur 8080 (401 ou 404).
+- `AntivirusHealthIndicator` envoie `zPING\0`, attend `PONG`, et plafonne son délai à `min(antivirus.timeout, 5 s)`, car le délai d'un scan (une minute) ne convient pas à une sonde.
+- L'image expose 8080 et 8081 (guide 33). `compose.production.yaml` publie 8081 sur `127.0.0.1:18081` seulement.
 
 Les métriques à surveiller (README, « Monitor the API ») et ce qui doit alerter :
 
@@ -431,7 +431,7 @@ Les valeurs du tag `outcome` d'un job planifié sont `SUCCESS`, `ERROR` et `UNKN
 
 Les tests : [`MonitoringTests`][monitoring-tests] démarre un vrai serveur (`RANDOM_PORT`, `management.server.port=0`, `@AutoConfigureMetrics`). Il vérifie la santé UP de `db`, `rabbit`, `mail`, `storage` et `antivirus`, une readiness limitée à la base, le SBOM, les jauges de l'outbox, les sondes de 8080 sans détails (même avec un jeton invalide), les endpoints absents de 8080 et le 406 de `/actuator/prometheus` demandé en JSON. `PublicEndpointErrorTests` et `TaskRoomsWebSocketTests` partagent sa configuration, donc son contexte (guide 29).
 
-Pour ajouter un indicateur de santé : une classe `...HealthIndicator` qui étend `AbstractHealthIndicator`, avec un délai court ; il entre rarement dans `readiness`. Pour ajouter une métrique : un nom en points, des tags bornés, une ligne dans le tableau d'alertes du README.
+Pour ajouter un indicateur de santé, on écrit une classe `...HealthIndicator` qui étend `AbstractHealthIndicator`, avec un délai court. Il entre rarement dans `readiness`. Pour ajouter une métrique, on choisit un nom en points et des tags bornés, puis on ajoute une ligne au tableau d'alertes du README.
 
 ## Voir aussi
 

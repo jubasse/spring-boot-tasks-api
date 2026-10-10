@@ -4,9 +4,9 @@
 
 ## Contexte
 
-- **Problème** : décrire l'API à ses clients (chemins, corps, réponses, erreurs) sans tenir à la main un document qui s'écarte du code.
+- **Problème** : décrire l'API à ses clients (chemins, corps, réponses, erreurs), sans tenir à la main un document qui s'écarte du code.
 - **Quand l'utiliser** : toute API HTTP appelée par un autre programme, surtout avec des clients générés.
-- **Quand s'en passer** : une API interne à un seul client du même dépôt ; des échanges par messages (AsyncAPI).
+- **Quand s'en passer** : une API interne à un seul client du même dépôt, ou des échanges par messages (AsyncAPI).
 - **Dans ce dépôt** : le document servi à `/v3/api-docs` et Swagger UI, complétés par du code dans `config`, figés dans `docs/openapi.json` et contrôlés en CI.
 - **Prérequis** : guides 03 (contrôleurs) et 05 (erreurs). Versions : Spring Boot 4.1, springdoc-openapi 3.1.1, OpenAPI 3.1.
 
@@ -14,16 +14,16 @@ Les façons de produire la description d'une API :
 
 | Approche | Principe | Quand la choisir |
 |---|---|---|
-| Code d'abord (springdoc) | le document est déduit des contrôleurs | l'API naît dans le code, cas le plus courant |
+| Code d'abord (springdoc) | le document est déduit des contrôleurs | l'API naît dans le code, cas courant |
 | Contrat d'abord (openapi-generator) | on écrit le YAML, puis on génère interfaces et DTO | plusieurs équipes s'accordent avant de coder |
-| Spring REST Docs | la documentation naît des tests qui appellent l'API | une documentation rédigée, chaque exemple prouvé par un test |
+| Spring REST Docs | la documentation naît des tests qui appellent l'API | documentation rédigée, chaque exemple prouvé par un test |
 | Fichier tenu à la main | on décrit l'API à côté du code | à éviter : il s'écarte du code sans que rien ne le signale |
 
 ## Concepts clés
 
 ### Vocabulaire
 
-- **OpenAPI** : un format standard, en JSON ou en YAML, qui décrit une API HTTP : chemins, paramètres, corps, réponses, sécurité.
+- **OpenAPI** : un format standard, en JSON ou YAML, qui décrit une API HTTP (chemins, paramètres, corps, réponses, sécurité).
 - **Opération** : une méthode HTTP sur un chemin, nommée par son `operationId`.
 - **Composant** : un schéma, une réponse ou un schéma de sécurité décrit une fois, puis référencé par `$ref`.
 - **Swagger UI** : une page web qui affiche le document et permet d'appeler l'API depuis le navigateur.
@@ -53,12 +53,12 @@ springdoc construit le document à la première requête, couche par couche :
 ```
 
 - Un `OperationCustomizer` voit la méthode Java et ses annotations, un marqueur maison par exemple.
-- Un `OpenApiCustomizer` voit tous les chemins : il applique une règle de chemin ou touche tout le document.
-- Le document est mis en cache : les customizers ne tournent pas à chaque requête.
+- Un `OpenApiCustomizer` voit tous les chemins. Il applique une règle de chemin ou touche tout le document.
+- Le document est mis en cache, donc les customizers ne tournent pas à chaque requête.
 
 ### Ce que springdoc déduit, et ce qu'il ignore
 
-springdoc lit les annotations et les types Java ; le reste, il faut le lui dire :
+springdoc lit les annotations et les types Java. Le reste, il faut le lui dire :
 
 | Information | springdoc la lit dans | Remarque |
 |---|---|---|
@@ -91,14 +91,14 @@ Le document généré est aussi un fichier versionné :
             + comparaison avec la branche cible -- rupture --> PR refusée
 ```
 
-- Le diff d'une pull request montre ce qui change pour les clients, et un client se génère depuis le fichier sans démarrer l'application.
+- Le diff d'une pull request montre ce qui change pour les clients. Un client se génère depuis le fichier, sans démarrer l'application.
 
 | Changement | Effet |
 |---|---|
 | Ajouter un endpoint, un paramètre facultatif, un champ de réponse | compatible |
 | Rendre obligatoire un champ de requête | rupture |
 | Supprimer ou renommer un champ, un chemin | rupture |
-| Ajouter une valeur à une énumération de réponse | rupture pour un client strict, compatible s'il accepte l'inconnu |
+| Ajouter une valeur à une énumération de réponse | rupture pour un client strict, sinon compatible |
 
 ## Implémentation avec Spring
 
@@ -127,7 +127,7 @@ src/test/java/.../
 
 ### Un document généré : springdoc seul
 
-**Étape 1. Ajouter la dépendance.** Le starter sert le document et Swagger UI ; Spring Boot ne gère pas sa version.
+**Étape 1. Ajouter la dépendance.** Le starter sert le document et Swagger UI. Spring Boot ne gère pas sa version.
 
 ```xml
 <dependency>
@@ -149,7 +149,7 @@ springdoc:
   writer-with-default-pretty-printer: true
 ```
 
-**Étape 3. Déclarer le bean `OpenAPI`.** springdoc part de lui : on y met ce qu'aucun contrôleur ne dit.
+**Étape 3. Déclarer le bean `OpenAPI`.** springdoc part de lui. On y met ce qu'aucun contrôleur ne dit.
 
 ```java
 @Configuration
@@ -237,7 +237,7 @@ class RateLimitDocumentation implements OperationCustomizer {
 }
 ```
 
-**Étape 7. Décrire les erreurs à la main.** Le schéma tiré de `ProblemDetail` ne correspond pas au JSON envoyé (voir les pièges) : `Problem` et les réponses partagées vont dans les composants du bean de l'étape 3.
+**Étape 7. Décrire les erreurs à la main.** Le schéma tiré de `ProblemDetail` ne correspond pas au JSON envoyé (voir les pièges). `Problem` et les réponses partagées vont donc dans les composants du bean de l'étape 3.
 
 ```java
 Schema<?> problem = new JsonSchema().types(Set.of("object"))
@@ -281,7 +281,7 @@ PublicEndpoints.ALL.forEach(endpoint ->
         auth.requestMatchers(endpoint.method(), endpoint.pattern()).permitAll());
 ```
 
-**Étape 9. Appliquer les règles de chemin.** Un `OpenApiCustomizer` : pas de jeton pour les publiques, un 401 pour les autres, une réponse `default` partout.
+**Étape 9. Appliquer les règles de chemin.** Un `OpenApiCustomizer` retire le jeton des opérations publiques, ajoute un 401 aux autres, et une réponse `default` partout.
 
 ```java
 @Component
@@ -315,7 +315,7 @@ class CommonResponses implements OpenApiCustomizer {
 
 ### Un document figé
 
-**Étape 10. Vérifier.** Un test compare le document servi au fichier commité ; une propriété système le réécrit.
+**Étape 10. Vérifier.** Un test compare le document servi au fichier commité. Une propriété système réécrit ce fichier.
 
 ```java
 @SpringBootTest
@@ -380,20 +380,20 @@ Limites de cette version : le document dit ce que l'API promet, pas ce qu'elle f
 
 springdoc construit un document par langue de `Accept-Language` (les textes peuvent être traduits) et garde chacun en cache.
 
-- Avant springdoc 3.1.1, ce cache n'avait pas de limite : un client qui variait l'en-tête faisait construire et garder un document par requête, jusqu'à épuiser la mémoire.
+- Avant springdoc 3.1.1, ce cache n'avait pas de limite. Un client qui variait l'en-tête faisait construire un document par requête, jusqu'à épuiser la mémoire.
 - Depuis 3.1.1, le cache garde au plus `springdoc.cache.max-entries` documents (100 par défaut).
-- Avec `allowed-locales: en`, toute langue est ramenée à `en` : un seul document.
+- Avec `allowed-locales: en`, toute langue est ramenée à `en`, d'où un seul document.
 
 ### Sous le capot : deux méthodes, une opération
 
-Un endpoint JSON et multipart s'écrit en deux méthodes distinguées par `consumes`. Avec le même `@Operation(operationId = ...)`, springdoc les fusionne en une opération à deux types de corps.
+Un endpoint JSON et multipart s'écrit en deux méthodes, distinguées par `consumes`. Avec le même `@Operation(operationId = ...)`, springdoc les fusionne en une opération à deux types de corps.
 
-- Chaque méthode passe dans l'`OperationCustomizer` : il doit compléter l'opération, pas la remplacer.
-- Un `@ModelAttribute` avec des `@RequestPart` est décrit sans ses fichiers : il faut reconstruire le schéma du formulaire.
+- Chaque méthode passe dans l'`OperationCustomizer`, qui doit compléter l'opération sans la remplacer.
+- Un `@ModelAttribute` avec des `@RequestPart` est décrit sans ses fichiers : on reconstruit le schéma du formulaire.
 
 ### Contrôler le contrat en CI
 
-Deux outils lisent le fichier commité dans la CI (guide 33) : Spectral (style) et oasdiff (comparaison avec la branche cible) :
+Deux outils lisent le fichier commité dans la CI (guide 33) : Spectral pour le style, oasdiff pour la comparaison avec la branche cible :
 
 ```yaml
 - name: Lint the OpenAPI document
@@ -408,7 +408,7 @@ Deux outils lisent le fichier commité dans la CI (guide 33) : Spectral (style) 
 ```
 
 - Spectral part du jeu `spectral:oas`, qu'un fichier `.spectral.yaml` ajuste.
-- oasdiff classe chaque différence par niveau ; `fail-on: ERR` fait échouer le job sur une rupture. Un niveau peut être abaissé quand l'API a annoncé le changement permis.
+- oasdiff classe chaque différence par niveau, et `fail-on: ERR` fait échouer le job sur une rupture. On peut abaisser un niveau quand l'API a annoncé le changement permis.
 
 ## Pièges à éviter
 
@@ -442,7 +442,7 @@ Deux outils lisent le fichier commité dans la CI (guide 33) : Spectral (style) 
 
 ## En résumé
 
-**À retenir :** springdoc déduit le document des contrôleurs ; ce qu'il ignore (erreurs, accès, endpoints publics) s'ajoute par des customizers à partir de marqueurs et de listes partagées, et le document est figé dans le dépôt, comparé par un test et jugé en CI.
+**À retenir :** springdoc déduit le document des contrôleurs. Ce qu'il ignore (erreurs, accès, endpoints publics) s'ajoute par des customizers, à partir de marqueurs et de listes partagées. Le document est figé dans le dépôt, comparé par un test et jugé en CI.
 
 - [ ] `springdoc-openapi-starter-webmvc-ui`, avec `paths-to-match`, `allowed-locales` et `override-with-generic-response: false`
 - [ ] Un bean `OpenAPI` : description, serveur relatif, sécurité bearer
@@ -488,28 +488,28 @@ Du contrôleur à la CI :
 | [`PublicEndpoints`][public] | les endpoints sans jeton, lus par la sécurité et `PathDocumentation` |
 | [`openapi.json`][spec] | le document figé, source des clients générés |
 
-Les réglages `springdoc` de `application.yaml` sont ceux de l'étape 2, avec `api-docs.version: openapi_3_1`. `api-docs.enabled` (`API_DOCS_ENABLED`) et `swagger-ui.enabled` (`SWAGGER_UI_ENABLED`) valent `true`, et `false` sous `prod`. `override-with-generic-response: false` évite les réponses tirées d'`ApiExceptionHandler`.
+Les réglages `springdoc` de `application.yaml` sont ceux de l'étape 2, avec `api-docs.version: openapi_3_1`. `api-docs.enabled` (`API_DOCS_ENABLED`) et `swagger-ui.enabled` (`SWAGGER_UI_ENABLED`) valent `true`, et `false` sous `prod`. `override-with-generic-response: false` écarte les réponses tirées d'`ApiExceptionHandler`.
 
 Ce qui est propre au dépôt :
 
-- **Accès** : `OperationDocumentation` lit l'`@AccessDescription` de chaque annotation de sécurité de la méthode, remplace ses `{attributs}`, l'ajoute en « **Access:** » à la description et documente un 403 (guide 08).
-- **Problèmes** : `@DocumentedProblems` donne un exemple par `ProblemType`, rangé sous son statut. Un 400 commence toujours par `validation-error` (guide 05).
+- **Accès** : `OperationDocumentation` lit l'`@AccessDescription` de chaque annotation de sécurité de la méthode et remplace ses `{attributs}`. Il l'ajoute en « **Access:** » à la description et documente un 403 (guide 08).
+- **Problèmes** : `@DocumentedProblems` donne un exemple par `ProblemType`, sous son statut. Un 400 commence toujours par `validation-error` (guide 05).
 - **Fichiers** : une méthode qui reçoit un `@RequestPart` ou un `MultipartFile` documente 413, 415, 503 et `infected-file`, avec le formulaire `@ModelAttribute` reconstruit.
 - **Commentaires** : `addComment` et `addCommentWithFiles` partagent l'`operationId` `addComment`.
-- **Version d'API** : `PathDocumentation` remplace le préfixe brut `/api/v{version}` par `/api/v1` avant ses autres règles, qui liraient sinon `{version}` comme l'id d'une ressource (guide 04).
-- **Pages** : springdoc ne marque pas `content` et `page` de `PagedModel` comme requis (springdoc-openapi #3360) ; `PathDocumentation` les marque, comme les quatre champs de `PageMetadata`, et donne au paramètre `size` le maximum de `spring.data.web.pageable.max-page-size` (guide 03).
-- **Sans corps** : les 401 et 403 des contrôles d'accès n'ont qu'un en-tête `WWW-Authenticate` ; les autres erreurs sont des problèmes `application/problem+json`.
-- **Version du document** : `info.version` vient de `build-info` ; `OpenApiSpecTests` la remplace par `development` avant de comparer.
-- **CI** : le job « API contract » lance Spectral (`.spectral.yaml` coupe seulement `operation-description`), puis oasdiff. `.oasdiff.yaml` ramène au niveau info l'ajout d'une valeur à une énumération de réponse : la description de l'API demande aux clients d'accepter l'inconnu.
+- **Version d'API** : `PathDocumentation` remplace d'abord le préfixe brut `/api/v{version}` par `/api/v1`. Sinon ses autres règles liraient `{version}` comme l'id d'une ressource (guide 04).
+- **Pages** : springdoc ne marque pas `content` et `page` de `PagedModel` comme requis (springdoc-openapi #3360). `PathDocumentation` les marque, comme les quatre champs de `PageMetadata`, et donne au paramètre `size` le maximum de `spring.data.web.pageable.max-page-size` (guide 03).
+- **Sans corps** : les 401 et 403 des contrôles d'accès n'ont qu'un en-tête `WWW-Authenticate`. Les autres erreurs sont des problèmes `application/problem+json`.
+- **Version du document** : `info.version` vient de `build-info`, et `OpenApiSpecTests` la remplace par `development` avant de comparer.
+- **CI** : le job « API contract » lance Spectral (`.spectral.yaml` coupe seulement `operation-description`), puis oasdiff. `.oasdiff.yaml` ramène au niveau info l'ajout d'une valeur à une énumération de réponse, car la description de l'API demande aux clients d'accepter l'inconnu.
 
 Les tests :
 
 - [`OpenApiSpecTests`][spec-tests] compare le document au fichier commité, et vérifie que la documentation se lit sans jeton.
-- [`OpenApiDocumentTests`][document-tests] : `operationId` uniques sans suffixe, un tag et un résumé par opération, 401 sur les seules opérations non publiques, `Location` sur chaque 201, un exemple par `ProblemType`.
+- [`OpenApiDocumentTests`][document-tests] vérifie des `operationId` uniques sans suffixe, un tag et un résumé par opération, un 401 sur les seules opérations non publiques, une `Location` sur chaque 201 et un exemple par `ProblemType`.
 - [`OpenApiConformanceTests`][conformance-tests] appelle chaque opération sans jeton : seules les publiques répondent autre chose que 401.
-- [`PathDocumentationTest`][path-test] teste les règles de chemin sans démarrer Spring ; [`AccessDescriptionTest`][access-test] refuse une règle de sécurité sans phrase (guide 31).
+- [`PathDocumentationTest`][path-test] teste les règles de chemin sans démarrer Spring. [`AccessDescriptionTest`][access-test] refuse une règle de sécurité sans phrase (guide 31).
 
-Pour ajouter un endpoint : le `@Tag` du contrôleur, un `@Operation(summary)`, un nom de méthode unique, `@ResponseStatus` pour 201, 202 ou 204, `@DocumentedProblems`, `@RateLimited` s'il appelle `RateLimiter`, une entrée de `PublicEndpoints` s'il est public. Puis régénérer `docs/openapi.json`.
+Pour ajouter un endpoint : le `@Tag` du contrôleur, un `@Operation(summary)`, un nom de méthode unique, `@ResponseStatus` pour 201, 202 ou 204, `@DocumentedProblems`, `@RateLimited` s'il appelle `RateLimiter`, et une entrée de `PublicEndpoints` s'il est public. Puis régénérer `docs/openapi.json`.
 
 ## Voir aussi
 

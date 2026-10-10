@@ -4,8 +4,8 @@
 
 ## Contexte
 
-- **Problème** : un test unitaire ne voit ni la sécurité, ni le JSON, ni le SQL ; un test qui démarre toute l'application voit tout, mais coûte des secondes et des conteneurs.
-- **Quand l'utiliser** : dans tout projet Spring : choisir pour chaque risque la couche la plus légère qui le couvre, et partager les contextes entre les classes.
+- **Problème** : un test unitaire ne voit ni la sécurité, ni le JSON, ni le SQL. Un test qui démarre toute l'application voit tout, mais coûte des secondes et des conteneurs.
+- **Quand l'utiliser** : dans tout projet Spring. Pour chaque risque, on choisit la couche la plus légère qui le couvre, et on partage les contextes entre les classes.
 - **Quand s'en passer** : une classe sans Spring (un calcul, une règle métier) se teste en JUnit pur.
 - **Dans ce dépôt** : quatre couches, chacune derrière une annotation : tests unitaires (`*Test`), `@WebLayerTest`, `@JdbcSliceTest` et `@RepositoryTest`, `@IntegrationTest`.
 - **Prérequis** : guides 03 (contrôleurs), 07 (sécurité) et 11 (Spring Data JPA). Versions : Spring Boot 4.1, Spring Framework 7, JUnit 6, Mockito 5, AssertJ 3.
@@ -24,10 +24,10 @@ Les couches, de la plus légère à la plus complète :
 ### Vocabulaire
 
 - **Contexte de test** : l'`ApplicationContext` démarré pour une classe de test, puis gardé pour les suivantes.
-- **Slice** : un contexte réduit à une couche (web, JPA, JDBC) ; le reste est absent ou en mocks.
+- **Slice** : un contexte réduit à une couche (web, JPA, JDBC), le reste étant absent ou en mocks.
 - **Mock** : un faux objet programmé par le test, qui enregistre les appels.
 - **Spy** : un vrai bean enveloppé, dont le test observe les appels et remplace quelques méthodes.
-- **Clé de cache** : la configuration complète d'une classe de test ; même clé, même contexte.
+- **Clé de cache** : la configuration complète d'une classe de test. Même clé, même contexte.
 - **Méta-annotation** : une annotation maison qui applique d'un coup d'autres annotations.
 
 ### La pyramide
@@ -51,7 +51,7 @@ Beaucoup de tests rapides en bas, peu de complets en haut :
 
 ### Le cache des contextes
 
-Spring garde chaque contexte démarré dans un cache statique, par clé. Une configuration identique reprend le contexte ; une seule différence en démarre un nouveau :
+Spring garde chaque contexte démarré dans un cache statique, par clé. Une configuration identique reprend le contexte, et une seule différence en démarre un nouveau :
 
 ```
  classe A  @IntegrationTest              --> clé 1 : démarre le contexte 1
@@ -92,7 +92,7 @@ Le cache a une taille maximale (32 par défaut). Au-delà, Spring ferme le conte
  une classe redemande la clé fermée --> le contexte redémarre en entier
 ```
 
-- Chaque contexte ouvert garde sa mémoire, ses pools et ses conteneurs (guide 30) : un plafond trop haut sature la machine, trop bas il fait redémarrer des contextes. On le règle au nombre de configurations voulues, plus une marge.
+- Chaque contexte ouvert garde sa mémoire, ses pools et ses conteneurs (guide 30). Un plafond trop haut sature la machine, et un plafond trop bas fait redémarrer des contextes. On le règle au nombre de configurations voulues, plus une marge.
 
 ## Implémentation avec Spring
 
@@ -165,7 +165,7 @@ class InvoiceServiceTest {
 }
 ```
 
-**Étape 3. Créer l'annotation de la slice web.** Une annotation pour tous les tests web, donc un seul contexte : tous les contrôleurs, la vraie sécurité, des services en mocks.
+**Étape 3. Créer l'annotation de la slice web.** Une seule annotation pour tous les tests web donne un seul contexte. Il contient tous les contrôleurs, la vraie sécurité et des services en mocks.
 
 ```java
 @Target(ElementType.TYPE)
@@ -178,7 +178,7 @@ public @interface WebLayerTest {
 }
 ```
 
-**Étape 4. Écrire un test web.** MockMvc traverse la sécurité et le contrôleur ; le service mocké prouve que la requête est refusée avant lui.
+**Étape 4. Écrire un test web.** MockMvc traverse la sécurité et le contrôleur. Le service mocké prouve que la requête est refusée avant lui.
 
 ```java
 @WebLayerTest
@@ -205,7 +205,7 @@ class InvoiceControllerWebMvcTests {
 }
 ```
 
-**Étape 5. Écrire une slice JPA.** `@DataJpaTest` démarre JPA seul et annule chaque test (rollback). Contre une vraie base, requêtes natives et contraintes sont vérifiées.
+**Étape 5. Écrire une slice JPA.** `@DataJpaTest` démarre JPA seul et annule chaque test (rollback). Contre une vraie base, on vérifie requêtes natives et contraintes.
 
 ```java
 @DataJpaTest
@@ -227,7 +227,7 @@ class InvoiceRepositoryTests {
 }
 ```
 
-**Étape 6. Créer l'annotation d'intégration.** Elle démarre toute l'application avec MockMvc et les conteneurs ; chaque classe d'intégration la porte seule.
+**Étape 6. Créer l'annotation d'intégration.** Elle démarre toute l'application avec MockMvc et les conteneurs. Chaque classe d'intégration la porte seule.
 
 ```java
 @Target(ElementType.TYPE)
@@ -240,7 +240,7 @@ public @interface IntegrationTest {
 }
 ```
 
-**Étape 7. Écrire un test d'intégration.** Les données sont validées comme en production : on les rend uniques pour ne pas gêner les autres tests.
+**Étape 7. Écrire un test d'intégration.** Les données sont validées comme en production, donc on les rend uniques pour ne pas gêner les autres tests.
 
 ```java
 @IntegrationTest
@@ -265,7 +265,7 @@ class InvoiceApiTests {
 }
 ```
 
-**Étape 8. Écrire la configuration de test.** Spring Boot lit `classpath:/config/application.yaml` par-dessus `classpath:/application.yaml` : il ne remplace que les clés qu'il nomme.
+**Étape 8. Écrire la configuration de test.** Spring Boot lit `classpath:/config/application.yaml` par-dessus `classpath:/application.yaml`. Il ne remplace que les clés nommées.
 
 ```yaml
 # src/test/resources/config/application.yaml
@@ -298,7 +298,7 @@ logging:
 #   maxSize = 12, ..., hitCount = ..., missCount = 3, failureCount = 0]
 ```
 
-`missCount` compte les contextes démarrés, `hitCount` les reprises. Ici : trois contextes (web, JPA, intégration), quel que soit le nombre de classes.
+`missCount` compte les contextes démarrés, `hitCount` les reprises. Ici, il y a trois contextes (web, JPA, intégration), quel que soit le nombre de classes.
 
 ### Référence rapide
 
@@ -327,15 +327,15 @@ Les réglages du cache (`spring.properties` ou propriété système) :
 | `spring.test.context.cache.maxSize` | 32 | nombre de contextes gardés |
 | `spring.test.context.cache.pause` | `on_context_switch` | met en pause les contextes inactifs (Spring Framework 7.0.3) |
 
-Limites de cette version : rien n'empêche une classe d'ajouter un mock ou une propriété, et de créer un contexte de plus en silence.
+Limites de cette version : rien n'empêche une classe d'ajouter un mock ou une propriété, et donc de créer un contexte de plus en silence.
 
 ## Concepts avancés
 
 ### Sous le capot : la clé et les contextes en pause
 
-Pour chaque classe, Spring calcule une configuration fusionnée (`MergedContextConfiguration`) : classes, initialiseurs, profils, propriétés, et « customizers » de Spring Boot et des remplacements de beans. C'est la clé du cache.
+Pour chaque classe, Spring calcule une configuration fusionnée (`MergedContextConfiguration`) : classes, initialiseurs, profils, propriétés, et « customizers » de Spring Boot et des remplacements de beans. Elle sert de clé au cache.
 
-Depuis Spring Framework 7.0.3, le contexte quitté est mis en pause : ses composants `SmartLifecycle` s'arrêtent (les listeners RabbitMQ, par exemple), puis repartent à sa reprise. Il ne consomme plus de messages, mais garde sa mémoire et ses conteneurs.
+Depuis Spring Framework 7.0.3, le contexte quitté est mis en pause. Ses composants `SmartLifecycle` s'arrêtent (les listeners RabbitMQ, par exemple) et repartent à sa reprise. Il ne consomme plus de messages, mais garde sa mémoire et ses conteneurs.
 
 ### Composer des méta-annotations
 
@@ -353,16 +353,16 @@ public @interface DeadLetterIntegrationTest {
 ```
 
 - Les mocks et les propriétés d'une famille vont dans son annotation, jamais dans une seule classe.
-- `@Inherited` transmet l'annotation aux sous-classes : une classe de base peut porter la configuration.
+- `@Inherited` transmet l'annotation aux sous-classes, donc une classe de base peut porter la configuration.
 
 ### Plusieurs exécutions en même temps
 
-Un `./mvnw test` tourne dans une seule JVM, ce qui permet au cache de servir. Deux exécutions simultanées doublent contextes, mémoire et conteneurs sans rien partager : pour une vérification ciblée, on lance seulement les classes concernées (`-Dtest=...`).
+Un `./mvnw test` tourne dans une seule JVM, ce qui permet au cache de servir. Deux exécutions simultanées doublent contextes, mémoire et conteneurs sans rien partager. Pour une vérification ciblée, on lance seulement les classes concernées (`-Dtest=...`).
 
 ### Surveiller
 
 - **Les statistiques du cache** (étape 10) : `missCount` ne doit pas grandir sans raison.
-- **Le temps par classe** : `target/surefire-reports` ; la première classe d'un contexte porte son démarrage.
+- **Le temps par classe** : `target/surefire-reports`. La première classe d'un contexte porte son démarrage.
 
 ## Pièges à éviter
 
@@ -392,7 +392,7 @@ Un `./mvnw test` tourne dans une seule JVM, ce qui permet au cache de servir. De
 
 ## En résumé
 
-**À retenir :** chaque risque se teste dans la couche la plus légère qui le voit, et chaque famille de tests porte une seule annotation maison : un contexte par famille, non par classe.
+**À retenir :** chaque risque se teste dans la couche la plus légère qui le voit. Chaque famille de tests porte une seule annotation maison, pour un contexte par famille et non par classe.
 
 - [ ] Les règles métier en tests unitaires, sans Spring ; des slices JPA et JDBC contre une vraie base
 - [ ] Une annotation pour la slice web : tous les contrôleurs, vraie sécurité, services en mocks
@@ -431,7 +431,7 @@ Les contextes d'intégration qui diffèrent exprès (chacun a son RabbitMQ) :
 | `RateLimitTests` | limites allumées et basses | les autres tests se connectent en boucle depuis une adresse |
 | `MonitoringTests`, `PublicEndpointErrorTests`, `TaskRoomsWebSocketTests` | vrai serveur, port de gestion séparé | deux ports, `/error`, WebSocket |
 
-S'y ajoutent les trois slices et un mini contexte `@SpringJUnitConfig` dans `UserStatusLookupTest`, qui vérifie le proxy Spring de `@Cacheable` sans démarrer l'application. Le plafond de 12 suffit ; le défaut de 32 avait gardé une douzaine de contextes complets ouverts et saturé la mémoire.
+S'y ajoutent les trois slices et un mini contexte `@SpringJUnitConfig` dans `UserStatusLookupTest`, qui vérifie le proxy Spring de `@Cacheable` sans démarrer l'application. Le plafond de 12 suffit. Le défaut de 32 avait gardé une douzaine de contextes complets ouverts et saturé la mémoire.
 
 Réglages de `src/test/resources/config/application.yaml` :
 
@@ -447,9 +447,9 @@ Réglages de `src/test/resources/config/application.yaml` :
 | `spring.testcontainers.beans.startup` | `parallel` | démarrer les conteneurs d'un contexte en parallèle (guide 30) |
 | `hibernate.session_factory.statement_inspector` | `SqlStatementCounter` | compter les requêtes sans nouveau contexte (guide 31) |
 
-Les tests d'intégration ne sont pas `@Transactional` : ils valident leurs données. Les slices annulent chaque test ; celles qui doivent valider (verrous vus d'une autre connexion, concurrence) passent par `Transactions.inNewTransaction` ou `@Transactional(propagation = NOT_SUPPORTED)`, puis nettoient leurs lignes.
+Les tests d'intégration ne sont pas `@Transactional` : ils valident leurs données. Les slices annulent chaque test. Celles qui doivent valider (verrous vus d'une autre connexion, concurrence) passent par `Transactions.inNewTransaction` ou `@Transactional(propagation = NOT_SUPPORTED)`, puis nettoient leurs lignes.
 
-Pour ajouter une classe de test : choisir la couche, poser son annotation seule, créer des données uniques. Un réglage différent va dans l'annotation d'une famille.
+Pour ajouter une classe de test, on choisit la couche, on pose son annotation seule et on crée des données uniques. Un réglage différent va dans l'annotation d'une famille.
 
 ## Voir aussi
 

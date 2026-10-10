@@ -4,35 +4,35 @@
 
 ## Contexte
 
-- **Problème** : produire un gros fichier, des centaines de milliers de lignes, sans tenir une requête HTTP ouverte, et reprendre le travail après un plantage.
-- **Quand l'utiliser** : un traitement long et volumineux, découpé en paquets, qu'on veut suivre et relancer : export, import, recalcul de masse.
-- **Quand s'en passer** : un petit fichier (une réponse en streaming suffit), une purge en une requête SQL (guide 21), un traitement par message (guide 19).
+- **Problème** : produire un gros fichier, des centaines de milliers de lignes, sans tenir une requête HTTP ouverte, et reprendre après un plantage.
+- **Quand l'utiliser** : un traitement long et volumineux, découpé en paquets, à suivre et relancer (export, import, recalcul).
+- **Quand s'en passer** : un petit fichier (réponse en streaming), une purge en une requête SQL (guide 21) ou un traitement par message (guide 19).
 - **Dans ce dépôt** : les exports CSV des tâches et des utilisateurs, et l'export RGPD de chaque compte.
 - **Prérequis** : guides 14 (transactions), 20 (outbox) et 21 (jobs planifiés). Versions : Spring Boot 4.1, Spring Batch 6.0.
 
-Les façons de produire un gros fichier :
+Façons de produire un gros fichier :
 
 | Solution | Principe | Quand la choisir |
 |---|---|---|
-| Réponse en streaming | le contrôleur écrit le fichier dans la réponse, au fil de la lecture | fichier petit ou moyen, quelques secondes |
-| `@Async` et code maison | un thread lit, écrit puis stocke le fichier | un traitement simple, sans reprise ni historique |
-| Spring Batch | un job découpé en steps et en chunks, suivi en base | gros volumes, reprise, historique |
-| Programme externe (CronJob, ETL) | un autre processus fait le travail | traitement lourd, isolé de l'API |
+| Réponse en streaming | le contrôleur écrit le fichier dans la réponse | fichier petit ou moyen |
+| `@Async` et code maison | un thread lit, écrit puis stocke le fichier | traitement simple, sans reprise |
+| Spring Batch | un job en steps et chunks, suivi en base | gros volumes, reprise, historique |
+| Programme externe (CronJob, ETL) | un autre processus travaille | traitement lourd, isolé de l'API |
 
 ## Concepts clés
 
 ### Vocabulaire
 
-- **Job** : le traitement complet, une suite de steps (« exporter les tâches »).
-- **Step** : une étape du job, traitée par chunks ou par un tasklet.
-- **Chunk** : un paquet d'éléments lus, transformés puis écrits dans une seule transaction.
-- **Tasklet** : un step d'un seul bloc, pour une action unique (stocker un fichier, envoyer un mail).
+- **Job** : le traitement complet, une suite de steps.
+- **Step** : une étape du job, par chunks ou par tasklet.
+- **Chunk** : un paquet d'éléments lus, transformés puis écrits en une transaction.
+- **Tasklet** : un step d'un seul bloc, pour une action unique (stocker un fichier).
 - **JobRepository** : la mémoire de Batch, dans les tables `batch_*` : ce qui a tourné, avec quels paramètres, jusqu'où.
-- **Paramètres de job** : les valeurs qui identifient une exécution ; mêmes paramètres, même instance de job.
+- **Paramètres de job** : les valeurs qui identifient une exécution. Mêmes paramètres, même instance.
 
 ### Pourquoi pas dans la requête HTTP
 
-Avec `StreamingResponseBody`, Spring MVC écrit la réponse sur un autre thread, ligne après ligne. Cela suffit pour un fichier de quelques secondes, mais une erreur au milieu se voit mal :
+Avec `StreamingResponseBody`, Spring MVC écrit la réponse sur un autre thread, ligne après ligne. C'est suffisant pour quelques secondes, mais une erreur au milieu est mal gérée :
 
 ```
   Navigateur                       API                            Base
@@ -47,11 +47,10 @@ Avec `StreamingResponseBody`, Spring MVC écrit la réponse sur un autre thread,
    fichier tronqué, alors que le statut 200 est déjà parti
 ```
 
-- Pas de progression, et une coupure réseau fait tout recommencer depuis la première ligne.
-- Une erreur en route ne peut plus changer le statut : le client garde un fichier tronqué qui paraît valide.
-- La requête tient un thread, une connexion à la base et le délai du reverse proxy pendant toute la durée.
+- Une erreur en route ne peut plus changer le statut. Le client garde un fichier tronqué qui paraît valide.
+- Pas de progression, une coupure réseau fait tout recommencer, et la requête tient un thread, une connexion à la base et le délai du reverse proxy.
 
-Pour un gros fichier, on répond tout de suite, et le travail se fait en arrière-plan :
+Pour un gros fichier, on répond tout de suite et le travail continue en arrière-plan :
 
 ```
   POST /exports  -->  202 Accepted et Location     la demande est enregistrée
@@ -64,7 +63,7 @@ Pour un gros fichier, on répond tout de suite, et le travail se fait en arrièr
 
 ### Le modèle de Spring Batch
 
-Un job enchaîne des steps ; un step par chunks répète « lire, transformer, écrire » jusqu'à épuisement des données :
+Un job enchaîne des steps. Un step par chunks répète « lire, transformer, écrire » jusqu'à la fin des données :
 
 ```
   Job "invoiceExport"
@@ -85,13 +84,13 @@ Un job enchaîne des steps ; un step par chunks répète « lire, transformer, �
   JobRepository (tables batch_*) : statuts, compteurs, position de reprise
 ```
 
-- Le reader rend un élément par appel, puis `null` en fin de données ; le processor, facultatif, rend `null` pour écarter un élément ; le writer reçoit le chunk entier.
-- Les listeners se branchent avant ou après un job, un step ou un chunk ; le `JobOperator` lance, relance et récupère les jobs.
-- `@StepScope` crée le bean au début de chaque step : il peut alors lire les paramètres du job (`#{jobParameters['exportId']}`).
+- Le reader rend un élément par appel, puis `null` en fin de données. Le processor, facultatif, rend `null` pour écarter un élément. Le writer reçoit le chunk entier.
+- Le `JobOperator` lance, relance et récupère les jobs.
+- `@StepScope` crée le bean au début de chaque step, qui peut alors lire les paramètres du job (`#{jobParameters['exportId']}`).
 
 ### Instance, exécution et reprise
 
-Une instance de job est un nom de job plus ses paramètres identifiants ; une exécution est une tentative de cette instance. Au lancement, Batch regarde l'historique :
+Une instance de job est un nom de job plus ses paramètres. Une exécution est une tentative de cette instance. Au lancement, Batch consulte l'historique :
 
 ```
   start(job, exportId=42)
@@ -110,12 +109,12 @@ Une instance de job est un nom de job plus ses paramètres identifiants ; une ex
                                             step en échec repris à sa position
 ```
 
-- Un arrêt brutal laisse l'exécution en `STARTED` : Batch la croit en cours. `JobOperator.recover` la passe en `FAILED`, et la relance devient possible.
-- `allowStartIfComplete(true)` rejoue un step même terminé, quand son résultat n'existe plus (un fichier local perdu).
+- Un arrêt brutal laisse l'exécution en `STARTED`, que Batch croit en cours. `JobOperator.recover` la passe en `FAILED`, et la relance devient possible.
+- `allowStartIfComplete(true)` rejoue un step terminé dont le résultat a disparu, comme un fichier local.
 
 ### Ce que Spring Batch fournit
 
-Batch apporte le moteur : la boucle par chunks avec une transaction chacun, l'historique et la position de reprise dans `batch_*`, des readers et writers prêts, les sauts et réessais par élément (`faultTolerant()`), les listeners et les observations Micrometer. L'application écrit le reste : le déclenchement, l'état visible par l'utilisateur, le format exact du fichier (guillemets, BOM, formules), la détection d'une instance arrêtée, le stockage, la notification et la purge de l'historique, que Batch ne fait jamais.
+Batch apporte le moteur : la boucle par chunks, l'historique et la position de reprise dans `batch_*`, des readers et writers prêts, les sauts et réessais (`faultTolerant()`), les listeners et les observations Micrometer. L'application écrit le reste : déclenchement, état visible, format du fichier, détection d'une instance arrêtée, stockage, notification et purge de l'historique.
 
 ## Implémentation avec Spring
 
@@ -137,7 +136,7 @@ src/test/java/.../
 
 ### Un export CSV en arrière-plan
 
-**Étape 1. Ajouter la dépendance.** Le starter `-jdbc` range l'historique en base ; le starter sans `-jdbc` n'en garde aucun, et ne sait donc pas reprendre.
+**Étape 1. Ajouter la dépendance.** Le starter `-jdbc` range l'historique en base. Sans lui, la reprise est impossible.
 
 ```xml
 <dependency>
@@ -146,7 +145,7 @@ src/test/java/.../
 </dependency>
 ```
 
-**Étape 2. Créer les tables et régler Batch.** Le script `org/springframework/batch/core/schema-postgresql.sql` du jar `spring-batch-core` crée six tables et trois séquences ; on le copie dans une migration (guide 18), pour qu'une montée de version de Batch ne change pas la somme de contrôle du changeset.
+**Étape 2. Créer les tables, régler Batch.** Le script `org/springframework/batch/core/schema-postgresql.sql` du jar `spring-batch-core` crée six tables et trois séquences. On le copie dans une migration (guide 18), pour qu'une montée de version de Batch ne change pas la somme de contrôle.
 
 ```yaml
 spring:
@@ -158,7 +157,7 @@ spring:
       isolation-level-for-create: read-committed # voir les pièges
 ```
 
-**Étape 3. Écrire le reader.** Il lit par pages, triées sur une clé unique, et ne garde rien ouvert entre deux chunks.
+**Étape 3. Écrire le reader.** Il lit par pages triées sur une clé unique, sans rien garder d'ouvert entre deux chunks.
 
 ```java
 public record Invoice(UUID id, String number, BigDecimal amount, Instant issuedAt) {
@@ -190,7 +189,7 @@ JdbcPagingItemReader<Invoice> invoiceReader(DataSource dataSource) throws Except
 }
 ```
 
-**Étape 4. Écrire le writer.** Le `DelimitedLineAggregator` de Batch ne met pas de guillemets : on écrit chaque ligne soi-même.
+**Étape 4. Écrire le writer.** Le `DelimitedLineAggregator` de Batch ne met pas de guillemets : on écrit les lignes soi-même.
 
 ```java
 final class Csv {
@@ -269,7 +268,7 @@ class InvoiceExportJobConfiguration {
 }
 ```
 
-**Étape 6. Publier le fichier, puis nettoyer.** Un tasklet stocke le fichier ; un listener de job supprime le fichier local quoi qu'il arrive.
+**Étape 6. Publier le fichier, puis nettoyer.** Un tasklet stocke le fichier. Un listener de job supprime le fichier local dans tous les cas.
 
 ```java
 // dans InvoiceExportJobConfiguration ; InvoiceExportService gère la table des exports (non détaillé)
@@ -308,7 +307,7 @@ class InvoiceExportListener implements JobExecutionListener {
 }
 ```
 
-**Étape 7. Lancer le job hors de la requête.** La requête publie un événement ; le job démarre après le commit, sur un autre thread (`@EnableAsync`, guide 16).
+**Étape 7. Lancer le job hors de la requête.** La requête publie un événement, et le job démarre après le commit sur un autre thread (`@EnableAsync`, guide 16).
 
 ```java
 public record InvoiceExportRequested(UUID exportId) {     // publié par le service, dans sa transaction
@@ -337,7 +336,7 @@ class InvoiceExportLauncher {
 }
 ```
 
-**Étape 8. Vérifier.** `JobOperatorTestUtils`, construit avec les beans du contexte, lance le seul step d'écriture.
+**Étape 8. Vérifier.** `JobOperatorTestUtils`, construit avec les beans, lance le step d'écriture seul.
 
 ```java
 @SpringBootTest                       // pas @SpringBatchTest : il crée un contexte de plus (guide 29)
@@ -367,7 +366,7 @@ class InvoiceExportJobTests {
 }
 ```
 
-En manuel, l'historique se lit en SQL.
+L'historique se lit aussi en SQL :
 
 ```sql
 SELECT i.job_name, e.job_execution_id, e.status, e.start_time, e.end_time, e.exit_code
@@ -379,38 +378,37 @@ LIMIT 10;
 
 ### Référence rapide
 
-Les méthodes des builders :
+Méthodes des builders :
 
 | Méthode | Rôle |
 |---|---|
-| `new JobBuilder(nom, jobRepository)` | crée un job |
-| `.start(step).next(step)` | enchaîne les steps |
+| `new JobBuilder(nom, jobRepository)` | crée un job ; `.start(step).next(step)` enchaîne les steps |
 | `new StepBuilder(nom, jobRepository)` | crée un step |
 | `.<I, O>chunk(n)` | step par chunks de n éléments |
 | `.transactionManager(tm)` | la transaction de chaque chunk |
 | `.tasklet(tasklet, tm)` | step d'un seul bloc |
 | `.allowStartIfComplete(true)` | rejoue le step à chaque relance |
-| `.faultTolerant().skip(...).skipLimit(n)` | saute jusqu'à n éléments en erreur |
+| `.faultTolerant().skip(...).skipLimit(n)` | saute n éléments en erreur |
 | `.faultTolerant().retry(...).retryLimit(n)` | réessaie un élément en erreur |
 
-Les réglages de Spring Boot :
+Réglages de Spring Boot :
 
 | Réglage | Défaut | Rôle |
 |---|---|---|
-| `spring.batch.job.enabled` | `true` | lance le job au démarrage ; avec plusieurs jobs, exige `spring.batch.job.name` |
-| `spring.batch.jdbc.initialize-schema` | `embedded` | crée les tables : base embarquée seulement, `always` ou `never` |
-| `spring.batch.jdbc.isolation-level-for-create` | `SERIALIZABLE` (Batch) | isolation de la création des exécutions |
+| `spring.batch.job.enabled` | `true` | lance le job au démarrage (avec plusieurs jobs, exige `spring.batch.job.name`) |
+| `spring.batch.jdbc.initialize-schema` | `embedded` | crée les tables (`embedded`, `always` ou `never`) |
+| `spring.batch.jdbc.isolation-level-for-create` | `SERIALIZABLE` | isolation de la création des exécutions |
 
-Les méthodes de `JobOperator` :
+Méthodes de `JobOperator` :
 
 | Méthode | Rôle |
 |---|---|
-| `start(job, paramètres)` | lance une nouvelle instance, ou relance la dernière exécution en échec |
-| `recover(execution)` | passe en `FAILED` une exécution restée `STARTED` après un arrêt brutal |
+| `start(job, paramètres)` | lance une instance, ou relance la dernière exécution en échec |
+| `recover(execution)` | passe en `FAILED` une exécution restée `STARTED` |
 | `restart(execution)` | relance une exécution en échec |
 | `stop(execution)` | demande l'arrêt, pris en compte entre deux chunks |
 
-Par défaut, `start` exécute le job sur le thread appelant et ne rend la main qu'à la fin.
+Par défaut, `start` exécute le job sur le thread appelant, jusqu'à la fin.
 
 Limites de cette version : un export lancé par `@Async` se perd si l'instance s'arrête avant le job.
 
@@ -440,24 +438,24 @@ Chaque tour de boucle du step se déroule ainsi :
   commit             les lignes et la position de reprise sont validées ensemble
 ```
 
-- Une erreur annule le chunk en cours : le fichier ne reçoit pas ses lignes, et la position reste celle du chunk précédent.
-- À la relance, le reader repart après le dernier id enregistré, et le writer tronque le fichier à la taille enregistrée.
-- `saveState(false)` coupe cette mémoire : le step repart du début, ce qu'on veut quand le fichier a été perdu.
+- Une erreur annule le chunk en cours : ses lignes ne sont pas écrites et la position reste celle du chunk précédent.
+- À la relance, le reader repart après le dernier id enregistré et le writer tronque le fichier à la taille enregistrée.
+- `saveState(false)` coupe cette mémoire : le step repart du début, utile si le fichier est perdu.
 
-La pagination sur une clé unique ne bouge pas quand la table change pendant la lecture :
+La pagination sur une clé unique reste stable quand la table change pendant la lecture :
 
 | Pagination | Page 2 | Si une ligne de la page 1 disparaît |
 |---|---|---|
-| `OFFSET` | `LIMIT 500 OFFSET 500` | la première ligne de la page 2 est sautée |
-| Clé unique (`JdbcPagingItemReader`) | `WHERE id > :dernier LIMIT 500` | rien ne change : on repart du dernier id lu |
+| `OFFSET` | `LIMIT 500 OFFSET 500` | une ligne de la page 2 est sautée |
+| Clé unique (`JdbcPagingItemReader`) | `WHERE id > :dernier LIMIT 500` | rien ne change |
 
 ### Sous le capot : le proxy de `@StepScope`
 
-Au démarrage, Spring ne crée qu'un proxy Spring à la place du bean `@StepScope`. Le vrai reader naît au début du step, une fois les paramètres du job connus, et disparaît à la fin. Ce proxy est une sous-classe du type de retour de la méthode `@Bean` : si elle annonce `ItemReader`, le proxy n'implémente pas `ItemStream`, et Batch n'appelle jamais `open()` ni `update()`.
+Spring crée un proxy à la place du bean `@StepScope`. Le vrai reader naît au début du step, quand les paramètres sont connus, et disparaît à la fin. Ce proxy est une sous-classe du type de retour de la méthode `@Bean`. Si elle annonce `ItemReader`, il n'implémente pas `ItemStream`, et Batch n'appelle jamais `open()` ni `update()`.
 
 ### Plusieurs instances
 
-Un message de lancement est livré au moins une fois, et une instance peut s'arrêter en plein job. L'application réserve donc l'export, et le reprend ailleurs :
+Un message de lancement est livré au moins une fois, et une instance peut s'arrêter en plein job. L'application réserve donc l'export et le reprend ailleurs :
 
 ```
   message "lancer l'export 42"
@@ -484,13 +482,13 @@ Un message de lancement est livré au moins une fois, et une instance peut s'arr
                même instance de job, steps rejoués
 ```
 
-- Le bail couvre un chunk, pas tout le job : renouvelé en route, il ne fait pas passer un export long pour interrompu.
-- Un fichier local reste sur l'instance arrêtée : on rejoue tous les steps (`allowStartIfComplete`, `saveState(false)`), ou on écrit sur un stockage partagé.
-- En `read-committed`, la création des exécutions ne sérialise plus les démarrages ; la contrainte unique `job_inst_un` empêche toujours deux instances de job identiques.
+- Le bail couvre un chunk, pas tout le job : renouvelé en route, il évite qu'un export long passe pour interrompu.
+- Un fichier local reste sur l'instance arrêtée : on rejoue tous les steps (`allowStartIfComplete`, `saveState(false)`) ou on écrit sur un stockage partagé.
+- En `read-committed`, les démarrages ne sont plus sérialisés. La contrainte unique `job_inst_un` empêche toujours deux instances identiques.
 
 ### L'historique de Batch
 
-Batch garde chaque exécution pour toujours. Une purge supprime les lignes des enfants vers les parents :
+Batch garde chaque exécution indéfiniment. Une purge supprime les enfants avant les parents :
 
 ```
   batch_step_execution_context
@@ -508,12 +506,12 @@ Batch garde chaque exécution pour toujours. Une purge supprime les lignes des e
   batch_job_instance           seulement celles que la purge a vidées
 ```
 
-- Les heures de Batch sont des `TIMESTAMP` sans fuseau, écrites dans le fuseau de la JVM : la limite se convertit de la même façon.
-- Batch crée une instance puis sa première exécution dans deux transactions : entre les deux, une instance sans exécution n'est pas abandonnée.
+- Les heures de Batch sont des `TIMESTAMP` sans fuseau, écrites dans le fuseau de la JVM : la limite se convertit de même.
+- Batch crée une instance puis sa première exécution dans deux transactions : la purge épargne une instance sans exécution.
 
 ### Surveiller
 
-Spring Boot transforme les observations de Batch en métriques Micrometer : `spring.batch.job` et `spring.batch.step` (durée, nom, statut). Une exécution restée `STARTED` longtemps après le dernier redémarrage signale un job interrompu.
+Boot transforme les observations de Batch en métriques Micrometer, `spring.batch.job` et `spring.batch.step`. Une exécution `STARTED` longtemps après le dernier redémarrage signale un job interrompu.
 
 ## Pièges à éviter
 
@@ -555,22 +553,22 @@ Spring Boot transforme les observations de Batch en métriques Micrometer : `spr
 
 ## En résumé
 
-**À retenir :** Spring Batch découpe un gros traitement en chunks validés un par un et sait le reprendre ; on le lance hors de la requête et hors transaction, avec un id pour seul paramètre, et l'application garde la main sur le déclenchement, la reprise entre instances et la purge.
+**À retenir :** Spring Batch valide un gros traitement chunk par chunk et sait le reprendre. On le lance hors de la requête et de toute transaction, avec un id pour seul paramètre. L'application gère la reprise entre instances et la purge.
 
 - [ ] `spring-boot-starter-batch-jdbc`, tables `batch_*` créées par migration
-- [ ] `spring.batch.job.enabled: false`, `isolation-level-for-create: read-committed` sur Postgres
-- [ ] Un seul paramètre de job, un id ; le reste relu en base
+- [ ] `spring.batch.job.enabled: false`, `isolation-level-for-create: read-committed`
+- [ ] Un seul paramètre de job : un id
 - [ ] Steps chunk avec `.transactionManager(...)`, beans `@StepScope` au type concret
-- [ ] Pagination sur une clé unique, fournisseur de requêtes donné explicitement
-- [ ] CSV : guillemets partout, formules neutralisées, BOM pour Excel
-- [ ] Lancement hors transaction, après le commit de la demande
-- [ ] Un listener de job qui nettoie et enregistre l'échec par sa classe
-- [ ] Avec plusieurs instances : réservation par `UPDATE`, bail renouvelé, `recover` des exécutions `STARTED`
+- [ ] Pagination sur une clé unique, fournisseur de requêtes explicite
+- [ ] CSV : guillemets partout, formules neutralisées, BOM
+- [ ] Lancement hors transaction, après le commit
+- [ ] Un listener de job qui nettoie et enregistre l'échec
+- [ ] Plusieurs instances : réservation par `UPDATE`, bail renouvelé, `recover` des `STARTED`
 - [ ] Une purge planifiée des tables `batch_*`
 
 ## Dans ce dépôt
 
-La vie d'un export, de la demande au fichier :
+La vie d'un export :
 
 ```
   POST /api/v1/exports/tasks
@@ -601,58 +599,58 @@ La vie d'un export, de la demande au fichier :
 
 | Fichier | Rôle |
 |---|---|
-| [`CsvExportJobs`][csv-jobs] | les deux jobs CSV : step chunk, reader paginé, writer CSV, step de publication |
-| [`CsvLineAggregator`][aggregator] | une ligne RFC 4180, formules neutralisées, formes pleine chasse comprises |
-| [`PublishExport`][publish] | le tasklet qui stocke le CSV avec le nombre de lignes du step d'écriture |
-| [`PersonalDataJob`][personal-data] | l'export RGPD : trois tasklets, JSON, puis PDF, puis ZIP avec la photo |
-| [`DataExportJobListener`][job-listener] | supprime les fichiers du run, enregistre l'échec par la classe de l'exception |
-| [`DataExportLeaseRenewal`][lease] | renouvelle le bail au début de chaque step et après chaque chunk |
-| [`ExportFiles`][files] | le dossier local de chaque export, sous le répertoire temporaire |
-| [`DataExportRunner`][runner] | réserve l'export, récupère les exécutions `STARTED`, lance le job |
-| [`DataExportListener`][listener], [`ExportQueues`][queues] | la file `export.run`, sans réessai, un export à la fois par instance |
-| [`DataExportService`][service] | demande, réservation, bail, fin, échec, relance, purge des fichiers |
-| [`DataExportRecoveryJob`][recovery] | remet en file les exports dont le bail a expiré |
-| [`DataExportPurgeJob`][purge], [`BatchMetadataQueries`][batch-queries] | purge des fichiers et de l'historique Batch |
-| [`023-batch-metadata.yaml`][changeset] | les tables `batch_*`, copiées de Spring Batch 6.0.5 |
+| [`CsvExportJobs`][csv-jobs] | les deux jobs CSV : step chunk et step de publication |
+| [`CsvLineAggregator`][aggregator] | une ligne RFC 4180, formules neutralisées |
+| [`PublishExport`][publish] | le tasklet qui stocke le CSV |
+| [`PersonalDataJob`][personal-data] | l'export RGPD : trois tasklets (JSON, PDF, ZIP) |
+| [`DataExportJobListener`][job-listener] | supprime les fichiers, enregistre l'échec |
+| [`DataExportLeaseRenewal`][lease] | renouvelle le bail |
+| [`ExportFiles`][files] | le dossier local d'un export |
+| [`DataExportRunner`][runner] | réserve, récupère les `STARTED`, lance |
+| [`DataExportListener`][listener], [`ExportQueues`][queues] | la file `export.run`, sans réessai |
+| [`DataExportService`][service] | demande, réservation, bail, fin, échec, purge |
+| [`DataExportRecoveryJob`][recovery] | remet en file les exports au bail expiré |
+| [`DataExportPurgeJob`][purge], [`BatchMetadataQueries`][batch-queries] | purge des fichiers et de l'historique |
+| [`023-batch-metadata.yaml`][changeset] | les tables `batch_*` de Spring Batch 6.0.5 |
 
-Les réglages, sous `exports` et `spring.batch` dans `application.yaml` :
+Réglages de `application.yaml`, sous `exports` et `spring.batch` :
 
 | Réglage | Valeur | Rôle |
 |---|---|---|
-| `exports.chunk-size` | 500 | lignes par transaction, et par page du reader |
-| `exports.lease` | 15m | durée d'un bail, renouvelé à chaque chunk |
-| `exports.max-attempts` | 3 | exécutions d'un export, la première comprise, avant l'échec définitif |
-| `exports.recovery-interval` | 5m | recherche des exports interrompus |
-| `exports.retention` | 7d | durée de téléchargement du fichier, puis `EXPIRED` |
-| `exports.history-retention` | 30d | durée des exports expirés ou en échec, et des exécutions Batch |
+| `exports.chunk-size` | 500 | lignes par transaction et par page |
+| `exports.lease` | 15m | durée d'un bail |
+| `exports.max-attempts` | 3 | exécutions d'un export avant l'échec |
+| `exports.recovery-interval` | 5m | recherche des interrompus |
+| `exports.retention` | 7d | durée du fichier, puis `EXPIRED` |
+| `exports.history-retention` | 30d | durée des exports expirés ou en échec, et des exécutions |
 | `exports.purge-cron` | `0 30 4 * * *` | heure de la purge |
 
 Ce qui est propre au dépôt :
 
-- Le seul paramètre de job est l'id de l'export. Les filtres se relisent dans la ligne `data_exports` : aucune donnée personnelle n'entre dans les tables de Batch.
-- Les readers enveloppent leur requête dans une sous-requête (`(...) AS rows`), car les jointures rendraient la colonne `id` ambiguë. Le SQL natif voit les lignes supprimées logiquement : chaque requête écrit `deleted_at IS NULL`.
-- `DataExportRunner` réserve aussi un export `RUNNING` dont le bail a expiré. `DataExportRecoveryJob` remet en file, jusqu'à `max-attempts`, et relance aussi un export `QUEUED` dont le message s'est perdu.
-- `MediaService.storeGenerated` stocke le fichier sans détection de type ni antivirus : l'application l'a écrit elle-même (guide 28). Le mail part par l'outbox, dans la transaction du step de publication.
-- Le PDF de l'export RGPD et ses protections sont décrits dans le [cas pratique dédié](cas-pratiques/export-rgpd-pdf.md).
+- Le seul paramètre de job est l'id de l'export. Les filtres se relisent dans `data_exports`, sans donnée personnelle dans les tables de Batch.
+- Les readers enveloppent leur requête dans une sous-requête (`(...) AS rows`), car les jointures rendraient `id` ambigu. Le SQL natif voit les lignes supprimées logiquement : chaque requête écrit `deleted_at IS NULL`.
+- `DataExportRunner` réserve aussi un export `RUNNING` au bail expiré. `DataExportRecoveryJob` le remet en file jusqu'à `max-attempts`, tout comme un export `QUEUED` dont le message s'est perdu.
+- `MediaService.storeGenerated` stocke le fichier sans détection de type ni antivirus, car l'application l'a écrit (guide 28). Le mail part par l'outbox, dans la transaction du step de publication.
+- Le PDF de l'export RGPD et ses protections : [cas pratique dédié](cas-pratiques/export-rgpd-pdf.md).
 - `liquibase:diff` ignore les tables `batch_*` (`diffExcludeObjects` dans `pom.xml`) : sans entité, il proposerait de les supprimer.
-- L'entraînement AOT du `Dockerfile` exclut `BatchJdbcAutoConfiguration` : Batch y prend son repository en mémoire (guide 33).
 
 Les tests :
 
 - [`DataExportApiTests`][api-tests] fait le trajet complet par l'API : CSV entre guillemets, formules neutralisées, 1001 lignes lues dans l'ordre des id.
-- [`DataExportLifecycleTests`][lifecycle-tests] simule une exécution laissée `STARTED` : reprise, bail, message perdu, purge de l'historique.
-- [`DataExportFailureTests`][failure-tests] fait échouer le stockage (contexte `@DeadLetterIntegrationTest`) ; [`BatchMetadataQueriesTests`][batch-queries-tests], [`CsvLineAggregatorTest`][aggregator-test], [`DataExportRunnerTest`][runner-test] et [`PersonalDataJobTest`][personal-data-test] couvrent les pièces une à une.
+- [`DataExportLifecycleTests`][lifecycle-tests] : exécution `STARTED`, reprise, bail, message perdu, purge.
+- [`DataExportFailureTests`][failure-tests] : stockage en échec (`@DeadLetterIntegrationTest`).
+- [`BatchMetadataQueriesTests`][batch-queries-tests], [`CsvLineAggregatorTest`][aggregator-test], [`DataExportRunnerTest`][runner-test] et [`PersonalDataJobTest`][personal-data-test] : les pièces seules.
 
-Aucun test n'utilise `@SpringBatchTest` : ils injectent `JobRepository` et les jobs du contexte d'intégration commun.
+Aucun test n'utilise `@SpringBatchTest` : ils injectent `JobRepository` et les jobs du contexte commun.
 
 Pour ajouter un export : une valeur de `DataExportType`, un job dont le seul paramètre est l'id, avec `allowStartIfComplete(true)`, le listener de bail sur chaque step et `DataExportJobListener` sur le job, puis son entrée dans la table des jobs de `DataExportRunner`.
 
 ## Voir aussi
 
 - [15. Concurrence et verrous](15-concurrence-verrous.md) : la réservation par `UPDATE` conditionnel.
-- [20. Outbox transactionnelle](20-outbox-transactionnelle.md) : le message de lancement, publié après le commit.
+- [20. Outbox transactionnelle](20-outbox-transactionnelle.md) : le message de lancement.
 - [21. Jobs planifiés et ShedLock](21-jobs-planifies-shedlock.md) : la récupération et la purge, verrouillées.
-- [28. Uploads et drivers de stockage](28-uploads-stockage.md) : où le fichier produit est rangé.
+- [28. Uploads et drivers de stockage](28-uploads-stockage.md) : où le fichier est rangé.
 - [Cas pratique : la vie d'un export](cas-pratiques/vie-d-un-export.md).
 - Documentation officielle : [Spring Batch](https://docs.spring.io/spring-batch/reference/index.html), [Spring Batch dans Spring Boot](https://docs.spring.io/spring-boot/how-to/batch.html), [injection CSV (OWASP)](https://owasp.org/www-community/attacks/CSV_Injection).
 

@@ -4,9 +4,9 @@
 
 ## Contexte
 
-- **Problème** : livrer l'API sous la forme d'une image qui démarre vite, tourne sans droits, se reconstruit en quelques secondes quand seul le code change, et ne part en production qu'après les tests et un scan de vulnérabilités.
+- **Problème** : livrer l'API sous la forme d'une image qui démarre vite, tourne sans droits et se reconstruit en quelques secondes quand seul le code change. Elle ne part en production qu'après les tests et un scan de vulnérabilités.
 - **Quand l'utiliser** : toute application Spring Boot déployée en conteneur (Kubernetes, ECS, un serveur avec Docker).
-- **Quand s'en passer** : une plateforme qui construit l'image elle-même (Buildpacks via `spring-boot:build-image`, Cloud Foundry). On garde alors la partie CI.
+- **Quand s'en passer** : une plateforme qui construit l'image elle-même (Buildpacks via `spring-boot:build-image`, Cloud Foundry). On garde alors la CI.
 - **Dans ce dépôt** : un `Dockerfile` en deux étapes, un cache AOT entraîné pendant le build, `compose.yaml` pour le développement, `compose.production.yaml` pour l'image durcie, une CI GitHub Actions.
 - **Prérequis** : guides 32 (sondes, port de gestion) et 02 (profil `prod`). Versions : Java 25 (Temurin), Spring Boot 4.1, Docker avec BuildKit, Docker Compose 2.24.4 ou plus (pour `!reset` et `!override`).
 
@@ -43,8 +43,8 @@ Le jar est découpé en quatre dossiers, copiés dans autant de couches :
                                                + app.aot, utilisateur 10001
 ```
 
-- Docker reconstruit une couche, et toutes celles qui suivent, dès qu'une entrée change. On place donc en premier ce qui change rarement : le pom seul, puis le téléchargement des dépendances.
-- `java -Djarmode=tools -jar app.jar extract --layers` découpe le jar en quatre dossiers. Une nouvelle version ne change en général que `application/`, la seule couche qu'un serveur doit retélécharger.
+- Docker reconstruit une couche, et toutes celles qui suivent, dès qu'une entrée change. On place donc en premier ce qui change rarement : le pom seul, puis les dépendances.
+- `java -Djarmode=tools -jar app.jar extract --layers` découpe le jar en quatre dossiers. Une nouvelle version ne change en général que `application/`, la seule couche à retélécharger.
 - L'image finale part d'un JRE, sans Maven, sans JDK et sans sources.
 
 ### Le cache AOT
@@ -69,8 +69,8 @@ L'entraînement a lieu pendant le build, le profit à chaque démarrage :
 ```
 
 - `spring.context.exit=onRefresh` arrête la JVM à la fin du rafraîchissement du contexte, avant le démarrage des composants `SmartLifecycle` (serveur web, listeners RabbitMQ) et des `ApplicationRunner`.
-- L'entraînement a lieu pendant le `docker build` : aucun service n'est joignable. Un bean qui se connecte pendant la création du contexte fait échouer le build. Ce qui se connecte dans un `ApplicationRunner` ou au démarrage d'un `SmartLifecycle` ne gêne pas.
-- Le cache ne sert qu'avec la forme extraite du jar, le même jar et la même version de Java. Avec Java 24 ou moins, il faut utiliser CDS, son prédécesseur.
+- L'entraînement a lieu pendant le `docker build`, donc aucun service n'est joignable. Un bean qui se connecte pendant la création du contexte fait échouer le build. Une connexion dans un `ApplicationRunner` ou au démarrage d'un `SmartLifecycle` ne gêne pas.
+- Le cache ne sert qu'avec la forme extraite du jar, le même jar et la même version de Java. Avec Java 24 ou moins, on utilise CDS, son prédécesseur.
 
 ### Du commit à l'image publiée
 
@@ -101,7 +101,7 @@ compose.production.yaml       l'image lancée comme en production (étape 7)
 
 ### L'image
 
-**Étape 1. Construire le jar dans une étape JDK.** Le pom et le téléchargement des dépendances forment une couche à part, refaite seulement quand le pom change. Dans un `Dockerfile`, un commentaire tient sur sa propre ligne : un `#` en fin d'instruction en ferait partie.
+**Étape 1. Construire le jar dans une étape JDK.** Le pom et le téléchargement des dépendances forment une couche à part, refaite seulement quand le pom change. Dans un `Dockerfile`, un commentaire tient sur sa propre ligne, car un `#` en fin d'instruction en ferait partie.
 
 ```dockerfile
 # syntax=docker/dockerfile:1
@@ -118,9 +118,9 @@ RUN ./mvnw --batch-mode --quiet -Dmaven.test.skip=true package \
     && java -Djarmode=tools -jar application.jar extract --layers --destination extracted
 ```
 
-`-Dmaven.test.skip=true` saute la compilation et l'exécution des tests : la CI les a déjà lancés, et `src/test` n'est même pas dans le contexte de build.
+`-Dmaven.test.skip=true` saute la compilation et l'exécution des tests. La CI les a déjà lancés, et `src/test` n'est même pas dans le contexte de build.
 
-**Étape 2. Copier les couches dans une image JRE.** Une couche par rythme de changement : une nouvelle version ne change en général que la dernière.
+**Étape 2. Copier les couches dans une image JRE.** Une couche par rythme de changement. Une nouvelle version ne change en général que la dernière.
 
 ```dockerfile
 FROM eclipse-temurin:25-jre-noble@sha256:<digest>
@@ -144,15 +144,15 @@ USER invoices
 EXPOSE 8080 8081
 ```
 
-**Étape 4. Régler la JVM pour un conteneur.** Par défaut, le tas ne prend que 25 % de la mémoire du conteneur, et sous 2 CPU ou 1792 Mo la JVM choisit le ramasse-miettes Serial, qui arrête toute l'application à chaque passage.
+**Étape 4. Régler la JVM pour un conteneur.** Par défaut, le tas ne prend que 25 % de la mémoire du conteneur. Sous 2 CPU ou 1792 Mo, la JVM choisit le ramasse-miettes Serial, qui arrête toute l'application à chaque passage.
 
 ```dockerfile
 ENV JAVA_TOOL_OPTIONS="-XX:+UseG1GC -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
 ```
 
-Avec `ExitOnOutOfMemoryError`, la JVM s'arrête au premier `OutOfMemoryError` : l'orchestrateur redémarre un conteneur sain plutôt que de garder un processus à moitié cassé. Changer une option oblige à redéfinir toute la variable.
+Avec `ExitOnOutOfMemoryError`, la JVM s'arrête au premier `OutOfMemoryError`. L'orchestrateur redémarre alors un conteneur sain plutôt que de garder un processus à moitié cassé. Changer une option oblige à redéfinir toute la variable.
 
-**Étape 5. Entraîner le cache AOT pendant le build.** Un démarrage sans aucun service, arrêté à la fin du rafraîchissement du contexte, enregistre les classes que le vrai démarrage relira.
+**Étape 5. Entraîner le cache AOT pendant le build.** Un démarrage sans service, arrêté à la fin du rafraîchissement du contexte, enregistre les classes que le vrai démarrage relira.
 
 ```dockerfile
 RUN JWT_SECRET="$(head -c 32 /dev/urandom | base64)" \
@@ -185,7 +185,7 @@ ENTRYPOINT ["java", "-XX:AOTCache=app.aot", "-jar", "application.jar"]
 !src/main/
 ```
 
-**Étape 7. Lancer l'image comme en production, à côté du développement.** Un second fichier Compose réutilise les services de `compose.yaml` sous un autre nom de projet, et durcit le conteneur comme le ferait la plateforme.
+**Étape 7. Lancer l'image comme en production, à côté du développement.** Un second fichier Compose réutilise les services de `compose.yaml` sous un autre nom de projet. Il durcit le conteneur comme le ferait la plateforme.
 
 ```yaml
 # compose.production.yaml, lancé avec :
@@ -263,18 +263,18 @@ Les options de la JVM :
 | `-XX:AOTCache=app.aot` | démarrage : lit le cache |
 | `-Dspring.context.exit=onRefresh` | arrête la JVM après le rafraîchissement du contexte |
 
-Limites de cette version : le cache AOT ne vaut que pour ce jar et cette version de Java ; le scan ne voit que les failles connues le jour du build.
+Limites de cette version : le cache AOT ne vaut que pour ce jar et cette version de Java. Le scan ne voit que les failles connues le jour du build.
 
 ## Concepts avancés
 
 ### Sous le capot : ce que l'entraînement interdit
 
-- Un bean qui se connecte pendant le rafraîchissement du contexte casse le build de l'image. Ici, le dépôt de jobs JDBC de Spring Batch lit les métadonnées de la base à ce moment : l'entraînement exclut `BatchJdbcAutoConfiguration` (`spring.autoconfigure.exclude`), et Batch prend un dépôt en mémoire pour l'entraînement seulement.
+- Un bean qui se connecte pendant le rafraîchissement du contexte casse le build de l'image. Ici, le dépôt de jobs JDBC de Spring Batch lit les métadonnées de la base à ce moment. L'entraînement exclut donc `BatchJdbcAutoConfiguration` (`spring.autoconfigure.exclude`), et Batch prend un dépôt en mémoire pour l'entraînement seulement.
 - Un nouveau réglage exigé au démarrage doit recevoir une valeur jetable dans le `RUN` d'entraînement (ici `JWT_SECRET` et `WEBHOOK_ENCRYPTION_KEY`, 32 octets aléatoires en Base64).
 
 ### Plusieurs environnements
 
-Une seule image sert tous les environnements, seules les variables changent (guide 02). En production, on désigne l'image par son digest ; les tags (`1.4.2`, `1.4`, `latest`) ne sont que des alias pratiques.
+Une seule image sert tous les environnements, et seules les variables changent (guide 02). En production, on désigne l'image par son digest. Les tags (`1.4.2`, `1.4`, `latest`) ne sont que des alias pratiques.
 
 ### Surveiller les dépendances
 
@@ -312,7 +312,7 @@ Une seule image sert tous les environnements, seules les variables changent (gui
 
 ## En résumé
 
-**À retenir :** une image en deux étapes et en couches, épinglée par digest, sans droits, avec une JVM réglée pour le conteneur et un cache AOT entraîné sans service ; elle n'est publiée, avec sa provenance et son SBOM, qu'après les tests et le scan.
+**À retenir :** une image en deux étapes et en couches, épinglée par digest, sans droits, avec une JVM réglée pour le conteneur et un cache AOT entraîné sans service. Elle n'est publiée, avec sa provenance et son SBOM, qu'après les tests et le scan.
 
 - [ ] Bases épinglées par digest, mises à jour par Dependabot
 - [ ] Une couche de dépendances avant les sources
@@ -368,7 +368,7 @@ Les réglages de l'image :
 Ce qui est propre au dépôt :
 
 - Le gain du cache AOT est la médiane de cinq démarrages alternés : 8,1 s au lieu de 12,8 s.
-- L'image n'écrit que dans `/tmp` (uploads en cours de vérification) : elle tourne en lecture seule. Le conteneur doit disposer d'au moins 1 Go.
+- L'image n'écrit que dans `/tmp` (uploads en cours de vérification), donc elle tourne en lecture seule. Le conteneur doit disposer d'au moins 1 Go.
 - `compose.production.yaml` impose le projet `tasks-prod` (`-p`). Ses ports sont publiés sur `127.0.0.1` au port de développement plus 10000 (18080, 18081, 18025 pour Mailpit, 19000 pour RustFS). Postgres, ClamAV et RabbitMQ n'en publient aucun. Des healthchecks portent sur Postgres (`pg_isready`) et RabbitMQ (`rabbitmq-diagnostics -q ping`).
 - `S3_PUBLIC_ENDPOINT: http://localhost:19000`, car les liens de téléchargement s'ouvrent hors du réseau Compose. Le durcissement ajoute `read_only`, `tmpfs /tmp:size=256m`, `cap_drop: [ALL]`, `no-new-privileges`, 1 Go, 2 CPU, 512 processus et `stop_grace_period: 30s`, au-dessus des 20 s d'arrêt propre du profil `prod`.
 - Le pom surcharge quatre versions, chacune avec sa raison et sa condition de retrait : `tomcat.version` 11.0.26, `rabbit-amqp-client.version` 5.36.0, `jackson-bom.version` 3.1.7 et `jackson-2-bom.version` 2.21.7.
@@ -379,7 +379,7 @@ Ce qui est propre au dépôt :
 
 Aucun test automatique ne vise l'image elle-même : le job « Image » de la CI la construit (donc lance l'entraînement AOT) et la scanne à chaque push. En local, `compose.production.yaml` la fait tourner.
 
-Pour ajouter un réglage exigé au démarrage : une valeur jetable dans le `RUN` d'entraînement, une variable dans `compose.production.yaml`, et une ligne dans le tableau du README (`deployment.required-properties`, guide 02).
+Pour ajouter un réglage exigé au démarrage, on met une valeur jetable dans le `RUN` d'entraînement, une variable dans `compose.production.yaml`, et une ligne dans le tableau du README (`deployment.required-properties`, guide 02).
 
 ## Voir aussi
 

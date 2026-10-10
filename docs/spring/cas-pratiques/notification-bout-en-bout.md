@@ -4,7 +4,7 @@
 
 ## Le scénario
 
-Un administrateur assigne une tâche à Bruno. Bruno a l'application ouverte (un flux de notifications et la page de la tâche), un webhook abonné à `task.assigned`, et les emails d'assignation activés. Il doit recevoir un email, un appel HTTP signé et une notification à l'écran, et rien du tout si l'assignation est annulée.
+Un administrateur assigne une tâche à Bruno. Bruno a l'application ouverte (un flux de notifications et la page de la tâche), un webhook abonné à `task.assigned` et les emails d'assignation activés. Il doit recevoir un email, un appel HTTP signé et une notification à l'écran. S'il est annulé, il ne doit rien recevoir.
 
 ## Vue d'ensemble
 
@@ -48,30 +48,29 @@ Tout s'écrit dans la transaction, puis chaque canal part de son côté après l
                                                            (salle STOMP)
 ```
 
-- Au-dessus du commit, tout est synchrone, sur le thread de la requête. En dessous, chaque canal avance à son rythme, avec sa propre politique d'échec.
 - Le paquet `task` ne connaît aucun canal : il publie des événements, et les listeners des paquets `notification` et `realtime` décident.
 
 ## Pas à pas
 
-**1. L'assignation.** `PATCH /api/v1/tasks/{id}/assign` avec `{"userId": "..."}`, réservé aux administrateurs (`@AdminOnly`). [`TaskService.assign`][task-service] ouvre la transaction, vérifie que Bruno est actif (sinon 422 `assignee-not-active`), change l'assigné et appelle `TaskEventService.assignmentChanged`, qui écrit la ligne `ASSIGNED` de l'historique. Il publie ensuite `TaskAssigned`, plus `TaskUnassigned` pour l'ancien assigné s'il y en avait un (guide 16).
+**1. L'assignation.** `PATCH /api/v1/tasks/{id}/assign` avec `{"userId": "..."}`, réservé aux administrateurs (`@AdminOnly`). [`TaskService.assign`][task-service] ouvre la transaction et vérifie que Bruno est actif, sinon 422 `assignee-not-active`. Il change l'assigné et appelle `TaskEventService.assignmentChanged`, qui écrit la ligne `ASSIGNED` de l'historique. Il publie ensuite `TaskAssigned`, plus `TaskUnassigned` pour l'ancien assigné s'il y en avait un (guide 16).
 
-**2. Des listeners dans la transaction.** Ces `@EventListener` simples sont appelés tout de suite, sur le même thread, dans la transaction ouverte : ce qu'ils écrivent est validé ou annulé avec l'assignation, et une exception de l'un d'eux annulerait l'assignation. Ils se contentent donc d'écrire en base, sans appel réseau (guide 16).
+**2. Des listeners dans la transaction.** Ces `@EventListener` simples sont appelés tout de suite, sur le même thread, dans la transaction ouverte. Ce qu'ils écrivent est validé ou annulé avec l'assignation, et une exception de l'un d'eux annulerait l'assignation. Ils écrivent donc en base seulement, sans appel réseau (guide 16).
 
-**3. Le tri des destinataires.** [`TaskNotificationPublisher`][publisher] fait de `TaskAssigned` un `TaskNotificationCreated` par destinataire, avec les règles que partagent webhooks et flux : personne n'est notifié de sa propre action (un admin qui s'assigne une tâche ne reçoit rien), et seul un compte actif reçoit quelque chose. Le compte est relu en base, pas dans le cache de statut, qui peut avoir 30 s de retard.
+**3. Le tri des destinataires.** [`TaskNotificationPublisher`][publisher] fait de `TaskAssigned` un `TaskNotificationCreated` par destinataire. Il applique les règles que partagent webhooks et flux. Personne n'est notifié de sa propre action : un admin qui s'assigne une tâche ne reçoit rien. Seul un compte actif reçoit quelque chose. Le compte est relu en base, car le cache de statut peut avoir 30 s de retard.
 
-**4. L'email.** [`TaskNotificationSender`][mail-sender] écoute aussi `TaskAssigned`, avec ses propres règles : mêmes conditions, plus l'interrupteur `taskAssigned` des réglages de Bruno (tout est activé tant qu'il n'a pas de ligne de réglages). Il écrit le texte et appelle [`MailService.send`][mail-service], qui n'envoie rien : il écrit le message dans l'outbox pour la file `mail.send` (guides 20 et 23).
+**4. L'email.** [`TaskNotificationSender`][mail-sender] écoute aussi `TaskAssigned`, avec ses propres règles. Les conditions sont les mêmes, plus l'interrupteur `taskAssigned` des réglages de Bruno (tout est activé tant qu'il n'a pas de ligne de réglages). Il écrit le texte et appelle [`MailService.send`][mail-service]. Celui-ci n'envoie rien : il écrit le message dans l'outbox pour la file `mail.send` (guides 20 et 23).
 
-**5. Le webhook.** [`WebhookNotificationSender`][webhook-sender] écoute `TaskNotificationCreated` et cherche les endpoints actifs de Bruno abonnés à `task.assigned` ; ces abonnements remplacent les interrupteurs d'email. Il sérialise le corps (`type`, `timestamp`, `data`, ou un message Slack). [`WebhookDeliveryService.schedule`][delivery-service] enregistre une livraison `PENDING` et écrit son id dans l'outbox pour la file `webhook.deliver`. Le détail des essais est dans le cas pratique [La livraison d'un webhook](livraison-webhook.md).
+**5. Le webhook.** [`WebhookNotificationSender`][webhook-sender] écoute `TaskNotificationCreated` et cherche les endpoints actifs de Bruno abonnés à `task.assigned`. Ces abonnements remplacent les interrupteurs d'email. Il sérialise le corps (`type`, `timestamp`, `data`, ou un message Slack). [`WebhookDeliveryService.schedule`][delivery-service] enregistre une livraison `PENDING` et écrit son id dans l'outbox pour la file `webhook.deliver`. Les essais sont détaillés dans [La livraison d'un webhook](livraison-webhook.md).
 
-**6. Le temps réel.** [`RealtimeBroadcasts`][broadcasts] écrit deux diffusions dans l'outbox, vers l'exchange `tasks.realtime` : une `UserNotification` pour Bruno, tirée de `TaskNotificationCreated`, et un `TaskRoomEvent` pour la salle de la tâche, tiré de la ligne d'historique (`TaskEventRecorded`). La salle sert tous ceux qui regardent la tâche, la notification Bruno seul (guide 24).
+**6. Le temps réel.** [`RealtimeBroadcasts`][broadcasts] écrit deux diffusions dans l'outbox, vers l'exchange `tasks.realtime`. La première est une `UserNotification` pour Bruno, tirée de `TaskNotificationCreated`. La seconde est un `TaskRoomEvent` pour la salle de la tâche, tiré de la ligne d'historique (`TaskEventRecorded`). La salle sert tous ceux qui regardent la tâche, la notification Bruno seul (guide 24).
 
-**7. Le commit, puis la publication.** Le commit valide d'un coup la tâche, l'historique, la livraison et quatre lignes d'outbox. Pour chaque ligne, [`Outbox`][outbox] a enregistré une synchronisation `afterCommit` : [`OutboxRelay.publishNow`][relay] tourne sur un thread `@Async`, verrouille la ligne (`FOR UPDATE SKIP LOCKED`), publie, attend la confirmation du broker, vérifie que le message n'est pas revenu faute de file, puis remplit `published_at`. L'id de la ligne devient l'id du message AMQP. Si l'assignation est annulée, les lignes disparaissent avec le rollback (guides 14, 19 et 20).
+**7. Le commit, puis la publication.** Le commit valide d'un coup la tâche, l'historique, la livraison et quatre lignes d'outbox. Pour chaque ligne, [`Outbox`][outbox] a enregistré une synchronisation `afterCommit`. [`OutboxRelay.publishNow`][relay] tourne alors sur un thread `@Async` et verrouille la ligne (`FOR UPDATE SKIP LOCKED`). Il publie, attend la confirmation du broker et vérifie que le message n'est pas revenu faute de file. Il remplit enfin `published_at`. L'id de la ligne devient l'id du message AMQP. Si l'assignation est annulée, les lignes disparaissent avec le rollback (guides 14, 19 et 20).
 
-**8. L'envoi de l'email.** [`MailQueueListener`][mail-listener] consomme `mail.send` et envoie par SMTP (`mail.from`). Un échec est réessayé dans le consommateur, avec un délai croissant (environ 1,5 min en tout), puis le message part dans `mail.send.dead-letter` (guides 19 et 23).
+**8. L'envoi de l'email.** [`MailQueueListener`][mail-listener] consomme `mail.send` et envoie par SMTP (`mail.from`). Un échec est réessayé dans le consommateur, avec un délai croissant (environ 1,5 min en tout). Le message part ensuite dans `mail.send.dead-letter` (guides 19 et 23).
 
-**9. L'appel du webhook.** `WebhookDeliveryListener` reçoit l'id par une fabrique sans réessais de listener, à 4 consommateurs par instance. `WebhookDeliveryService.deliver` relit la livraison dans une transaction courte, interroge le disjoncteur et la cloison de l'hôte, appelle [`WebhookClient`][webhook-client] hors transaction (corps signé, en-tête `webhook-id` égal à l'id de la livraison), puis enregistre le résultat dans une seconde transaction. Le client HTTP ne joint que des adresses publiques (guides 26 et 27).
+**9. L'appel du webhook.** `WebhookDeliveryListener` reçoit l'id par une fabrique sans réessais de listener, à 4 consommateurs par instance. `WebhookDeliveryService.deliver` relit la livraison dans une transaction courte et interroge le disjoncteur et la cloison de l'hôte. Il appelle [`WebhookClient`][webhook-client] hors transaction, avec un corps signé et un en-tête `webhook-id` égal à l'id de la livraison. Il enregistre ensuite le résultat dans une seconde transaction. Le client HTTP ne joint que des adresses publiques (guides 26 et 27).
 
-**10. La notification à l'écran.** L'exchange fanout copie chaque diffusion dans la file de chaque instance. Sur toutes, [`RealtimeListener`][realtime-listener] (un seul consommateur, sans réessais) remet `UserNotification` à [`NotificationStreams`][streams] : l'événement entre dans le buffer de replay de l'instance, et, sur celle où Bruno est connecté, dans le buffer de son flux. Le thread virtuel du flux l'écrit : `id` (la ligne d'outbox), `event: task.assigned`, `data`. Le `TaskRoomEvent` part vers [`TaskRooms`][rooms], qui l'envoie aux abonnés STOMP de `/topic/tasks/{id}` avec l'en-tête `event-id`. Il dit seulement ce qui s'est passé : la page relit la tâche par l'API (guides 24 et 25).
+**10. La notification à l'écran.** L'exchange fanout copie chaque diffusion dans la file de chaque instance. Sur toutes, [`RealtimeListener`][realtime-listener] (un seul consommateur, sans réessais) remet `UserNotification` à [`NotificationStreams`][streams]. L'événement entre dans le buffer de replay de l'instance. Sur celle où Bruno est connecté, il entre aussi dans le buffer de son flux. Le thread virtuel du flux l'écrit : `id` (la ligne d'outbox), `event: task.assigned`, `data`. Le `TaskRoomEvent` part vers [`TaskRooms`][rooms], qui l'envoie aux abonnés STOMP de `/topic/tasks/{id}` avec l'en-tête `event-id`. Il dit seulement ce qui s'est passé : la page relit la tâche par l'API (guides 24 et 25).
 
 ## Quand ça se passe mal
 
@@ -90,12 +89,12 @@ Chaque canal se remet à sa façon :
 | Instance coupée de RabbitMQ | sa file disparaît avec les événements en attente | à la reconnexion, `resync` à tous ses flux : les clients rechargent |
 
 - Une notification à l'écran n'est jamais réessayée : un événement temps réel périmé vaut moins que ceux qui suivent. Le replay et le `resync` rattrapent les trous.
-- La livraison est « au moins une fois » sur les trois canaux : l'id de l'événement SSE, l'en-tête `event-id` de la salle et l'en-tête `webhook-id` permettent d'écarter un doublon ; un email en double, lui, arrive deux fois.
+- La livraison est « au moins une fois » sur les trois canaux. L'id de l'événement SSE, l'en-tête `event-id` de la salle et l'en-tête `webhook-id` permettent d'écarter un doublon. Un email en double, lui, arrive deux fois.
 
 ## À retenir
 
 - Un seul commit décide de tout : outbox et livraison sont écrites dans la transaction de l'assignation, et publiées seulement après.
-- Les règles « pas sa propre action, compte actif » vivent en un seul endroit pour webhooks et flux ; les emails gardent les leurs.
+- Les règles « pas sa propre action, compte actif » vivent en un seul endroit pour webhooks et flux. Les emails gardent les leurs.
 - Chaque canal a sa politique d'échec : réessais du consommateur pour l'email, calendrier en base pour le webhook, aucun réessai pour le temps réel.
 - Diffuser à toutes les instances par un exchange fanout évite de savoir où le client est connecté.
 

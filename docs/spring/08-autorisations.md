@@ -4,9 +4,9 @@
 
 ## Contexte
 
-- **Problème** : une fois l'appelant identifié (guide 07), décider ce qu'il peut faire : selon son rôle, selon qu'une ressource lui appartient, et seulement tant que son compte reste actif.
+- **Problème** : une fois l'appelant identifié (guide 07), décider ce qu'il peut faire, selon son rôle, selon qu'une ressource lui appartient, et tant que son compte reste actif.
 - **Quand l'utiliser** : toute API où les utilisateurs n'ont pas tous les mêmes droits, ou où l'on agit sur ses propres ressources.
-- **Quand s'en passer** : une API où tout appelant authentifié peut tout faire ; `anyRequest().authenticated()` suffit.
+- **Quand s'en passer** : une API où tout appelant authentifié peut tout faire, car `anyRequest().authenticated()` suffit.
 - **Dans ce dépôt** : des règles par URL dans `SecurityConfiguration` (les endpoints des tâches, des notifications et des exports sont réservés aux comptes actifs), puis des méta-annotations maison autour de `@PreAuthorize` sur les méthodes des contrôleurs, appuyées par des beans « propriétaire ».
 - **Prérequis** : guide 07 (chaîne de filtres, JWT, authorities). Versions : Spring Boot 4.1, Spring Security 7.1.
 
@@ -51,15 +51,15 @@ Une requête authentifiée passe par les règles d'URL, puis par la règle de la
   méthode du contrôleur, puis service
 ```
 
-- La première règle d'URL qui correspond décide ; `anyRequest()` vient en dernier (guide 07).
+- La première règle d'URL qui correspond décide. `anyRequest()` vient en dernier (guide 07).
 - Une règle d'URL ne voit que la requête. Une règle de méthode lit les arguments par leur nom (`#id`, `#dto`) et peut appeler des beans.
-- Le corps est lu et validé avant `@PreAuthorize` : un corps invalide répond 400, même à un appelant qui serait refusé.
+- Le corps est lu et validé avant `@PreAuthorize`. Un corps invalide répond donc 400, même à un appelant qui serait refusé.
 
 ### 401 ou 403
 
-- 401 : pas de jeton, ou un jeton invalide. Aussi pour un appelant anonyme refusé par une règle : le `ExceptionTranslationFilter` demande alors de s'authentifier.
+- 401 : pas de jeton, ou un jeton invalide. C'est aussi la réponse à un appelant anonyme refusé par une règle, car le `ExceptionTranslationFilter` lui demande de s'authentifier.
 - 403 : un appelant authentifié refusé par une règle d'URL ou par `@PreAuthorize`.
-- Un non-propriétaire reçoit aussi 403 sur une ressource qui n'existe pas : répondre 404 lui apprendrait quels identifiants existent. Seul un appelant dont le rôle passe outre la propriété atteint le service et son 404.
+- Un non-propriétaire reçoit aussi 403 sur une ressource qui n'existe pas, car un 404 lui apprendrait quels identifiants existent. Seul un appelant dont le rôle passe outre la propriété atteint le service et son 404.
 
 ### Un jeton valide ne suffit pas
 
@@ -75,13 +75,13 @@ Un jeton survit à la désactivation du compte, sauf si une règle relit l'état
           +-- règle "compte actif" -------> statut relu --> 403
 ```
 
-- Un JWT est sans état : rien ne le révoque avant son expiration. Une règle qui relit le statut du compte à chaque requête ferme ce trou ; un cache court (30 s ici), évincé après chaque changement, la rend peu chère (guide 17).
+- Un JWT est sans état : rien ne le révoque avant son expiration. Une règle qui relit le statut du compte à chaque requête ferme ce trou. Un cache court (30 s ici), évincé après chaque changement, la rend peu chère (guide 17).
 - « Actif » dans ce dépôt : activé, non supprimé, e-mail vérifié (`UserStatus.ACTIVE`).
 
 ### Les règles « propriétaire »
 
-- Un contrôle de rôle compare des chaînes du jeton ; un contrôle de propriété demande une donnée : une méthode de bean qui répond `true` ou `false` avec une requête (`existsByIdAndAssignedToId`).
-- La SpEL appelle le bean par son nom : `@taskAuthorization.currentUserIsAssignedTo(#id, authentication)`, où `authentication` est l'`Authentication` courante.
+- Un contrôle de rôle compare des chaînes du jeton. Un contrôle de propriété demande une donnée : une méthode de bean répond `true` ou `false` avec une requête (`existsByIdAndAssignedToId`).
+- La SpEL appelle le bean par son nom, par exemple `@taskAuthorization.currentUserIsAssignedTo(#id, authentication)`. `authentication` est l'`Authentication` courante.
 - Avec le rôle admin écrit en premier (`hasAnyRole('ADMIN') or ...`), le bean n'est pas appelé pour un admin.
 
 ## Implémentation avec Spring
@@ -135,7 +135,7 @@ public class InvoiceController {
 }
 ```
 
-**Étape 3. Écrire le bean propriétaire.** Une requête répond à « cette facture est-elle à l'appelant ? » ; le bean a un nom que la SpEL peut appeler.
+**Étape 3. Écrire le bean propriétaire.** Une requête répond à « cette facture est-elle à l'appelant ? ». Le bean porte un nom que la SpEL peut appeler.
 
 ```java
 public final class CallerIds {
@@ -170,7 +170,7 @@ public class InvoiceAuthorization {
 }
 ```
 
-**Étape 4. Combiner rôle et propriétaire.** L'admin passe par son rôle ; tout autre doit posséder la facture. `#id` est le paramètre nommé `id`.
+**Étape 4. Combiner rôle et propriétaire.** L'admin passe par son rôle, tout autre doit posséder la facture. `#id` est le paramètre nommé `id`.
 
 ```java
 @DeleteMapping("/{id}")
@@ -257,9 +257,9 @@ http.authorizeHttpRequests(auth -> auth
         .anyRequest().authenticated());
 ```
 
-Cette règle lit la base à chaque requête ; le guide 17 y ajoute le cache.
+Cette règle lit la base à chaque requête. Le guide 17 y ajoute le cache.
 
-**Étape 8. Vérifier.** Un test de la couche web, avec la vraie sécurité et des beans simulés, prouve que le refus arrive avant le service et qu'un admin saute la requête de propriété. Le mock garde le nom du bean, car la SpEL l'appelle par ce nom (guide 29).
+**Étape 8. Vérifier.** Un test de la couche web, avec la vraie sécurité et des beans simulés, prouve deux choses : le refus arrive avant le service, et un admin saute la requête de propriété. Le mock garde le nom du bean, car la SpEL l'appelle par ce nom (guide 29).
 
 ```java
 @WebLayerTest                       // guide 29 : contrôleurs, vraie sécurité, le reste en mocks
@@ -316,7 +316,7 @@ Les expressions les plus utiles dans `@PreAuthorize` :
 | `@bean.method(#id, authentication)` | appelle un bean par son nom |
 | `authentication` | l'`Authentication` courante |
 
-Limites de cette version : la règle « compte actif » lit la base à chaque requête (le guide 17 ajoute un cache), et une règle de propriété ne voit que ce que sa requête vérifie ; un état métier comme « archivée » relève du service.
+Limites de cette version : la règle « compte actif » lit la base à chaque requête (le guide 17 ajoute un cache). Une règle de propriété ne voit que ce que sa requête vérifie, et un état métier comme « archivée » relève du service.
 
 ## Concepts avancés
 
@@ -342,18 +342,18 @@ Le proxy Spring du contrôleur évalue la SpEL avant d'appeler la méthode :
         +-- vrai --> méthode du contrôleur
 ```
 
-- La sécurité des méthodes enveloppe le bean dans un proxy Spring, comme `@Transactional` : un appel depuis la même classe (`this.deleteInvoice(...)`) n'est pas contrôlé.
+- La sécurité des méthodes enveloppe le bean dans un proxy Spring, comme `@Transactional`. Un appel depuis la même classe (`this.deleteInvoice(...)`) n'est donc pas contrôlé.
 - L'`AccessDeniedException` est levée dans l'appel du contrôleur, donc dans Spring MVC. Un `@ExceptionHandler(Exception.class)` global la voit et doit la relancer, sinon chaque 403 devient un 500 (voir le [cas pratique](cas-pratiques/requete-securite.md)).
-- La SpEL lit les noms de paramètres dans le fichier de classe, ce qui demande l'option `-parameters` du compilateur, que `spring-boot-starter-parent` active. Sans elle, `#id` vaut `null` et la règle échoue pour tout le monde. `@P("id")` est l'alternative.
+- La SpEL lit les noms de paramètres dans le fichier de classe. Cela demande l'option `-parameters` du compilateur, que `spring-boot-starter-parent` active. Sans elle, `#id` vaut `null` et la règle échoue pour tout le monde. `@P("id")` est l'alternative.
 
 ### Sous le capot : le gabarit `{value}`
 
 - Spring Security lit la méta-annotation, remplace chaque `{attribut}` par la valeur de cet attribut sur la méthode annotée, puis analyse la SpEL.
-- Une valeur `String` est insérée telle quelle : les guillemets vont dans les valeurs (`"'ADMIN'"`), pas autour de `{value}`. Une enum `ExpressionTemplateValueProvider` écrit ses propres guillemets.
+- Une valeur `String` est insérée telle quelle. Les guillemets vont dans les valeurs (`"'ADMIN'"`), pas autour de `{value}`. Une enum `ExpressionTemplateValueProvider` écrit ses propres guillemets.
 
 ### Plusieurs instances
 
-La règle d'URL lit le statut par un cache propre à chaque instance : l'éviction suit la diffusion `AccountStatusChanged`, et le TTL de 30 s borne le délai si RabbitMQ est coupé (guide 17).
+La règle d'URL lit le statut par un cache propre à chaque instance. L'éviction suit la diffusion `AccountStatusChanged`. Si RabbitMQ est coupé, le TTL de 30 s borne le délai (guide 17).
 
 ## Pièges à éviter
 
@@ -386,7 +386,7 @@ La règle d'URL lit le statut par un cache propre à chaque instance : l'évicti
 
 ## En résumé
 
-**À retenir :** une règle d'URL pour ce qui vaut pour tout un groupe d'endpoints (ici, un compte encore actif), puis une méta-annotation nommée par opération, qui combine rôles et bean propriétaire appelé par la SpEL ; le refus arrive avant le service.
+**À retenir :** une règle d'URL pour ce qui vaut pour tout un groupe d'endpoints (ici, un compte encore actif), puis une méta-annotation nommée par opération, qui combine rôles et bean propriétaire appelé par la SpEL. Le refus arrive avant le service.
 
 - [ ] `@EnableMethodSecurity` et un test qui prouve un refus
 - [ ] Règles d'URL du plus précis au plus large, `anyRequest()` en dernier
@@ -452,10 +452,10 @@ Les annotations et ce qu'elles laissent passer (le texte de leur `@AccessDescrip
 
 Ce qui est propre au dépôt :
 
-- Les endpoints des utilisateurs et de l'authentification sont seulement `authenticated()` : un admin désactivé peut encore les utiliser (test `disabledAdminCanStillUseUserEndpoints`).
-- Chaque règle de méthode est une méta-annotation avec `@AccessDescription` ; `OperationDocumentation` l'écrit comme « Access: » dans la description OpenAPI (guide 06). `AccessDescriptionTest` parcourt chaque `@Controller` et échoue sur un `@PreAuthorize` ou `@PostAuthorize` écrit sur un handler, une annotation de sécurité sans `@AccessDescription`, une règle sur la classe du contrôleur, ou un `{placeholder}` qui ne nomme aucun attribut.
+- Les endpoints des utilisateurs et de l'authentification sont seulement `authenticated()`. Un admin désactivé peut donc encore les utiliser (test `disabledAdminCanStillUseUserEndpoints`).
+- Chaque règle de méthode est une méta-annotation avec `@AccessDescription`. `OperationDocumentation` l'écrit comme « Access: » dans la description OpenAPI (guide 06). `AccessDescriptionTest` parcourt chaque `@Controller` et échoue sur un `@PreAuthorize` ou `@PostAuthorize` écrit sur un handler, une annotation de sécurité sans `@AccessDescription`, une règle sur la classe du contrôleur, ou un `{placeholder}` qui ne nomme aucun attribut.
 - Les règles des pièces jointes et des commentaires lisent `#attachmentId` et `#commentId` au lieu de `#id`.
-- `@CommentAuthorOnly` n'a pas de contournement par rôle, exprès : un admin peut supprimer un commentaire, jamais modifier ce que son auteur a écrit.
+- `@CommentAuthorOnly` n'a pas de contournement par rôle, exprès. Un admin peut supprimer un commentaire, jamais modifier ce que son auteur a écrit.
 
 Les tests :
 

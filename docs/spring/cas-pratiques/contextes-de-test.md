@@ -4,7 +4,7 @@
 
 ## Le scénario
 
-Une développeuse écrit un test d'intégration sur les délais du client de webhooks. Le récepteur doit répondre plus lentement que le délai de lecture, et les 15 s livrées par défaut feraient attendre le test. Elle est tentée d'ajouter `@TestPropertySource(properties = "spring.http.serviceclient.webhooks.read-timeout=2s")` sur la classe. Le test passerait, mais la suite complète durerait plus longtemps et prendrait plus de mémoire. Voici ce que cette ligne déclenche, puis ce que le dépôt fait à la place.
+Une développeuse écrit un test d'intégration sur les délais du client de webhooks. Le récepteur doit répondre plus lentement que le délai de lecture, et les 15 s livrées par défaut feraient attendre le test. Elle est tentée d'ajouter `@TestPropertySource(properties = "spring.http.serviceclient.webhooks.read-timeout=2s")` sur la classe. Le test passerait, mais la suite complète durerait plus longtemps et prendrait plus de mémoire.
 
 ## Vue d'ensemble
 
@@ -42,36 +42,36 @@ Une propriété posée sur une seule classe change la clé du cache, et la class
 
 ## Pas à pas
 
-**1. La clé change.** Pour chaque classe de test, Spring calcule une configuration fusionnée (`MergedContextConfiguration` : classes de configuration, propriétés, personnalisations comme `@MockitoBean`). `@TestPropertySource` ajoute une source de propriétés : la clé n'est plus celle que partagent les classes annotées `@IntegrationTest` seul, et le cache ne trouve rien. La Javadoc de [`IntegrationTest`][integration] le dit : ajouter une propriété, un mock ou un import à une seule classe crée un autre contexte (guide 29, table de la clé).
+**1. La clé change.** Pour chaque classe de test, Spring calcule une configuration fusionnée (`MergedContextConfiguration`). Elle réunit configuration, propriétés et personnalisations comme `@MockitoBean`. `@TestPropertySource` ajoute une source de propriétés. La clé n'est alors plus celle des classes annotées `@IntegrationTest` seul, et le cache ne trouve rien. La Javadoc de [`IntegrationTest`][integration] le dit : une propriété, un mock ou un import ajouté à une seule classe crée un autre contexte (guide 29, table de la clé).
 
-**2. Un contexte complet démarre.** Toute l'application redémarre : chaque bean, le pool de connexions, les listeners, et MockMvc. `@IntegrationTest` importe [`TestcontainersConfiguration`][containers], `Mailpit` et `TestClock` (guide 29).
+**2. Un contexte complet démarre.** Toute l'application redémarre : beans, pool de connexions, listeners et MockMvc. `@IntegrationTest` y importe [`TestcontainersConfiguration`][containers], `Mailpit` et `TestClock` (guide 29).
 
-**3. Ses conteneurs.** Spring Boot démarre les beans conteneurs du nouveau contexte, en parallèle (`spring.testcontainers.beans.startup: parallel` dans le [`application.yaml`][test-yaml] de test). RabbitMQ n'est jamais réutilisé : les tests de dead letter font échouer les listeners, et sur un broker partagé ces listeners consommeraient les messages des autres contextes. Un broker neuf démarre donc pour ce contexte. Postgres, Mailpit, RustFS et ClamAV sont retrouvés par le hash de leur définition quand la réutilisation est activée (`~/.testcontainers.properties` ou `TESTCONTAINERS_REUSE_ENABLE`, positionnée en CI) ; sinon quatre conteneurs de plus démarrent (guide 30).
+**3. Ses conteneurs.** Spring Boot démarre en parallèle les beans conteneurs du nouveau contexte (`spring.testcontainers.beans.startup: parallel` dans le [`application.yaml`][test-yaml] de test). RabbitMQ n'est jamais réutilisé. Les tests de dead letter font échouer les listeners, et sur un broker partagé ceux-ci consommeraient les messages des autres contextes. Un broker neuf démarre donc pour ce contexte. Postgres, Mailpit, RustFS et ClamAV sont retrouvés par le hash de leur définition quand la réutilisation est activée (`~/.testcontainers.properties` ou `TESTCONTAINERS_REUSE_ENABLE`, positionnée en CI). Sinon, quatre conteneurs de plus démarrent (guide 30).
 
-**4. La base partagée.** Liquibase tourne au démarrage du contexte sur le Postgres commun, déjà migré : rien à appliquer (guide 18). Ce contexte écrit désormais des lignes validées dans la même base que tous les autres. D'où trois règles :
+**4. La base partagée.** Liquibase tourne au démarrage sur le Postgres commun, déjà migré : rien à appliquer (guide 18). Tous les contextes écrivent dans cette même base. D'où trois règles :
 
 - chaque test prend des valeurs uniques et n'asserte jamais sur un total global ;
-- les jobs planifiés sont éteints en test (`task.reminders.enabled`, `identity.retention.enabled`, `media.cleanup.enabled`, `exports.purge-enabled`, `exports.recovery-enabled`, `webhooks.retry-enabled` et `webhooks.purge-enabled`, tous à `false`) : un job actif dans un contexte agirait sur les données de tous les autres, et son verrou dans `scheduler_locks` ferait sauter le même job partout ailleurs ;
-- le poller de l'outbox tourne toutes les heures (`messaging.outbox.poll-interval: PT1H`) : un poller fréquent publierait les lignes d'un autre contexte vers son propre broker, où personne ne les attend. Les messages partent quand même juste après leur commit, depuis le contexte qui les a écrits.
+- les jobs planifiés sont éteints en test (`task.reminders.enabled`, `identity.retention.enabled`, `media.cleanup.enabled`, `exports.purge-enabled`, `exports.recovery-enabled`, `webhooks.retry-enabled` et `webhooks.purge-enabled`, tous à `false`). Un job actif dans un contexte agirait sur les données de tous les autres, et son verrou dans `scheduler_locks` ferait sauter le même job partout ailleurs ;
+- le poller de l'outbox tourne toutes les heures (`messaging.outbox.poll-interval: PT1H`). Un poller fréquent publierait les lignes d'un autre contexte vers son propre broker, où personne ne les attend.
 
-Un test qui sait partager la table des verrous : [`ScheduledJobLockingTests`][locking-tests], dont la ligne de purge des compteurs de limite est partagée avec tous les autres contextes (guides 20 et 21).
+[`ScheduledJobLockingTests`][locking-tests] sait partager la table des verrous : sa ligne de purge des compteurs de limite est commune à tous les contextes (guides 20 et 21).
 
-**5. Le plafond du cache.** [`spring.properties`][spring-properties] fixe `spring.test.context.cache.maxSize=12`. Au-delà, Spring ferme le contexte utilisé le moins récemment : ses beans sont détruits et Spring Boot arrête ses conteneurs non réutilisés (son RabbitMQ, et tous les autres sans réutilisation). Une classe qui le redemande le redémarre en entier. Le commentaire du fichier raconte pourquoi : le plafond par défaut de 32 avait gardé une dizaine de contextes complets en vie et épuisé la mémoire. Les contextes d'intégration (environ cinq) sont les lourds, alors que les slices ne tiennent qu'un Postgres.
+**5. Le plafond du cache.** [`spring.properties`][spring-properties] fixe `spring.test.context.cache.maxSize=12`. Au-delà, Spring ferme le contexte utilisé le moins récemment. Ses beans sont détruits et Spring Boot arrête ses conteneurs non réutilisés (son RabbitMQ, et tous les autres sans réutilisation). Une classe qui le redemande le redémarre en entier. Le commentaire du fichier en donne la raison : le plafond par défaut de 32 avait gardé une dizaine de contextes complets en vie et épuisé la mémoire. Les contextes d'intégration sont les lourds, alors que les slices ne tiennent qu'un Postgres.
 
-**6. Ce que ça a coûté une fois.** Quand ClamAV chargeait sa base complète, chaque clamd prenait environ 1 Go, un par contexte de test, et une exécution complète a épuisé la mémoire de la machine. La base réduite à la signature EICAR ramène cela à environ 14 Mo. Pour la même raison, on ne lance jamais deux suites complètes en même temps sur une machine.
+**6. Ce que ça a coûté une fois.** Quand ClamAV chargeait sa base complète, chaque clamd prenait environ 1 Go, un par contexte de test, et une exécution complète a épuisé la mémoire de la machine. La base réduite à la signature EICAR ramène cela à environ 14 Mo. Pour la même raison, on ne lance jamais deux suites complètes à la fois.
 
-**7. La sortie : un réglage commun.** Le délai de lecture est allé dans le [`application.yaml`][test-yaml] de test, chargé par tous les contextes : `spring.http.serviceclient.webhooks.read-timeout: 2s`, avec le commentaire que [`WebhookDeliveryTests`][webhook-tests] répond plus lentement pour obtenir un `Timeout`, et que le réglage est là plutôt que sur la classe, qui démarrerait un autre contexte. Aucune nouvelle clé, aucun nouveau contexte.
+**7. La sortie : un réglage commun.** Le délai de lecture est allé dans le [`application.yaml`][test-yaml] de test, chargé par tous les contextes : `spring.http.serviceclient.webhooks.read-timeout: 2s`. Un commentaire explique que [`WebhookDeliveryTests`][webhook-tests] répond plus lentement pour obtenir un `Timeout`. Il précise aussi que le réglage est là plutôt que sur la classe, qui démarrerait un autre contexte.
 
 **8. Les autres façons d'éviter un contexte.** Le dépôt applique la même idée ailleurs :
 
-- un bean de test toujours présent plutôt qu'un mock : `TestClock` au lieu de `@MockitoBean Clock` (guide 31) ;
-- un vrai outil plutôt qu'un mock : Mailpit lit les emails envoyés (guide 31) ;
+- un bean de test toujours présent plutôt qu'un mock : `TestClock` au lieu de `@MockitoBean Clock` ;
+- un vrai outil plutôt qu'un mock : Mailpit lit les emails envoyés ;
 - un réglage enregistré par propriété : `SqlStatementCounter` passe par `hibernate.session_factory.statement_inspector` (guide 31) ;
-- une annotation de famille quand une configuration différente est inévitable : [`@DeadLetterIntegrationTest`][dead-letter] porte ses propriétés, son mock de `JavaMailSender` et son espion d'`ObjectStorage` pour trois classes (`MailQueueDeadLetterTests`, `AvatarQueueDeadLetterTests`, `DataExportFailureTests`), soit un contexte et non trois ;
+- une annotation de famille quand une configuration différente est inévitable : [`@DeadLetterIntegrationTest`][dead-letter] porte ses propriétés, son mock de `JavaMailSender` et son espion d'`ObjectStorage` pour trois classes (`MailQueueDeadLetterTests`, `AvatarQueueDeadLetterTests`, `DataExportFailureTests`). Cela fait un contexte et non trois ;
 - les mêmes annotations recopiées à l'identique : [`MonitoringTests`][monitoring], `PublicEndpointErrorTests` et `TaskRoomsWebSocketTests` portent les trois mêmes annotations (`@Import(TestcontainersConfiguration.class)`, `@AutoConfigureMetrics`, `@SpringBootTest(webEnvironment = RANDOM_PORT, properties = "management.server.port=0")`) et partagent un contexte ;
 - la slice JDBC importe toutes les classes `*Queries` par un filtre à expression régulière plutôt que la seule classe testée ([`JdbcSliceTest`][jdbc]).
 
-Au total, une quarantaine de classes d'intégration partagent cinq contextes d'intégration (`@IntegrationTest`, `@DeadLetterIntegrationTest`, `OutboxBrokerFailureTests` avec son espion de `RabbitTemplate`, `RateLimitTests` avec ses limites actives, et le serveur réel de `MonitoringTests`), plus trois slices (web, JDBC, JPA).
+Au total, une quarantaine de classes d'intégration partagent cinq contextes (`@IntegrationTest`, `@DeadLetterIntegrationTest`, `OutboxBrokerFailureTests` avec son espion de `RabbitTemplate`, `RateLimitTests` avec ses limites actives, et le serveur réel de `MonitoringTests`), plus trois slices (web, JDBC, JPA).
 
 ## Quand ça se passe mal
 

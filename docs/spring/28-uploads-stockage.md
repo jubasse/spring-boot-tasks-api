@@ -4,10 +4,10 @@
 
 ## Contexte
 
-- **Problème** : accepter des fichiers de clients sans croire ce qu'ils annoncent (type, nom, contenu), les garder hors de la base, et les servir sans faire passer chaque téléchargement par l'API.
-- **Quand l'utiliser** : pièces jointes, photos, documents déposés par les utilisateurs ; fichiers produits par l'application (exports).
-- **Quand s'en passer** : quelques kilo-octets qui tiennent dans une colonne ; fichiers de travail qui ne quittent jamais le serveur.
-- **Dans ce dépôt** : `MediaService.store` contrôle la taille, le type réel (Apache Tika) et les virus (ClamAV), range le fichier sous `<usage>/<uuid>` dans un stockage compatible S3, et enregistre une ligne `media` avec son SHA-256. `storage.driver` choisit le driver (`rustfs` ou `aws-s3`).
+- **Problème** : accepter des fichiers de clients sans croire ce qu'ils annoncent (type, nom, contenu). Les garder hors de la base. Les servir sans faire passer chaque téléchargement par l'API.
+- **Quand l'utiliser** : pièces jointes, photos, documents déposés par les utilisateurs, et fichiers produits par l'application (exports).
+- **Quand s'en passer** : quelques kilo-octets qui tiennent dans une colonne, ou des fichiers de travail qui ne quittent jamais le serveur.
+- **Dans ce dépôt** : `MediaService.store` contrôle la taille, le type réel (Apache Tika) et les virus (ClamAV). Il range le fichier sous `<usage>/<uuid>` dans un stockage compatible S3 et enregistre une ligne `media` avec son SHA-256. `storage.driver` choisit le driver (`rustfs` ou `aws-s3`).
 - **Prérequis** : guides 01 (beans conditionnels), 03 (multipart) et 14 (travail après le commit). Versions : Spring Boot 4.1, AWS SDK for Java 2.55, Apache Tika 4.0, ClamAV 1.5.
 
 Où garder les fichiers :
@@ -55,14 +55,14 @@ Chaque contrôle a son statut de refus, du moins coûteux au plus coûteux :
         +-- rollback --> l'objet est supprimé
 ```
 
-- Le fichier est lu trois fois (détection, analyse, envoi) : `MultipartFile.getInputStream()` le rouvre à chaque appel.
-- Tomcat écrit toute partie dans un fichier temporaire (`file-size-threshold` vaut `0B`) : un conteneur en lecture seule a besoin d'un dossier temporaire inscriptible.
+- Le fichier est lu trois fois (détection, analyse, envoi), et `MultipartFile.getInputStream()` le rouvre à chaque appel.
+- Tomcat écrit toute partie dans un fichier temporaire (`file-size-threshold` vaut `0B`). Un conteneur en lecture seule a donc besoin d'un dossier temporaire inscriptible.
 
 ### Ne jamais croire le client
 
-- Le `Content-Type` de la partie et le nom du fichier sont choisis par le client : un exécutable renommé `.pdf` annonce `application/pdf`.
-- Apache Tika lit les premiers octets. Le nom ne fait qu'affiner un type que les octets montrent déjà : un ZIP ordinaire nommé `.docx` devient un document Word, mais un exécutable nommé `.pdf` reste un exécutable.
-- La clé de stockage ne vient jamais du nom du client. Le nom d'origine ne sert qu'à l'affichage, sans ses segments de chemin (certains clients envoient `C:\Users\...\report.pdf`).
+- Le `Content-Type` de la partie et le nom du fichier sont choisis par le client. Un exécutable renommé `.pdf` annonce `application/pdf`.
+- Apache Tika lit les premiers octets. Le nom ne fait qu'affiner un type que les octets montrent déjà. Un ZIP ordinaire nommé `.docx` devient un document Word, mais un exécutable nommé `.pdf` reste un exécutable.
+- La clé de stockage ne vient jamais du nom du client. Ce nom ne sert qu'à l'affichage, sans ses segments de chemin (certains clients envoient `C:\Users\...\report.pdf`).
 
 ### Le téléchargement par URL présignée
 
@@ -80,13 +80,13 @@ L'API signe une URL en local, et le navigateur télécharge directement auprès 
 ```
 
 - L'API ne transmet jamais le fichier : ses threads restent libres.
-- La signature couvre les en-têtes de réponse demandés. `Content-Disposition: attachment; filename*=UTF-8''...` force un téléchargement sous le nom d'origine : une page HTML ou SVG déposée ne s'exécute jamais dans le navigateur. Viennent aussi `Content-Type` et `Cache-Control: private, max-age=<validité>, immutable`.
-- Signer ne demande aucun appel au stockage : une URL par élément d'une liste ne coûte rien.
-- Une URL est valable `storage.presigned-url-ttl` (10 min ici), ou moins si elle est signée avec des identifiants temporaires (un rôle IAM) qui expirent avant.
+- La signature couvre les en-têtes de réponse demandés. `Content-Disposition: attachment; filename*=UTF-8''...` force un téléchargement sous le nom d'origine, si bien qu'une page HTML ou SVG déposée ne s'exécute jamais dans le navigateur. Viennent aussi `Content-Type` et `Cache-Control: private, max-age=<validité>, immutable`.
+- Signer ne demande aucun appel au stockage, donc une liste d'URL ne coûte rien.
+- Une URL est valable `storage.presigned-url-ttl` (10 min ici). Elle l'est moins longtemps si des identifiants temporaires (un rôle IAM) expirent avant.
 
 ### Un driver choisi par configuration
 
-- Le code dépend d'une interface ; une classe de configuration par valeur de `storage.driver` construit le client S3 à sa façon. Un serveur auto-hébergé reçoit un endpoint explicite, des clés statiques et des URL en path-style ; Amazon S3 reçoit une région et la chaîne d'identifiants par défaut d'AWS. Les deux partagent la même implémentation (mécanisme au guide 01).
+Le code dépend d'une interface. Une classe de configuration par valeur de `storage.driver` construit le client S3 à sa façon (mécanisme au guide 01). Un serveur auto-hébergé reçoit un endpoint explicite, des clés statiques et des URL en path-style. Amazon S3 reçoit une région et la chaîne d'identifiants par défaut d'AWS. Les deux partagent la même implémentation.
 
 ## Implémentation avec Spring
 
@@ -105,7 +105,7 @@ src/test/java/.../
   DocumentUploadTests.java               la vérification (étape 9)
 ```
 
-L'exemple gère des documents rattachés à des dossiers clients, avec deux usages : `LOGO` et `ATTACHMENT`. Les exceptions des extraits (`EmptyFileException`, `FileTooLargeException`, `UnsupportedFileTypeException`, `InfectedFileException`, `AntivirusUnavailableException`, `StorageUnavailableException`) sont des `RuntimeException` du projet, converties en statuts par le gestionnaire global (guide 05).
+L'exemple gère des documents rattachés à des dossiers clients, avec deux usages : `LOGO` et `ATTACHMENT`. Les exceptions des extraits (`EmptyFileException`, `FileTooLargeException`, `UnsupportedFileTypeException`, `InfectedFileException`, `AntivirusUnavailableException`, `StorageUnavailableException`) sont des `RuntimeException` que le gestionnaire global convertit en statuts (guide 05).
 
 ### Un fichier vérifié, stocké dans S3
 
@@ -137,7 +137,7 @@ L'exemple gère des documents rattachés à des dossiers clients, avec deux usag
 </dependencies>
 ```
 
-**Étape 2. Déclarer l'interface du stockage.** Les services ne voient jamais S3 : un autre driver est une autre implémentation.
+**Étape 2. Déclarer l'interface du stockage.** Les services ne voient jamais S3. Un autre driver est une autre implémentation.
 
 ```java
 public interface FileStorage {
@@ -237,7 +237,7 @@ class S3CompatibleStorageConfiguration {
 
 Un serveur auto-hébergé sert ses buckets sous `/bucket`, d'où le path-style. RustFS ignore la région. `StorageProperties` doit être enregistrée dans une configuration toujours chargée (guide 01).
 
-**Étape 5. Contrôler la taille et le type réel.** Les contrôles les moins chers passent d'abord ; Tika lit les octets, et le nom ne fait qu'affiner.
+**Étape 5. Contrôler la taille et le type réel.** Les contrôles les moins chers passent d'abord. Tika lit ensuite les octets, et le nom ne fait qu'affiner.
 
 ```java
 public enum DocumentUsage {
@@ -291,7 +291,7 @@ String validate(MultipartFile file, DocumentUsage usage) throws IOException {
 }
 ```
 
-**Étape 6. Analyser le fichier avec ClamAV.** La commande `INSTREAM` de clamd reçoit le fichier par morceaux sur TCP, sans bibliothèque cliente. Un antivirus injoignable fait refuser l'upload.
+**Étape 6. Analyser le fichier avec ClamAV.** La commande `INSTREAM` de clamd reçoit le fichier par morceaux sur TCP, sans bibliothèque cliente. Si l'antivirus est injoignable, l'upload est refusé.
 
 ```java
 public interface VirusScanner {
@@ -340,7 +340,7 @@ public class ClamAvScanner implements VirusScanner {
 }
 ```
 
-**Étape 7. Stocker sous une clé neutre, et nettoyer après un rollback.** L'objet part avant le commit : si la transaction est annulée, rien ne doit rester dans le bucket.
+**Étape 7. Stocker sous une clé neutre, et nettoyer après un rollback.** L'objet part avant le commit. Si la transaction est annulée, rien ne doit rester dans le bucket.
 
 ```java
 @Transactional
@@ -376,7 +376,7 @@ private static String displayName(String sent) {          // "C:\\Users\\a\\devi
 
 `Document` est l'entité JPA de l'exemple.
 
-**Étape 8. Servir le fichier par une URL présignée.** Le navigateur télécharge directement auprès du stockage, et les en-têtes signés forcent un téléchargement sous le nom d'origine.
+**Étape 8. Servir le fichier par une URL présignée.** Les en-têtes signés forcent un téléchargement sous le nom d'origine.
 
 ```java
 // dans S3FileStorage
@@ -457,7 +457,7 @@ Les réglages de Spring Boot et de Tomcat pour les uploads :
 | `spring.servlet.multipart.file-size-threshold` | `0B` | seuil d'écriture sur disque : toujours |
 | `server.tomcat.max-swallow-size` | `2MB` | corps jeté après un refus ; au-delà, connexion coupée |
 
-Limites de cette version : un objet peut rester orphelin si le processus meurt avant le commit, et une URL distribuée ne se révoque pas.
+Limites de cette version : un objet peut rester orphelin si le processus meurt avant le commit. Une URL distribuée ne se révoque pas.
 
 ## Concepts avancés
 
@@ -479,14 +479,13 @@ Le préfixe `z` rend la commande et la réponse terminées par un octet nul :
 
 ### Sous le capot : un fichier, deux mondes
 
-- La ligne est transactionnelle, l'objet ne l'est pas. Un envoi est défait par `afterCompletion` si le statut n'est pas « validé ». Une suppression se fait dans `afterCommit` : un rollback garde le fichier vers lequel la ligne pointe encore.
+- La ligne est transactionnelle, l'objet ne l'est pas. Un envoi est défait par `afterCompletion` si le statut n'est pas « validé ». Une suppression se fait dans `afterCommit`, pour qu'un rollback garde le fichier vers lequel la ligne pointe encore.
 - Si le processus meurt entre l'envoi et le commit, aucun callback ne tourne. Un balayage périodique supprime alors les objets sans ligne, après un délai de grâce (1 jour ici) qui épargne les uploads en cours.
 
 ### Plusieurs instances
 
-- Le bucket est partagé : n'importe quelle instance sert n'importe quelle URL, ce que des disques locaux ne permettraient pas.
-- Chaque instance a son propre cache d'URL signées (guide 17).
-- Le nettoyage tourne sur une seule instance par passage (guide 21).
+- Le bucket est partagé : n'importe quelle instance sert n'importe quelle URL.
+- Chaque instance a son propre cache d'URL signées (guide 17). Le nettoyage tourne sur une seule instance par passage (guide 21).
 
 ## Pièges à éviter
 
@@ -511,7 +510,7 @@ Le préfixe `z` rend la commande et la réponse terminées par un octet nul :
 
 ## En résumé
 
-**À retenir :** on ne croit rien de ce que le client annonce : taille, type réel lu dans les octets et antivirus en fail closed, puis une clé choisie par l'application dans un stockage objet, un nettoyage si la transaction échoue, et des téléchargements servis par URL présignée en pièce jointe.
+**À retenir :** on ne croit rien de ce que le client annonce. On contrôle la taille, le type réel lu dans les octets et les virus (fail closed). On choisit la clé dans un stockage objet, on nettoie si la transaction échoue, et on sert les téléchargements par URL présignée en pièce jointe.
 
 - [ ] Limites multipart au moins égales à la plus grande limite métier
 - [ ] Type détecté sur les octets (Tika), jamais sur le `Content-Type` envoyé
@@ -579,10 +578,10 @@ Ces limites sont des réglages, et non des constantes d'énumération comme dans
 Ce qui est propre au dépôt :
 
 - L'ordre de `validate` : vide (400), taille (413), Tika (415), antivirus (422 pour le problème typé `infected-file`, 503 quand clamd échoue). Les 400, 413, 415 et 503 sont des problèmes `about:blank` (`ApiExceptionHandler`).
-- `S3ObjectStorage.presignDownload` résout lui-même les identifiants et renvoie `expiresAt`, la plus proche des deux expirations. `CacheConfiguration.reuseWindow` redistribue une URL pendant la moitié de sa validité au plus (guide 17). Le `@Cacheable` est sur `MediaService`, pas sur `MediaUrls`, dont `avatarOf` appelle `of` sur lui-même et contournerait le proxy Spring.
+- `S3ObjectStorage.presignDownload` résout lui-même les identifiants et renvoie `expiresAt`, la plus proche des deux expirations. `CacheConfiguration.reuseWindow` redistribue une URL pendant la moitié de sa validité au plus (guide 17). Le `@Cacheable` est sur `MediaService` et non sur `MediaUrls`, dont `avatarOf` appelle `of` sur lui-même et contournerait le proxy Spring.
 - Avec `aws-s3`, le bucket est créé par l'infrastructure, jamais par l'application. Ce driver n'est pas couvert par les tests d'intégration.
-- Les photos de profil passent par le même `store` (`AVATAR_UPLOAD`), puis un 202 et un worker qui les ré-encode. Le [cas pratique](cas-pratiques/upload-photo-profil.md) raconte tout le trajet.
-- `MediaCleanupJob` (verrou `media-cleanup`) purge les pièces jointes des tâches et les photos des utilisateurs supprimés depuis 30 jours, les lignes `media` sans référence et les objets sans ligne plus vieux d'un jour. Il utilise du SQL natif (`MediaCleanupQueries`), car les lignes supprimées logiquement sont invisibles pour JPA. Les objets partent après le commit, et un échec est balayé au passage suivant.
+- Les photos de profil passent par le même `store` (`AVATAR_UPLOAD`), puis un 202 et un worker qui les ré-encode. Le [cas pratique](cas-pratiques/upload-photo-profil.md) détaille le trajet.
+- `MediaCleanupJob` (verrou `media-cleanup`) purge les pièces jointes des tâches et les photos des utilisateurs supprimés depuis 30 jours. Il purge aussi les lignes `media` sans référence et les objets sans ligne plus vieux d'un jour. Il utilise du SQL natif (`MediaCleanupQueries`), car les lignes supprimées logiquement sont invisibles pour JPA. Les objets partent après le commit, et un échec est balayé au passage suivant.
 
 Les tests :
 

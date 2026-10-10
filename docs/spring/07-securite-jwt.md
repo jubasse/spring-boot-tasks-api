@@ -54,8 +54,8 @@ Chaque requête traverse les filtres de Spring Security avant d'atteindre Spring
   DispatcherServlet --> contrôleur
 ```
 
-- Sans jeton, la requête continue en anonyme. Un jeton présent mais invalide (mal signé, expiré) l'arrête tout de suite : 401.
-- `AuthorizationFilter` applique ensuite les règles par URL : un refus donne 401 à un anonyme, 403 à un appelant authentifié.
+- Sans jeton, la requête continue en anonyme. Un jeton présent mais invalide (mal signé, expiré) l'arrête tout de suite avec un 401.
+- `AuthorizationFilter` applique ensuite les règles par URL. Un refus donne 401 à un anonyme et 403 à un appelant authentifié.
 
 ### Le JWT signé
 
@@ -78,8 +78,8 @@ L'API signe le jeton à la connexion, puis vérifie la signature à chaque requ�
                                         appelant authentifié
 ```
 
-- Le contenu est encodé en Base64url, pas chiffré : la signature empêche de le modifier, pas de le lire.
-- HS256 utilise un seul secret pour signer et vérifier : qui peut vérifier peut aussi émettre. RS256 sépare une clé privée (signer) et une clé publique (vérifier).
+- Le contenu est encodé en Base64url, pas chiffré. La signature empêche de le modifier, pas de le lire.
+- HS256 utilise un seul secret pour signer et vérifier, donc qui peut vérifier peut aussi émettre. RS256 sépare une clé privée (signer) et une clé publique (vérifier).
 - Pour HS256, le secret doit faire au moins 256 bits (RFC 7518).
 
 ### Sans état, donc sans CSRF
@@ -87,8 +87,8 @@ L'API signe le jeton à la connexion, puis vérifie la signature à chaque requ�
 Une API « sans état » (stateless) ne garde rien entre deux requêtes : tout est dans le jeton.
 
 - Aucune session HTTP, donc rien à partager entre instances.
-- Aucune déconnexion d'un jeton d'accès : il reste valable jusqu'à son expiration. On le garde court (15 min), on le renouvelle par un jeton de rafraîchissement (guide 09), et on vérifie l'état du compte à part (guide 08).
-- Aucune protection CSRF nécessaire. Une attaque CSRF fait envoyer par le navigateur de la victime, depuis un autre site, une requête où il ajoute tout seul ses cookies. Un jeton dans `Authorization` n'est jamais ajouté automatiquement : la requête forgée arrive sans droits.
+- Aucune déconnexion d'un jeton d'accès : il reste valable jusqu'à son expiration. On le garde court (15 min) et on le renouvelle par un jeton de rafraîchissement (guide 09). L'état du compte se vérifie à part (guide 08).
+- Aucune protection CSRF nécessaire. Une attaque CSRF pousse le navigateur de la victime à envoyer, depuis un autre site, une requête où il ajoute tout seul ses cookies. Il n'ajoute jamais de lui-même un jeton `Authorization` : la requête forgée arrive sans droits.
 
 ### Public ne veut pas dire « sans jeton »
 
@@ -104,7 +104,7 @@ Une API « sans état » (stateless) ne garde rien entre deux requêtes : tout e
   jeton expiré --> 401, avant même que la règle permitAll soit lue
 ```
 
-Un client qui a gardé son jeton expiré reçoit 401 de l'endpoint même qui doit lui en donner un nouveau. La parade : un résolveur de jeton qui ignore l'en-tête sur les endpoints publics (étape 8).
+Un client qui a gardé son jeton expiré reçoit donc 401 de l'endpoint qui doit lui en donner un nouveau. La parade est un résolveur de jeton qui ignore l'en-tête sur les endpoints publics (étape 8).
 
 ## Implémentation avec Spring
 
@@ -333,9 +333,9 @@ public class SecurityConfiguration {
 }
 ```
 
-CSRF est actif par défaut : il faut le couper. Couper `formLogin` et `httpBasic` rend l'intention explicite.
+CSRF est actif par défaut, il faut donc le couper. Couper `formLogin` et `httpBasic` rend l'intention explicite.
 
-**Étape 8. Ignorer le jeton sur les endpoints publics.** Spring Security utilise tout seul un bean `BearerTokenResolver` à la place du sien ; renvoyer `null` veut dire « pas de jeton ».
+**Étape 8. Ignorer le jeton sur les endpoints publics.** Spring Security utilise un bean `BearerTokenResolver` à la place du sien. Renvoyer `null` veut dire « pas de jeton ».
 
 ```java
 // dans SecurityConfiguration
@@ -401,7 +401,7 @@ Les réponses d'un refus :
 | jeton mal formé, mal signé, expiré ou d'un autre émetteur | 401 | `Bearer error="invalid_token", ...` |
 | appelant authentifié, refusé par une règle | 403 | `Bearer error="insufficient_scope", ...` |
 
-Limites de cette version : un jeton d'accès reste valable jusqu'à son expiration, même si le compte est désactivé entre-temps (guide 08), et changer le secret invalide tous les jetons d'accès d'un coup.
+Limites de cette version : un jeton d'accès reste valable jusqu'à son expiration, même si le compte est désactivé entre-temps (guide 08). Changer le secret invalide tous les jetons d'accès d'un coup.
 
 ## Concepts avancés
 
@@ -460,7 +460,7 @@ Le trajet de `authenticationManager.authenticate(...)` :
   authentification réussie
 ```
 
-- Pour un email inconnu, le fournisseur compare quand même le mot de passe à un hachage factice : même durée de réponse, l'existence du compte ne fuit pas.
+- Pour un email inconnu, le fournisseur compare quand même le mot de passe à un hachage factice. La durée de réponse reste la même, et l'existence du compte ne fuit pas.
 - Le compte désactivé est refusé avant la comparaison. Le service traduit toutes ces exceptions en un seul 401.
 
 ### Sous le capot : les dispatchs internes
@@ -490,7 +490,7 @@ Une même requête peut traverser la chaîne plusieurs fois :
 
 ### Un second port pour Actuator
 
-Quand Actuator écoute sur son propre port (`management.server.port`, guide 32), ses requêtes traversent la même chaîne, et ses pages d'erreur resteraient derrière l'authentification. On autorise donc tout ce qui arrive sur ce port :
+Quand Actuator écoute sur son propre port (`management.server.port`, guide 32), ses requêtes traversent la même chaîne. Ses pages d'erreur resteraient derrière l'authentification, donc on autorise tout ce qui arrive sur ce port :
 
 ```java
 // local.management.port : publié par Spring Boot une fois le port de gestion démarré
@@ -507,13 +507,13 @@ Ce port ne doit être joignable que depuis le réseau de supervision.
 
 ### Plusieurs instances
 
-- Chaque instance vérifie seule, sans session collante (sticky) : elles doivent toutes recevoir le même `JWT_SECRET`, sinon un jeton émis par l'une est refusé par l'autre.
-- Changer le secret invalide les jetons d'accès en cours ; le jeton de rafraîchissement, opaque, ne dépend pas du secret (guide 09).
-- Dès que plusieurs services vérifient les jetons, on passe à RS256 : avec HS256, chacun pourrait en émettre.
+- Chaque instance vérifie seule, sans session collante (sticky). Toutes doivent recevoir le même `JWT_SECRET`, sinon un jeton émis par l'une est refusé par l'autre.
+- Changer le secret invalide les jetons d'accès en cours. Le jeton de rafraîchissement, opaque, ne dépend pas du secret (guide 09).
+- Dès que plusieurs services vérifient les jetons, on passe à RS256, car avec HS256 chacun pourrait en émettre.
 
 ### Surveiller
 
-- `logging.level.org.springframework.security: TRACE` affiche chaque filtre et chaque décision : utile en développement, trop bavard en production.
+- `logging.level.org.springframework.security: TRACE` affiche chaque filtre et chaque décision. C'est utile en développement, trop bavard en production.
 - Un 401 porte sa raison dans `WWW-Authenticate` (`error_description`).
 
 ## Pièges à éviter
@@ -605,10 +605,10 @@ Les réglages, dans `application.yaml` :
 
 Ce qui est propre au dépôt :
 
-- Le jeton porte `sub` (l'email), `uid` (l'UUID du compte), `roles` (triés, avec `ROLE_`) et un `jti` aléatoire. Le code identifie l'appelant par `CurrentUser`, donc par `uid`, jamais par `sub`.
+- Le jeton porte `sub` (l'email), `uid` (l'UUID du compte), `roles` (triés, avec `ROLE_`) et un `jti` aléatoire. `CurrentUser` identifie l'appelant par `uid`, jamais par `sub`.
 - Le résolveur ignore aussi l'en-tête sur `/livez`, `/readyz` et la poignée de main `/ws` : le jeton des salons de tâches arrive dans la trame STOMP `CONNECT` (guide 25).
 - Les endpoints publics sont écrits en `/api/v1/...`, les règles restrictives en `/api/*/...`, pour couvrir toutes les versions (guide 04).
-- Le port de gestion est reconnu par `local.management.port`. Quand Actuator partage le port de l'API, la propriété est absente et la règle ne correspond à rien.
+- Le port de gestion est reconnu par `local.management.port`. Si Actuator partage le port de l'API, la propriété est absente et la règle ne correspond à rien.
 - `JWT_SECRET` se règle dans `.env` en développement (voir `.env.example`) ; les tests ont leur secret dans `src/test/resources/config/application.yaml`.
 
 Les tests : [`BearerTokenWebMvcTests`][bearer-tests] (vrais en-têtes : jeton modifié, autre clé, autre émetteur, expiration, rôles lus sans préfixe), [`JwtConfigurationTest`][jwt-config-test] (secret de moins de 32 octets refusé), [`RefreshTokenApiTests`][refresh-tests] (un jeton expiré laissé dans l'en-tête n'empêche pas le rafraîchissement), [`PublicEndpointErrorTests`][error-tests] (sur un vrai port, le 400 d'un endpoint public reste un 400), [`AuthControllerTests`][auth-tests] (la connexion de bout en bout).

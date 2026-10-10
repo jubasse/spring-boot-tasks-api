@@ -4,7 +4,7 @@
 
 ## Contexte
 
-- **Problème** : deux requêtes (ou deux instances) travaillent sur les mêmes lignes au même moment. Un compteur perd un incrément, une limite est dépassée, la modification d'un admin est écrasée, un job tourne deux fois.
+- **Problème** : deux requêtes (ou deux instances) travaillent sur les mêmes lignes au même moment. Un compteur perd un incrément, une limite est dépassée, une modification est écrasée, un job tourne deux fois.
 - **Quand l'utiliser** : tout « lire, décider, écrire » sur des données partagées, et toute file de travail partagée par plusieurs threads ou instances.
 - **Quand s'en passer** : une donnée que seule une requête touche (ses propres lignes neuves).
 - **Dans ce dépôt** : `@Version` sur les tâches, un verrou sur la ligne du compte pour compter les exports et les webhooks, `SKIP LOCKED` pour l'outbox et les réessais de webhooks, un `UPDATE` conditionnel pour réserver un export, une contrainte unique derrière chaque contrôle d'existence.
@@ -27,14 +27,14 @@ Les outils, du plus léger au plus lourd :
 
 - **Accès concurrent** : deux transactions qui tournent en même temps sur les mêmes lignes.
 - **Mise à jour perdue** : une écriture écrasée par une autre, partie d'une valeur plus ancienne.
-- **Verrou optimiste** : aucun verrou ; un numéro de version révèle, à l'écriture, que quelqu'un a écrit avant.
-- **Verrou de ligne** (pessimiste) : `SELECT ... FOR UPDATE` bloque la ligne jusqu'à la fin de la transaction ; les autres attendent.
-- **Bail** (lease) : une date jusqu'à laquelle un travail réservé appartient à celui qui l'a pris ; au-delà, un autre peut le reprendre.
-- **Interblocage** (deadlock) : deux transactions attendent chacune un verrou que l'autre tient ; Postgres en annule une.
+- **Verrou optimiste** : aucun verrou. Un numéro de version révèle, à l'écriture, que quelqu'un a écrit avant.
+- **Verrou de ligne** (pessimiste) : `SELECT ... FOR UPDATE` bloque la ligne jusqu'à la fin de la transaction, et les autres attendent.
+- **Bail** (lease) : une date jusqu'à laquelle un travail réservé appartient à celui qui l'a pris. Au-delà, un autre peut le reprendre.
+- **Interblocage** (deadlock) : deux transactions attendent chacune un verrou que l'autre tient. Postgres en annule une.
 
 ### Lire, décider, écrire : la fenêtre
 
-Dans l'isolation par défaut de Postgres (`READ COMMITTED`), chaque instruction voit ce qui était validé avant son départ. Deux transactions peuvent lire la même valeur, décider, puis écrire toutes les deux. Tout contrôle en Java (« moins de 5 », « email libre ») suivi d'une écriture a cette fenêtre.
+Dans l'isolation par défaut de Postgres (`READ COMMITTED`), chaque instruction voit ce qui était validé avant son départ. Deux transactions peuvent donc lire la même valeur, décider, puis écrire toutes les deux. Tout contrôle en Java (« moins de 5 », « email libre ») suivi d'une écriture a cette fenêtre.
 
 ```
  requête A                          requête B
@@ -50,8 +50,8 @@ Trois façons de la fermer : faire décider la base en une instruction, verrouil
 
 ### Optimiste ou pessimiste
 
-- Optimiste (`@Version`) : le second écrivain échoue et la requête répond 409. Adapté quand les conflits sont rares.
-- Pessimiste (`FOR UPDATE`) : la seconde transaction attend le commit de la première. Adapté quand les conflits sont probables (une limite par propriétaire).
+- Optimiste (`@Version`) : adapté aux conflits rares. Le second écrivain échoue et la requête répond 409.
+- Pessimiste (`FOR UPDATE`) : adapté aux conflits probables, comme une limite par propriétaire. La seconde transaction attend le commit de la première.
 
 Le même conflit, traité des deux façons :
 
@@ -63,7 +63,7 @@ Le même conflit, traité des deux façons :
 
 ### Partager un stock de travail : `SKIP LOCKED` et bail
 
-Plusieurs pollers prennent des lignes à traiter. `FOR UPDATE` seul les fait s'attendre ; avec `SKIP LOCKED`, chacun prend les lignes que les autres n'ont pas verrouillées.
+Plusieurs pollers prennent des lignes à traiter. `FOR UPDATE` seul les fait s'attendre. Avec `SKIP LOCKED`, chacun prend les lignes que les autres n'ont pas verrouillées.
 
 Le verrou de ligne s'arrête au commit. Pour garder une ligne réservée pendant un traitement hors transaction, on avance une date dans la même instruction : c'est le bail. Si le worker plante, la ligne redevient due à la fin du bail.
 
@@ -79,7 +79,7 @@ Le verrou de ligne s'arrête au commit. Pour garder une ligne réservée pendant
  5 min plus tard : 1 2 3 redeviennent dues --> reprises par n'importe qui
 ```
 
-Le SQL se trouve au guide 13 (étape 5). La livraison est au moins une fois : le traitement doit tolérer un doublon.
+Le SQL est au guide 13 (étape 5). La livraison est au moins une fois, donc le traitement tolère un doublon.
 
 ## Implémentation avec Spring
 
@@ -103,7 +103,7 @@ src/test/java/.../
 
 ### Deux requêtes sur une instance
 
-**Étape 1. Numéroter les versions.** Hibernate ajoute la version au `WHERE` de son `UPDATE` : zéro ligne modifiée veut dire que quelqu'un a écrit avant.
+**Étape 1. Numéroter les versions.** Hibernate ajoute la version au `WHERE` de son `UPDATE`. Zéro ligne modifiée veut dire que quelqu'un a écrit avant.
 
 ```java
 // dans Invoice (mapping : guide 12)
@@ -112,7 +112,7 @@ src/test/java/.../
 private long version;
 ```
 
-**Étape 2. Répondre 409 au conflit.** L'exception arrive au commit, après le retour de la méthode du service ; le gestionnaire global la transforme en problème (guide 05).
+**Étape 2. Répondre 409 au conflit.** L'exception arrive au commit, après le retour de la méthode du service. Le gestionnaire global la transforme en problème (guide 05).
 
 ```java
 @RestControllerAdvice
@@ -126,7 +126,7 @@ public class ApiExceptionHandler {
 }
 ```
 
-**Étape 3. Laisser la contrainte unique trancher en dernier.** Un contrôle d'existence en Java laisse une fenêtre ; la contrainte la ferme, sans laisser fuiter du SQL.
+**Étape 3. Laisser la contrainte unique trancher en dernier.** Un contrôle d'existence en Java laisse une fenêtre. La contrainte la ferme, sans laisser fuiter du SQL.
 
 ```java
 // dans ApiExceptionHandler
@@ -136,7 +136,7 @@ public ProblemDetail handleDataIntegrityViolation(DataIntegrityViolationExceptio
 }
 ```
 
-**Étape 4. Sérialiser les décisions d'un même propriétaire.** En verrouillant la ligne du propriétaire, deux requêtes simultanées se comptent l'une l'autre : la seconde lit le total après le commit de la première.
+**Étape 4. Sérialiser les décisions d'un même propriétaire.** En verrouillant la ligne du propriétaire, deux requêtes simultanées se comptent l'une l'autre. La seconde lit le total après le commit de la première.
 
 ```java
 public interface CustomerRepository extends JpaRepository<Customer, UUID> {
@@ -175,7 +175,7 @@ public class ApiKeyService {
 
 ### Plusieurs instances et travail partagé
 
-**Étape 5. Réserver un travail par un `UPDATE` conditionnel.** Un message en double trouve la ligne déjà prise : la base décide en une instruction, et le nombre de lignes renvoyé dit qui a gagné.
+**Étape 5. Réserver un travail par un `UPDATE` conditionnel.** Un message en double trouve la ligne déjà prise. La base décide en une instruction, et le nombre de lignes renvoyé dit qui a gagné.
 
 ```java
 public interface ExportRepository extends JpaRepository<Export, UUID> {
@@ -205,7 +205,7 @@ if (claimed == null || claimed == 0) {
 // ... le travail long, hors transaction
 ```
 
-**Étape 6. Verrouiller toujours dans le même ordre.** Deux transactions qui verrouillent les mêmes lignes dans l'ordre inverse s'attendent pour toujours ; Postgres en annule alors une.
+**Étape 6. Verrouiller toujours dans le même ordre.** Deux transactions qui verrouillent les mêmes lignes dans l'ordre inverse s'attendent pour toujours, et Postgres en annule une.
 
 ```java
 // dans ApiKeyService : toute modification des clés d'un client verrouille d'abord le client
@@ -243,7 +243,7 @@ class ApiKeyLimitTests {
 }
 ```
 
-Sans `findByIdForUpdate`, ce test doit échouer de temps en temps.
+Sans `findByIdForUpdate`, ce test échoue de temps en temps.
 
 ### Référence rapide
 
@@ -262,15 +262,15 @@ Les exceptions de conflit :
 | `DataIntegrityViolationException` | contrainte unique ou clé étrangère violée | 409 sans type |
 | `PessimisticLockingFailureException` | interblocage, délai de verrou | 500 (aucun gestionnaire dédié) |
 
-Limites de cette version : la version n'est contrôlée qu'entre deux transactions du serveur. Un client qui édite une page longtemps peut écraser une modification faite entre-temps, sauf s'il renvoie la version (`ETag` / `If-Match`), ce que ce dépôt ne fait pas.
+Limites de cette version : la version n'est contrôlée qu'entre deux transactions du serveur. Un client qui édite une page longtemps peut écraser une modification faite entre-temps, sauf s'il renvoie la version (`ETag` / `If-Match`). Ce dépôt ne le fait pas.
 
 ## Concepts avancés
 
 ### Sous le capot : le verrou optimiste
 
-Hibernate écrit `UPDATE invoices SET ..., version = 8 WHERE id = ? AND version = 7`. Si zéro ligne est modifiée, il lève une exception, que Spring traduit en `ObjectOptimisticLockingFailureException` (une sous-classe de `OptimisticLockingFailureException`).
+Hibernate écrit `UPDATE invoices SET ..., version = 8 WHERE id = ? AND version = 7`. Si zéro ligne est modifiée, il lève une exception que Spring traduit en `ObjectOptimisticLockingFailureException` (une sous-classe de `OptimisticLockingFailureException`).
 
-Avec le dirty checking, l'`UPDATE` part au flush, le plus souvent au commit : l'exception sort du proxy Spring après le corps de la méthode, et un `try` autour du setter n'attrape rien.
+Avec le dirty checking, l'`UPDATE` part au flush, le plus souvent au commit. L'exception sort donc du proxy Spring après le corps de la méthode, et un `try` autour du setter n'attrape rien.
 
 ```
  A : lit version 7          B : lit version 7
@@ -281,12 +281,12 @@ Avec le dirty checking, l'`UPDATE` part au flush, le plus souvent au commit : l'
 
 ### Sous le capot : ce que Hibernate 7 verrouille
 
-- Sur Postgres, `PESSIMISTIC_WRITE` devient `FOR NO KEY UPDATE`. Il bloque les autres écrivains et les `FOR UPDATE`, mais pas le `FOR KEY SHARE` que prend la vérification d'une clé étrangère : on peut encore insérer des lignes qui référencent la ligne verrouillée.
-- Hibernate 7 ne verrouille que les lignes de l'entité interrogée (portée `ROOT_ONLY`, `PessimisticLockScope.NORMAL` en JPA). Les lignes jointes par un fetch ne sont pas verrouillées ; verrouiller toutes les tables chargées était l'ancien comportement (`INCLUDE_FETCHES`).
+- Sur Postgres, `PESSIMISTIC_WRITE` devient `FOR NO KEY UPDATE`. Il bloque les autres écrivains et les `FOR UPDATE`, mais pas le `FOR KEY SHARE` que prend la vérification d'une clé étrangère. On peut donc encore insérer des lignes qui référencent la ligne verrouillée.
+- Hibernate 7 ne verrouille que les lignes de l'entité interrogée (portée `ROOT_ONLY`, `PessimisticLockScope.NORMAL` en JPA). Les lignes jointes par un fetch ne sont pas verrouillées. Verrouiller toutes les tables chargées était l'ancien comportement (`INCLUDE_FETCHES`).
 
 ### Interblocages
 
-Postgres détecte l'interblocage et annule une des deux transactions avec l'état SQL `40P01` (« deadlock detected »). Le dialecte Postgres d'Hibernate le traduit en `LockAcquisitionException`, qui remonte côté Spring dans la famille de `PessimisticLockingFailureException`.
+Postgres détecte l'interblocage et annule une des deux transactions avec l'état SQL `40P01` (« deadlock detected »). Hibernate le traduit en `LockAcquisitionException`, qui remonte côté Spring dans la famille de `PessimisticLockingFailureException`.
 
 Pour l'éviter, toute transaction qui touche un groupe de lignes verrouille d'abord la même ligne de tête (le propriétaire, le compte) :
 
@@ -301,7 +301,7 @@ Pour l'éviter, toute transaction qui touche un groupe de lignes verrouille d'ab
 
 ### Plusieurs instances
 
-Tous les outils de ce guide vivent dans la base, donc ils tiennent d'une instance à l'autre. Un bloc `synchronized` ou un `ReentrantLock` ne protège qu'une JVM. Pour un travail « une fois par tour », on prend un verrou de planificateur (ShedLock, guide 21).
+Les outils de ce guide vivent dans la base, donc ils tiennent d'une instance à l'autre. Un bloc `synchronized` ou un `ReentrantLock` ne protège qu'une JVM. Pour un travail « une fois par tour », on prend un verrou de planificateur (ShedLock, guide 21).
 
 ## Pièges à éviter
 
@@ -329,7 +329,7 @@ Tous les outils de ce guide vivent dans la base, donc ils tiennent d'une instanc
 
 ## En résumé
 
-**À retenir :** tout « lire, décider, écrire » sur des données partagées a une fenêtre, qu'on ferme dans la base : une instruction atomique quand le SQL le permet, un verrou sur la ligne du propriétaire quand la décision lit plusieurs lignes, `@Version` pour détecter un écrasement, `SKIP LOCKED` avec un bail pour partager le travail, et une contrainte unique en dernier recours, toujours traduite en 409.
+**À retenir :** tout « lire, décider, écrire » sur des données partagées a une fenêtre, qu'on ferme dans la base. On utilise une instruction atomique quand le SQL le permet, un verrou sur la ligne du propriétaire quand la décision lit plusieurs lignes, `@Version` pour détecter un écrasement, et `SKIP LOCKED` avec un bail pour partager le travail. Une contrainte unique reste le dernier recours, toujours traduite en 409.
 
 - [ ] Aucune décision prise sur une lecture sans verrou ni contrainte derrière
 - [ ] `@Version` sur les entités modifiées par plusieurs requêtes, conflit en 409
@@ -382,11 +382,11 @@ Les réponses de conflit :
 
 Ce qui est propre au dépôt :
 
-- `findByIdForUpdate` sur la ligne du compte est le premier verrou commun : `UserService`, `EmailVerificationService`, `PasswordResetService`, `DataExportService.request`, `WebhookEndpointService.create`, `AvatarService`. Il ignore les comptes supprimés (JPQL).
-- L'upload d'avatar et le worker se sont bloqués l'un l'autre (`40P01`) jusqu'à ce que les deux prennent d'abord le verrou de la ligne utilisateur. Des colonnes différentes de la même ligne s'écrasaient aussi, jusqu'à `@DynamicUpdate` (guide 12).
-- `WebhookDeliveryService.record` verrouille la livraison, puis le point de terminaison explicitement : deux échecs enregistrés ensemble le désactivaient tous deux et prévenaient son propriétaire deux fois. Hibernate 7 ne le verrouille pas à travers la jointure.
-- `DataExportRepository.claim` utilise `@Modifying(flushAutomatically = true, clearAutomatically = true)`. Un message en double trouve l'export `RUNNING` sous un bail vivant et ne fait rien ; `DataExportRecoveryJob` remet en file les exports dont le bail est expiré (guide 22).
-- Deux pollers sans ShedLock partagent leurs lignes avec `SKIP LOCKED` : `OutboxRelayJob` (par `OutboxMessageRepository`) et `WebhookRetryJob` (par `WebhookDeliveryQueries.claimDue`, avec le bail `webhooks.delivery-lease`) (guides 20 et 21).
+- `findByIdForUpdate` sur la ligne du compte est le premier verrou commun de `UserService`, `EmailVerificationService`, `PasswordResetService`, `DataExportService.request`, `WebhookEndpointService.create` et `AvatarService`. Il ignore les comptes supprimés (JPQL).
+- L'upload d'avatar et le worker se bloquaient l'un l'autre (`40P01`) jusqu'à ce que les deux prennent d'abord le verrou de la ligne utilisateur. Des colonnes différentes de la même ligne s'écrasaient aussi, jusqu'à `@DynamicUpdate` (guide 12).
+- `WebhookDeliveryService.record` verrouille la livraison, puis le point de terminaison explicitement, car Hibernate 7 ne le verrouille pas à travers la jointure. Sans cela, deux échecs enregistrés ensemble le désactivaient tous deux et prévenaient son propriétaire deux fois.
+- `DataExportRepository.claim` utilise `@Modifying(flushAutomatically = true, clearAutomatically = true)`. Un message en double trouve l'export `RUNNING` sous un bail vivant et ne fait rien. `DataExportRecoveryJob` remet en file les exports dont le bail est expiré (guide 22).
+- Deux pollers sans ShedLock partagent leurs lignes avec `SKIP LOCKED` : `OutboxRelayJob` (par `OutboxMessageRepository`) et `WebhookRetryJob` (par `WebhookDeliveryQueries.claimDue`, avec le bail `webhooks.delivery-lease`). Voir les guides 20 et 21.
 - `RateLimitQueries` (compteur) et `TaskReminderQueries` (chaque rappel une fois) remplacent les verrous par des instructions atomiques (guide 13).
 
 Les tests :

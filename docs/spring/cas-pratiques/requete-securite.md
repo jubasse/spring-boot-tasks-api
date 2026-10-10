@@ -4,7 +4,7 @@
 
 ## Le scénario
 
-Alice est assignée à une tâche. Son application envoie `PATCH /api/v1/tasks/{id}` avec son jeton d'accès et le corps `{"title": "Relire le contrat"}` (un `PATCH` ne porte que les champs à changer). La requête doit traverser l'authentification, deux contrôles d'autorisation et une transaction, puis répondre 200 avec la tâche à jour.
+Alice est assignée à une tâche. Son application envoie `PATCH /api/v1/tasks/{id}` avec son jeton d'accès et le corps `{"title": "Relire le contrat"}` (un `PATCH` ne porte que les champs à changer). La requête doit traverser l'authentification, deux contrôles d'autorisation et une transaction. Elle doit répondre 200 avec la tâche à jour.
 
 ## Vue d'ensemble
 
@@ -50,21 +50,20 @@ Le trajet, avec la sortie de chaque refus :
    viennent de Spring Security, sans corps
 ```
 
-- Les refus des filtres arrivent avant Spring MVC : le contrôleur ne voit jamais un jeton invalide ni un compte inactif.
 - Le corps est lu et validé avant l'appel de la méthode, donc avant l'annotation de sécurité.
 - Les écritures tiennent dans une transaction, terminée avant que le contrôleur construise la réponse.
 
 ## Pas à pas
 
-**1. La chaîne de filtres.** Tomcat passe la requête à la chaîne déclarée dans [`SecurityConfiguration`][security-config] : sans session (`STATELESS`), sans CSRF, sans formulaire ni authentification Basic. Chaque requête prouve donc son identité avec son jeton (guide 07).
+**1. La chaîne de filtres.** Tomcat passe la requête à la chaîne déclarée dans [`SecurityConfiguration`][security-config]. Elle est sans session (`STATELESS`), sans CSRF, sans formulaire ni authentification Basic. Chaque requête prouve donc son identité par son jeton (guide 07).
 
-**2. Le jeton.** `BearerTokenAuthenticationFilter` lit l'en-tête `Authorization` par le bean `bearerTokenResolver`, qui l'ignore sur les endpoints publics : un client qui garde un jeton expiré peut encore se connecter ou se rafraîchir. Le `JwtDecoder` de [`JwtConfiguration`][jwt-config] vérifie la signature HS256 avec la clé secrète, puis l'expiration (15 min, avec 60 s de tolérance) et l'émetteur `tasks-api`. Le `JwtAuthenticationConverter` transforme la revendication `roles` (`["ROLE_USER"]`) en autorités, avec un préfixe vide, puisque les valeurs portent déjà `ROLE_`. Le `JwtAuthenticationToken` obtenu est rangé dans le contexte de sécurité. Aucun accès à la base à cette étape (guide 07).
+**2. Le jeton.** `BearerTokenAuthenticationFilter` lit l'en-tête `Authorization` par le bean `bearerTokenResolver`, qui l'ignore sur les endpoints publics. Un client qui garde un jeton expiré peut ainsi encore se connecter ou se rafraîchir. Le `JwtDecoder` de [`JwtConfiguration`][jwt-config] vérifie la signature HS256 avec la clé secrète, puis l'expiration (15 min, avec 60 s de tolérance) et l'émetteur `tasks-api`. Le `JwtAuthenticationConverter` transforme la revendication `roles` (`["ROLE_USER"]`) en autorités, avec un préfixe vide, puisque les valeurs portent déjà `ROLE_`. Le `JwtAuthenticationToken` obtenu est rangé dans le contexte de sécurité, sans accès à la base (guide 07).
 
-**3. Le compte actif.** `AuthorizationFilter` applique la règle `/api/*/tasks/**`, écrite pour toutes les versions, qui délègue à [`ActiveUserAuthorizationManager`][active-manager]. Il lit l'id d'Alice dans la revendication `uid` ([`CurrentUser`][current-user]) et demande son statut à [`UserStatusLookup`][status-lookup] : cache Caffeine `userStatus` (30 s après écriture), sinon une requête légère sur `enabled` et `email_verified_at`. Seul `ACTIVE` passe : compte activé, non supprimé, email vérifié. Un jeton reste valide jusqu'à son expiration, même après une désactivation : [`UserStatusCacheEviction`][status-eviction] retire l'entrée après le commit de chaque changement de compte (guides 08 et 17).
+**3. Le compte actif.** `AuthorizationFilter` applique la règle `/api/*/tasks/**`, écrite pour toutes les versions, qui délègue à [`ActiveUserAuthorizationManager`][active-manager]. Il lit l'id d'Alice dans la revendication `uid` ([`CurrentUser`][current-user]). Il demande son statut à [`UserStatusLookup`][status-lookup], qui passe par le cache Caffeine `userStatus` (30 s après écriture). Sans entrée, il lance une requête légère sur `enabled` et `email_verified_at`. Seul `ACTIVE` passe : compte activé, non supprimé, email vérifié. Un jeton reste valide jusqu'à son expiration, même après une désactivation. [`UserStatusCacheEviction`][status-eviction] compense en retirant l'entrée après le commit de chaque changement de compte (guides 08 et 17).
 
-**4. La version.** Le `DispatcherServlet` cherche la méthode. [`ApiVersioningConfiguration`][versioning] a placé `/api/v{version}` devant les contrôleurs, qui déclarent seulement `/tasks` ; Spring MVC lit la version dans le deuxième segment, et [`PathVersionParser`][version-parser] n'en accepte qu'une écriture : `/api/v1.0/` est refusé au lieu d'être servi comme la version 1, hors des règles écrites pour `/api/v1/`. La requête aboutit à `TaskController.updateTask` (guide 04).
+**4. La version.** Le `DispatcherServlet` cherche la méthode. [`ApiVersioningConfiguration`][versioning] a placé `/api/v{version}` devant les contrôleurs, qui déclarent seulement `/tasks`. Spring MVC lit la version dans le deuxième segment. [`PathVersionParser`][version-parser] n'en accepte qu'une écriture : `/api/v1.0/` est refusé au lieu d'être servi comme la version 1, hors des règles écrites pour `/api/v1/`. La requête aboutit à `TaskController.updateTask` (guide 04).
 
-**5. Le corps.** Avant d'appeler la méthode, Spring résout ses arguments : l'id du chemin devient un `UUID`, et Jackson 3 lit le corps dans le record [`UpdateTaskDto`][update-dto], dont le constructeur compact retire les espaces et remplace un texte vide par `null`. `@Valid` lance Bean Validation, ici `@Size(max = 255)` sur le titre. Tout cela précède le contrôle suivant : un corps invalide répond 400, même à quelqu'un qui n'est pas assigné (guides 03 et 05).
+**5. Le corps.** Avant d'appeler la méthode, Spring résout ses arguments. L'id du chemin devient un `UUID`, et Jackson 3 lit le corps dans le record [`UpdateTaskDto`][update-dto]. Son constructeur compact retire les espaces et remplace un texte vide par `null`. `@Valid` lance Bean Validation, ici `@Size(max = 255)` sur le titre. Un corps invalide répond donc 400, même à quelqu'un qui n'est pas assigné (guides 03 et 05).
 
 **6. La règle « propriétaire ».** Avec `@EnableMethodSecurity`, le contrôleur est enveloppé par un proxy Spring. L'annotation maison [`@AllowedRolesOrAssignedToOnly(UserRole.ADMIN)`][assigned-annotation] porte un `@PreAuthorize` dont le gabarit `{value}` devient `'ADMIN'` :
 
@@ -73,9 +72,9 @@ hasAnyRole('ADMIN')
   or @taskAuthorization.currentUserIsAssignedTo(#id, authentication)
 ```
 
-Alice n'a pas le rôle `ADMIN` : le bean [`TaskAuthorization`][task-authorization] répond par une requête `existsByIdAndAssignedToId`. L'expression lit `#id`, d'où le nom imposé de la variable de chemin (guide 08).
+Alice n'a pas le rôle `ADMIN`, donc le bean [`TaskAuthorization`][task-authorization] répond par une requête `existsByIdAndAssignedToId`. L'expression lit `#id`, d'où le nom imposé de la variable de chemin (guide 08).
 
-**7. La transaction.** [`TaskService.update`][task-service] est `@Transactional` : un second proxy Spring ouvre la transaction. Le service charge la tâche avec son assigné, son créateur et leurs photos (graphe d'entités `LOAD`), change seulement les champs non nuls, puis appelle `TaskEventService.updated`, en propagation `MANDATORY`. Une ligne `UPDATED` s'ajoute à l'historique, et l'événement `TaskEventRecorded` fait écrire par [`RealtimeBroadcasts`][broadcasts] un message pour la salle de la tâche dans l'outbox, toujours dans la même transaction. Aucun `save()` : Hibernate repère seul les champs modifiés (dirty checking). Au commit, il envoie un `UPDATE` qui augmente `version` de 1, avec la condition `WHERE id = ? AND version = ?` sur la version lue (`@Version` sur [`Task`][task]). Après le commit, le relais de l'outbox publie le message (guides 11, 12, 14 et 20).
+**7. La transaction.** [`TaskService.update`][task-service] est `@Transactional` : un second proxy Spring ouvre la transaction. Le service charge la tâche avec son assigné, son créateur et leurs photos (graphe d'entités `LOAD`). Il change seulement les champs non nuls, puis appelle `TaskEventService.updated`, en propagation `MANDATORY`. Une ligne `UPDATED` s'ajoute à l'historique. L'événement `TaskEventRecorded` fait écrire par [`RealtimeBroadcasts`][broadcasts] un message pour la salle de la tâche dans l'outbox, toujours dans la même transaction. Il n'y a aucun `save()` : Hibernate repère seul les champs modifiés (dirty checking). Au commit, il envoie un `UPDATE` qui augmente `version` de 1, avec la condition `WHERE id = ? AND version = ?` sur la version lue (`@Version` sur [`Task`][task]). Après le commit, le relais de l'outbox publie le message (guides 11, 12, 14 et 20).
 
 **8. La réponse.** De retour dans le contrôleur, la transaction est terminée et la session Hibernate fermée (`open-in-view: false`). Le record [`TaskResponseDto`][response-dto] ne lit que ce que le graphe d'entités a chargé, plus l'URL de chaque photo (`MediaUrls`). La réponse 200 porte la nouvelle `version` (guides 03 et 11).
 
@@ -110,7 +109,7 @@ Deux composants écrivent ces réponses :
 
 ## À retenir
 
-- Les filtres refusent avant Spring MVC, sans corps ; ce qui échoue dans Spring MVC ressort en problème RFC 9457.
+- Les filtres refusent avant Spring MVC, sans corps. Ce qui échoue dans Spring MVC ressort en problème RFC 9457.
 - Deux contrôles se suivent : la règle d'URL (compte actif), puis l'annotation de la méthode (rôle ou propriétaire).
 - Un jeton valide ne suffit pas : le statut du compte est relu à chaque requête, à travers un cache de 30 s vidé après chaque changement.
 - Le corps est validé avant `@PreAuthorize`, et un utilisateur reçoit 403 plutôt que 404 sur une tâche qui n'est pas la sienne.

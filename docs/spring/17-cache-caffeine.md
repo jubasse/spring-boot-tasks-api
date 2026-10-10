@@ -6,7 +6,7 @@
 
 - **Problème** : une même lecture revient sans cesse (le statut d'un compte à chaque requête, une URL signée par fichier affiché) et coûte une requête SQL ou un calcul à chaque fois.
 - **Quand l'utiliser** : une lecture fréquente, dont la valeur change rarement et peut avoir quelques secondes de retard sans danger.
-- **Quand s'en passer** : une donnée qui doit être exacte au moment d'écrire (une règle métier, un contrôle avant modification) ; une lecture rare ; une valeur qui doit être la même sur toutes les instances à la seconde près.
+- **Quand s'en passer** : une donnée qui doit être exacte au moment d'écrire (une règle métier, un contrôle avant modification), une lecture rare, ou une valeur qui doit être la même sur toutes les instances à la seconde près.
 - **Dans ce dépôt** : deux caches, `userStatus` (le statut d'un compte, vérifié à chaque requête sur les tâches) et `mediaDownloads` (l'URL signée de chaque fichier).
 - **Prérequis** : guides 14 (transactions) et 16 (événements). Versions : Spring Boot 4.1, Spring Framework 7.0, Caffeine 3.2.
 
@@ -30,7 +30,7 @@ Où garder une valeur déjà calculée :
 
 ### Le cache devant une méthode
 
-`@Cacheable` sur une méthode : le proxy Spring calcule une clé à partir des paramètres, cherche l'entrée, et n'appelle la méthode qu'en cas de défaut. La clé par défaut est le paramètre lui-même s'il est seul, une clé composée sinon. Avec un objet en paramètre, on précise la clé : `key = "#media.id"`. Chaque instance a son propre cache.
+Avec `@Cacheable` sur une méthode, le proxy Spring calcule une clé à partir des paramètres et cherche l'entrée. Il n'appelle la méthode qu'en cas de défaut. La clé par défaut est le paramètre lui-même s'il est seul, une clé composée sinon. Avec un objet en paramètre, on précise la clé : `key = "#media.id"`. Chaque instance a son propre cache.
 
 ```
  appel priceOf("A-1")
@@ -51,9 +51,9 @@ Où garder une valeur déjà calculée :
 |---|---|---|
 | `expireAfterWrite(d)` | d après son écriture, qu'on la lise ou non | aucun : le retard est borné par d |
 | `expireAfterAccess(d)` | d après sa dernière lecture | une entrée lue en boucle ne meurt jamais |
-| `refreshAfterWrite(d)` | n'expire pas : rechargée en arrière-plan après d | ancienne valeur servie pendant le rechargement ; erreur seulement journalisée |
+| `refreshAfterWrite(d)` | n'expire pas : rechargée en arrière-plan après d | ancienne valeur servie pendant le rechargement, erreur seulement journalisée |
 
-Avec une base en panne, un rechargement garde donc l'ancienne valeur. `maximumSize(n)` s'ajoute aux trois : au-delà, Caffeine retire des entrées pour faire de la place. Sans lui, le cache grossit sans limite.
+Avec une base en panne, un rechargement garde donc l'ancienne valeur. `maximumSize(n)` s'ajoute aux trois : au-delà de n, Caffeine retire des entrées. Sans lui, le cache grossit sans limite.
 
 ### La course entre une lecture et une éviction
 
@@ -71,7 +71,7 @@ Sans précaution, une lecture commencée avant le commit range une valeur périm
  range ACTIVE dans le cache   --> le compte désactivé garde l'accès jusqu'au TTL
 ```
 
-`@Cacheable(sync = true)` règle ce cas : le chargement d'une clé se fait sous un verrou de cette clé. Une éviction arrivée pendant le chargement attend sa fin, puis retire ce qu'il a rangé. Bonus : plusieurs threads ne calculent plus la même valeur en même temps (par défaut, Spring ne verrouille rien).
+`@Cacheable(sync = true)` règle ce cas : le chargement d'une clé se fait sous un verrou de cette clé. Une éviction arrivée pendant le chargement attend sa fin, puis retire ce qu'il a rangé. Bonus : plusieurs threads ne calculent plus la même valeur en même temps, ce que Spring ne garantit pas par défaut.
 
 Les limites de `sync = true` : pas d'attribut `unless`, un seul cache, et aucune autre annotation de cache sur la méthode.
 
@@ -110,7 +110,7 @@ src/test/java/.../
 
 ### Une instance : `@Cacheable` et Caffeine
 
-**Étape 1. Ajouter les dépendances.** Le starter apporte l'abstraction de cache de Spring ; Caffeine fournit le cache en mémoire (version gérée par Boot).
+**Étape 1. Ajouter les dépendances.** Le starter apporte l'abstraction de cache de Spring, et Caffeine le cache en mémoire (version gérée par Boot).
 
 ```xml
 <dependency>
@@ -123,7 +123,7 @@ src/test/java/.../
 </dependency>
 ```
 
-**Étape 2. Choisir Caffeine et fermer la liste des caches.** Avec `cache-names`, un nom mal tapé n'obtient aucun cache et l'appel échoue, au lieu de créer en silence un cache sans limite ni métriques.
+**Étape 2. Choisir Caffeine et fermer la liste des caches.** Avec `cache-names`, un nom mal tapé n'obtient aucun cache et l'appel échoue. Sans la liste, Spring créerait en silence un cache sans limite ni métriques.
 
 ```yaml
 spring:
@@ -132,7 +132,7 @@ spring:
     cache-names: productPrices
 ```
 
-**Étape 3. Régler chaque cache.** Chaque cache a sa durée et sa taille ; `recordStats()` alimente les métriques.
+**Étape 3. Régler chaque cache.** Chaque cache a sa durée et sa taille, et `recordStats()` alimente les métriques.
 
 ```java
 @Configuration
@@ -155,9 +155,9 @@ public class CacheConfiguration {
 }
 ```
 
-`CacheManagerCustomizer` vient de `org.springframework.boot.cache.autoconfigure`. Avec `setAllowNullValues(false)`, une méthode qui renvoie `null` échoue (`IllegalArgumentException`) : elle doit renvoyer une valeur, ou lever une exception.
+`CacheManagerCustomizer` vient de `org.springframework.boot.cache.autoconfigure`. Avec `setAllowNullValues(false)`, une méthode qui renvoie `null` échoue (`IllegalArgumentException`). Elle doit renvoyer une valeur, ou lever une exception.
 
-**Étape 4. Mettre la lecture en cache.** `sync = true` évite deux lectures simultanées de la même clé, et la course de l'éviction.
+**Étape 4. Mettre la lecture en cache.** `sync = true` évite deux lectures simultanées de la même clé, et la course avec l'éviction.
 
 ```java
 @Service
@@ -206,7 +206,7 @@ public class ProductPriceCacheEviction {
 
 ### Plusieurs instances : prévenir les autres caches
 
-**Étape 6. Diffuser l'éviction.** Chaque instance a son propre cache. Celle qui a fait le changement prévient les autres par un exchange fanout, et le TTL borne le retard si le message se perd.
+**Étape 6. Diffuser l'éviction.** Chaque instance a son propre cache. Celle qui a fait le changement prévient les autres par un exchange fanout. Le TTL borne le retard si le message se perd.
 
 ```java
 // dans un listener de la file propre à l'instance (guide 24)
@@ -218,7 +218,7 @@ void onPriceChanged(ProductPriceChanged event) {
 
 Côté publication, un `@EventListener` écrit `ProductPriceChanged` dans l'outbox en diffusion (`Outbox.broadcast`, guide 20), dans la même transaction.
 
-**Étape 7. Vérifier.** Un contexte Spring minimal et un repository simulé : une seule lecture pour deux appels, une nouvelle lecture après l'éviction.
+**Étape 7. Vérifier.** Un contexte Spring minimal et un repository simulé suffisent. Deux appels ne font qu'une lecture, et l'éviction en provoque une nouvelle.
 
 ```java
 @SpringJUnitConfig
@@ -254,7 +254,7 @@ class ProductCatalogCacheTest {
 }
 ```
 
-Entre deux tests, les entrées survivent dans le contexte partagé : clés distinctes par test, ou caches vidés après chacun.
+Les entrées survivent d'un test à l'autre dans le contexte partagé. Il faut des clés distinctes par test, ou des caches vidés après chacun.
 
 ### Référence rapide
 
@@ -275,19 +275,19 @@ Les réglages de Spring Boot :
 
 Les méthodes du builder Caffeine : `expireAfterWrite`, `expireAfterAccess`, `expireAfter(Expiry)`, `refreshAfterWrite`, `maximumSize`, `recordStats`.
 
-Limites de cette version : l'éviction ne vaut que pour l'instance qui l'a faite ; sans l'étape 6, les autres servent l'ancienne valeur jusqu'au TTL.
+Limites de cette version : l'éviction ne vaut que pour l'instance qui l'a faite. Sans l'étape 6, les autres servent l'ancienne valeur jusqu'au TTL.
 
 ## Concepts avancés
 
 ### Sous le capot : le proxy et le chargement synchronisé
 
-- `@EnableCaching` place un proxy Spring devant le bean. Un appel interne `this.priceOf(...)` le contourne : pas de cache.
+- `@EnableCaching` place un proxy Spring devant le bean. Un appel interne `this.priceOf(...)` le contourne, donc sans cache.
 - Avec `sync = true`, Spring appelle `Cache.get(key, valueLoader)`. `CaffeineCache` délègue à Caffeine, qui calcule la valeur une fois par clé pendant que les autres appelants de cette clé attendent.
-- Sur un `@CacheEvict` posé sur une méthode `@Transactional`, rien ne garantit que l'éviction passe après le commit : les deux conseillers ont l'ordre `LOWEST_PRECEDENCE` par défaut. D'où le listener d'après commit de l'étape 5.
+- Sur un `@CacheEvict` posé sur une méthode `@Transactional`, rien ne garantit que l'éviction passe après le commit, car les deux conseillers ont l'ordre `LOWEST_PRECEDENCE` par défaut. D'où le listener d'après commit de l'étape 5.
 
 ### Une durée par entrée
 
-`expireAfter(Expiry.creating((key, value) -> duration))` donne à chaque entrée sa propre durée, calculée depuis la valeur. Ce dépôt s'en sert pour les URL signées de téléchargement : une entrée vit au plus la moitié de la validité de l'URL.
+`expireAfter(Expiry.creating((key, value) -> duration))` donne à chaque entrée sa propre durée, calculée depuis la valeur. Ce dépôt s'en sert pour les URL signées de téléchargement. Une entrée vit au plus la moitié de la validité de l'URL.
 
 ### Plusieurs instances
 
@@ -302,7 +302,7 @@ Limites de cette version : l'éviction ne vaut que pour l'instance qui l'a faite
  broker en panne --> B et C gardent l'entrée jusqu'au TTL
 ```
 
-Le TTL est la vraie borne : on le choisit comme le retard le plus long acceptable si une éviction se perd. Si toutes les instances doivent voir la même valeur, Redis est l'alternative.
+Le TTL est la vraie borne. On le choisit égal au retard le plus long acceptable si une éviction se perd. Si toutes les instances doivent voir la même valeur, Redis est l'alternative.
 
 ### Surveiller
 
@@ -310,7 +310,7 @@ Boot lie à Micrometer les caches présents au démarrage :
 
 | Métrique | Sens |
 |---|---|
-| `cache.gets` (`result=hit` ou `miss`) | succès et défauts ; leur rapport est le taux de succès |
+| `cache.gets` (`result=hit` ou `miss`) | succès et défauts, dont le rapport est le taux de succès |
 | `cache.puts` | valeurs rangées |
 | `cache.evictions` | entrées retirées pour la taille ou l'expiration (pas les évictions manuelles) |
 | `cache.size` | nombre d'entrées |
@@ -390,7 +390,7 @@ Le cache du statut, de la requête à l'éviction :
 |---|---|
 | [`CacheConfiguration`][cache-config] | `@EnableCaching`, les deux caches, `setAllowNullValues(false)`, `reuseWindow` |
 | [`StatusCacheProperties`][status-props] | `identity.status-cache`, durée bornée de 1 s à 1 min |
-| [`UserStatusLookup`][lookup] | `@Cacheable(cacheNames = "userStatus", sync = true)` ; un compte introuvable vaut `DELETED` |
+| [`UserStatusLookup`][lookup] | `@Cacheable(cacheNames = "userStatus", sync = true)`, un compte introuvable valant `DELETED` |
 | [`UserStatusCacheEviction`][eviction] | l'éviction après le commit, et `evict(UUID)` appelé à la réception d'une diffusion |
 | [`ActiveUserAuthorizationManager`][auth-manager] | lit le statut en cache à chaque requête sur les tâches, notifications et exports (guide 08) |
 | [`RealtimeListener`][realtime-listener] | évince à la réception de `AccountStatusChanged` (guide 24) |
@@ -407,11 +407,11 @@ Le cache du statut, de la requête à l'éviction :
 
 Ce qui est propre au dépôt :
 
-- `userStatus` expire après écriture, jamais après accès : un client qui appelle en boucle avec le jeton d'un compte désactivé garderait sinon son entrée `ACTIVE` jusqu'à l'expiration du jeton.
-- `sync = true` : sans lui, une requête qui avait lu `ACTIVE` juste avant le commit d'une désactivation rangeait cette valeur après l'éviction, et le compte gardait l'accès jusqu'au TTL. Spring refusant `unless` avec `sync`, tous les statuts sont mis en cache, refusés compris ; chaque changement de compte doit donc évincer.
-- `UserStatusCacheEviction` est un `@TransactionalEventListener(phase = AFTER_COMMIT, fallbackExecution = true)`, en `@Order(Ordered.HIGHEST_PRECEDENCE)`, avec `evictIfPresent`. Spring ne fait que journaliser son exception : le TTL reste la borne.
+- `userStatus` expire après écriture, jamais après accès. Sinon, un client qui appelle en boucle avec le jeton d'un compte désactivé garderait son entrée `ACTIVE` jusqu'à l'expiration du jeton.
+- `sync = true` : sans lui, une requête qui avait lu `ACTIVE` juste avant le commit d'une désactivation rangeait cette valeur après l'éviction, et le compte gardait l'accès jusqu'au TTL. Spring refuse `unless` avec `sync`, donc tous les statuts sont mis en cache, refusés compris. Chaque changement de compte doit donc évincer.
+- `UserStatusCacheEviction` est un `@TransactionalEventListener(phase = AFTER_COMMIT, fallbackExecution = true)`, en `@Order(Ordered.HIGHEST_PRECEDENCE)`, avec `evictIfPresent`. Spring ne fait que journaliser son exception, donc le TTL reste la borne.
 - Les contrôles au moment d'écrire lisent le compte, pas le cache : l'assigné dans `TaskService` (`AssigneeNotActiveException`), les destinataires dans `TaskNotificationPublisher`.
-- `mediaDownloads` : l'URL signée est la même pour chaque requête pendant sa fenêtre de réutilisation, pour que le navigateur réutilise le fichier déjà téléchargé. L'URL porte `Cache-Control: private, max-age=<validité>, immutable` (`S3ObjectStorage`, guide 28).
+- `mediaDownloads` : l'URL signée reste la même pendant sa fenêtre de réutilisation, pour que le navigateur réutilise le fichier déjà téléchargé. L'URL porte `Cache-Control: private, max-age=<validité>, immutable` (`S3ObjectStorage`, guide 28).
 - Le `@Cacheable` est sur `MediaService` et non sur `MediaUrls` : `MediaUrls.avatarOf` appelle `of` dans sa propre classe et contournerait le proxy.
 
 Les tests :

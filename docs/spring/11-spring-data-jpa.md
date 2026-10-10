@@ -5,8 +5,8 @@
 ## Contexte
 
 - **Problème** : lire et écrire des entités sans écrire du SQL pour chaque cas, et sans requête cachée par ligne quand une réponse JSON lit une association.
-- **Quand l'utiliser** : tout accès CRUD à des entités mappées avec JPA ; les listes filtrées et paginées.
-- **Quand s'en passer** : une instruction atomique que JPA ne sait pas dire (`INSERT ... ON CONFLICT`, `UPDATE ... RETURNING`, lot `SKIP LOCKED`, guide 13) ; un rapport sur beaucoup de tables.
+- **Quand l'utiliser** : tout accès CRUD à des entités mappées avec JPA, et les listes filtrées et paginées.
+- **Quand s'en passer** : une instruction atomique que JPA ne sait pas dire (`INSERT ... ON CONFLICT`, `UPDATE ... RETURNING`, lot `SKIP LOCKED`, guide 13), ou un rapport sur beaucoup de tables.
 - **Dans ce dépôt** : un repository par entité, une `Specification` pour la liste des tâches, un graphe d'entités sur chaque méthode qui nourrit une réponse, des tests qui figent le nombre de requêtes.
 - **Prérequis** : guides 12 (mapping) et 14 (transactions). Versions : Spring Boot 4.1, Spring Data JPA 4.1, Hibernate 7.4, PostgreSQL 18.
 
@@ -23,16 +23,16 @@ Les façons d'écrire une requête avec Spring Data :
 
 ### Vocabulaire
 
-- **Repository** : une interface que Spring Data implémente au démarrage ; on déclare des méthodes, Spring écrit les requêtes.
+- **Repository** : une interface que Spring Data implémente au démarrage. On déclare des méthodes, Spring écrit les requêtes.
 - **Requête dérivée** : une requête déduite du nom de la méthode (`findByReference`).
 - **Projection** : une lecture qui renvoie quelques colonnes dans un record, au lieu de l'entité entière.
-- **Contexte de persistance** : les entités qu'Hibernate suit pendant une transaction ; au commit, il écrit les changements (dirty checking).
+- **Contexte de persistance** : les entités qu'Hibernate suit pendant une transaction. Au commit, il écrit les changements (dirty checking).
 - **Proxy Hibernate** : un objet de remplacement qui charge sa ligne au premier accès. À ne pas confondre avec le proxy Spring du glossaire.
 - **N+1** : une requête pour la liste, puis une de plus par ligne pour charger une association.
 
 ### Le problème N+1
 
-Un `@ManyToOne` en `LAZY` n'est pas chargé avec la liste. Le lire plus tard, par exemple pendant l'écriture du JSON, lance une requête par ligne distincte :
+Un `@ManyToOne` en `LAZY` n'est pas chargé avec la liste. Le lire plus tard, par exemple pendant l'écriture du JSON, lance une requête par ligne :
 
 ```
  GET /invoices?size=20
@@ -48,11 +48,11 @@ Un `@ManyToOne` en `LAZY` n'est pas chargé avec la liste. Le lire plus tard, pa
         +--> ...                                    jusqu'à 20 de plus
 ```
 
-Le coût grandit avec la page et ne se voit qu'aux volumes de production.
+Le coût grandit avec la page, et ne se voit qu'aux volumes de production.
 
 ### Où se ferme le contexte de persistance
 
-Dans Spring Boot, `spring.jpa.open-in-view` vaut `true` par défaut : l'`EntityManager` reste ouvert jusqu'à l'écriture de la réponse. Une association `LAZY` lue par Jackson se charge donc encore, une requête par ligne, sans erreur.
+Dans Spring Boot, `spring.jpa.open-in-view` vaut `true` par défaut. L'`EntityManager` reste alors ouvert jusqu'à l'écriture de la réponse. Une association `LAZY` lue par Jackson se charge donc encore, une requête par ligne, sans erreur.
 
 ```
  open-in-view: true (défaut)
@@ -67,11 +67,11 @@ Dans Spring Boot, `spring.jpa.open-in-view` vaut `true` par défaut : l'`EntityM
                                                  --> LazyInitializationException
 ```
 
-Avec `false`, le contexte se ferme avec la transaction du service. Une réponse qui lit une association non chargée échoue : en test, pas en production.
+Avec `false`, le contexte se ferme avec la transaction du service. Une réponse qui lit une association non chargée échoue, dès les tests au lieu de la production.
 
 ### LOAD ou FETCH
 
-`@EntityGraph(attributePaths = ...)` charge les associations listées dans la même requête (une jointure). Le type change le sort des autres attributs. `FETCH`, le défaut de l'annotation de Spring Data, traite comme `LAZY` tout attribut non listé, même mappé `EAGER`. `LOAD` leur laisse leur mapping. On écrit donc toujours `type = EntityGraphType.LOAD`, sauf si l'on veut vraiment la sémantique `FETCH`.
+`@EntityGraph(attributePaths = ...)` charge les associations listées dans la même requête (une jointure). Le type décide du sort des autres attributs. `FETCH`, le défaut de l'annotation de Spring Data, traite comme `LAZY` tout attribut non listé, même mappé `EAGER`. `LOAD` leur laisse leur mapping. On écrit donc toujours `type = EntityGraphType.LOAD`, sauf si l'on veut vraiment `FETCH`.
 
 Ce que devient un attribut selon le type du graphe :
 
@@ -100,7 +100,7 @@ Dans les exemples, `Invoice` a `id` (UUID), `reference`, `status` (enum `Invoice
 
 ### Un repository et ses requêtes
 
-**Étape 1. Déclarer le repository.** Spring Data écrit l'implémentation au démarrage ; un nom de méthode suffit pour un filtre simple, et un nom qui vise un attribut inconnu arrête le démarrage.
+**Étape 1. Déclarer le repository.** Spring Data écrit l'implémentation au démarrage. Un nom de méthode suffit pour un filtre simple, et un nom qui vise un attribut inconnu arrête le démarrage.
 
 ```java
 public interface InvoiceRepository
@@ -116,7 +116,7 @@ public interface InvoiceRepository
 }
 ```
 
-**Étape 2. Écrire les requêtes que le nom ne sait pas dire.** Le JPQL nomme des entités et des attributs, pas des tables ; le SQL natif reste pour ce que le JPQL ne sait pas écrire. Une projection lit deux colonnes sans charger la ligne entière ni ses associations `EAGER`.
+**Étape 2. Écrire les requêtes que le nom ne sait pas dire.** Le JPQL nomme des entités et des attributs, pas des tables. Le SQL natif reste pour ce que le JPQL ne sait pas écrire. Une projection lit quelques colonnes sans charger la ligne entière ni ses associations `EAGER`.
 
 ```java
 public record InvoiceSummary(String reference, BigDecimal amount, Instant paidAt) {
@@ -145,7 +145,7 @@ boolean existsByReferenceIncludingDeleted(@Param("reference") String reference);
 int archivePaidBefore(@Param("cutoff") Instant cutoff, @Param("now") Instant now);
 ```
 
-**Étape 3. Filtrer et paginer.** Les critères optionnels se combinent à l'exécution ; `Pageable` ajoute `LIMIT`, `OFFSET` et une requête de comptage.
+**Étape 3. Filtrer et paginer.** Les critères optionnels se combinent à l'exécution. `Pageable` ajoute `LIMIT`, `OFFSET` et une requête de comptage.
 
 ```java
 @Service
@@ -169,11 +169,11 @@ public class InvoiceService {
 }
 ```
 
-Le contrôleur reçoit le `Pageable` de `?page=0&size=20&sort=createdAt,desc` et répond un `PagedModel` (guide 03). `spring.data.web.pageable.max-page-size` vaut 2000 par défaut dans Boot ; ce dépôt le fixe à 100.
+Le contrôleur reçoit le `Pageable` de `?page=0&size=20&sort=createdAt,desc` et répond un `PagedModel` (guide 03). `spring.data.web.pageable.max-page-size` vaut 2000 par défaut dans Boot, et ce dépôt le fixe à 100.
 
 ### Sans N+1, contexte fermé avec la transaction
 
-**Étape 4. Fermer le contexte avec la transaction.** Une association non chargée échoue alors en test, au lieu de coûter une requête par ligne en production. Le chargement par lots, lui, rend peu coûteuse une association restée `LAZY`.
+**Étape 4. Fermer le contexte avec la transaction.** Une association non chargée échoue alors en test, au lieu de coûter une requête par ligne en production. Le chargement par lots rend peu coûteuse une association restée `LAZY`.
 
 ```yaml
 spring:
@@ -184,7 +184,7 @@ spring:
       hibernate.default_batch_fetch_size: 50
 ```
 
-**Étape 5. Charger les associations avec un graphe.** Le client arrive dans la même requête que la page ; `LOAD` garde les autres mappings tels quels. On redéclare la méthode héritée pour lui poser le graphe.
+**Étape 5. Charger les associations avec un graphe.** Le client arrive dans la même requête que la page, et `LOAD` garde les autres mappings tels quels. On redéclare la méthode héritée pour lui poser le graphe.
 
 ```java
 // dans InvoiceRepository
@@ -195,7 +195,7 @@ Page<Invoice> findAll(Specification<Invoice> specification, Pageable pageable);
 Optional<Invoice> findById(UUID id);
 ```
 
-**Étape 6. Charger les proxys avant de rendre l'entité.** `getReferenceById` pose une association sans `SELECT`, mais la réponse lirait ensuite un proxy Hibernate qui ne peut plus se charger après la transaction.
+**Étape 6. Charger les proxys avant de rendre l'entité.** `getReferenceById` pose une association sans `SELECT`. Mais la réponse lirait ensuite un proxy Hibernate, qui ne peut plus se charger après la transaction.
 
 ```java
 // dans InvoiceService ; customerRepository : un JpaRepository<Customer, UUID>
@@ -212,9 +212,9 @@ public Invoice create(String reference, BigDecimal amount, UUID customerId) {
 }
 ```
 
-`getReferenceById` ne vérifie pas que la ligne existe : un mauvais id échoue au premier accès (`EntityNotFoundException`) ou à l'insertion. Quand l'id vient du client, on vérifie l'existence avant.
+`getReferenceById` ne vérifie pas que la ligne existe. Un mauvais id échoue au premier accès (`EntityNotFoundException`) ou à l'insertion. Quand l'id vient du client, on vérifie l'existence avant.
 
-**Étape 7. Vérifier.** On compare le nombre de requêtes pour une liste courte et une longue : il doit être identique. Le compteur, `SqlStatementCounter`, est un `StatementInspector` de Hibernate enregistré par une propriété, donc sans nouveau contexte Spring ; il est construit au guide 31 (étape 4).
+**Étape 7. Vérifier.** On compare le nombre de requêtes pour une liste courte et une longue, qui doit être identique. Le compteur, `SqlStatementCounter`, est un `StatementInspector` de Hibernate enregistré par une propriété, donc sans nouveau contexte Spring. Le guide 31 (étape 4) le construit.
 
 ```java
 @SpringBootTest
@@ -268,15 +268,15 @@ Les annotations d'un repository :
 
 Côté `JpaRepository`, `findById` et `existsById` sont filtrées par `@SoftDelete` (guide 12), `getReferenceById` ne lance aucun `SELECT` et renvoie un proxy Hibernate, et `save` fait un `persist` pour une entité nouvelle, sinon un `merge`.
 
-Limites de cette version : le graphe couvre les associations vers un seul objet ; les collections d'une page restent à charger par lots, et seul le test empêche une requête par ligne de revenir.
+Limites de cette version : le graphe couvre les associations vers un seul objet. Les collections d'une page restent à charger par lots, et seul le test empêche une requête par ligne de revenir.
 
 ## Concepts avancés
 
 ### Sous le capot : le repository est un bean généré
 
 - Au démarrage, Spring Data crée une implémentation (fondée sur `SimpleJpaRepository`) derrière un proxy Spring, et analyse le nom de chaque méthode dérivée.
-- Les méthodes CRUD héritées de `SimpleJpaRepository` sont transactionnelles (en lecture seule pour les lectures). Les méthodes déclarées dans l'interface ne le sont pas, sauf annotation : une méthode `@Modifying` doit tourner dans une transaction ouverte par le service.
-- Une requête `@Modifying` en JPQL contourne le contexte de persistance : les entités déjà chargées gardent leurs anciennes valeurs sans `clearAutomatically = true`, et les changements en attente ne sont écrits d'abord qu'avec `flushAutomatically = true`. `DataExportRepository.claim` utilise les deux (guide 15).
+- Les méthodes CRUD héritées de `SimpleJpaRepository` sont transactionnelles (en lecture seule pour les lectures). Les méthodes déclarées dans l'interface ne le sont pas, sauf annotation. Une méthode `@Modifying` doit donc tourner dans une transaction ouverte par le service.
+- Une requête `@Modifying` en JPQL contourne le contexte de persistance. Sans `clearAutomatically = true`, les entités déjà chargées gardent leurs anciennes valeurs. Sans `flushAutomatically = true`, les changements en attente ne sont pas écrits d'abord. `DataExportRepository.claim` utilise les deux (guide 15).
 
 ### Sous le capot : le chargement par lots
 
@@ -292,7 +292,7 @@ Avec `hibernate.default_batch_fetch_size: 50`, une association ou collection `LA
 
 ### Pagination et collections
 
-Paginer une requête qui joint une collection (un graphe, ou un `JOIN FETCH` sur un `@OneToMany`) force Hibernate à charger toutes les lignes et à couper la page en mémoire, avec l'avertissement HHH90003004. Le réglage `hibernate.query.fail_on_pagination_over_collection_fetch: true` en fait une erreur. Parade : un graphe pour les associations vers un seul objet, le chargement par lots pour les collections.
+Paginer une requête qui joint une collection (un graphe, ou un `JOIN FETCH` sur un `@OneToMany`) force Hibernate à charger toutes les lignes et à couper la page en mémoire, avec l'avertissement HHH90003004. Le réglage `hibernate.query.fail_on_pagination_over_collection_fetch: true` en fait une erreur. La parade est un graphe pour les associations vers un seul objet, et le chargement par lots pour les collections.
 
 ## Pièges à éviter
 
@@ -318,7 +318,7 @@ Paginer une requête qui joint une collection (un graphe, ou un `JOIN FETCH` sur
 
 ## En résumé
 
-**À retenir :** un repository par entité, des requêtes dérivées pour les filtres simples et du JPQL au-delà ; `open-in-view: false`, `@EntityGraph(type = LOAD)` pour les associations vers un seul objet et le chargement par lots pour les collections, et un test qui prouve que le nombre de requêtes ne grandit pas avec les données.
+**À retenir :** un repository par entité, des requêtes dérivées pour les filtres simples et du JPQL au-delà. Avec `open-in-view: false`, `@EntityGraph(type = LOAD)` charge les associations vers un seul objet et le chargement par lots les collections. Un test prouve que le nombre de requêtes ne grandit pas avec les données.
 
 - [ ] Une interface `JpaRepository` par entité, sans implémentation à écrire
 - [ ] Requêtes dérivées pour les filtres simples, `@Query` au-delà
@@ -376,11 +376,11 @@ Les réglages, dans `application.yaml` :
 
 Ce qui est propre au dépôt :
 
-- Les associations vers les utilisateurs ou les médias sont `LAZY` ; celles vers `Task` sont `EAGER`, car `Task` porte `@SoftDelete` (guide 12).
+- Les associations vers les utilisateurs ou les médias sont `LAZY`. Celles vers `Task` sont `EAGER`, car `Task` porte `@SoftDelete` (guide 12).
 - Tous les graphes sont en `LOAD`. Le commentaire de `TaskRepository` garde la trace de l'incident : avec le `FETCH` par défaut, les rôles du compte (un `@ElementCollection` `EAGER`) et les tâches des événements et des commentaires n'étaient plus chargés.
-- `findAccountStateById` lit deux colonnes par une expression constructeur JPQL, dans le record `AccountState`. Il est appelé à chaque requête sur les tâches, et `findById` chargerait le hash du mot de passe et les rôles. Étant du JPQL, il renvoie vide pour un compte supprimé logiquement.
+- `findAccountStateById` lit deux colonnes par une expression constructeur JPQL, dans le record `AccountState`. Il est appelé à chaque requête sur les tâches, alors que `findById` chargerait le hash du mot de passe et les rôles. Étant du JPQL, il renvoie vide pour un compte supprimé logiquement.
 - Les références vers les utilisateurs se posent avec `userProfileRepository.getReferenceById(id)`, puis `ProfilesForDisplay.load` initialise le proxy et sa photo avant le retour du service (`TaskService.withUsersLoaded`).
-- `TaskCommentService.withDetailsLoaded` touche l'auteur, les mentions et les fichiers ; le chargement par lots les lit ensuite pour toute la page.
+- `TaskCommentService.withDetailsLoaded` touche l'auteur, les mentions et les fichiers. Le chargement par lots les lit ensuite pour toute la page.
 - Mesuré sur une page de 20 tâches : 3 requêtes, quel que soit le nombre d'utilisateurs distincts (8 avant, en croissance avec eux). Les tests fixent, statut déjà en cache : page de tâches 2, une tâche 1, événements 3, commentaires 6, pièces jointes 2, un utilisateur 2.
 
 Les tests :

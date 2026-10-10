@@ -4,10 +4,10 @@
 
 ## Contexte
 
-- **Problème** : tester contre une base H2 ou un faux broker laisse passer ce qui ne marche que sur le vrai service (SQL natif Postgres, `SKIP LOCKED`, `uuidv7()`, files RabbitMQ, dead letters). On veut le vrai service, sans l'installer sur chaque machine.
-- **Quand l'utiliser** : slices de données et tests d'intégration ; lancer l'application en local sur des services jetables.
-- **Quand s'en passer** : tests unitaires et slice web (aucun service) ; machine sans Docker (les tests qui en ont besoin ne peuvent pas tourner).
-- **Dans ce dépôt** : Postgres, RabbitMQ, Mailpit, RustFS et ClamAV en conteneurs ; quatre sont réutilisés d'une exécution à l'autre, RabbitMQ jamais.
+- **Problème** : tester contre une base H2 ou un faux broker laisse passer ce qui ne marche que sur le vrai service (SQL natif Postgres, `SKIP LOCKED`, `uuidv7()`, files RabbitMQ, dead letters). On veut le vrai service sans l'installer sur chaque machine.
+- **Quand l'utiliser** : slices de données et tests d'intégration, et lancement de l'application en local sur des services jetables.
+- **Quand s'en passer** : tests unitaires et slice web (aucun service), ou machine sans Docker (les tests qui en ont besoin ne peuvent pas tourner).
+- **Dans ce dépôt** : Postgres, RabbitMQ, Mailpit, RustFS et ClamAV en conteneurs. Quatre sont réutilisés d'une exécution à l'autre, RabbitMQ jamais.
 - **Prérequis** : guides 29 (contextes de test) et 18 (Liquibase). Versions : Spring Boot 4.1 (`spring-boot-testcontainers`), Testcontainers 2.0 (2.0.5 géré par Boot 4.1.1), Docker.
 
 Les façons d'avoir un service en test :
@@ -23,7 +23,7 @@ Les façons d'avoir un service en test :
 ### Vocabulaire
 
 - **Conteneur** : un processus isolé lancé depuis une image Docker (`postgres:18`), dont les ports sont exposés sur un port aléatoire de la machine.
-- **Port mappé** : le port aléatoire de la machine qui mène au port du conteneur ; on le lit avec `getMappedPort(...)`.
+- **Port mappé** : le port aléatoire de la machine qui mène au port du conteneur. On le lit avec `getMappedPort(...)`.
 - **Stratégie d'attente** (wait strategy) : la condition qui dit qu'un conteneur est prêt (un port, une URL HTTP, une ligne de log).
 - **Connexion de service** (`@ServiceConnection`) : Spring Boot lit l'hôte, le port et les identifiants du conteneur et les donne à l'auto-configuration, sans propriété à écrire.
 - **Réutilisation** (reuse) : un conteneur marqué réutilisable survit à la JVM ; le suivant de même définition le reprend au lieu d'en démarrer un.
@@ -52,9 +52,9 @@ Chaque contexte de test démarre ses conteneurs (guide 29 pour le cache des cont
  contexte fermé --> conteneur arrêté (sauf s'il est réutilisable)
 ```
 
-- Spring Boot démarre chaque bean conteneur avant les beans qui en dépendent, puis l'arrête quand le contexte se ferme. Exception : un conteneur réutilisable, avec la réutilisation activée, n'est jamais arrêté par Spring Boot.
-- `@ServiceConnection` marche pour les conteneurs que Spring Boot connaît (Postgres par `JdbcDatabaseContainer`, `RabbitMQContainer`, ...). Pour une image quelconque (`GenericContainer`), on écrit les propriétés soi-même avec un `DynamicPropertyRegistrar`.
-- Les conteneurs d'un contexte démarrent un par un par défaut ; `spring.testcontainers.beans.startup=parallel` les démarre en même temps.
+- Spring Boot démarre chaque bean conteneur avant les beans qui en dépendent, puis l'arrête quand le contexte se ferme. Un conteneur réutilisable, avec la réutilisation activée, n'est jamais arrêté par Spring Boot.
+- `@ServiceConnection` marche pour les conteneurs que Spring Boot connaît (Postgres par `JdbcDatabaseContainer`, `RabbitMQContainer`, ...). Pour une image quelconque (`GenericContainer`), on écrit les propriétés avec un `DynamicPropertyRegistrar`.
+- Les conteneurs d'un contexte démarrent un par un par défaut. `spring.testcontainers.beans.startup=parallel` les démarre en même temps.
 
 ### La réutilisation
 
@@ -74,11 +74,11 @@ Deux exécutions successives, et le même conteneur :
  fin des tests : le conteneur reste
 ```
 
-- Le hash couvre toute la commande de création : image, variables, ports, labels, fichiers copiés. Une seule différence donne un autre conteneur : une slice qui déclare son propre Postgres, même avec un autre label, en démarre un second.
-- La réutilisation demande deux accords : `withReuse(true)` dans le code, et `testcontainers.reuse.enable=true` dans `~/.testcontainers.properties` ou la variable `TESTCONTAINERS_REUSE_ENABLE=true`. Jamais dans un fichier du classpath du projet : Testcontainers ne le lit pas pour ce réglage.
+- Le hash couvre toute la commande de création : image, variables, ports, labels, fichiers copiés. Une seule différence donne un autre conteneur. Une slice qui déclare son propre Postgres, même avec un autre label, en démarre donc un second.
+- La réutilisation demande deux accords. Le premier est `withReuse(true)` dans le code. Le second est `testcontainers.reuse.enable=true` dans `~/.testcontainers.properties`, ou la variable `TESTCONTAINERS_REUSE_ENABLE=true`. Jamais dans un fichier du classpath du projet : Testcontainers ne le lit pas pour ce réglage.
 - Sans l'accord de l'environnement, `withReuse(true)` est ignoré avec un warning, et le conteneur est jetable comme les autres.
-- La variable d'environnement passe avant le fichier : `TESTCONTAINERS_REUSE_ENABLE=false` coupe la réutilisation pour une exécution.
-- Un conteneur réutilisé n'est confié ni à Ryuk ni à Spring Boot : il reste après les tests, et on le supprime à la main (un label commun aide).
+- La variable d'environnement passe avant le fichier. `TESTCONTAINERS_REUSE_ENABLE=false` coupe donc la réutilisation pour une exécution.
+- Un conteneur réutilisé n'est confié ni à Ryuk ni à Spring Boot. Il reste après les tests, et on le supprime à la main (un label commun aide).
 
 ### Ce que la réutilisation change pour les tests
 
@@ -92,9 +92,9 @@ Une seule base sert tous les contextes, et toutes les exécutions :
                            (lignes validées de tous)
 ```
 
-- Les tests qui valident (commit) laissent leurs lignes : la base garde les données de tous les contextes et de toutes les exécutions.
-- Il faut donc des valeurs uniques (UUID aléatoires dans les emails et les références) et jamais d'assertion sur un total global. Une requête qui balaie toute la table se teste sur des lignes datées de 2000, pour que le seuil n'atteigne que celles du test.
-- Liquibase tourne à chaque contexte sur la base déjà migrée : rien à appliquer. Une migration modifiée après coup donne une erreur de checksum : on supprime les conteneurs réutilisés.
+- Les tests qui valident (commit) laissent leurs lignes, donc la base garde les données de tous les contextes et de toutes les exécutions.
+- Il faut des valeurs uniques (UUID aléatoires dans les emails et les références) et jamais d'assertion sur un total global. Une requête qui balaie toute la table se teste sur des lignes datées de 2000, pour que le seuil n'atteigne que celles du test.
+- Liquibase tourne à chaque contexte sur la base déjà migrée, sans rien à appliquer. Une migration modifiée après coup donne une erreur de checksum, et on supprime alors les conteneurs réutilisés.
 
 ## Implémentation avec Spring
 
@@ -114,7 +114,7 @@ src/test/resources/config/application.yaml démarrage parallèle (étape 6)
 
 ### Un service : Postgres
 
-**Étape 1. Ajouter les dépendances.** Spring Boot gère les versions de Testcontainers ; il faut un module par service.
+**Étape 1. Ajouter les dépendances.** Spring Boot gère les versions de Testcontainers. Il faut un module par service.
 
 ```xml
 <dependency>
@@ -148,7 +148,7 @@ public class PostgresContainers {
 }
 ```
 
-**Étape 3. L'importer dans les tests.** Liquibase migre le conteneur au démarrage du contexte, et le test tourne contre le vrai Postgres. Dans un vrai projet, l'import va dans la méta-annotation de la famille de tests (guide 29).
+**Étape 3. L'importer dans les tests.** Liquibase migre le conteneur au démarrage du contexte, et le test tourne contre le vrai Postgres.
 
 ```java
 @DataJpaTest
@@ -169,7 +169,7 @@ class InvoiceRepositoryTests {
 }
 ```
 
-**Étape 4. Lancer l'application en local sur les conteneurs.** Un `main` de test reprend celui de l'application et ajoute la configuration des conteneurs : aucun service à installer.
+**Étape 4. Lancer l'application en local sur les conteneurs.** Un `main` de test reprend celui de l'application et ajoute la configuration des conteneurs. Aucun service n'est à installer.
 
 ```java
 public class TestInvoicesApplication {
@@ -188,7 +188,7 @@ public class TestInvoicesApplication {
 
 ### Plusieurs services et réutilisation
 
-**Étape 5. Ajouter un service sans connexion automatique.** Spring Boot ne connaît pas l'image Mailpit : un `DynamicPropertyRegistrar` écrit les propriétés à partir du conteneur, injecté pour être démarré avant.
+**Étape 5. Ajouter un service sans connexion automatique.** Spring Boot ne connaît pas l'image Mailpit. Un `DynamicPropertyRegistrar` écrit donc les propriétés à partir du conteneur, injecté pour être démarré avant.
 
 ```java
 @TestConfiguration(proxyBeanMethods = false)
@@ -218,7 +218,7 @@ public class ServiceContainers {
 }
 ```
 
-**Étape 6. Démarrer les conteneurs en parallèle.** Par défaut, Spring Boot les démarre l'un après l'autre ; en parallèle, le démarrage du contexte dure autant que le conteneur le plus lent.
+**Étape 6. Démarrer les conteneurs en parallèle.** Par défaut, Spring Boot les démarre l'un après l'autre. En parallèle, le démarrage du contexte dure autant que le conteneur le plus lent.
 
 ```yaml
 # src/test/resources/config/application.yaml
@@ -228,7 +228,7 @@ spring:
       startup: parallel          # défaut : sequential
 ```
 
-**Étape 7. Réutiliser les conteneurs entre les exécutions.** Le démarrage de Postgres et des autres est sauté, et tous les contextes partagent un seul exemplaire de chacun.
+**Étape 7. Réutiliser les conteneurs entre les exécutions.** Le démarrage est sauté, et tous les contextes partagent un seul exemplaire de chaque service.
 
 ```java
 @Bean
@@ -304,7 +304,7 @@ Les réglages :
 | `testcontainers.reuse.enable` (`~/.testcontainers.properties`) | `false` | accord de la machine pour la réutilisation |
 | `TESTCONTAINERS_REUSE_ENABLE` (variable) | absente | idem, et l'emporte sur le fichier |
 
-Limites de cette version : chaque contexte de test démarre ses conteneurs non réutilisables, et une base réutilisée garde les données et le schéma de toutes les exécutions.
+Limites de cette version : chaque contexte de test démarre ses conteneurs non réutilisables. Une base réutilisée garde les données et le schéma de toutes les exécutions.
 
 ## Concepts avancés
 
@@ -312,7 +312,7 @@ Limites de cette version : chaque contexte de test démarre ses conteneurs non r
 
 - Spring Boot démarre les beans `Startable` (les conteneurs) dès leur création, en séquence ou en parallèle selon `spring.testcontainers.beans.startup`.
 - À la fermeture du contexte, il appelle `close()` sur chaque conteneur, sauf un conteneur réutilisable dont la machine a activé la réutilisation.
-- Pour la réutilisation, Testcontainers calcule un hash de la commande de création (et des fichiers copiés), cherche un conteneur en marche portant ce hash en label, et le reprend ; sinon il en crée un, marqué de ce hash. Un conteneur réutilisable n'est pas enregistré auprès de Ryuk.
+- Pour la réutilisation, Testcontainers cherche un conteneur en marche dont le label porte le hash de la commande de création. Il le reprend, sinon il en crée un marqué de ce hash. Un conteneur réutilisable n'est pas enregistré auprès de Ryuk.
 - La définition doit donc être identique partout : une seule classe de configuration par conteneur, pas une copie par slice.
 
 ### Plusieurs contextes : un broker par contexte
@@ -326,8 +326,8 @@ Les services réutilisés sont uniques, mais chaque contexte a son broker :
                      (réutilisés, un seul de chaque)
 ```
 
-- Un contexte qui fait échouer ses listeners exprès enverrait en dead letter les messages des autres : d'où un broker par contexte.
-- La base, elle, est commune : un job planifié ou un poller actif dans un contexte agit sur les lignes de tous les autres (guide 29 pour les réglages qui les éteignent, et le cas pratique en fin de guide).
+- Un contexte qui fait échouer ses listeners exprès enverrait en dead letter les messages des autres, d'où un broker par contexte.
+- La base, elle, est commune. Un job planifié ou un poller actif dans un contexte agit sur les lignes de tous les autres (guide 29 pour les réglages qui les éteignent, et le cas pratique en fin de guide).
 
 ## Pièges à éviter
 
@@ -353,7 +353,7 @@ Les services réutilisés sont uniques, mais chaque contexte a son broker :
 
 ## En résumé
 
-**À retenir :** les services de test sont de vrais conteneurs déclarés en beans, branchés par `@ServiceConnection` ou un `DynamicPropertyRegistrar` ; leur réutilisation accélère tout mais partage la base, donc chaque test écrit des données uniques.
+**À retenir :** les services de test sont de vrais conteneurs déclarés en beans, branchés par `@ServiceConnection` ou un `DynamicPropertyRegistrar`. Leur réutilisation accélère tout mais partage la base, donc chaque test écrit des données uniques.
 
 - [ ] Les images de test aux mêmes tags que `compose.yaml` et la production
 - [ ] Une classe de configuration par conteneur, importée par les annotations de test
@@ -402,12 +402,12 @@ Les conteneurs :
 Ce qui est propre au dépôt :
 
 - Chaque conteneur réutilisable porte le label `io.julienmetral.tasks.test-container=true` (`TestcontainersConfiguration.REUSABLE_LABEL`). La commande `docker rm -f $(docker ps -aq --filter label=io.julienmetral.tasks.test-container)` (README, « Keep the test containers between runs ») ne touche donc aucun autre conteneur.
-- RabbitMQ n'est jamais réutilisé : les tests de dead letter font échouer les collaborateurs des listeners, et sur un broker partagé ces listeners consommeraient (et enverraient en dead letter) les messages de tous les autres contextes. Chaque contexte d'intégration démarre donc son RabbitMQ.
-- ClamAV charge seulement une signature EICAR (`eicar.ndb`, copiée avec `withCopyToContainer`, `CLAMD_CONF_DatabaseDirectory=/var/lib/clamav-test`), et freshclam est coupé (`CLAMAV_NO_FRESHCLAMD=true`) : environ 14 Mo au lieu d'environ 1 Go par clamd avec la base complète, et aucun accès réseau. Avec la base complète, un clamd par contexte avait saturé la mémoire de la machine. Le nom rapporté est `TestcontainersConfiguration.EICAR_THREAT`, `Eicar-Test-Signature.UNOFFICIAL` (le suffixe vient de la base non signée).
+- RabbitMQ n'est jamais réutilisé. Les tests de dead letter font échouer les collaborateurs des listeners, et sur un broker partagé ces listeners consommeraient (et enverraient en dead letter) les messages de tous les autres contextes. Chaque contexte d'intégration démarre donc son RabbitMQ.
+- ClamAV charge seulement une signature EICAR (`eicar.ndb`, copiée avec `withCopyToContainer`, `CLAMD_CONF_DatabaseDirectory=/var/lib/clamav-test`), et freshclam est coupé (`CLAMAV_NO_FRESHCLAMD=true`) : environ 14 Mo au lieu d'environ 1 Go par clamd avec la base complète, et aucun accès réseau. Avec la base complète, un clamd par contexte avait saturé la mémoire. Le nom rapporté est `TestcontainersConfiguration.EICAR_THREAT`, `Eicar-Test-Signature.UNOFFICIAL` (le suffixe vient de la base non signée).
 - Les tags de test sont ceux de `compose.yaml`. Dependabot met à jour `compose.yaml` (écosystème `docker-compose`), pas le code Java : on recopie le tag à la main.
 - La CI active la réutilisation (`TESTCONTAINERS_REUSE_ENABLE: "true"` dans le job « Build and test » de `.github/workflows/ci.yml`) : les défauts d'isolation y apparaissent aussi.
-- La base réutilisée sert toutes les branches et tous les worktrees de la machine. Une branche plus ancienne tourne alors sur le schéma et les lignes d'une plus récente. Quand une suite échoue seulement sur des tables qu'une autre branche ajoute, on relance ces classes avec `TESTCONTAINERS_REUSE_ENABLE=false` (conteneurs neufs) avant de suspecter la branche.
-- `./mvnw spring-boot:test-run` lance `TestTasksApplication` sur ces conteneurs, les mêmes que ceux des tests si la réutilisation est activée.
+- La base réutilisée sert toutes les branches et tous les worktrees de la machine. Une branche plus ancienne tourne alors sur le schéma et les lignes d'une plus récente. Si une suite échoue seulement sur des tables qu'une autre branche ajoute, on relance ces classes avec `TESTCONTAINERS_REUSE_ENABLE=false` (conteneurs neufs) avant de suspecter la branche.
+- `./mvnw spring-boot:test-run` lance `TestTasksApplication` sur ces conteneurs, qui sont ceux des tests si la réutilisation est activée.
 - Les fixtures des requêtes qui balaient une table sont datées de 2000 (par exemple `RateLimitQueriesTests.WINDOW = 2000-06-01T12:00:00Z`). Les tests qui valident sur une autre connexion nettoient leurs lignes (`Transactions.inNewTransaction`, guide 29).
 
 Les tests : [`TasksApplicationTests`][context-loads] (`contextLoads`) prouve que l'application démarre sur tous les conteneurs ; `MonitoringTests` vérifie que `db`, `rabbit`, `mail`, `storage` et `antivirus` sont UP (guide 32).

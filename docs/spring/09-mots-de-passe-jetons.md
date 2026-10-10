@@ -4,10 +4,10 @@
 
 ## Contexte
 
-- **Problème** : stocker les mots de passe pour qu'une base volée ne les livre pas, changer d'algorithme de hachage sans obliger chacun à réinitialiser le sien, et donner aux clients une session longue (le jeton de rafraîchissement) qu'on peut révoquer et dont le vol se détecte.
+- **Problème** : stocker les mots de passe pour qu'une base volée ne les livre pas, changer d'algorithme sans obliger chacun à réinitialiser le sien, et donner aux clients une session longue (le jeton de rafraîchissement) qu'on peut révoquer et dont le vol se détecte.
 - **Quand l'utiliser** : dès que l'application tient ses propres comptes et mots de passe, ou envoie des liens secrets (vérification d'e-mail, réinitialisation).
 - **Quand s'en passer** : des comptes gérés par un fournisseur d'identité (Keycloak, Auth0, Google), qui stocke les mots de passe et émet les jetons de rafraîchissement lui-même.
-- **Dans ce dépôt** : Argon2id pour les nouveaux hachages, BCrypt gardé pour vérifier les anciens et modernisé à la connexion suivante ; des jetons de rafraîchissement opaques (30 jours), tournés par famille avec détection de réutilisation ; des jetons de vérification d'e-mail (24 h) et de réinitialisation (1 h), à usage unique ; seul le SHA-256 des jetons est stocké.
+- **Dans ce dépôt** : Argon2id pour les nouveaux hachages, BCrypt gardé pour vérifier les anciens, qui sont modernisés à la connexion suivante. Les jetons de rafraîchissement opaques (30 jours) tournent par famille, avec détection de réutilisation. Les jetons de vérification d'e-mail (24 h) et de réinitialisation (1 h) sont à usage unique. Seul le SHA-256 des jetons est stocké.
 - **Prérequis** : guide 07 (connexion, JWT). Versions : Spring Boot 4.1, Spring Security 7.1, Bouncy Castle 1.86.
 
 Les algorithmes de hachage de mots de passe proposés par Spring Security :
@@ -24,9 +24,9 @@ Les algorithmes de hachage de mots de passe proposés par Spring Security :
 
 - **Hachage lent** : une fonction à sens unique rendue exprès coûteuse (temps, mémoire), pour qu'essayer des milliards de candidats coûte trop cher.
 - **Sel** : des octets aléatoires mêlés à chaque hachage, pour que deux mots de passe identiques donnent deux hachages différents et que les tables précalculées ne servent à rien.
-- **Jeton opaque** : une chaîne aléatoire sans contenu lisible ; seul le serveur en connaît le sens, en la cherchant dans sa base.
+- **Jeton opaque** : une chaîne aléatoire sans contenu lisible. Seul le serveur en connaît le sens, en la cherchant dans sa base.
 - **Rotation** : chaque usage d'un jeton de rafraîchissement le révoque et en donne un nouveau.
-- **Famille** : tous les jetons de rafraîchissement nés d'une même connexion ; révoquer la famille termine cette session partout.
+- **Famille** : tous les jetons de rafraîchissement nés d'une même connexion. Révoquer la famille termine cette session partout.
 - **Usage unique** : un jeton marqué utilisé dès son premier usage, refusé ensuite.
 
 ### Hacher un mot de passe
@@ -44,8 +44,8 @@ Voici la valeur stockée, champ par champ :
      +---- encodeur choisi par DelegatingPasswordEncoder
 ```
 
-- `DelegatingPasswordEncoder` préfixe chaque hachage par `{id}` et choisit l'encodeur selon cet id pour vérifier ; il hache toujours les nouveaux mots de passe avec son id par défaut.
-- Tous les paramètres sont dans le hachage : les changer plus tard ne casse pas les hachages existants.
+- `DelegatingPasswordEncoder` préfixe chaque hachage par `{id}` et choisit l'encodeur selon cet id pour vérifier. Il hache toujours les nouveaux mots de passe avec son id par défaut.
+- Tous les paramètres sont dans le hachage, donc les changer plus tard ne casse pas les hachages existants.
 - Minimum de l'OWASP pour Argon2id : 19 Mio de mémoire, 2 itérations, parallélisme 1.
 - L'`Argon2PasswordEncoder` de Spring demande Bouncy Castle dans le classpath (`bcprov-jdk18on`).
 
@@ -71,13 +71,13 @@ Le mot de passe saisi, en clair à cet instant, sert à refaire le hachage :
                        (la nouvelle valeur est écrite en base)
 ```
 
-- La modernisation ne peut se faire qu'à la connexion : c'est le seul moment où le serveur a le mot de passe en clair.
-- `Argon2PasswordEncoder.upgradeEncoding` renvoie vrai quand la mémoire ou les itérations stockées sont sous les valeurs actuelles : relever les paramètres plus tard refait les hachages progressivement.
+- La modernisation ne peut se faire qu'à la connexion, seul moment où le serveur a le mot de passe en clair.
+- `Argon2PasswordEncoder.upgradeEncoding` renvoie vrai quand la mémoire ou les itérations stockées sont sous les valeurs actuelles. Relever les paramètres plus tard refait donc les hachages progressivement.
 - Un compte qui ne se reconnecte jamais garde son ancien hachage.
 
 ### Le jeton opaque
 
-Le client reçoit le jeton une fois ; la base ne garde que son empreinte :
+Le client reçoit le jeton une fois, et la base ne garde que son empreinte :
 
 ```
   32 octets de SecureRandom (256 bits)
@@ -89,13 +89,13 @@ Le client reçoit le jeton une fois ; la base ne garde que son empreinte :
   SHA-256 en hexadécimal : 64 caractères  --> seul stocké, colonne unique
 ```
 
-- Un hachage rapide suffit ici, contrairement aux mots de passe : le jeton a 256 bits d'entropie, donc tester des candidats est sans espoir quelle que soit la vitesse du hachage. Un mot de passe, choisi par un humain, se devine.
-- Un hachage sans sel se cherche par sa valeur (`WHERE token_hash = ?`, index unique) ; un hachage lent salé (Argon2, BCrypt) obligerait à tester chaque ligne.
-- Face au JWT : le jeton d'accès JWT (guide 07) se vérifie sans la base mais ne se révoque pas ; le jeton de rafraîchissement opaque se vérifie en base à chaque usage, donc il se révoque.
+- Un hachage rapide suffit ici, contrairement aux mots de passe. Le jeton a 256 bits d'entropie, donc tester des candidats est sans espoir quelle que soit la vitesse du hachage. Un mot de passe, choisi par un humain, se devine.
+- Un hachage sans sel se cherche par sa valeur (`WHERE token_hash = ?`, index unique). Un hachage lent salé (Argon2, BCrypt) obligerait à tester chaque ligne.
+- Le jeton d'accès JWT (guide 07) se vérifie sans la base mais ne se révoque pas. Le jeton de rafraîchissement opaque se vérifie en base à chaque usage, donc il se révoque.
 
 ### Rotation et détection de réutilisation
 
-Chaque rafraîchissement remplace le jeton ; en représenter un ancien révèle une fuite :
+Chaque rafraîchissement remplace le jeton. Représenter un ancien jeton révèle une fuite :
 
 ```
   connexion            --> R1  (famille F)
@@ -109,9 +109,9 @@ Chaque rafraîchissement remplace le jeton ; en représenter un ancien révèle 
                                    (R3 aussi) --> 401
 ```
 
-- Le premier rejeu d'un ancien jeton termine la session du voleur et du vrai client : l'utilisateur se reconnecte.
-- La déconnexion révoque toute la famille ; désactiver ou supprimer un compte révoque toutes ses familles.
-- Un jeton d'accès déjà émis reste valable jusqu'à son expiration (15 min) : la révocation agit sur les jetons de rafraîchissement. La règle « compte actif » du guide 08 comble le trou pour les endpoints des tâches.
+- Le premier rejeu d'un ancien jeton termine la session du voleur et celle du vrai client, qui se reconnecte.
+- La déconnexion révoque toute la famille. Désactiver ou supprimer un compte révoque toutes ses familles.
+- Un jeton d'accès déjà émis reste valable jusqu'à son expiration (15 min), car la révocation agit sur les jetons de rafraîchissement. La règle « compte actif » du guide 08 comble le trou pour les endpoints des tâches.
 
 ## Implémentation avec Spring
 
@@ -148,7 +148,7 @@ L'exemple utilise `Account` (id, email, passwordHash, enabled) et `AccountReposi
 </dependency>
 ```
 
-**Étape 2. Déclarer l'encodeur.** Argon2id pour tout nouveau hachage ; BCrypt seulement pour vérifier ceux déjà stockés ; aucun autre id accepté.
+**Étape 2. Déclarer l'encodeur.** Argon2id pour tout nouveau hachage, BCrypt seulement pour vérifier ceux déjà stockés, aucun autre id accepté.
 
 ```java
 @Configuration
@@ -165,7 +165,7 @@ class PasswordConfiguration {
 }
 ```
 
-L'ordre du constructeur est `(sel, hachage, parallélisme, mémoire, itérations)`. `Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8()` vaut `(16, 32, 1, 16384, 2)`, soit 16 Mio, sous le minimum de l'OWASP : d'où les valeurs explicites.
+L'ordre du constructeur est `(sel, hachage, parallélisme, mémoire, itérations)`. `Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8()` vaut `(16, 32, 1, 16384, 2)`, soit 16 Mio, sous le minimum de l'OWASP. D'où les valeurs explicites.
 
 **Étape 3. Hacher à l'inscription.** Le mot de passe en clair n'atteint jamais la base ni les logs.
 
@@ -418,11 +418,11 @@ Deux méthodes transactionnelles sont sur le chemin de l'exception :
   avec les deux        --> commit de la révocation, puis 401
 ```
 
-Une méthode qui rejoint une transaction existante et lève une exception de rollback marque la transaction partagée « rollback only » ; la méthode extérieure ne peut plus que l'annuler. Chaque méthode transactionnelle sur le chemin de l'exception a donc besoin de la règle (guide 14).
+Une méthode qui rejoint une transaction existante et lève une exception de rollback marque la transaction partagée « rollback only », et la méthode extérieure ne peut plus que l'annuler. Chaque méthode transactionnelle sur le chemin de l'exception a donc besoin de la règle (guide 14).
 
 ### Deux rafraîchissements en même temps
 
-`findByTokenHash` prend un verrou de ligne (`SELECT ... FOR UPDATE`). Avec deux rafraîchissements simultanés du même jeton, le second attend la validation du premier, lit le jeton révoqué et le traite comme un rejeu : la famille est révoquée. Un client doit donc sérialiser ses rafraîchissements (un onglet rafraîchit, les autres attendent).
+`findByTokenHash` prend un verrou de ligne (`SELECT ... FOR UPDATE`). Avec deux rafraîchissements simultanés du même jeton, le second attend la validation du premier. Il lit alors le jeton révoqué et le traite comme un rejeu, donc la famille est révoquée. Un client doit sérialiser ses rafraîchissements : un onglet rafraîchit, les autres attendent.
 
 ### Les jetons à usage unique
 
@@ -445,14 +445,14 @@ La réinitialisation de mot de passe suit le même principe, avec une colonne `u
   autres jetons supprimés, tous les jetons de rafraîchissement révoqués
 ```
 
-- La génération et le hachage sont ceux des jetons de rafraîchissement (`OpaqueTokens`) ; en émettre un nouveau supprime les jetons non utilisés.
-- La demande répond 202 que l'e-mail existe ou non : l'endpoint ne révèle aucun compte. Sa limite de débit compte tous les e-mails (guide 10).
+- La génération et le hachage sont ceux des jetons de rafraîchissement (`OpaqueTokens`). Émettre un nouveau jeton supprime les jetons non utilisés.
+- La demande répond 202 que l'e-mail existe ou non, donc l'endpoint ne révèle aucun compte. Sa limite de débit compte tous les e-mails (guide 10).
 - Suivre le lien reçu par e-mail prouve la possession de l'adresse, d'où l'e-mail marqué vérifié.
 - La vérification d'e-mail suit le même schéma avec un jeton de 24 h, émis à l'inscription et par `POST /auth/verify-email/resend` (qui répond 409 `email-already-verified` une fois l'e-mail vérifié).
 
 ### Plusieurs instances
 
-Hachages et jetons vivent dans la base : n'importe quelle instance vérifie n'importe quel mot de passe et fait tourner n'importe quel jeton, et le verrou de ligne sérialise aussi les rafraîchissements concurrents entre instances.
+Hachages et jetons vivent dans la base. N'importe quelle instance vérifie n'importe quel mot de passe et fait tourner n'importe quel jeton. Le verrou de ligne sérialise aussi les rafraîchissements concurrents entre instances.
 
 ## Pièges à éviter
 
@@ -538,9 +538,9 @@ Ce qui est propre au dépôt :
 - `{noop}` n'est pas enregistré : les tests qui stockent des utilisateurs directement hachent avec le bean `PasswordEncoder`.
 - `revokeAllForUser` est en SQL natif exprès : quand les jetons pointaient vers `User`, le chemin JPQL `t.user.id` joignait `users`, que `@SoftDelete` filtre, et rien n'était révoqué pour un utilisateur supprimé.
 - `UserService.disable`, `UserService.delete` et `PasswordResetService.confirm` appellent `revokeAllForUser`. Réactiver un compte ne rend pas les anciens jetons (test `disablingUserRevokesRefreshTokensEvenAfterReEnabling`).
-- `rotate` recharge le compte avec `findById` (qui ignore les utilisateurs supprimés) et refuse un compte désactivé en révoquant la famille : un compte désactivé hors du service ne peut pas rafraîchir non plus.
+- `rotate` recharge le compte avec `findById` (qui ignore les utilisateurs supprimés) et refuse un compte désactivé en révoquant la famille. Un compte désactivé hors du service ne peut donc pas rafraîchir non plus.
 - `PasswordResetService.request` ignore les comptes inconnus ou désactivés. `confirm` verrouille la ligne du compte (`findByIdForUpdate`), marque l'e-mail vérifié si besoin et publie `AccountStateChanged` (éviction du cache, guide 17).
-- Les tables sont `refresh_tokens`, `email_verification_tokens` et `password_reset_tokens`. Ces lignes ne sont supprimées qu'à l'effacement du compte (`UserRetentionQueries`) : aucun job ne purge les jetons de rafraîchissement expirés.
+- Les tables sont `refresh_tokens`, `email_verification_tokens` et `password_reset_tokens`. Ces lignes ne sont supprimées qu'à l'effacement du compte (`UserRetentionQueries`). Aucun job ne purge les jetons de rafraîchissement expirés.
 
 Les tests :
 

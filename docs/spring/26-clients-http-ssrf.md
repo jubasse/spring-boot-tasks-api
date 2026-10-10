@@ -4,10 +4,10 @@
 
 ## Contexte
 
-- **Problème** : appeler une API externe depuis l'application, avec des délais bornés ; et quand l'URL vient d'un utilisateur (un webhook, un rappel), ne jamais laisser l'API appeler son propre réseau.
-- **Quand l'utiliser** : `RestClient` pour tout appel HTTP synchrone ; un client déclaratif (une interface) dès qu'une API a plusieurs opérations ; le filtre d'adresses dès qu'un utilisateur choisit une URL.
-- **Quand s'en passer** : un SDK officiel existe pour le service (AWS, Stripe...) ; un code réactif de bout en bout (`WebClient`) ; un appel lent ou à réessayer longtemps (une file d'abord, guides 19 et 27).
-- **Dans ce dépôt** : un seul appel sortant, la livraison des webhooks (`WebhookClient`), vers des URL que les utilisateurs déclarent.
+- **Problème** : appeler une API externe avec des délais bornés. Quand l'URL vient d'un utilisateur (un webhook, un rappel), ne jamais laisser l'API appeler son propre réseau.
+- **Quand l'utiliser** : `RestClient` pour tout appel HTTP synchrone, un client déclaratif (une interface) dès qu'une API a plusieurs opérations, le filtre d'adresses dès qu'un utilisateur choisit une URL.
+- **Quand s'en passer** : un SDK officiel existe pour le service (AWS, Stripe...), le code est réactif de bout en bout (`WebClient`), ou l'appel est lent ou à réessayer longtemps (une file d'abord, guides 19 et 27).
+- **Dans ce dépôt** : un seul appel sortant, la livraison des webhooks (`WebhookClient`), vers des URL déclarées par les utilisateurs.
 - **Prérequis** : guides 01 (configuration) et 14 (transactions : appel hors transaction). Versions : Spring Boot 4.1, Spring Framework 7.0, Apache HttpClient 5.6.
 
 Les clients HTTP de Spring :
@@ -22,7 +22,7 @@ Les clients HTTP de Spring :
 
 ### Vocabulaire
 
-- **Client déclaratif** (HTTP service client) : une interface Java annotée (`@GetExchange`, `@PostExchange`) ; Spring crée l'objet qui fait les appels.
+- **Client déclaratif** (HTTP service client) : une interface Java annotée (`@GetExchange`, `@PostExchange`). Spring crée l'objet qui fait les appels.
 - **Groupe de clients** : des interfaces qui partagent le même `RestClient` et les mêmes réglages (URL de base, délais), nommé dans `@ImportHttpServices(group = ...)`.
 - **SSRF** (Server-Side Request Forgery) : faire appeler par le serveur une adresse que l'attaquant ne peut pas joindre lui-même.
 - **Résolution DNS** : la traduction d'un nom d'hôte en adresses IP, faite à chaque connexion.
@@ -44,8 +44,8 @@ L'attaquant déclare une URL qui n'a de sens que depuis l'intérieur du réseau 
      |                                   |                      de l'intérieur)
 ```
 
-- Le serveur voit des adresses que l'attaquant ne voit pas : métadonnées du cloud (`169.254.169.254`), base de données, `localhost`.
-- Les adresses à refuser : boucle locale (`127.0.0.0/8`, `::1`), réseaux privés (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`), lien local (`169.254.0.0/16`, `fe80::/10`) et les plages réservées.
+- Le serveur voit ce que l'attaquant ne voit pas : métadonnées du cloud (`169.254.169.254`), base de données, `localhost`.
+- Adresses à refuser : boucle locale (`127.0.0.0/8`, `::1`), réseaux privés (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`), lien local (`169.254.0.0/16`, `fe80::/10`) et les plages réservées.
 
 ### Contrôler à la déclaration ne suffit pas
 
@@ -59,9 +59,9 @@ Un nom d'hôte peut changer d'adresse entre le contrôle et l'appel :
           seul un contrôle à chaque connexion l'arrête
 ```
 
-- Le contrôle à la déclaration donne un refus clair à l'utilisateur (422). La vraie barrière est à chaque appel.
+- Le contrôle à la déclaration donne un refus clair à l'utilisateur (422), mais la vraie barrière est à chaque appel.
 - Vérifier soi-même l'adresse, puis laisser le client résoudre à nouveau, laisse une fenêtre : la seconde résolution peut donner une autre adresse.
-- Le filtre doit donc vivre dans le client : il résout, filtre, et se connecte exactement aux adresses filtrées. Avec Apache, Spring Boot 4.1 enveloppe le résolveur DNS du client dans ce but.
+- Le filtre doit donc vivre dans le client, qui résout, filtre, puis se connecte exactement aux adresses filtrées. Avec Apache, Spring Boot 4.1 enveloppe pour cela le résolveur DNS du client.
 
 ### Les valeurs par défaut à changer
 
@@ -69,13 +69,13 @@ Sans réglage, un client Boot a des comportements qu'on ne choisit pas :
 
 | Comportement par défaut | Risque | Réglage |
 |---|---|---|
-| Boot prend le premier client du classpath | une dépendance ajoutée change de client | `spring.http.clients.imperative.factory` |
-| Délais d'Apache | une connexion peut attendre plusieurs minutes | `connect-timeout`, `read-timeout` |
+| Premier client du classpath | une dépendance ajoutée change de client | `spring.http.clients.imperative.factory` |
+| Délais d'Apache | une connexion attend plusieurs minutes | `connect-timeout`, `read-timeout` |
 | Redirections suivies | le récepteur oriente l'appel suivant | `redirects: dont-follow` |
-| Relances automatiques d'Apache | un POST renvoyé sur 429 ou 503, après le `Retry-After` | `disableAutomaticRetries()` |
+| Relances automatiques d'Apache | un POST renvoyé sur 429 ou 503 | `disableAutomaticRetries()` |
 | Statut 4xx ou 5xx | `RestClient` lève une exception | un `defaultStatusHandler` |
 
-La stratégie de relance d'Apache réessaie une fois sur les codes 429 et 503, même pour un POST, et respecte l'en-tête `Retry-After`. L'ordre de choix de Boot est : Apache, Jetty, Reactor, JDK, puis le client simple.
+La stratégie de relance d'Apache réessaie une fois sur les codes 429 et 503, même pour un POST, en respectant `Retry-After`. Boot choisit dans l'ordre Apache, Jetty, Reactor, JDK, puis le client simple.
 
 ## Implémentation avec Spring
 
@@ -102,7 +102,7 @@ src/test/java/.../
 
 ### Appeler une API connue
 
-**Étape 1. Ajouter les dépendances.** Le starter apporte `RestClient` et les clients déclaratifs ; Apache HttpClient est déclaré pour être choisi exprès, pas parce qu'une autre bibliothèque l'apporte.
+**Étape 1. Ajouter les dépendances.** Le starter apporte `RestClient` et les clients déclaratifs. Apache HttpClient est déclaré pour être choisi exprès, pas parce qu'une autre bibliothèque l'apporte.
 
 ```xml
 <dependency>
@@ -142,7 +142,7 @@ public record ParcelStatus(String trackingNumber, String state) {
 }
 ```
 
-**Étape 4. L'enregistrer dans un groupe.** Le groupe porte l'URL de base et ses propres délais ; `CarrierClient` devient un bean injectable.
+**Étape 4. L'enregistrer dans un groupe.** Le groupe porte l'URL de base et ses délais. `CarrierClient` devient un bean injectable.
 
 ```java
 @Configuration
@@ -188,9 +188,9 @@ class OutboundHttpConfiguration {
 }
 ```
 
-`InetAddressFilter` (`org.springframework.boot.http.client`) existe depuis Boot 4.1.0. Une plage invalide comme `10.0.0.0/33` fait échouer le démarrage avec une `IllegalArgumentException`.
+`InetAddressFilter` (`org.springframework.boot.http.client`) existe depuis Boot 4.1.0. Une plage invalide comme `10.0.0.0/33` fait échouer le démarrage (`IllegalArgumentException`).
 
-**Étape 6. Couper les relances automatiques d'Apache.** Sa stratégie par défaut renvoie un POST sur 429 ou 503 après avoir dormi le `Retry-After` reçu. Réessayer est la décision de l'appelant (guide 27).
+**Étape 6. Couper les relances automatiques d'Apache.** Sa stratégie par défaut renvoie un POST sur 429 ou 503 après avoir attendu le `Retry-After`. Réessayer est la décision de l'appelant (guide 27).
 
 ```java
 // dans OutboundHttpConfiguration
@@ -212,7 +212,7 @@ public interface CallbackClient {
 }
 ```
 
-Un argument `URI` donne l'URL de l'appel : chaque marchand a la sienne. Le corps en `byte[]` envoie les octets exacts, ceux qu'on a signés par exemple.
+Un argument `URI` donne l'URL de l'appel, propre à chaque marchand. Le corps en `byte[]` envoie les octets exacts, par exemple ceux qu'on a signés.
 
 ```java
 @Configuration
@@ -239,7 +239,7 @@ spring:
         cookie-handling: disable
 ```
 
-**Étape 8. Contrôler l'URL à la déclaration.** Le marchand reçoit un refus clair tout de suite ; le filtre du client reste la vraie barrière.
+**Étape 8. Contrôler l'URL à la déclaration.** Le marchand reçoit un refus clair tout de suite, mais le filtre du client reste la vraie barrière.
 
 ```java
 @Component
@@ -274,7 +274,7 @@ public class CallbackUrlPolicy {
 
 Dans une vraie API, une exception dédiée devient un 422 (guide 05).
 
-**Étape 9. Vérifier.** MockWebServer est un vrai serveur HTTP local : le test passe par le vrai client, le filtre et les délais.
+**Étape 9. Vérifier.** MockWebServer est un vrai serveur HTTP local, donc le test passe par le vrai client, le filtre et les délais.
 
 ```java
 class OutboundHttpConfigurationTest {
@@ -324,7 +324,7 @@ class OutboundHttpConfigurationTest {
 }
 ```
 
-`MockWebServer` et `MockResponse` viennent de `mockwebserver3` (artefact `com.squareup.okhttp3:mockwebserver3-junit5`, en scope test). `RestClient` laisse passer `FilteredHostException` sans l'envelopper.
+`MockWebServer` et `MockResponse` viennent de `mockwebserver3` (artefact `com.squareup.okhttp3:mockwebserver3-junit5`, scope test). `RestClient` laisse passer `FilteredHostException` sans l'envelopper.
 
 ### Référence rapide
 
@@ -354,17 +354,17 @@ Limites de cette version : un appel échoué n'est pas réessayé (guide 27).
 
 ### Sous le capot : le filtre dans la résolution DNS
 
-- Boot crée les réglages du client (`HttpClientSettings`) avec le bean `InetAddressFilter` s'il existe. Chaque client construit par Boot reçoit ces réglages.
-- Avec Apache, Boot remplace le résolveur DNS par `HttpComponentsFilteredDnsResolver` : résolution, filtre, puis connexion aux seules adresses restantes. Aucune adresse restante lève `FilteredHostException`. Il n'y a pas de seconde résolution : le DNS rebinding n'a pas de fenêtre.
+- Boot crée les réglages du client (`HttpClientSettings`) avec le bean `InetAddressFilter` s'il existe, et chaque client construit par Boot les reçoit.
+- Avec Apache, Boot remplace le résolveur DNS par `HttpComponentsFilteredDnsResolver` : résolution, filtre, puis connexion aux seules adresses restantes. Si aucune ne reste, `FilteredHostException` est levée. Il n'y a pas de seconde résolution, donc le DNS rebinding n'a pas de fenêtre.
 - `externalAddresses()` laisse passer trois formes IPv6 qui contiennent une adresse IPv4, loopback et métadonnées comprises (par exemple `::127.0.0.1` ou `::a9fe:a9fe`). Le dépôt les retire à l'étape 5 : `::/96` (compatible IPv4), `::ffff:0:0:0/96` (traduite IPv4) et `64:ff9b:1::/48` (NAT64 à usage local).
 
 ### Le piège du proxy sortant
 
-Boot construit le client Apache avec `useSystemProperties()`. Si `http.proxyHost` ou `https.proxyHost` est réglé, le client se connecte au proxy : le filtre vérifie l'adresse du proxy, pas celle de la cible. Il ne faut jamais régler ces propriétés ; si un proxy sortant est imposé, c'est lui qui doit filtrer.
+Boot construit le client Apache avec `useSystemProperties()`. Si `http.proxyHost` ou `https.proxyHost` est réglé, le client se connecte au proxy, et le filtre vérifie l'adresse du proxy, pas celle de la cible. Il ne faut jamais régler ces propriétés. Si un proxy sortant est imposé, c'est lui qui doit filtrer.
 
 ### Surveiller sans fuite
 
-Spring mesure chaque appel (`http.client.requests`) et le trace, avec l'hôte dans les tags et l'URL complète dans les traces. Avec des URL d'utilisateurs, les séries grossissent avec les abonnés, et une URL peut contenir un secret (Slack). On remplace donc la convention par un nom constant :
+Spring mesure et trace chaque appel (`http.client.requests`), avec l'hôte dans les tags et l'URL complète dans les traces. Avec des URL d'utilisateurs, les séries grossissent avec les abonnés, et une URL peut contenir un secret (Slack). On remplace donc la convention par un nom constant :
 
 ```java
 class CallbackObservationConvention extends DefaultClientRequestObservationConvention {
@@ -381,7 +381,7 @@ class CallbackObservationConvention extends DefaultClientRequestObservationConve
 }
 ```
 
-On la pose avec `builder.observationConvention(new CallbackObservationConvention())` dans le configurateur de groupe. Il ne faut jamais journaliser le message d'une exception du client : il contient l'URL. On enregistre un type court (`Timeout`, `ConnectionFailed`, `DestinationNotAllowed`).
+On la pose avec `builder.observationConvention(new CallbackObservationConvention())` dans le configurateur de groupe. Il ne faut jamais journaliser le message d'une exception du client, qui contient l'URL. On enregistre un type court (`Timeout`, `ConnectionFailed`, `DestinationNotAllowed`).
 
 ## Pièges à éviter
 
@@ -415,7 +415,7 @@ On la pose avec `builder.observationConvention(new CallbackObservationConvention
 
 ## En résumé
 
-**À retenir :** un client choisi et borné (Apache, délais, sans relance automatique), déclaratif par groupe ; et pour une URL d'utilisateur, un `InetAddressFilter` dans le client, sans redirection ni cookie, avec un contrôle à la déclaration pour un refus clair.
+**À retenir :** un client choisi et borné (Apache, délais, sans relance automatique), déclaratif par groupe. Pour une URL d'utilisateur, un `InetAddressFilter` dans le client, sans redirection ni cookie, et un contrôle à la déclaration pour un refus clair.
 
 - [ ] `spring-boot-starter-restclient`, Apache HttpClient et `factory: http-components`
 - [ ] `connect-timeout` et `read-timeout` pour tous les clients, ajustés par groupe
@@ -460,20 +460,19 @@ La livraison complète est racontée au [cas pratique](cas-pratiques/livraison-w
 
 | Fichier | Rôle |
 |---|---|
-| [`OutboundHttpConfiguration`][outbound-config] | le filtre d'adresses et la coupure des relances d'Apache, pour tous les clients de Boot |
+| [`OutboundHttpConfiguration`][outbound-config] | le filtre d'adresses et la coupure des relances d'Apache, pour tous les clients |
 | [`OutboundHttpProperties`][outbound-props] | `outbound-http.allowed-addresses` |
-| [`WebhookClient`][client] | l'interface `@PostExchange` : l'URL en paramètre, le corps en octets signés ; son `@Retryable` est au guide 27 |
+| [`WebhookClient`][client] | l'interface `@PostExchange` : URL en paramètre, corps en octets signés ; son `@Retryable` est au guide 27 |
 | [`WebhookConfiguration`][webhook-config] | `@ImportHttpServices(group = "webhooks")`, le gestionnaire de statut vide, la convention d'observation |
 | [`WebhookObservationConvention`][observation] | nom de client constant `webhook`, ni hôte ni URL |
 | [`WebhookUrlPolicy`][url-policy] | le contrôle à la déclaration ; `checkSlack` pour les URL Slack |
-| [`WebhookDeliveryService`][delivery-service] | traduit les échecs en types courts (`DestinationNotAllowed`, `Timeout`...) |
+| [`WebhookDeliveryService`][delivery-service] | traduit les échecs en types courts (`DestinationNotAllowed`...) |
 
 Les réglages :
 
 | Réglage | Valeur | Rôle |
 |---|---|---|
-| `spring.http.clients.imperative.factory` | `http-components` | Apache, choisi explicitement |
-| `spring.http.clients.connect-timeout` / `read-timeout` | 5s / 15s | tous les clients |
+| `spring.http.clients.imperative.factory`, `connect-timeout` / `read-timeout` | `http-components`, 5s / 15s | Apache, tous les clients |
 | `spring.http.serviceclient.webhooks.connect-timeout` / `read-timeout` | 5s / 15s (2s en test) | le client des webhooks |
 | `spring.http.serviceclient.webhooks.redirects` | `dont-follow` | aucune redirection |
 | `spring.http.serviceclient.webhooks.cookie-handling` | `disable` | aucun cookie |
@@ -482,10 +481,10 @@ Les réglages :
 
 Ce qui est propre au dépôt :
 
-- Le filtre vaut pour tout client construit par Boot ; le SDK AWS construit le sien.
-- `WebhookUrlPolicy.check` refuse un schéma autre que http ou https, des identifiants dans l'URL, tout autre chose que HTTPS sur le port 443 (quand `requireHttps` est vrai), un hôte qui ne se résout pas, et toute adresse résolue que le même bean `InetAddressFilter` refuse.
-- Slack (`checkSlack`) : seulement `https://hooks.slack.com/services/...`, 256 caractères au plus, sans requête ni fragment ni identifiants. La destination ne se choisit pas, donc rien à résoudre. L'URL est un secret : stockée chiffrée et masquée.
-- Une adresse refusée par le filtre à la livraison termine la livraison (`FAILED`, `DestinationNotAllowed`) : réessayer ne ferait que sonder l'adresse à nouveau.
+- Le filtre vaut pour tout client construit par Boot. Le SDK AWS construit le sien.
+- `WebhookUrlPolicy.check` refuse un schéma autre que http ou https, des identifiants dans l'URL, tout autre chose que HTTPS sur le port 443 (si `requireHttps` est vrai), un hôte qui ne se résout pas, et toute adresse que le même bean `InetAddressFilter` refuse.
+- Slack (`checkSlack`) : seulement `https://hooks.slack.com/services/...`, 256 caractères au plus, sans requête, fragment ni identifiants. La destination ne se choisit pas, donc rien à résoudre. L'URL est un secret, stockée chiffrée et masquée.
+- Une adresse refusée par le filtre à la livraison termine la livraison (`FAILED`, `DestinationNotAllowed`), car réessayer ne ferait que sonder l'adresse à nouveau.
 - En développement, pour recevoir sur sa machine : `WEBHOOK_REQUIRE_HTTPS=false` et `OUTBOUND_HTTP_ALLOWED_ADDRESSES=127.0.0.1/32` (README, « Receive them on your machine »).
 
 Les tests :
@@ -494,13 +493,13 @@ Les tests :
 - [`WebhookUrlPolicyTest`][url-policy-test] : 21 tests du contrôle à la déclaration, dont les URL Slack, ni résolues ni filtrées.
 - [`WebhookDeliveryTests`][delivery-tests] : redirection non suivie, cookie non renvoyé.
 
-Pour ajouter un appel sortant : une interface `@HttpExchange` dans un groupe de `@ImportHttpServices`, ses délais sous `spring.http.serviceclient.<groupe>`, l'appel hors transaction, et un test avec MockWebServer. Si l'URL vient d'un utilisateur, un contrôle à la déclaration qui réutilise le bean `InetAddressFilter`.
+Pour ajouter un appel sortant : une interface `@HttpExchange` dans un groupe de `@ImportHttpServices`, ses délais sous `spring.http.serviceclient.<groupe>`, l'appel hors transaction et un test avec MockWebServer. Si l'URL vient d'un utilisateur, un contrôle à la déclaration réutilise le bean `InetAddressFilter`.
 
 ## Voir aussi
 
 - [27. Résilience](27-resilience.md) : réessais, disjoncteur et cloison autour de ce client.
-- [14. Transactions](14-transactions.md) : l'appel HTTP entre deux transactions courtes.
-- [10. Rate limiting](10-rate-limiting.md) : les événements de test d'un webhook, limités par utilisateur.
+- [14. Transactions](14-transactions.md) : l'appel HTTP hors transaction.
+- [10. Rate limiting](10-rate-limiting.md) : les événements de test d'un webhook.
 - [Cas pratique : la livraison d'un webhook](cas-pratiques/livraison-webhook.md) : une livraison de bout en bout.
 - [README du dépôt, « Receive task notifications by webhook »](../../README.md#receive-task-notifications-by-webhook) : le contrat pour les récepteurs.
 - Documentation officielle : [clients HTTP dans Spring Boot](https://docs.spring.io/spring-boot/reference/io/rest-client.html), [clients REST de Spring](https://docs.spring.io/spring-framework/reference/integration/rest-clients.html), [prévention du SSRF (OWASP)](https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html).

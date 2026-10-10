@@ -4,10 +4,10 @@
 
 ## Contexte
 
-- **Problème** : une fonctionnalité doit réagir à ce qu'une autre a fait (une commande passée doit créer une facture, envoyer un mail, vider un cache) sans que la première connaisse la seconde.
-- **Quand l'utiliser** : découpler deux paquets d'une même application ; agir seulement si la transaction est validée ; rendre la main à la requête pendant un travail court.
-- **Quand s'en passer** : un seul appelant et un seul appelé dans le même paquet (un appel direct est plus lisible) ; un travail qui ne doit pas se perdre si l'instance s'arrête (file, guide 19, outbox, guide 20) ; un événement qui doit atteindre les autres instances (guide 24).
-- **Dans ce dépôt** : le paquet `task` publie `TaskAssigned`, `TaskCommentAdded`... et ne connaît pas `notification` ; mails, webhooks et temps réel écoutent dans la transaction ; le cache de statut se vide après le commit ; l'outbox publie sur un thread `@Async`.
+- **Problème** : une fonctionnalité doit réagir à ce qu'une autre a fait (une commande passée crée une facture, envoie un mail, vide un cache) sans que la première connaisse la seconde.
+- **Quand l'utiliser** : découpler deux paquets d'une même application, agir seulement si la transaction est validée, ou rendre la main à la requête pendant un travail court.
+- **Quand s'en passer** : un seul appelant et un seul appelé dans le même paquet (un appel direct est plus lisible). Un travail qui ne doit pas se perdre si l'instance s'arrête (file, guide 19, outbox, guide 20). Un événement qui doit atteindre les autres instances (guide 24).
+- **Dans ce dépôt** : le paquet `task` publie `TaskAssigned`, `TaskCommentAdded`... et ne connaît pas `notification`. Mails, webhooks et temps réel écoutent dans la transaction. Le cache de statut se vide après le commit. L'outbox publie sur un thread `@Async`.
 - **Prérequis** : guide 14 (transactions). Versions : Spring Boot 4.1, Spring Framework 7.0, Java 25 (threads virtuels).
 
 Les façons de faire réagir une autre partie du code :
@@ -24,18 +24,18 @@ Les façons de faire réagir une autre partie du code :
 
 ### Vocabulaire
 
-- **Événement applicatif** : un objet (souvent un record) qui dit ce qui s'est passé, publié dans le contexte Spring. Depuis Spring 4.2, tout objet peut être publié : il n'a plus à étendre `ApplicationEvent`.
+- **Événement applicatif** : un objet (souvent un record) qui dit ce qui s'est passé, publié dans le contexte Spring. Depuis Spring 4.2, tout objet peut être publié sans étendre `ApplicationEvent`.
 - **Publieur** : le code qui appelle `ApplicationEventPublisher.publishEvent(...)`.
 - **Phase** : le moment de la transaction où un `@TransactionalEventListener` est appelé (`BEFORE_COMMIT`, `AFTER_COMMIT`, `AFTER_ROLLBACK`, `AFTER_COMPLETION`).
 - **Exécuteur** (executor) : le composant qui fournit les threads des méthodes `@Async`.
 
 ### Synchrone par défaut
 
-- `publishEvent` appelle chaque `@EventListener` tout de suite, sur le thread du publieur, l'un après l'autre : le multicaster par défaut n'a pas d'exécuteur.
-- Le listener tourne donc dans la transaction du publieur : ses écritures sont validées ou annulées avec elle.
-- Une exception levée par un listener remonte au publieur : la transaction est annulée et l'appelant reçoit l'exception.
-- Un listener peut publier à son tour un événement : la chaîne reste synchrone.
-- L'ordre entre listeners n'est pas garanti ; `@Order` sur la méthode le fixe.
+- `publishEvent` appelle chaque `@EventListener` tout de suite, sur le thread du publieur, l'un après l'autre. Le multicaster par défaut n'a pas d'exécuteur.
+- Le listener tourne donc dans la transaction du publieur, et ses écritures sont validées ou annulées avec elle.
+- Une exception levée par un listener remonte au publieur. La transaction est annulée et l'appelant reçoit l'exception.
+- Un listener peut publier à son tour un événement, et la chaîne reste synchrone.
+- L'ordre entre listeners n'est pas garanti. `@Order` sur la méthode le fixe.
 
 Tout se passe sur un thread, dans une transaction :
 
@@ -55,12 +55,11 @@ Tout se passe sur un thread, dans une transaction :
  COMMIT  --> commande, facture et stock validés ensemble
 ```
 
-- Une exception d'un listener annule tout.
-- Un listener lent retarde la réponse et garde la connexion à la base.
+Un listener lent retarde la réponse et garde la connexion à la base.
 
 ### Après le commit : `@TransactionalEventListener`
 
-Il est lié à une phase, `AFTER_COMMIT` par défaut. Spring garde l'événement de côté et appelle le listener quand la transaction se termine : rien ne part pour un changement annulé.
+Il est lié à une phase, `AFTER_COMMIT` par défaut. Spring garde l'événement de côté et appelle le listener quand la transaction se termine, donc rien ne part pour un changement annulé.
 
 ```
  transaction
@@ -76,17 +75,17 @@ Il est lié à une phase, `AFTER_COMMIT` par défaut. Spring garde l'événement
      +-- AFTER_COMPLETION dans les deux cas
 ```
 
-- Publié hors transaction, l'événement est ignoré, sauf avec `fallbackExecution = true` : le listener est alors appelé tout de suite.
-- Une exception levée après le commit ne remonte pas : Spring la journalise (ERROR) et continue. Le changement est déjà validé, donc il faut prévoir ce cas (TTL, réessai).
+- Publié hors transaction, l'événement est ignoré, sauf avec `fallbackExecution = true`. Le listener est alors appelé tout de suite.
+- Une exception levée après le commit ne remonte pas. Spring la journalise (ERROR) et continue. Le changement est déjà validé, donc il faut prévoir ce cas (TTL, réessai).
 - Écrire en base depuis un listener d'après commit est un piège : le code d'accès aux données rejoint la transaction finie et n'est jamais validé. Depuis Spring 6.1, un `@Transactional` sur un tel listener est refusé au démarrage (`IllegalStateException`), sauf en `REQUIRES_NEW` ou `NOT_SUPPORTED`.
 
 ### `@Async` : rendre la main
 
-- `@EnableAsync` une fois ; `@Async` sur une méthode `public` d'un bean : le proxy Spring dépose l'appel sur un exécuteur et rend la main aussitôt.
-- Le type de retour est `void`, ou `Future` / `CompletableFuture`.
-- L'exception d'une méthode `void` n'a pas de destinataire : Spring la journalise en ERROR. Avec un `CompletableFuture`, l'appelant la reçoit.
-- Un nouveau thread n'a pas de transaction : une méthode `@Async @Transactional` ouvre la sienne.
-- Le travail vit en mémoire : un arrêt de l'instance le perd, et à l'arrêt Boot n'attend pas les tâches en cours par défaut.
+- `@EnableAsync` s'écrit une fois. Sur une méthode `public` d'un bean, `@Async` fait déposer l'appel par le proxy Spring sur un exécuteur, qui rend la main aussitôt.
+- Le type de retour est `void`, `Future` ou `CompletableFuture`.
+- L'exception d'une méthode `void` n'a pas de destinataire, et Spring la journalise en ERROR. Avec un `CompletableFuture`, l'appelant la reçoit.
+- Un nouveau thread n'a pas de transaction, donc une méthode `@Async @Transactional` ouvre la sienne.
+- Le travail vit en mémoire. Un arrêt de l'instance le perd, et Boot n'attend pas les tâches en cours par défaut.
 
 ```
  thread de la requête              thread virtuel (applicationTaskExecutor)
@@ -102,9 +101,9 @@ Il est lié à une phase, `AFTER_COMMIT` par défaut. Spring garde l'événement
 Boot fournit l'exécuteur, le bean `applicationTaskExecutor` :
 
 - avec `spring.threads.virtual.enabled: true`, un `SimpleAsyncTaskExecutor` qui crée un thread virtuel par appel, sans limite par défaut ;
-- sinon, un `ThreadPoolTaskExecutor` de 8 threads de base et à file non bornée : le pool ne grandit jamais au-delà de 8.
+- sinon, un `ThreadPoolTaskExecutor` de 8 threads de base et à file non bornée, qui ne grandit donc jamais au-delà de 8.
 
-Boot ne le crée que si aucun bean `Executor` n'existe déjà (ou avec `spring.task.execution.mode=force`).
+Boot ne le crée que si aucun bean `Executor` n'existe déjà, ou avec `spring.task.execution.mode=force`.
 
 ## Implémentation avec Spring
 
@@ -130,7 +129,7 @@ src/test/java/.../
 
 ### Un événement dans la même application
 
-**Étape 1. Décrire l'événement.** Un record immuable, au passé, qui porte des identifiants et des valeurs, jamais l'entité : le listener peut tourner après la fermeture de la session, ou sur un autre thread.
+**Étape 1. Décrire l'événement.** Un record immuable, nommé au passé, qui porte des identifiants et des valeurs, jamais l'entité. Le listener peut en effet tourner après la fermeture de la session, ou sur un autre thread.
 
 ```java
 public record OrderPlaced(UUID orderId, String customerEmail, BigDecimal total) {
@@ -156,7 +155,7 @@ public class OrderService {
 }
 ```
 
-**Étape 3. Écouter dans la transaction.** La facture doit exister si et seulement si la commande existe ; le listener écrit en base, sans appel réseau.
+**Étape 3. Écouter dans la transaction.** La facture doit exister si et seulement si la commande existe. Le listener écrit en base, sans appel réseau.
 
 ```java
 @Component
@@ -173,7 +172,7 @@ class InvoiceCreator {
 }
 ```
 
-**Étape 4. Agir après le commit.** Un mail pour une commande annulée serait faux ; `fallbackExecution` couvre une publication hors transaction.
+**Étape 4. Agir après le commit.** Un mail pour une commande annulée serait faux. `fallbackExecution` couvre une publication hors transaction.
 
 ```java
 public interface ConfirmationMailer {          // implémenté au guide 23
@@ -196,7 +195,7 @@ class OrderConfirmationListener {
 }
 ```
 
-**Étape 5. Passer le travail lent sur un autre thread.** Après le commit, le listener tourne encore sur le thread de la requête ; `@Async` rend la main tout de suite.
+**Étape 5. Passer le travail lent sur un autre thread.** Après le commit, le listener tourne encore sur le thread de la requête. `@Async` rend la main tout de suite.
 
 ```java
 @Configuration
@@ -221,7 +220,7 @@ public void onOrderPlaced(OrderPlaced event) {
 }
 ```
 
-**Étape 6. Vérifier.** `@RecordApplicationEvents` capture les événements publiés ; un mock du mailer prouve l'envoi après un commit et l'absence d'envoi après un rollback (il faut une vraie base : guide 30).
+**Étape 6. Vérifier.** `@RecordApplicationEvents` capture les événements publiés. Un mock du mailer prouve l'envoi après un commit et l'absence d'envoi après un rollback. Il faut une vraie base (guide 30).
 
 ```java
 @SpringBootTest
@@ -259,7 +258,7 @@ Les annotations :
 
 | Annotation | Attribut | Rôle |
 |---|---|---|
-| `@EventListener` | `classes`, `condition` | écoute un type ; `condition` est une expression SpEL (`#event.total > 100`) |
+| `@EventListener` | `classes`, `condition` | écoute un type, `condition` étant une expression SpEL (`#event.total > 100`) |
 | `@TransactionalEventListener` | `phase` | `AFTER_COMMIT` par défaut |
 | `@TransactionalEventListener` | `fallbackExecution` | appelle aussi le listener hors transaction (false par défaut) |
 | `@Order` | valeur | ordre entre listeners, plus petit d'abord |
@@ -288,15 +287,15 @@ Limites de cette version : le mail d'après commit vit en mémoire. Un arrêt de
 
 ### Sous le capot : le proxy Spring de `@Async`
 
-`@EnableAsync` place un proxy Spring devant le bean : l'appel passe par un intercepteur, qui le confie à l'exécuteur. Un appel `this.method()` depuis la même classe contourne le proxy et s'exécute tout de suite, sur le même thread. `@Async("nomDuBean")` choisit un exécuteur précis.
+`@EnableAsync` place un proxy Spring devant le bean. L'appel passe par un intercepteur, qui le confie à l'exécuteur. Un appel `this.method()` depuis la même classe contourne le proxy et s'exécute tout de suite, sur le même thread. `@Async("nomDuBean")` choisit un exécuteur précis.
 
 ### Spring Data : `@DomainEvents`
 
-Spring Data publie les événements d'un agrégat (`@DomainEvents`, `AbstractAggregateRoot`) seulement lors d'un appel `save...` ou `delete...` du repository. Une modification par dirty checking, sans `save()`, ne publie rien. Ce dépôt publie donc explicitement avec `ApplicationEventPublisher`.
+Spring Data publie les événements d'un agrégat (`@DomainEvents`, `AbstractAggregateRoot`) seulement lors d'un appel `save...` ou `delete...` du repository. Une modification par dirty checking ne publie rien. Ce dépôt publie donc avec `ApplicationEventPublisher`.
 
 ### Plusieurs instances
 
-Un événement applicatif reste dans la JVM qui l'a publié : les autres instances ne le voient pas. Pour les prévenir, le listener écrit un message dans l'outbox vers un exchange fanout (guides 20 et 24).
+Un événement applicatif reste dans la JVM qui l'a publié, et les autres instances ne le voient pas. Pour les prévenir, le listener écrit un message dans l'outbox vers un exchange fanout (guides 20 et 24).
 
 Dans ce dépôt, `AccountStateChanged` reste local. `RealtimeBroadcasts` le transforme en diffusion `AccountStatusChanged`, et chaque instance vide son cache et ferme les flux du compte.
 
@@ -337,7 +336,7 @@ Dans ce dépôt, `AccountStateChanged` reste local. `RealtimeBroadcasts` le tran
 
 ## En résumé
 
-**À retenir :** `@EventListener` agit dans la transaction du publieur, `@TransactionalEventListener` après le commit, `@Async` sur un autre thread ; ce qui ne doit pas se perdre passe par une file.
+**À retenir :** `@EventListener` agit dans la transaction du publieur, `@TransactionalEventListener` après le commit, `@Async` sur un autre thread. Ce qui ne doit pas se perdre passe par une file.
 
 - [ ] Des records au passé, avec des identifiants, jamais d'entité
 - [ ] `ApplicationEventPublisher` dans le service, pas de dépendance vers les réacteurs
@@ -351,7 +350,7 @@ Dans ce dépôt, `AccountStateChanged` reste local. `RealtimeBroadcasts` le tran
 
 ## Dans ce dépôt
 
-Qui écoute quoi (tout est dans la transaction de la requête) :
+Qui écoute quoi, tout dans la transaction de la requête :
 
 ```
   TaskService.assign                         transaction de la requête
@@ -383,16 +382,15 @@ Qui écoute quoi (tout est dans la transaction de la requête) :
 | [`OutboxRelay`][relay] | `publishNow`, la seule méthode `@Async` (guide 20) |
 | [`NotificationStreams`][streams] | écoute `ContextClosedEvent` pour fermer les flux (guide 24) |
 
-Le seul réglage propre à ce guide est `spring.threads.virtual.enabled: true` : les requêtes et les méthodes `@Async` tournent sur des threads virtuels.
+Le seul réglage propre à ce guide est `spring.threads.virtual.enabled: true`, qui met les requêtes et les méthodes `@Async` sur des threads virtuels.
 
 Ce qui est propre au dépôt :
 
-- Tous les listeners métier sont des `@EventListener` synchrones, qui n'écrivent qu'en base (lignes de livraison, outbox). Mails, webhooks et diffusions partent après le commit, par l'outbox (guide 20), jamais depuis le listener.
-- Le paquet `task` n'importe rien de `notification`.
+- Tous les listeners métier sont des `@EventListener` synchrones, qui n'écrivent qu'en base (lignes de livraison, outbox). Mails, webhooks et diffusions partent après le commit, par l'outbox (guide 20), jamais depuis le listener. Le paquet `task` n'importe rien de `notification`.
 - Publient des événements : `TaskService`, `TaskCommentService`, `TaskReminderService`, `TaskEventService` (`TaskEventRecorded`, un par ligne d'historique), `UserService`, `EmailVerificationService`, `PasswordResetService`, `UserRetentionService` et `DataExportService`.
-- `AccountStateChanged` est publié par `UserService.verifyEmail`, `enable`, `disable`, `delete`, par `EmailVerificationService.verify` et par la confirmation de `PasswordResetService` quand elle marque l'email vérifié, toujours dans une méthode `@Transactional`. Tout nouveau chemin qui change un compte (SQL natif compris) doit le publier, sinon le statut en cache vit jusqu'à son TTL de 30 s (guide 17).
-- `UserStatusCacheEviction` porte `fallbackExecution = true`, car un changement publié hors transaction ne viderait sinon jamais le cache. Spring ne journalise que son exception, donc le TTL reste la borne.
-- `@EnableAsync` est sur `MailConfiguration` ; la seule méthode `@Async` est `OutboxRelay.publishNow`, appelée depuis le `afterCommit()` de l'outbox.
+- `AccountStateChanged` est publié par `UserService.verifyEmail`, `enable`, `disable`, `delete`, par `EmailVerificationService.verify` et par la confirmation de `PasswordResetService` quand elle marque l'email vérifié, toujours dans une méthode `@Transactional`. Tout nouveau chemin qui change un compte (SQL natif compris) doit le publier. Sinon, le statut en cache vit jusqu'à son TTL de 30 s (guide 17).
+- `UserStatusCacheEviction` porte `fallbackExecution = true`, car un changement publié hors transaction ne viderait sinon jamais le cache. Spring ne fait que journaliser son exception, donc le TTL reste la borne.
+- `@EnableAsync` est sur `MailConfiguration`. La seule méthode `@Async` est `OutboxRelay.publishNow`, appelée depuis le `afterCommit()` de l'outbox.
 
 Les tests :
 
