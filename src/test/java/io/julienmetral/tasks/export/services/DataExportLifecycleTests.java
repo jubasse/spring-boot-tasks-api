@@ -38,6 +38,7 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.awaitility.Awaitility.await;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -180,7 +181,7 @@ class DataExportLifecycleTests extends AbstractDataExportTests {
 
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT attempts FROM data_exports WHERE id = ?", Integer.class, exportId)).isEqualTo(2);
-        List<JobExecution> runs = jobRepository.getJobExecutions(interrupted.getJobInstance());
+        List<JobExecution> runs = awaitRunsEnded(interrupted.getJobInstance());
         assertThat(runs).extracting(JobExecution::getStatus)
                 .containsExactlyInAnyOrder(BatchStatus.FAILED, BatchStatus.COMPLETED);
         JobExecution recovered = runs.stream()
@@ -415,6 +416,16 @@ class DataExportLifecycleTests extends AbstractDataExportTests {
     }
 
     /** What Batch leaves of a run whose instance stopped in its first step: the job and the step STARTED. */
+    // The export is COMPLETED once its publish step commits, and Batch ends the job execution only after that: reading
+    // the executions at once found the restarted run still STARTED
+    private List<JobExecution> awaitRunsEnded(JobInstance instance) {
+        await().atMost(RUN_TIMEOUT)
+                .pollInterval(Duration.ofMillis(100))
+                .until(() -> jobRepository.getJobExecutions(instance).stream().noneMatch(JobExecution::isRunning));
+
+        return jobRepository.getJobExecutions(instance);
+    }
+
     private JobExecution startedRunOf(UUID exportId) {
         JobParameters parameters = parametersOf(exportId);
         JobInstance instance = jobRepository.createJobInstance(CsvExportJobs.TASKS_JOB, parameters);
