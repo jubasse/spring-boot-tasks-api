@@ -430,6 +430,7 @@ Pour ajouter un job : la constante et son entrée dans `NAMES`, puis les deux an
 - [15. Concurrence et verrous](15-concurrence-verrous.md) : `SKIP LOCKED` et les réservations par `UPDATE`.
 - [20. Outbox transactionnelle](20-outbox-transactionnelle.md) : le poller qui tourne sans verrou.
 - [25. WebSocket et STOMP](25-websocket-stomp.md) : pourquoi `taskScheduler` est redéclaré.
+- [Cas pratique : La rétention RGPD d'un compte](cas-pratiques/retention-rgpd.md) : un job quotidien verrouillé, de bout en bout.
 - [README du dépôt, « Background work »](../../README.md#background-work) : débloquer un verrou en production.
 - Documentation officielle : [ShedLock](https://github.com/lukas-krecan/ShedLock), [planification dans Spring](https://docs.spring.io/spring-framework/reference/integration/scheduling.html).
 

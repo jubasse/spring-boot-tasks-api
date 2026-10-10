@@ -410,6 +410,7 @@ Pour ajouter une requête : la mettre dans la classe `...Queries` de sa fonction
 - [12. Mapping Hibernate 7](12-mapping-hibernate.md) : suppression logique et entités `@Immutable`.
 - [10. Rate limiting](10-rate-limiting.md) : le compteur en service.
 - [20. Outbox transactionnelle](20-outbox-transactionnelle.md) : `SKIP LOCKED` dans un `@Query` de repository.
+- [Cas pratique : La rétention RGPD d'un compte](cas-pratiques/retention-rgpd.md) : l'anonymisation en SQL natif, de bout en bout.
 - Documentation officielle : [JDBC dans Spring](https://docs.spring.io/spring-framework/reference/data-access/jdbc/core.html), [`INSERT ... ON CONFLICT` dans PostgreSQL](https://www.postgresql.org/docs/current/sql-insert.html), [`FOR UPDATE SKIP LOCKED`](https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE).
 
 [Sommaire](README.md) | [< 12. Mapping Hibernate 7](12-mapping-hibernate.md) | [14. Transactions >](14-transactions.md)

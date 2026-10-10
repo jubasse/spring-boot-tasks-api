@@ -101,6 +101,8 @@ Des parcours de bout en bout, à travers plusieurs guides :
 - [L'export RGPD et son PDF](cas-pratiques/export-rgpd-pdf.md)
 - [L'upload d'une photo de profil](cas-pratiques/upload-photo-profil.md)
 - [La livraison d'un webhook](cas-pratiques/livraison-webhook.md)
+- [Le chiffrement des secrets de webhook](cas-pratiques/chiffrement-secrets.md)
+- [La rétention RGPD d'un compte](cas-pratiques/retention-rgpd.md)
 - [Pourquoi les contextes de test se multiplient](cas-pratiques/contextes-de-test.md)
 
 ## Glossaire

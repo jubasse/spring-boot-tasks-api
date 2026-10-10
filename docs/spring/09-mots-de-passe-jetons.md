@@ -556,6 +556,8 @@ Pour ajouter un type de jeton par e-mail : une table avec `token_hash` (unique),
 - [10. Rate limiting](10-rate-limiting.md) : limites sur la connexion et la réinitialisation.
 - [14. Transactions](14-transactions.md) : propagation et règles de rollback.
 - [12. Mapping Hibernate 7](12-mapping-hibernate.md) : `@SoftDelete` et pourquoi la révocation est en SQL natif.
+- [Cas pratique : Le chiffrement des secrets de webhook](cas-pratiques/chiffrement-secrets.md) : chiffrer plutôt que hacher un secret à relire.
+- [Cas pratique : La rétention RGPD d'un compte](cas-pratiques/retention-rgpd.md) : la suppression puis l'effacement d'un compte.
 - Documentation officielle : [stockage des mots de passe (Spring Security)](https://docs.spring.io/spring-security/reference/features/authentication/password-storage.html), [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html).
 
 [Sommaire](README.md) | [< 08. Autorisations](08-autorisations.md) | [10. Rate limiting >](10-rate-limiting.md)

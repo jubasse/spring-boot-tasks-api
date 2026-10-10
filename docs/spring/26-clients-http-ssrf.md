@@ -501,6 +501,7 @@ Pour ajouter un appel sortant : une interface `@HttpExchange` dans un groupe de 
 - [14. Transactions](14-transactions.md) : l'appel HTTP hors transaction.
 - [10. Rate limiting](10-rate-limiting.md) : les événements de test d'un webhook.
 - [Cas pratique : la livraison d'un webhook](cas-pratiques/livraison-webhook.md) : une livraison de bout en bout.
+- [Cas pratique : Le chiffrement des secrets de webhook](cas-pratiques/chiffrement-secrets.md) : le secret qui signe chaque livraison.
 - [README du dépôt, « Receive task notifications by webhook »](../../README.md#receive-task-notifications-by-webhook) : le contrat pour les récepteurs.
 - Documentation officielle : [clients HTTP dans Spring Boot](https://docs.spring.io/spring-boot/reference/io/rest-client.html), [clients REST de Spring](https://docs.spring.io/spring-framework/reference/integration/rest-clients.html), [prévention du SSRF (OWASP)](https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html).
 

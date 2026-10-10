@@ -122,6 +122,7 @@ La livraison reste « au moins une fois ». Un arrêt entre la réponse du réce
 - [26. Clients HTTP et filtre SSRF](../26-clients-http-ssrf.md) : client déclaratif et filtre d'adresses.
 - [27. Résilience](../27-resilience.md) : `@Retryable`, disjoncteur et cloison par hôte.
 - [Cas pratique : Une notification de bout en bout](notification-bout-en-bout.md) : le même événement, vers le mail et le SSE.
+- [Cas pratique : Le chiffrement des secrets de webhook](chiffrement-secrets.md) : le secret et l'URL Slack chiffrés en base.
 - [README du dépôt, « Receive task notifications by webhook »](../../../README.md#receive-task-notifications-by-webhook) : le contrat pour les récepteurs.
 
 [endpoint-service]: ../../../src/main/java/io/julienmetral/tasks/notification/services/WebhookEndpointService.java
