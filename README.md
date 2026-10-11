@@ -313,7 +313,7 @@ Other people appear by display name only, never by email. Secrets never appear: 
 | `docker compose -p tasks-prod -f compose.yaml -f compose.production.yaml up -d --build` | Runs the production image locally (see [Run the production image locally](#run-the-production-image-locally)) |
 | `gitleaks git . --redact` | Scans the Git history for secrets, as the CI does |
 
-The database migrations are Liquibase changesets in `src/main/resources/db/changelog/changes/`. [CLAUDE.md](CLAUDE.md) explains how to generate a new one from the entities with `./mvnw liquibase:diff`.
+The database migrations are Liquibase changesets in `src/main/resources/db/changelog/changes/`. [AGENTS.md](AGENTS.md) explains how to generate a new one from the entities with `./mvnw liquibase:diff`.
 
 ## Configuration
 
@@ -588,4 +588,5 @@ The label matches only this project's test containers.
 
 - Branches follow Git flow: `features/<name>` is merged into `develop` through a pull request, and releases go through `release/<version>` to `main`.
 - Commits follow Conventional Commits (`feat`, `fix`, `test`, `docs`, ...), and production code and its tests go in separate commits.
-- [CLAUDE.md](CLAUDE.md) holds the detailed conventions: architecture rules, the traps to avoid, how to write comments, and how to test.
+- [AGENTS.md](AGENTS.md) holds the detailed conventions: architecture rules, the traps to avoid, how to write comments, and how to test.
+- [docs/cartography.md](docs/cartography.md) maps where things are: packages, the project's own annotations and test helpers, and what to update when adding an endpoint, a job or a setting.
