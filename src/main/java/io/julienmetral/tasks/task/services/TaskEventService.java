@@ -24,7 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.time.Instant;
+import java.time.Clock;
 import java.util.Map;
 import java.util.UUID;
 
@@ -39,6 +39,7 @@ public class TaskEventService {
     private final CurrentUser currentUser;
     private final JsonMapper jsonMapper;
     private final ApplicationEventPublisher eventPublisher;
+    private final Clock clock;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void created(Task task) {
@@ -185,7 +186,7 @@ public class TaskEventService {
         event.setTask(task);
         event.setActor(userProfileRepository.getReferenceById(actorId));
         event.setType(type);
-        event.setOccurredAt(Instant.now());
+        event.setOccurredAt(clock.instant());
         event.setPayload(serialize(payload));
 
         taskEventRepository.save(event);

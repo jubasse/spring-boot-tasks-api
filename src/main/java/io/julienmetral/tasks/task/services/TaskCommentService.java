@@ -24,7 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.time.Instant;
+import java.time.Clock;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -48,6 +48,7 @@ public class TaskCommentService {
     private final UserProfileRepository userProfileRepository;
     private final CurrentUser currentUser;
     private final ApplicationEventPublisher eventPublisher;
+    private final Clock clock;
 
     /**
      * Posts a comment; each file becomes a task attachment linked to it. Publishes {@link TaskCommentAdded} and, when
@@ -70,7 +71,7 @@ public class TaskCommentService {
         comment.setAuthor(userProfileRepository.getReferenceById(actorId()));
         comment.setBody(body);
         comment.getMentions().addAll(mentionableUsers(mentionedIds));
-        comment.setCreatedAt(Instant.now());
+        comment.setCreatedAt(clock.instant());
 
         TaskComment saved = commentRepository.save(comment);
 
@@ -135,7 +136,7 @@ public class TaskCommentService {
         comment.getMentions().retainAll(kept);
         comment.getMentions().addAll(added);
         comment.setBody(body);
-        comment.setEditedAt(Instant.now());
+        comment.setEditedAt(clock.instant());
 
         taskEventService.commentEdited(task, comment);
 
