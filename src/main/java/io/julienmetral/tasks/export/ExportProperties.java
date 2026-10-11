@@ -18,7 +18,7 @@ import java.time.Duration;
  * @param historyRetention how long an expired or failed export stays listed, and the Spring Batch history with it
  * @param chunkSize        rows read and written per transaction
  * @param lease            how long a run may last before it counts as interrupted; above the longest export
- * @param maxAttempts      runs of one export, the first included, before it fails for good
+ * @param maxAttempts      runs of an interrupted export, the first included, before it fails for good
  * @param purgeEnabled     whether this instance deletes expired files and old history
  * @param purgeCron        when they are deleted (Spring cron, six fields)
  * @param recoveryEnabled  whether this instance resumes the exports of an instance that stopped

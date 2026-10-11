@@ -436,11 +436,11 @@ La commande de génération du dépôt :
 ```bash
 ./mvnw liquibase:diff \
   -Dliquibase.url=jdbc:postgresql://localhost:5432/tasks -Dliquibase.username=... -Dliquibase.password=... \
-  "-Dliquibase.referenceUrl=hibernate:spring:io.julienmetral.tasks?dialect=org.hibernate.dialect.PostgreSQLDialect&hibernate.physical_naming_strategy=org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy" \
+  "-Dliquibase.referenceUrl=hibernate:spring:io.julienmetral.tasks?dialect=org.hibernate.dialect.PostgreSQLDialect&hibernate.physical_naming_strategy=org.hibernate.boot.model.naming.PhysicalNamingStrategySnakeCaseImpl" \
   -Dliquibase.diffChangeLogFile=src/main/resources/db/changelog/changes/NNN-name.yaml
 ```
 
-Hibernate 7 déprécie `CamelCaseToUnderscoresNamingStrategy` pour suppression. L'équivalent non déprécié est `PhysicalNamingStrategySnakeCaseImpl`, la stratégie par défaut de Boot 4.
+La commande nomme `PhysicalNamingStrategySnakeCaseImpl`, la stratégie par défaut de Boot 4, pour que le diff voie les mêmes noms de colonnes que l'application. `CamelCaseToUnderscoresNamingStrategy`, dépréciée pour suppression en Hibernate 7, ne doit plus servir.
 
 Ce qui est propre au dépôt :
 

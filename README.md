@@ -185,7 +185,7 @@ To do it yourself: Base64-decode the secret without its `whsec_` prefix, compute
 Answer with any 2xx status within 15 seconds. Redirects are not followed.
 
 - **A failure** (another status, no answer in time, no connection) is retried after about 5 seconds, 5 minutes, 30 minutes, 2 hours, 5 hours and 10 hours; a `Retry-After` header you send is honoured. After the last retry, the notification is dropped.
-- **A host that keeps failing:** when half the calls to one host fail within a minute, notifications to that host pause for a minute, then one is sent to test it. Paused notifications do not use up their retries.
+- **A host that keeps failing:** when half the calls to one host fail within a minute, once at least 5 were made, notifications to that host pause for a minute, then one is sent to test it. Only a 5xx answer or no answer counts against the host here; a 4xx, 429 included, does not. Paused notifications do not use up their retries.
 - **410 Gone** stops everything: the webhook is disabled, and no more notifications are sent to it.
 - **Duplicates:** a notification can arrive twice. Its `webhook-id` stays the same on every attempt, so ignore an id you have already processed.
 
@@ -303,7 +303,7 @@ Other people appear by display name only, never by email. Secrets never appear: 
 |---|---|
 | `./mvnw spring-boot:run` | Runs the API with the services of `compose.yaml` |
 | `docker compose up -d` | Starts the development services yourself; needed once after `compose.yaml` gains a service (see [Troubleshooting](#troubleshooting)) |
-| `./mvnw spring-boot:test-run` | Runs the API against throwaway containers, with an empty database |
+| `./mvnw spring-boot:test-run` | Runs the API against the test containers; with reuse on, they keep the data of earlier runs and tests (see [Keep the test containers between runs](#keep-the-test-containers-between-runs)) |
 | `./mvnw compile` | Builds the project |
 | `./mvnw test` | Runs all the unit and integration tests, and writes a coverage report to `target/site/jacoco/index.html` |
 | `./mvnw test -Dtest=AuthControllerTests` | Runs one test class (`-Dtest=Class#method` for one test) |
@@ -395,7 +395,7 @@ Note: the first lines of output are plain text from the JVM, such as `Picked up 
 
 ### Use a released image
 
-Every release is published to GitHub Container Registry, tagged with its version (`0.4.0`), its minor version (`0.4`) and `latest`:
+Every release is published to GitHub Container Registry, tagged with its version (`0.4.0`), its minor version (`0.4`), `latest`, and the short SHA of its commit (`sha-` followed by 7 characters):
 
 ```bash
 docker pull ghcr.io/jubasse/spring-boot-tasks-api:0.4.0
@@ -460,7 +460,7 @@ Metrics worth alerting on:
 | `rabbitmq_dead_letter_messages{queue=...}` | Above 0: a message failed all its retries |
 | `outbox_publish_failures_total` | It increases steadily |
 | `cache_gets_total{cache="userStatus",result=...}` | The share of `hit` falls: every task request reads the account from the database again |
-| `tasks_scheduled_execution_seconds_count{outcome="FAILURE"}` | A background job failed |
+| `tasks_scheduled_execution_seconds_count{outcome="ERROR"}` | A background job failed |
 | `shedlock_lock_acquired_total{lock_name=...}` | It did not increase for longer than the job's period (25 hours for a daily job): no instance ran the job, for example because of a stuck lock |
 | `webhook_deliveries_total{outcome="failed"}` | It increases steadily: webhook notifications are being dropped after all their retries |
 | `webhook_circuit_breakers_open` | Above 0 for long: some webhook receivers are down, and notifications to them wait |

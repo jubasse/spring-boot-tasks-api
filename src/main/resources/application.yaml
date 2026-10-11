@@ -241,7 +241,7 @@ spring:
       max-file-size: 25MB
       max-request-size: 26MB
 
-  # Virtual threads for request handling and @Async work (e.g. sending emails)
+  # Virtual threads for request handling, @Async work (OutboxRelay.publishNow), @Scheduled jobs and RabbitMQ listeners
   threads:
     virtual:
       enabled: true
