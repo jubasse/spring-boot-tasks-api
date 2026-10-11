@@ -21,6 +21,11 @@ identity:
     anonymize-after: 30d
     inactivity-period: 730d
     deletion-notice: 30d
+  # Deletes refresh, email verification and password reset tokens expired for longer than the retention
+  token-purge:
+    enabled: ${TOKEN_PURGE_ENABLED:true}
+    cron: ${TOKEN_PURGE_CRON:0 15 4 * * *}
+    retention: 7d
   # The account status checked on every task request (see UserStatusLookup)
   status-cache:
     ttl: ${IDENTITY_STATUS_CACHE_TTL:30s}

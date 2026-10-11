@@ -392,7 +392,7 @@ Les classes de Spring Security :
 | `UserDetailsPasswordService.updatePassword` | enregistre le hachage modernisé |
 | `setDefaultPasswordEncoderForMatches(encoder)` | vérifie les hachages sans préfixe `{id}` |
 
-Limites de cette version : un jeton d'accès émis avant une révocation reste valable jusqu'à son expiration, et les jetons de rafraîchissement expirés restent dans la table (ici, jusqu'à l'effacement du compte).
+Limite de cette version : un jeton d'accès émis avant une révocation reste valable jusqu'à son expiration.
 
 ## Concepts avancés
 
@@ -450,6 +450,23 @@ La réinitialisation de mot de passe suit le même principe, avec une colonne `u
 - Suivre le lien reçu par e-mail prouve la possession de l'adresse, d'où l'e-mail marqué vérifié.
 - La vérification d'e-mail suit le même schéma avec un jeton de 24 h, émis à l'inscription et par `POST /auth/verify-email/resend` (qui répond 409 `email-already-verified` une fois l'e-mail vérifié).
 
+### Purger les jetons expirés
+
+Un jeton expiré ne sert plus, mais sa ligne reste. Un job de nuit les supprime, 7 jours après leur expiration :
+
+```
+  jetons de vérification et de réinitialisation
+        expirés avant la date limite --> supprimés, utilisés ou non
+
+  jetons de rafraîchissement, par famille
+        F : R1 révoqué expiré, R2 révoqué expiré, R3 expiré --> toute la famille supprimée
+        G : R1 révoqué expiré, R2 encore valable           --> famille gardée entière
+```
+
+- Les jetons à usage unique se suppriment un par un : expiré, un jeton est refusé, qu'il ait servi ou non.
+- Les jetons de rafraîchissement partent par famille entière. La détection de réutilisation repose sur le jeton révoqué : si R1 disparaissait pendant que R2 vit, son rejeu trouverait un jeton inconnu (401 sans révocation) et R2, peut-être entre les mains du voleur, survivrait.
+- La suppression est un `DELETE` SQL par table, sans charger les entités. Pour les familles, un `NOT EXISTS` sur la même table, servi par l'index de `family_id`.
+
 ### Plusieurs instances
 
 Hachages et jetons vivent dans la base. N'importe quelle instance vérifie n'importe quel mot de passe et fait tourner n'importe quel jeton. Le verrou de ligne sérialise aussi les rafraîchissements concurrents entre instances.
@@ -474,6 +491,7 @@ Hachages et jetons vivent dans la base. N'importe quelle instance vérifie n'imp
 | Oublier `noRollbackFor` sur une méthode du chemin | la révocation est annulée avec l'exception | Le poser sur chaque méthode traversée |
 | Lire le jeton sans verrou | deux rafraîchissements simultanés font deux successeurs | `@Lock(PESSIMISTIC_WRITE)` sur la recherche |
 | Révoquer par une requête JPQL qui joint l'utilisateur | `@SoftDelete` filtre l'utilisateur : rien n'est révoqué | SQL natif sur la clé étrangère |
+| Purger chaque jeton de rafraîchissement expiré pour lui-même | le rejeu d'un jeton révoqué supprimé ne révoque plus la famille, et son successeur survit | Supprimer une famille quand aucun de ses jetons n'est encore valable |
 | Répondre 404 à une demande de réinitialisation inconnue | on apprend quels e-mails ont un compte | Répondre 202 dans tous les cas |
 
 ## En résumé
@@ -489,6 +507,7 @@ Hachages et jetons vivent dans la base. N'importe quelle instance vérifie n'imp
 - [ ] Réutilisation d'un jeton révoqué : toute la famille révoquée, avec `noRollbackFor`
 - [ ] Déconnexion, désactivation et suppression révoquent les familles
 - [ ] Liens par e-mail à usage unique et courts ; demande de réinitialisation toujours en 202
+- [ ] Jetons expirés purgés, ceux de rafraîchissement par famille entière
 
 ## Dans ce dépôt
 
@@ -524,6 +543,9 @@ Le trajet du rafraîchissement :
 | [`EmailVerificationService`][verification] | jeton de vérification, renvoi, validation |
 | [`PasswordResetService`][reset] | demande silencieuse, confirmation |
 | [`RefreshToken`][refresh-entity] | `token_hash` unique (`refresh_tokens_token_hashUQ`), index sur `user_id` et `family_id` |
+| [`ExpiredTokenPurgeJob`][purge-job] | purge de nuit, verrou `expired-token-purge` ; journalise les compteurs s'il a supprimé quelque chose |
+| [`ExpiredTokenPurgeService`][purge-service] | date limite (maintenant moins la rétention), les trois suppressions dans une transaction |
+| [`ExpiredTokenQueries`][purge-queries] | les `DELETE` en SQL natif, les familles de rafraîchissement entières |
 
 | Réglage | Valeur | Rôle |
 |---|---|---|
@@ -532,6 +554,9 @@ Le trajet du rafraîchissement :
 | `identity.password-reset.ttl` | `1h` | durée du lien de réinitialisation |
 | `identity.email-verification.verify-url` | `${EMAIL_VERIFICATION_URL:http://localhost:3000/verify-email}` | page du front ; obligatoire en `prod` |
 | `identity.password-reset.reset-url` | `${PASSWORD_RESET_URL:http://localhost:3000/reset-password}` | idem pour la réinitialisation |
+| `identity.token-purge.enabled` | `${TOKEN_PURGE_ENABLED:true}` | active la purge des jetons expirés |
+| `identity.token-purge.cron` | `${TOKEN_PURGE_CRON:0 15 4 * * *}` | chaque nuit à 04:15 |
+| `identity.token-purge.retention` | `7d` | délai après l'expiration avant la suppression ; négatif refusé au démarrage |
 
 Ce qui est propre au dépôt :
 
@@ -540,12 +565,13 @@ Ce qui est propre au dépôt :
 - `UserService.disable`, `UserService.delete` et `PasswordResetService.confirm` appellent `revokeAllForUser`. Réactiver un compte ne rend pas les anciens jetons (test `disablingUserRevokesRefreshTokensEvenAfterReEnabling`).
 - `rotate` recharge le compte avec `findById` (qui ignore les utilisateurs supprimés) et refuse un compte désactivé en révoquant la famille. Un compte désactivé hors du service ne peut donc pas rafraîchir non plus.
 - `PasswordResetService.request` ignore les comptes inconnus ou désactivés. `confirm` verrouille la ligne du compte (`findByIdForUpdate`), marque l'e-mail vérifié si besoin et publie `AccountStateChanged` (éviction du cache, guide 17).
-- Les tables sont `refresh_tokens`, `email_verification_tokens` et `password_reset_tokens`. Ces lignes ne sont supprimées qu'à l'effacement du compte (`UserRetentionQueries`). Aucun job ne purge les jetons de rafraîchissement expirés.
+- Les tables sont `refresh_tokens`, `email_verification_tokens` et `password_reset_tokens`. Leurs lignes partent avec l'effacement du compte (`UserRetentionQueries`), et `ExpiredTokenPurgeJob` supprime chaque nuit celles expirées depuis plus de 7 jours, les jetons de rafraîchissement par famille entière.
 
 Les tests :
 
 - [`AuthControllerTests`][auth-tests] : `loginUpgradesLegacyBcryptHashToArgon2id` stocke `"{bcrypt}" + new BCryptPasswordEncoder().encode("password")`, se connecte, puis vérifie le préfixe `{argon2id}`.
 - [`RefreshTokenApiTests`][refresh-tests] : `refreshTokensAreStoredOnlyAsSha256Hashes`, `replayingUsedRefreshTokenRevokesWholeFamily`, `reuseDetectionDoesNotAffectOtherFamiliesOfSameUser`, `deletingUserRevokesRefreshTokens`, `logoutRevokesWholeFamily`, `refreshIgnoresAnExpiredAccessTokenLeftInTheAuthorizationHeader`.
+- [`ExpiredTokenQueriesTests`][purge-tests] : `familyWithALiveTokenKeepsItsRevokedExpiredTokens`, `familyWhoseTokensAllExpiredBeforeTheCutoffIsDeleted`, `tokenExpiringAtTheCutoffKeepsItsFamily`, `singleUseTokensExpiredBeforeTheCutoffAreDeletedUsedOrNot`.
 - `PasswordResetApiTests`, `EmailVerificationApiTests` et les tests unitaires `OpaqueTokensTest`, `RefreshTokenServiceTest`, `PasswordResetServiceTest`, `DatabaseUserDetailsServiceTest`.
 
 Pour ajouter un type de jeton par e-mail : une table avec `token_hash` (unique), `expires_at` et `used_at` ; `OpaqueTokens.generate` et `hash` ; une recherche par empreinte avec verrou, un usage unique, les jetons non utilisés supprimés à l'émission d'un nouveau ; l'e-mail envoyé par un listener après le commit (guide 23).
@@ -571,5 +597,9 @@ Pour ajouter un type de jeton par e-mail : une table avec `token_hash` (unique),
 [verification]: ../../src/main/java/io/julienmetral/tasks/identity/services/EmailVerificationService.java
 [reset]: ../../src/main/java/io/julienmetral/tasks/identity/services/PasswordResetService.java
 [refresh-entity]: ../../src/main/java/io/julienmetral/tasks/identity/entities/RefreshToken.java
+[purge-job]: ../../src/main/java/io/julienmetral/tasks/identity/services/ExpiredTokenPurgeJob.java
+[purge-service]: ../../src/main/java/io/julienmetral/tasks/identity/services/ExpiredTokenPurgeService.java
+[purge-queries]: ../../src/main/java/io/julienmetral/tasks/identity/repositories/ExpiredTokenQueries.java
+[purge-tests]: ../../src/test/java/io/julienmetral/tasks/identity/repositories/ExpiredTokenQueriesTests.java
 [auth-tests]: ../../src/test/java/io/julienmetral/tasks/identity/controllers/AuthControllerTests.java
 [refresh-tests]: ../../src/test/java/io/julienmetral/tasks/identity/controllers/RefreshTokenApiTests.java

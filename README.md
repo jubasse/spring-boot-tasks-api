@@ -515,6 +515,7 @@ Scheduled jobs run inside the API. When several instances are deployed, a job th
 | Media cleanup | daily at 03:30 | one instance | Deletes the files of tasks and accounts deleted more than 30 days ago, and orphan files |
 | Webhook deliveries purge | daily at 03:45 | one instance | Deletes delivery records older than 30 days |
 | Personal data retention | daily at 04:00 | one instance | Anonymizes deleted accounts and handles inactive ones |
+| Expired token purge | daily at 04:15 | one instance | Deletes the email verification and password reset tokens expired more than 7 days ago, and the refresh tokens of a login once none of them has been valid for 7 days |
 | Export purge | daily at 04:30 | one instance | Deletes the files of exports older than 7 days, then expired exports and Spring Batch history older than 30 days |
 | Export recovery | every 5 minutes | one instance | Queues again the exports of an instance that stopped while running them |
 | Outbox purge | hourly | one instance | Deletes messages published more than 7 days ago |

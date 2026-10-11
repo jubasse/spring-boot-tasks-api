@@ -51,9 +51,9 @@ Each feature uses the same sub-packages: `controllers`, `dtos`, `entities`, `rep
 | `identity/exceptions` | credentials, tokens, email taken, user not found |
 | `identity/mail` | verification, reset and inactivity emails with their events and properties |
 | `identity/messaging` | `AvatarQueues`, `AvatarProcessingListener`, `AvatarUploaded` |
-| `identity/repositories` | user, profile and token repositories, `AccountState`, `UserRetentionQueries` |
+| `identity/repositories` | user, profile and token repositories, `AccountState`, `UserRetentionQueries`, `ExpiredTokenQueries` |
 | `identity/security` | `SecurityConfiguration`, JWT, `CurrentUser`, `PublicEndpoints`, `OpaqueTokens`, `ActiveUserAuthorizationManager`, status cache |
-| `identity/services` | auth, users, tokens, password reset, verification, avatars, identicons, GDPR retention |
+| `identity/services` | auth, users, tokens, password reset, verification, avatars, identicons, GDPR retention, expired token purge |
 | `mail` | `MailService`, `MailMessage`, `MailQueues`, `MailQueueListener` |
 | `media/exceptions` | upload problems: empty, too large, unsupported, infected, invalid image, storage or antivirus down |
 | `media/health` | `StorageHealthIndicator`, `AntivirusHealthIndicator` |
@@ -113,7 +113,7 @@ Each feature uses the same sub-packages: `controllers`, `dtos`, `entities`, `rep
 | encrypt a secret at rest | `notification/webhook/WebhookSecrets` (AES-256-GCM) |
 | limit a public endpoint | `ratelimit/services/RateLimiter`, keys from `RateLimitKeys` |
 | outgoing HTTP client | `config/OutboundHttpConfiguration` (address filter, timeouts) |
-| native SQL | `*Queries` classes, one per need (`RateLimitQueries`, `TaskReminderQueries`, `UserRetentionQueries`, `MediaCleanupQueries`, `WebhookDeliveryQueries`, `PersonalDataQueries`, `BatchMetadataQueries`) |
+| native SQL | `*Queries` classes, one per need (`RateLimitQueries`, `TaskReminderQueries`, `UserRetentionQueries`, `ExpiredTokenQueries`, `MediaCleanupQueries`, `WebhookDeliveryQueries`, `PersonalDataQueries`, `BatchMetadataQueries`) |
 | scheduled jobs | `*Job` classes; lock names in `config/ScheduledJobLocks` |
 | error to problem | `shared/exceptions/ApiExceptionHandler`, typed ones in `ProblemType` |
 | OpenAPI rules added to every operation | `config/OperationDocumentation`, `PathDocumentation`, `ProblemDocumentation` |
