@@ -346,6 +346,15 @@ A pull request that changes a behaviour also updates the documents that describe
 
 google-java-format, AOSP style (4 spaces, 100 columns), through Spotless: run `./mvnw spotless:apply` before committing; `spotless:check` fails `verify` and a CI step on unformatted code, an unused import or a wildcard import. `.editorconfig` gives IDEs the same settings. Warning: google-java-format splits a `//` comment line over 100 columns without joining it to the next one; write comments within 100 columns, or rewrap the paragraph. The formatter version is pinned in `pom.xml` (1.37.0 fails inside Spotless 3.10.4). `.git-blame-ignore-revs` lists the reformat commit.
 
+## Nullness
+
+Every main package is `@NullMarked` (`package-info.java`, checked by `NullMarkedPackagesTest`): a type means "never null" unless it carries JSpecify's `@Nullable` (`@Nullable Instant`, `List<@Nullable UUID>`). NullAway, run by Error Prone inside `./mvnw compile`, fails the build on a possible null dereference, a null passed or returned where none is declared, and an override that narrows a Spring signature (Spring 7 is JSpecify-annotated).
+- Mark `@Nullable` what really can be null: entity fields on nullable columns (Lombok copies it to getters and setters), response components absent from some responses, optional parameters, lookups that return null. Entities are exempt from constructor initialization (`ExternalInitAnnotations`), since Hibernate fills them.
+- When a value cannot be null but NullAway cannot see it, make it visible (an early return, a local variable) or write `Objects.requireNonNull(value, "why")`; `@SuppressWarnings("NullAway")` only as a last resort, with the reason.
+- Libraries without annotations (Hibernate, the AWS SDK, Tika) are trusted as non-null: when their documentation says a method can return null, keep the result in a `@Nullable` local and test it.
+- Warning: `JdbcTemplate.queryForList(sql, params, X.class)` returns `List<@Nullable X>`; for a NOT NULL column, map it with `query(sql, params, (row, n) -> row.getObject(1, X.class))`.
+- Tests are not checked. Error Prone needs the `jdk.compiler` exports of `.mvn/jvm.config`; compiling takes a few seconds more.
+
 ## Comments and Javadoc: the why and the failure, never the what
 
 **Name first, comment second.** A precise name for a class, method or variable removes the need for the paragraph above it, and a long name is the cheap side of that trade.
