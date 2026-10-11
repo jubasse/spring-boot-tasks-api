@@ -292,6 +292,7 @@ Une seule image sert tous les environnements, et seules les variables changent (
 | Lancer en root | un processus compromis a tous les droits du conteneur | Un utilisateur dédié et `USER` |
 | Garder les réglages mémoire par défaut | tas à 25 % de la mémoire, Serial sous 2 CPU | `MaxRAMPercentage` et `UseG1GC` explicites |
 | Oublier `.dockerignore` | `.env`, `target/` et l'historique Git entrent dans le build | Une liste blanche |
+| Ajouter un fichier de build sans le réautoriser | `./mvnw verify` passe, le build de l'image échoue (`.mvn/jvm.config` d'Error Prone) | Une ligne `!fichier` dans `.dockerignore` |
 
 ### Le cache AOT
 
@@ -347,7 +348,7 @@ Le contenu du `Dockerfile` :
 | Fichier | Rôle |
 |---|---|
 | [`Dockerfile`][dockerfile] | deux étapes, couches, utilisateur 10001, options JVM, entraînement AOT |
-| [`.dockerignore`][dockerignore] | la liste blanche : `mvnw`, `.mvn/wrapper`, `pom.xml`, `src/main/` |
+| [`.dockerignore`][dockerignore] | la liste blanche : `mvnw`, `.mvn/wrapper`, `.mvn/jvm.config`, `lombok.config`, `pom.xml`, `src/main/` |
 | [`compose.yaml`][compose] | les services du développement : Postgres, Mailpit, RustFS, ClamAV, RabbitMQ |
 | [`compose.production.yaml`][compose-prod] | l'image durcie sur sa propre copie des services, projet `tasks-prod` |
 | [`pom.xml`][pom] | `build-info`, CycloneDX, JaCoCo, surcharges de versions |

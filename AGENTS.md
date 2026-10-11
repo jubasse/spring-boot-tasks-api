@@ -353,7 +353,7 @@ Every main package is `@NullMarked` (`package-info.java`, checked by `NullMarked
 - When a value cannot be null but NullAway cannot see it, make it visible (an early return, a local variable) or write `Objects.requireNonNull(value, "why")`; `@SuppressWarnings("NullAway")` only as a last resort, with the reason.
 - Libraries without annotations (Hibernate, the AWS SDK, Tika) are trusted as non-null: when their documentation says a method can return null, keep the result in a `@Nullable` local and test it.
 - Warning: `JdbcTemplate.queryForList(sql, params, X.class)` returns `List<@Nullable X>`; for a NOT NULL column, map it with `query(sql, params, (row, n) -> row.getObject(1, X.class))`.
-- Tests are not checked. Error Prone needs the `jdk.compiler` exports of `.mvn/jvm.config`; compiling takes a few seconds more.
+- Tests are not checked. Error Prone needs the `jdk.compiler` exports of `.mvn/jvm.config`, which `.dockerignore` lets into the image build with `lombok.config` (the image build failed without them); compiling takes a few seconds more.
 
 ## Comments and Javadoc: the why and the failure, never the what
 
