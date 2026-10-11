@@ -26,6 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.support.UserProfiles;
 import io.julienmetral.tasks.support.WebLayerTest;
 import io.julienmetral.tasks.task.entities.TaskComment;
 import io.julienmetral.tasks.task.exceptions.InvalidMentionException;
@@ -377,6 +378,7 @@ class TaskCommentControllerWebMvcTests {
 
     private static TaskComment comment(String body) {
         TaskComment comment = new TaskComment();
+        comment.setAuthor(UserProfiles.active(UUID.randomUUID(), "Alice"));
         comment.setBody(body);
         return comment;
     }

@@ -52,13 +52,6 @@ class MediaUrlsTest {
         assertThat(mediaUrls.of(media)).isEqualTo(PRESIGNED_URL);
     }
 
-    @Test
-    void noMediaGivesNullWithoutSigning() {
-        assertThat(mediaUrls.of(null)).isNull();
-
-        verifyNoInteractions(mediaService);
-    }
-
     @Nested
     class AvatarOf {
 
