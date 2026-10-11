@@ -190,4 +190,5 @@ In `src/test/java/io/julienmetral/tasks/support` unless noted.
 | `OpenApiDocumentTests` | an operation lacks a tag, summary, unique id or its 401/403 |
 | `TaskQueryCountTests`, `UserQueryCountTests` | a read runs more SQL for a longer list |
 | `CartographyTest` | this file misses a package, an annotation or a test helper |
+| `NullMarkedPackagesTest` | a main package with classes has no `package-info.java` carrying `@NullMarked`, so NullAway skips it |
 | `spotless:check` (Maven, in `verify`) | a file is not formatted by google-java-format, or has an unused or wildcard import |
