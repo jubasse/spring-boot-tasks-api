@@ -1016,7 +1016,7 @@
       "WebhookSecretDto" : {
         "properties" : {
           "previousSecretExpiresAt" : {
-            "description" : "Until then, deliveries carry a signature with the previous secret too",
+            "description" : "Until then, deliveries carry a signature with the previous secret too; null when the previous secret could no longer be read, after a change of the server's encryption key",
             "format" : "date-time",
             "type" : "string"
           },
