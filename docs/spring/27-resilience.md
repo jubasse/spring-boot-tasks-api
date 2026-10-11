@@ -499,7 +499,7 @@ Ce qui est propre au dépôt :
 
 - Le calendrier est 5 s, 5 min, 30 min, 2 h, 5 h, 10 h, à 20 % près. Après le septième essai raté, la livraison est `FAILED`.
 - Un report (`postpone`) pose `next_attempt_at` à maintenant plus `open-duration` plus 1 s, avec `last_error = HostUnavailable` et le compteur `postponed`, sans incrémenter `attempts`.
-- Ne se réessaient pas : un 410 (endpoint `GONE`), `DestinationNotAllowed`, et pour Slack les 403 et 404 (`GONE`) et le 400.
+- Ne se réessaient pas : un 410 (endpoint `GONE`), `DestinationNotAllowed`, et pour Slack les 403 et 404 (`GONE`) et le 400. Échouent sans appel : `EndpointDisabled`, `AccountNotActive` et `SecretUnreadable` (secret illisible après un changement de clé).
 - Les tests appellent `WebhookResilience.forgetAllHosts()`, car tous leurs récepteurs partagent `127.0.0.1`.
 - La fabrique de listeners de `webhook.deliver` n'a pas de réessais. Le réessai global dormirait sur le thread consommateur, et un récepteur qui expire le retiendrait pendant des minutes.
 

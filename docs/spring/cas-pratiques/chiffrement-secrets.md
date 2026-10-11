@@ -61,9 +61,9 @@ Le chemin d'un secret, de sa création à la signature d'une livraison :
 - Les tests ont leur propre clé dans `src/test/resources/config/application.yaml`.
 - Le build de l'image lui donne une valeur jetable pendant l'entraînement AOT (guide 33).
 
-**5. La signature d'une livraison.** À chaque tentative, [`WebhookDeliveryService`][delivery] déchiffre le secret actuel, et le précédent tant qu'il est valable. [`WebhookSigner`][signer] calcule un HMAC-SHA256 de `id.timestamp.corps` par secret. Il les place tous dans l'en-tête `webhook-signature`, séparés par une espace. Les secrets en clair ne vivent qu'en mémoire, le temps de la tentative.
+**5. La signature d'une livraison.** À chaque tentative, [`WebhookDeliveryService`][delivery] déchiffre le secret actuel, et le précédent tant qu'il est valable. Il vérifie d'abord avec `WebhookSecrets.canDecrypt` que le secret actuel se lit : sinon la livraison passe `FAILED` avec `last_error = SecretUnreadable`, sans requête. Un secret précédent illisible est simplement laissé de côté : le secret actuel signe seul. [`WebhookSigner`][signer] calcule un HMAC-SHA256 de `id.timestamp.corps` par secret. Il les place tous dans l'en-tête `webhook-signature`, séparés par une espace. Les secrets en clair ne vivent qu'en mémoire, le temps de la tentative.
 
-**6. La rotation.** `POST /api/v1/users/{id}/webhooks/{webhookId}/secret` génère un nouveau secret et le renvoie une seule fois. L'ancien, toujours chiffré, passe dans `previous_secret`, avec `previous_secret_expires_at` fixé à 24 h (`webhooks.previous-secret-validity`). Pendant ces 24 h, chaque livraison porte deux signatures. Le récepteur qui n'a pas encore changé de secret en valide une, celui qui a changé valide l'autre. Passé ce délai, l'ancien secret n'est plus lu.
+**6. La rotation.** `POST /api/v1/users/{id}/webhooks/{webhookId}/secret` génère un nouveau secret et le renvoie une seule fois. L'ancien, toujours chiffré, passe dans `previous_secret`, avec `previous_secret_expires_at` fixé à 24 h (`webhooks.previous-secret-validity`). Pendant ces 24 h, chaque livraison porte deux signatures. Le récepteur qui n'a pas encore changé de secret en valide une, celui qui a changé valide l'autre. Passé ce délai, l'ancien secret n'est plus lu. Si l'ancien secret ne se déchiffre plus (la clé a changé), la rotation ne le garde pas : `previous_secret` reste vide et la réponse porte `previousSecretExpiresAt: null`.
 
 **7. Le canal Slack.** Un webhook Slack ne signe rien : son URL `https://hooks.slack.com/services/...` est elle-même le secret. Elle est chiffrée avec la même clé. Les réponses montrent seulement `WebhookUrls.SLACK_MASK` (`https://hooks.slack.com/services/****`), et elle n'est déchiffrée qu'au moment d'envoyer. Une rotation sur un webhook Slack répond 422 `webhook-not-signed`.
 
@@ -74,9 +74,9 @@ Le chemin d'un secret, de sa création à la signature d'une livraison :
 | Situation | Ce qui se passe | Comment s'en sortir |
 |---|---|---|
 | Clé absente ou trop courte | le bean `WebhookSecrets` refuse de se créer | générer une clé, la définir, redémarrer |
-| Clé changée en production | les valeurs `v1:` ne se déchiffrent plus, les livraisons échouent | remettre l'ancienne clé, ou recréer les webhooks |
-| Rotation juste après un changement de clé | l'ancien chiffré illisible devient `previous_secret` pour 24 h | attendre 24 h, ou recréer le webhook |
-| Valeur modifiée directement en base | le tag GCM ne correspond plus | déchiffrement refusé, aucun faux secret utilisé |
+| Clé changée en production | les valeurs `v1:` ne se déchiffrent plus : chaque livraison passe `FAILED` (`SecretUnreadable`) sans requête, et un événement de test répond `"error": "SecretUnreadable"`. Le webhook reste actif et son propriétaire n'est pas prévenu | remettre l'ancienne clé, ou faire une rotation du secret (pour Slack, renvoyer l'URL du canal) |
+| Rotation juste après un changement de clé | l'ancien chiffré illisible est abandonné : `previousSecretExpiresAt` vaut `null`, seul le nouveau secret signe | le récepteur passe au nouveau secret tout de suite |
+| Valeur modifiée directement en base | le tag GCM ne correspond plus | la livraison échoue (`SecretUnreadable`), aucun faux secret utilisé |
 | Copie de la base volée | les secrets restent chiffrés | la clé, hors de la base, reste nécessaire |
 | Secret perdu par le client | il n'est plus affiché | faire une rotation |
 

@@ -57,7 +57,7 @@ Le trajet d'une notification :
 
 **6. La consommation.** [`WebhookDeliveryListener`][delivery-listener] reçoit le message par sa propre fabrique ([`WebhookQueues`][queues]). Elle compte 4 consommateurs par instance, un message à la fois, sans les réessais du listener global, qui dormiraient sur le thread consommateur (guide 19).
 
-**7. Préparer, puis sortir de la transaction.** [`WebhookDeliveryService`][delivery-service]`.deliver` lit dans une transaction courte. La livraison doit être `PENDING`, sinon c'est un doublon. L'endpoint et le compte doivent être actifs, sinon `FAILED` (`EndpointDisabled` ou `AccountNotActive`). Il en tire l'URL, les octets et les secrets déchiffrés, puis la transaction se termine (guide 14).
+**7. Préparer, puis sortir de la transaction.** [`WebhookDeliveryService`][delivery-service]`.deliver` lit dans une transaction courte. La livraison doit être `PENDING`, sinon c'est un doublon. L'endpoint et le compte doivent être actifs, sinon `FAILED` (`EndpointDisabled` ou `AccountNotActive`). Le secret actuel, ou l'URL d'un webhook Slack, doit se déchiffrer, sinon `FAILED` (`SecretUnreadable`, après un changement de clé : cas pratique chiffrement-secrets). Il en tire l'URL, les octets et les secrets déchiffrés, puis la transaction se termine (guide 14).
 
 **8. Signer et appeler.** [`WebhookSigner`][signer] ajoute `webhook-id`, `webhook-timestamp` et `webhook-signature`. La signature est `v1,` suivi du Base64 d'un HMAC-SHA256 de `id.timestamp.contenu`, une par secret valide (deux pendant une rotation). [`WebhookClient`][client] (`@PostExchange`) envoie ces octets tels quels. Il attend 5 s pour se connecter et 15 s pour répondre, sans redirection ni cookie. Le filtre d'adresses joue à chaque appel. Un hôte désormais résolu vers une adresse privée lève `FilteredHostException`, notée `DestinationNotAllowed` (guide 26).
 
@@ -100,6 +100,7 @@ Les pannes prévues et la reprise :
 | 503 avec `Retry-After: 3600` | Apache ne renvoie rien de lui-même | le prochain essai attend au moins une heure |
 | Hôte qui pointe vers une adresse interne | le filtre refuse la connexion | `FAILED` aussitôt, sans compter contre l'hôte |
 | Message perdu, ou instance arrêtée pendant l'essai | la livraison reste `PENDING` | elle redevient due à la fin de son bail de 5 min |
+| Secret illisible après un changement de clé | `prepare` le détecte avant tout appel | `FAILED` aussitôt (`SecretUnreadable`), au lieu d'une exception qui renvoyait le message en dead letter toutes les 5 min |
 | Message `webhook.deliver` en double | une livraison déjà `DELIVERED` revient | `prepare` voit qu'elle n'est plus `PENDING`, et n'envoie rien |
 
 La livraison reste « au moins une fois ». Un arrêt entre la réponse du récepteur et l'enregistrement fait renvoyer la notification, et le récepteur écarte un `webhook-id` déjà traité.
