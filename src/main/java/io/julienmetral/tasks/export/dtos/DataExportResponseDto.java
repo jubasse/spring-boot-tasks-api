@@ -4,9 +4,11 @@ import io.julienmetral.tasks.export.entities.DataExport;
 import io.julienmetral.tasks.export.entities.DataExportStatus;
 import io.julienmetral.tasks.export.entities.DataExportType;
 import io.julienmetral.tasks.export.entities.TaskExportFilters;
+import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.services.MediaUrls;
 import java.time.Instant;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 /**
  * @param filters the filters of a tasks export, null for the other types
@@ -18,12 +20,12 @@ public record DataExportResponseDto(
         UUID id,
         DataExportType type,
         DataExportStatus status,
-        TaskExportFilters filters,
-        Long rowCount,
+        @Nullable TaskExportFilters filters,
+        @Nullable Long rowCount,
         Instant createdAt,
-        Instant completedAt,
-        Instant expiresAt,
-        String downloadUrl) {
+        @Nullable Instant completedAt,
+        @Nullable Instant expiresAt,
+        @Nullable String downloadUrl) {
 
     public DataExportResponseDto(DataExport export, MediaUrls mediaUrls) {
         this(
@@ -35,8 +37,14 @@ public record DataExportResponseDto(
                 export.getCreatedAt(),
                 export.getCompletedAt(),
                 export.getExpiresAt(),
-                export.getStatus() == DataExportStatus.COMPLETED && export.getMedia() != null
-                        ? mediaUrls.of(export.getMedia())
-                        : null);
+                downloadUrlOf(export, mediaUrls));
+    }
+
+    private static @Nullable String downloadUrlOf(DataExport export, MediaUrls mediaUrls) {
+        Media media = export.getMedia();
+
+        return export.getStatus() == DataExportStatus.COMPLETED && media != null
+                ? mediaUrls.of(media)
+                : null;
     }
 }

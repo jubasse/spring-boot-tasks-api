@@ -17,6 +17,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import javax.sql.DataSource;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.builder.JobBuilder;
@@ -169,9 +170,9 @@ public class CsvExportJobs {
                                 rows.getString("priority"),
                                 rows.getString("assignee"),
                                 rows.getString("created_by"),
-                                instant(rows, "due_at"),
-                                instant(rows, "completed_at"),
-                                instant(rows, "archived_at"),
+                                instantOrNull(rows, "due_at"),
+                                instantOrNull(rows, "completed_at"),
+                                instantOrNull(rows, "archived_at"),
                                 instant(rows, "created_at"),
                                 instant(rows, "updated_at")));
     }
@@ -191,9 +192,9 @@ public class CsvExportJobs {
                                 rows.getString("display_name"),
                                 rows.getString("status"),
                                 rows.getString("roles"),
-                                instant(rows, "email_verified_at"),
+                                instantOrNull(rows, "email_verified_at"),
                                 instant(rows, "created_at"),
-                                instant(rows, "last_active_at")));
+                                instantOrNull(rows, "last_active_at")));
     }
 
     @Bean
@@ -258,7 +259,10 @@ public class CsvExportJobs {
     }
 
     private static <T> FlatFileItemWriter<T> csvWriter(
-            String name, UUID exportId, List<String> header, Function<T, List<Object>> values) {
+            String name,
+            UUID exportId,
+            List<String> header,
+            Function<T, List<@Nullable Object>> values) {
         return new FlatFileItemWriterBuilder<T>()
                 .name(name)
                 .resource(new FileSystemResource(ExportFiles.of(exportId, PublishExport.CSV_FILE)))
@@ -272,7 +276,13 @@ public class CsvExportJobs {
                 .build();
     }
 
+    // For NOT NULL columns
     private static Instant instant(ResultSet rows, String column) throws SQLException {
+        return rows.getTimestamp(column).toInstant();
+    }
+
+    private static @Nullable Instant instantOrNull(ResultSet rows, String column)
+            throws SQLException {
         Timestamp timestamp = rows.getTimestamp(column);
 
         return timestamp == null ? null : timestamp.toInstant();

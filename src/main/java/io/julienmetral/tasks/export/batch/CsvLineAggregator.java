@@ -3,6 +3,7 @@ package io.julienmetral.tasks.export.batch;
 import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 import org.springframework.batch.infrastructure.item.file.transform.LineAggregator;
 
 /**
@@ -18,9 +19,9 @@ final class CsvLineAggregator<T> implements LineAggregator<T> {
 
     private static final String FORMULA_STARTS = "=+-@\t\r\n＝＋－＠";
 
-    private final Function<T, List<Object>> values;
+    private final Function<T, List<@Nullable Object>> values;
 
-    CsvLineAggregator(Function<T, List<Object>> values) {
+    CsvLineAggregator(Function<T, List<@Nullable Object>> values) {
         this.values = values;
     }
 
@@ -33,7 +34,7 @@ final class CsvLineAggregator<T> implements LineAggregator<T> {
         return values.stream().map(CsvLineAggregator::field).collect(Collectors.joining(","));
     }
 
-    private static String field(Object value) {
+    private static String field(@Nullable Object value) {
         if (value == null) {
             return "\"\"";
         }

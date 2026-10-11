@@ -22,6 +22,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
+import org.jspecify.annotations.Nullable;
 
 @Entity
 @Table(
@@ -57,38 +58,38 @@ public class DataExport {
     @Column(name = "status", nullable = false, length = 20)
     private DataExportStatus status;
 
-    @Embedded private TaskExportFilters taskFilters;
+    @Embedded private @Nullable TaskExportFilters taskFilters;
 
     // The produced file, until it expires
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "media_id", foreignKey = @ForeignKey(name = "data_exports_mediaFK"))
-    private Media media;
+    private @Nullable Media media;
 
     @Column(name = "row_count")
-    private Long rowCount;
+    private @Nullable Long rowCount;
 
     @Column(name = "attempts", nullable = false)
     private int attempts;
 
     // A short failure kind, never an exception message
     @Column(name = "failure", length = 100)
-    private String failure;
+    private @Nullable String failure;
 
     // While queued: when its run message is sent again, in case it was lost. While running: when
     // the run counts as interrupted, if the instance running it stopped; the run renews it as it
     // goes
     @Column(name = "lease_until")
-    private Instant leaseUntil;
+    private @Nullable Instant leaseUntil;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     @Column(name = "started_at")
-    private Instant startedAt;
+    private @Nullable Instant startedAt;
 
     @Column(name = "completed_at")
-    private Instant completedAt;
+    private @Nullable Instant completedAt;
 
     @Column(name = "expires_at")
-    private Instant expiresAt;
+    private @Nullable Instant expiresAt;
 }

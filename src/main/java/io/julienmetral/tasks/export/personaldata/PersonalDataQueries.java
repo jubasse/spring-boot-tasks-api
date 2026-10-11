@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -23,7 +24,7 @@ public class PersonalDataQueries {
 
     private final NamedParameterJdbcTemplate jdbc;
 
-    public Map<String, Object> account(UUID userId) {
+    public @Nullable Map<String, Object> account(UUID userId) {
         return one(
                 """
                 SELECT u.id, u.email, p.display_name, p.status,
@@ -37,7 +38,7 @@ public class PersonalDataQueries {
                 userId);
     }
 
-    public Map<String, Object> notificationSettings(UUID userId) {
+    public @Nullable Map<String, Object> notificationSettings(UUID userId) {
         return one(
                 """
                 SELECT task_assigned, task_unassigned, task_cancelled, task_deleted, task_commented, task_mentioned,
@@ -201,7 +202,7 @@ public class PersonalDataQueries {
     }
 
     /** The stored profile photo, or null. */
-    public Map<String, Object> profilePhoto(UUID userId) {
+    public @Nullable Map<String, Object> profilePhoto(UUID userId) {
         return one(
                 """
                 SELECT m.storage_key, m.content_type
@@ -212,7 +213,7 @@ public class PersonalDataQueries {
                 userId);
     }
 
-    private Map<String, Object> one(String sql, UUID userId) {
+    private @Nullable Map<String, Object> one(String sql, UUID userId) {
         List<Map<String, Object>> rows = list(sql, userId);
 
         return rows.isEmpty() ? null : rows.getFirst();

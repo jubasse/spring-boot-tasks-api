@@ -4,16 +4,17 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 record UserCsvRow(
         UUID id,
         String email,
         String displayName,
         String status,
-        String roles,
-        Instant emailVerifiedAt,
+        @Nullable String roles,
+        @Nullable Instant emailVerifiedAt,
         Instant createdAt,
-        Instant lastActiveAt) {
+        @Nullable Instant lastActiveAt) {
 
     static final List<String> HEADER =
             List.of(
@@ -26,7 +27,7 @@ record UserCsvRow(
                     "created_at",
                     "last_active_at");
 
-    List<Object> values() {
+    List<@Nullable Object> values() {
         return Arrays.asList(
                 id, email, displayName, status, roles, emailVerifiedAt, createdAt, lastActiveAt);
     }

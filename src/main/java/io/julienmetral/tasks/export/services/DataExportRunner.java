@@ -5,7 +5,6 @@ import io.julienmetral.tasks.export.batch.PersonalDataJob;
 import io.julienmetral.tasks.export.batch.PublishExport;
 import io.julienmetral.tasks.export.entities.DataExport;
 import io.julienmetral.tasks.export.entities.DataExportType;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +26,9 @@ public class DataExportRunner {
     private final DataExportService exportService;
     private final JobOperator jobOperator;
     private final JobRepository jobRepository;
-    private final Map<DataExportType, Job> jobs;
+    private final Job tasksCsvExport;
+    private final Job usersCsvExport;
+    private final Job personalDataExport;
 
     public DataExportRunner(
             DataExportService exportService,
@@ -39,11 +40,9 @@ public class DataExportRunner {
         this.exportService = exportService;
         this.jobOperator = jobOperator;
         this.jobRepository = jobRepository;
-        this.jobs =
-                Map.of(
-                        DataExportType.TASKS_CSV, tasksCsvExport,
-                        DataExportType.USERS_CSV, usersCsvExport,
-                        DataExportType.PERSONAL_DATA, personalDataExport);
+        this.tasksCsvExport = tasksCsvExport;
+        this.usersCsvExport = usersCsvExport;
+        this.personalDataExport = personalDataExport;
     }
 
     /**
@@ -62,7 +61,7 @@ public class DataExportRunner {
             return;
         }
 
-        Job job = jobs.get(claimed.get().getType());
+        Job job = jobFor(claimed.get().getType());
         JobParameters parameters =
                 new JobParametersBuilder()
                         .addString(PublishExport.EXPORT_ID, exportId.toString())
@@ -90,5 +89,13 @@ public class DataExportRunner {
                 jobOperator.recover(execution);
             }
         }
+    }
+
+    private Job jobFor(DataExportType type) {
+        return switch (type) {
+            case TASKS_CSV -> tasksCsvExport;
+            case USERS_CSV -> usersCsvExport;
+            case PERSONAL_DATA -> personalDataExport;
+        };
     }
 }
