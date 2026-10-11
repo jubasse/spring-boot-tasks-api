@@ -6,7 +6,7 @@ import org.jspecify.annotations.Nullable;
 
 public record WebhookTestResultDto(
         @Schema(description = "Whether the receiver answered with a 2xx status") boolean delivered,
-        @Schema(description = "Status of the answer, absent when none came back")
+        @Schema(description = "Status of the answer, null when none came back")
                 @Nullable Integer statusCode,
         @Schema(description = "Why no answer came back", example = "Timeout")
                 @Nullable String error,

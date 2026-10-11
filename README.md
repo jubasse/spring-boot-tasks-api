@@ -201,7 +201,7 @@ Each notification and its attempts are listed at `GET /api/v1/users/{id}/webhook
 {"delivered": false, "statusCode": 500, "error": null, "durationMillis": 184}
 ```
 
-When no answer came back, `statusCode` is absent and `error` says why: `Timeout`, `ConnectionFailed` or `DestinationNotAllowed`, or `SecretUnreadable` when nothing was sent because the server can no longer read the webhook's secret (rotate it, or for Slack send its URL again). You can send 10 test events per hour.
+When no answer came back, `statusCode` is null and `error` says why: `Timeout`, `ConnectionFailed` or `DestinationNotAllowed`, or `SecretUnreadable` when nothing was sent because the server can no longer read the webhook's secret (rotate it, or for Slack send its URL again). You can send 10 test events per hour.
 
 ### Pause, change or rotate
 

@@ -20,7 +20,7 @@ public record NewWebhookEndpointDto(
         Instant createdAt,
         @Schema(
                         description =
-                                "Signing secret in the Standard Webhooks format; it is never shown again. Absent for a "
+                                "Signing secret in the Standard Webhooks format; it is never shown again. Null for a "
                                         + "Slack webhook, whose messages are not signed",
                         example = "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw")
                 @Nullable String secret) {

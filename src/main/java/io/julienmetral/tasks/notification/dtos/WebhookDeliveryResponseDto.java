@@ -13,7 +13,7 @@ public record WebhookDeliveryResponseDto(
         WebhookEvent event,
         WebhookDeliveryStatus status,
         int attempts,
-        @Schema(description = "HTTP status of the last attempt, absent when no response came back")
+        @Schema(description = "HTTP status of the last attempt, null when no response came back")
                 @Nullable Integer lastStatusCode,
         @Schema(
                         description = "Why the last attempt got no response or could not go on",
