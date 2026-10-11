@@ -17,6 +17,7 @@ import java.util.UUID;
 /**
  * Fixed-window limits on the endpoints anyone can call. Each check counts the request in a transaction of its own,
  * committed before the request is handled, so a request that then fails (a wrong password, for example) still counts.
+ * A refused request rolls its own increment back: it uses no allowance, of the address or of the email.
  */
 @Service
 @RequiredArgsConstructor

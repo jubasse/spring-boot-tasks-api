@@ -14,7 +14,7 @@ import java.util.UUID;
 
 /**
  * What the API holds about one account, section by section, for its personal data export. Native SQL: the account's
- * soft-deleted tasks are its data too, and JPA hides them. Other people appear by id and display name only; secrets
+ * soft-deleted tasks are its data too, and JPA hides them. Other people appear by display name only, never by id or email; secrets
  * (password hash, token hashes, webhook signing secrets) never appear, and a Slack URL, which is one, is masked.
  */
 @Repository

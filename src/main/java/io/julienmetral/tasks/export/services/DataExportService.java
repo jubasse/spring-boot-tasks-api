@@ -145,7 +145,10 @@ public class DataExportService {
                 export.getId(), export.getOwner().getId(), export.getType(), export.getExpiresAt()));
     }
 
-    /** Records a run that failed; the owner is emailed once no attempt is left, after the commit. */
+    /**
+     * Marks a RUNNING export FAILED and emails its owner after the commit; an export in another state is left alone.
+     * A failed job is never run again: only an interrupted run gets further attempts ({@link #requeueInterrupted}).
+     */
     @Transactional
     public void fail(UUID id, String failure) {
         repository.findById(id).ifPresent(export -> {
