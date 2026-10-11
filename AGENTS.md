@@ -333,6 +333,13 @@ Every error is an RFC 9457 problem (`application/problem+json`), documented for 
 - An unexpected exception is logged and answered as a bare 500 problem (`handleUnexpected`), whose detail never carries its message. Warning: method security throws `AccessDeniedException` from inside the controller call, so that handler rethrows it; catching it would turn every 403 into a 500.
 - The 401 and 403 of the security filters come from Spring Security, without a problem body.
 
+## Documentation to keep in sync
+
+A pull request that changes a behaviour also updates the documents that describe it, in the same pull request:
+- **`docs/spring/`**: guides and case studies (`cas-pratiques/`) on the Spring mechanisms of this repository, written in French. Find those a change touches with `grep -rl <ClassName or setting> docs/spring`, and update their facts: class names, settings and defaults, numbers, flows, pitfalls, the "Dans ce dépôt" tables and source links. A new mechanism gets a section in the closest guide, or a new guide listed in `docs/spring/README.md`. Keep the format of the neighbouring guides; they describe this Java stack only, with no comparison to frameworks of other languages.
+- **`docs/cartography.md`**: a new package, annotation, test helper or registry (`CartographyTest` catches the first three).
+- **`README.md`** for what users and operators see (endpoints, settings, deployment), **`docs/problems.md`** for problem types, **`docs/openapi.json`** for the API, and this file for a new rule or trap.
+
 ## Comments and Javadoc: the why and the failure, never the what
 
 **Name first, comment second.** A precise name for a class, method or variable removes the need for the paragraph above it, and a long name is the cheap side of that trade.
