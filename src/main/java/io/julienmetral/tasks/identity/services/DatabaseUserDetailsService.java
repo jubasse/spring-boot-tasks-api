@@ -1,7 +1,6 @@
 package io.julienmetral.tasks.identity.services;
 
 import io.julienmetral.tasks.identity.repositories.UserRepository;
-import org.jspecify.annotations.NullMarked;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsPasswordService;
@@ -20,7 +19,6 @@ public class DatabaseUserDetailsService implements UserDetailsService, UserDetai
     }
 
     @Override
-    @NullMarked
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
 
         var user =
@@ -45,7 +43,6 @@ public class DatabaseUserDetailsService implements UserDetailsService, UserDetai
      */
     @Override
     @Transactional
-    @NullMarked
     public UserDetails updatePassword(UserDetails user, String newPassword) {
         userRepository
                 .findByEmailIgnoreCase(user.getUsername())
