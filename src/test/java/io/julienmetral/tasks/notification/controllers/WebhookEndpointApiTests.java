@@ -28,6 +28,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
@@ -75,6 +76,10 @@ class WebhookEndpointApiTests {
     private static final String NOT_SLACK = "A Slack webhook URL must start with https://hooks.slack.com/services/";
 
     private static final Instant NOW = Instant.parse("2031-02-03T04:05:06.123456Z");
+
+    // Stands for the key before a change of webhooks.encryption-key: what it encrypted, the application cannot read
+    private static final WebhookSecrets OTHER_KEY =
+            new WebhookSecrets(Base64.getEncoder().encodeToString(new byte[32]));
 
     @Autowired
     private MockMvc mockMvc;
@@ -438,6 +443,40 @@ class WebhookEndpointApiTests {
                 .isEqualTo(NOW.plus(Duration.ofHours(2)).plus(Duration.ofHours(24)));
     }
 
+    @Test
+    void rotationAfterAKeyChangeKeepsNoPreviousSecretAndReturnsNoExpiry() throws Exception {
+        User user = createUser(UserRole.USER);
+        UUID webhookId = createdId(user, asUser(user), LOCAL_URL, "task.assigned");
+        jdbcTemplate.update("UPDATE webhook_endpoints SET secret = ? WHERE id = ?",
+                OTHER_KEY.encrypt(OTHER_KEY.generate()), webhookId);
+        clock.set(NOW);
+
+        JsonNode rotated = json(mockMvc.perform(post(SECRET, user.getId(), webhookId).with(asUser(user)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.previousSecretExpiresAt").value(nullValue())));
+
+        Map<String, Object> row = endpointRow(webhookId);
+        assertThat(row.get("previous_secret")).isNull();
+        assertThat(row.get("previous_secret_expires_at")).isNull();
+        assertThat(webhookSecrets.decrypt((String) row.get("secret"))).isEqualTo(rotated.get("secret").asString());
+    }
+
+    @Test
+    void rotationAfterAKeyChangeDropsAPreviousSecretStillValid() throws Exception {
+        User user = createUser(UserRole.USER);
+        UUID webhookId = createdId(user, asUser(user), LOCAL_URL, "task.assigned");
+        clock.set(NOW);
+        rotate(user, webhookId, asUser(user));
+        jdbcTemplate.update("UPDATE webhook_endpoints SET secret = ?, previous_secret = ? WHERE id = ?",
+                OTHER_KEY.encrypt(OTHER_KEY.generate()), OTHER_KEY.encrypt(OTHER_KEY.generate()), webhookId);
+
+        rotate(user, webhookId, asUser(user));
+
+        Map<String, Object> row = endpointRow(webhookId);
+        assertThat(row.get("previous_secret")).isNull();
+        assertThat(row.get("previous_secret_expires_at")).isNull();
+    }
+
     // Limit
 
     @Test
@@ -680,6 +719,35 @@ class WebhookEndpointApiTests {
 
         assertThat(storedUrl(webhookId)).startsWith("v1:").doesNotContain(pathToken(replacement));
         assertThat(webhookSecrets.decrypt(storedUrl(webhookId))).isEqualTo(replacement);
+    }
+
+    @Test
+    void updateWithTheMaskedUrlKeepsASlackUrlThatCannotBeReadAfterAKeyChange() throws Exception {
+        User user = createUser(UserRole.USER);
+        UUID webhookId = createdSlackId(user, slackUrl(), "task.assigned");
+        String unreadable = OTHER_KEY.encrypt(slackUrl());
+        jdbcTemplate.update("UPDATE webhook_endpoints SET url = ? WHERE id = ?", unreadable, webhookId);
+
+        update(user, webhookId, asUser(user), SLACK_MASK, false, "task.overdue")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.url").value(SLACK_MASK))
+                .andExpect(jsonPath("$.events").value(contains("task.overdue")));
+
+        assertThat(storedUrl(webhookId)).isEqualTo(unreadable);
+    }
+
+    @Test
+    void updateWithASlackUrlReplacesOneThatCannotBeReadAfterAKeyChange() throws Exception {
+        User user = createUser(UserRole.USER);
+        String url = slackUrl();
+        UUID webhookId = createdSlackId(user, url, "task.assigned");
+        jdbcTemplate.update("UPDATE webhook_endpoints SET url = ? WHERE id = ?", OTHER_KEY.encrypt(url), webhookId);
+
+        update(user, webhookId, asUser(user), url, true, "task.assigned")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.url").value(SLACK_MASK));
+
+        assertThat(webhookSecrets.decrypt(storedUrl(webhookId))).isEqualTo(url);
     }
 
     @ParameterizedTest

@@ -29,6 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.http.client.FilteredHostException;
 import org.springframework.context.ApplicationEvent;
@@ -60,6 +61,7 @@ import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -161,6 +163,10 @@ class WebhookDeliveryTests {
 
     private static final byte[] BODY = "{}".getBytes(StandardCharsets.UTF_8);
 
+    // Stands for the key before a change of webhooks.encryption-key: what it encrypted, the application cannot read
+    private static final WebhookSecrets OTHER_KEY =
+            new WebhookSecrets(Base64.getEncoder().encodeToString(new byte[32]));
+
     private record Endpoint(UUID id, String secret, String url, String[] events) {
     }
 
@@ -214,6 +220,9 @@ class WebhookDeliveryTests {
 
     @Autowired
     private ConfigurableApplicationContext applicationContext;
+
+    @Autowired
+    private AmqpAdmin amqpAdmin;
 
     private final MockWebServer receiver = new MockWebServer();
 
@@ -364,6 +373,24 @@ class WebhookDeliveryTests {
         assertThatExceptionOfType(WebhookVerificationException.class)
                 .isThrownBy(() -> verify(endpoint.secret(), request));
         awaitAttempts(onlyDeliveryId(endpoint), 1);
+    }
+
+    @Test
+    void previousSecretThatCannotBeReadAfterAKeyChangeIsLeftOutAndTheCurrentOneSigns() throws Exception {
+        User admin = createUser(UserRole.ADMIN);
+        User assignee = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(assignee, "task.assigned");
+        String rotated = rotate(assignee, endpoint);
+        jdbcTemplate.update("UPDATE webhook_endpoints SET previous_secret = ? WHERE id = ?",
+                OTHER_KEY.encrypt(endpoint.secret()), endpoint.id());
+        answer(204);
+
+        createTask(admin, assignee);
+
+        RecordedRequest request = nextRequest();
+        assertThat(request.getHeaders().get("webhook-signature").split(" ")).hasSize(1);
+        assertThatNoException().isThrownBy(() -> verify(rotated, request));
+        assertThat(awaitAttempts(onlyDeliveryId(endpoint), 1).getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
     }
 
     // Payload of each event
@@ -854,6 +881,25 @@ class WebhookDeliveryTests {
         assertThat(failed.getLastError()).isEqualTo("AccountNotActive");
         assertThat(failed.getAttempts()).isOne();
         assertThat(receiver.getRequestCount()).isOne();
+    }
+
+    @Test
+    void deliveryWhoseSecretCannotBeReadAfterAKeyChangeFailsWithoutARequestOrADeadLetter() throws Exception {
+        User assignee = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(assignee, "task.assigned");
+        makeSecretUnreadable(endpoint);
+        long deadLettersBefore = deadLetters();
+
+        createTask(createUser(UserRole.ADMIN), assignee);
+
+        WebhookDelivery failed = awaitFinished(onlyDeliveryId(endpoint));
+        assertThat(failed.getStatus()).isEqualTo(WebhookDeliveryStatus.FAILED);
+        assertThat(failed.getLastError()).isEqualTo("SecretUnreadable");
+        assertThat(failed.getAttempts()).isZero();
+        assertThat(failed.getNextAttemptAt()).isNull();
+        assertThat(receiver.getRequestCount()).isZero();
+        assertThat(failingSince(endpoint)).isNull();
+        assertThat(deadLetters()).isEqualTo(deadLettersBefore);
     }
 
     @ParameterizedTest
@@ -1348,6 +1394,21 @@ class WebhookDeliveryTests {
 
             assertThat(privateReceiver.getRequestCount()).isZero();
         }
+    }
+
+    @Test
+    void testEventOnASecretThatCannotBeReadAfterAKeyChangeIsReportedWithoutARequest() throws Exception {
+        User owner = createUser(UserRole.USER);
+        Endpoint endpoint = createEndpoint(owner, "task.assigned");
+        makeSecretUnreadable(endpoint);
+
+        sendTestEvent(owner, endpoint)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.delivered").value(false))
+                .andExpect(jsonPath("$.statusCode").value(nullValue()))
+                .andExpect(jsonPath("$.error").value("SecretUnreadable"));
+
+        assertThat(receiver.getRequestCount()).isZero();
     }
 
     @Test
@@ -2106,6 +2167,15 @@ class WebhookDeliveryTests {
         } catch (IOException failed) {
             throw new UncheckedIOException(failed);
         }
+    }
+
+    private void makeSecretUnreadable(Endpoint endpoint) {
+        jdbcTemplate.update("UPDATE webhook_endpoints SET secret = ? WHERE id = ?",
+                OTHER_KEY.encrypt(endpoint.secret()), endpoint.id());
+    }
+
+    private long deadLetters() {
+        return amqpAdmin.getQueueInfo(WebhookQueues.DEAD_LETTER).getMessageCount();
     }
 
     private Instant failingSince(Endpoint endpoint) {

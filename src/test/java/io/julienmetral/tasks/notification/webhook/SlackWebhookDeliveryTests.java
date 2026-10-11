@@ -38,6 +38,7 @@ import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -100,6 +101,10 @@ class SlackWebhookDeliveryTests {
 
     // Emails leave through the outbox and RabbitMQ: "no email sent" can only be checked after a grace period
     private static final Duration NO_MAIL_GRACE_PERIOD = Duration.ofSeconds(1);
+
+    // Stands for the key before a change of webhooks.encryption-key: what it encrypted, the application cannot read
+    private static final WebhookSecrets OTHER_KEY =
+            new WebhookSecrets(Base64.getEncoder().encodeToString(new byte[32]));
 
     private record SlackEndpoint(UUID id, String path, String token) {
     }
@@ -484,6 +489,22 @@ class SlackWebhookDeliveryTests {
     }
 
     // Test events
+
+    @Test
+    void deliveryToASlackUrlThatCannotBeReadAfterAKeyChangeFailsWithoutARequest() throws Exception {
+        User assignee = createUser(UserRole.USER);
+        SlackEndpoint endpoint = createSlackEndpoint(assignee, "task.assigned");
+        jdbcTemplate.update("UPDATE webhook_endpoints SET url = ? WHERE id = ?",
+                OTHER_KEY.encrypt(receiverUrl(endpoint.path())), endpoint.id());
+
+        createTask(createUser(UserRole.ADMIN), assignee);
+
+        WebhookDelivery failed = awaitFinished(onlyDeliveryId(endpoint.id()));
+        assertThat(failed.getStatus()).isEqualTo(WebhookDeliveryStatus.FAILED);
+        assertThat(failed.getLastError()).isEqualTo("SecretUnreadable");
+        assertThat(failed.getAttempts()).isZero();
+        assertThat(receiver.getRequestCount()).isZero();
+    }
 
     @Test
     void testEventReachesTheSlackUrlUnsignedAsTheTestMessageAndRecordsNoDelivery() throws Exception {
