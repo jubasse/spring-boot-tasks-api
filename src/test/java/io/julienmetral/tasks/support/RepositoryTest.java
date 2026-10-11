@@ -2,6 +2,7 @@ package io.julienmetral.tasks.support;
 
 import io.julienmetral.tasks.PostgresTestcontainersConfiguration;
 import io.julienmetral.tasks.shared.config.JpaAuditingConfiguration;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
 
@@ -24,7 +25,8 @@ import java.lang.annotation.Target;
 @Documented
 @Inherited
 @DataJpaTest
-// JpaAuditingConfiguration fills created_at and updated_at, which are NOT NULL
-@Import({PostgresTestcontainersConfiguration.class, JpaAuditingConfiguration.class})
+// JpaAuditingConfiguration fills created_at and updated_at, which are NOT NULL, from the TestClock
+@Import({PostgresTestcontainersConfiguration.class, JpaAuditingConfiguration.class, TestClock.class})
+@ExtendWith(TestClock.ResetAfterEach.class)
 public @interface RepositoryTest {
 }

@@ -8,6 +8,7 @@ import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.support.RepositoryTest;
 import io.julienmetral.tasks.support.SqlStatementCounter;
+import io.julienmetral.tasks.support.TestClock;
 import jakarta.persistence.PersistenceUnitUtil;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +17,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
@@ -41,6 +43,9 @@ class UserRepositoryTests {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    @Autowired
+    private TestClock testClock;
 
     @Test
     void existsByEmailIncludingDeletedSeesASoftDeletedUserThatDerivedQueriesIgnore() {
@@ -185,6 +190,22 @@ class UserRepositoryTests {
                 .singleElement(as(STRING))
                 .contains("avatar_media_id")
                 .doesNotContain("status", "display_name");
+    }
+
+    @Test
+    void auditingDatesFollowTheApplicationClock() {
+        Instant created = Instant.parse("2001-02-03T04:05:06Z");
+        Instant updated = created.plus(Duration.ofHours(1));
+        testClock.set(created);
+        User user = persistUser(uniqueEmail());
+
+        testClock.set(updated);
+        user.markActive(updated);
+        entityManager.flush();
+
+        assertThat(user.getCreatedAt()).isEqualTo(created);
+        assertThat(user.getUpdatedAt()).isEqualTo(updated);
+        assertThat(user.getProfile().getCreatedAt()).isEqualTo(created);
     }
 
     private User persistUser(String email) {
