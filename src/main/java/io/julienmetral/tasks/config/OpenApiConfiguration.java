@@ -63,7 +63,7 @@ public class OpenApiConfiguration {
             the seconds to wait in `Retry-After`. A page holds at most 100 items.
 
             **Evolution.** An enumeration in a response can gain values, such as a new status: treat a value you \
-            do not know as unknown rather than as an error. New optional fields can appear too.
+            do not know as unknown rather than as an error. New fields can appear too: ignore those you do not know.
             """;
 
     @Bean
@@ -75,9 +75,8 @@ public class OpenApiConfiguration {
                         new Info()
                                 .title("Tasks API")
                                 .description(DESCRIPTION)
-                                // build-info is written by Maven; an application started from the
-                                // IDE may
-                                // not have it
+                                // build-info is written by Maven; an application started from
+                                // the IDE may not have it
                                 .version(build != null ? build.getVersion() : "development")
                                 .contact(new Contact().name("Tasks API on GitHub").url(REPOSITORY)))
                 .externalDocs(
@@ -93,6 +92,11 @@ public class OpenApiConfiguration {
     @Bean
     OperationDocumentation operationDocumentation() {
         return new OperationDocumentation();
+    }
+
+    @Bean
+    NullabilityDocumentation nullabilityDocumentation() {
+        return new NullabilityDocumentation();
     }
 
     @Bean
