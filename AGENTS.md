@@ -42,7 +42,7 @@ Generate a changeset from entity changes. Run it against a database that already
 ```bash
 ./mvnw liquibase:diff \
   -Dliquibase.url=jdbc:postgresql://localhost:5432/tasks -Dliquibase.username=... -Dliquibase.password=... \
-  "-Dliquibase.referenceUrl=hibernate:spring:io.julienmetral.tasks?dialect=org.hibernate.dialect.PostgreSQLDialect&hibernate.physical_naming_strategy=org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy" \
+  "-Dliquibase.referenceUrl=hibernate:spring:io.julienmetral.tasks?dialect=org.hibernate.dialect.PostgreSQLDialect&hibernate.physical_naming_strategy=org.hibernate.boot.model.naming.PhysicalNamingStrategySnakeCaseImpl" \
   -Dliquibase.diffChangeLogFile=src/main/resources/db/changelog/changes/NNN-name.yaml
 ```
 Then review the file, and give its changesets readable `id`s and a real `author`.
@@ -92,8 +92,8 @@ Public endpoints: `POST /api/v1/users` (sign-up), and `POST /api/v1/auth/login`,
 
 ### Rate limiting
 
-`RateLimiter` limits the endpoints anyone can call: login (per client address and per email), sign-up (per address), password reset request (per address and per email) and confirmation (per address), and verification email resend (per user). It also limits webhook test events (per user), since each one is an HTTP call to a URL the user chose. Limits are fixed windows set under `rate-limit.*`; over a limit, `RateLimitExceededException` becomes 429 with a `Retry-After` header.
-- Counting is one atomic `INSERT ... ON CONFLICT ... RETURNING` on `rate_limit_counters` (`RateLimitQueries`), so it holds across instances without Redis. Each check runs in its own transaction (`REQUIRES_NEW`), committed before the request is handled, so a failed login still counts.
+`RateLimiter` limits the endpoints anyone can call: login (per client address and per email), sign-up (per address), password reset request (per address and per email) and confirmation (per address, sharing the request's counter), and verification email resend (per user). It also limits webhook test events (per user), since each one is an HTTP call to a URL the user chose. Limits are fixed windows set under `rate-limit.*`; over a limit, `RateLimitExceededException` becomes 429 with a `Retry-After` header.
+- Counting is one atomic `INSERT ... ON CONFLICT ... RETURNING` on `rate_limit_counters` (`RateLimitQueries`), so it holds across instances without Redis. Each check runs in its own transaction (`REQUIRES_NEW`), committed before the request is handled, so a failed login still counts. A refused request rolls its own increment back, so it uses no allowance (`RateLimitTests` locks this).
 - The per-email password reset limit counts every email, used by an account or not: a 429 reveals nothing about which emails exist.
 - Keys are built by `RateLimitKeys`: addresses and emails are SHA-256 hashed (fixed length, no personal data in clear; an email that lower-casing lengthened once overflowed the column and failed the request), and an IPv6 address counts as its /64, which one client usually holds entirely.
 - A window lasts from 1 second to 1 day (`@DurationMin`/`@DurationMax`): a zero window divided by zero, and counters are purged after a day. `Retry-After` is rounded up to the next whole second.
@@ -276,7 +276,7 @@ Jobs run with `@Scheduled` inside the API. A job that must run once per schedule
 - **A new job** needs a name in `ScheduledJobLocks` (its metrics are registered at startup), or a place on the pollers' allowlist: `ScheduledJobLocksTest` fails otherwise.
 - They replaced three hand-written advisory locks, which held only while their transaction ran and did not stop an instance firing a moment later from running the job again.
 - Warning: put `@SchedulerLock` on the job method, never on a `@Transactional` one: the lock is written in its own transaction and would be released before the work commits. The method must be public.
-- Warning: never delete a row of `scheduler_locks` to free a stuck lock. ShedLock remembers the rows it inserted and then only updates them, so every later run is skipped until a restart. Set `lock_until` to the current time instead (README, Background work).
+- Warning: never delete a row of `scheduler_locks` to free a stuck lock. ShedLock remembers the rows it inserted and then only updates them, so every later run is skipped until a restart. Set `lock_until` to the current UTC time instead, `timezone('utc', now())` (README, Background work).
 
 ### Monitoring
 

@@ -619,7 +619,7 @@ Réglages de `application.yaml`, sous `exports` et `spring.batch` :
 |---|---|---|
 | `exports.chunk-size` | 500 | lignes par transaction et par page |
 | `exports.lease` | 15m | durée d'un bail |
-| `exports.max-attempts` | 3 | exécutions d'un export avant l'échec |
+| `exports.max-attempts` | 3 | exécutions d'un export interrompu avant l'échec |
 | `exports.recovery-interval` | 5m | recherche des interrompus |
 | `exports.retention` | 7d | durée du fichier, puis `EXPIRED` |
 | `exports.history-retention` | 30d | durée des exports expirés ou en échec, et des exécutions |
