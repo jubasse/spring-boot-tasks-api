@@ -17,6 +17,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
+import org.jspecify.annotations.Nullable;
 
 /**
  * An opaque refresh token, stored as a SHA-256 hash. Every refresh rotates the token: the used one
@@ -66,5 +67,5 @@ public class RefreshToken {
     private Instant expiresAt;
 
     @Column(name = "revoked_at")
-    private Instant revokedAt;
+    private @Nullable Instant revokedAt;
 }

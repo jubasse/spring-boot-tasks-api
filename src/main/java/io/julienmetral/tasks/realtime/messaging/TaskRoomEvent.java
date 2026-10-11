@@ -2,6 +2,7 @@ package io.julienmetral.tasks.realtime.messaging;
 
 import java.time.Instant;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A change to a task, sent to the clients in its room. It says what happened and who did it, not
@@ -12,7 +13,11 @@ import java.util.UUID;
  * @param type a history event type ({@code COMMENT_ADDED}...), or {@code DELETED}
  */
 public record TaskRoomEvent(
-        UUID taskId, UUID eventId, String type, UUID actorId, Instant occurredAt) {
+        UUID taskId,
+        @Nullable UUID eventId,
+        String type,
+        @Nullable UUID actorId,
+        Instant occurredAt) {
 
     public static final String DELETED = "DELETED";
 }

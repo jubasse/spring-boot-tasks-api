@@ -6,14 +6,15 @@ import io.julienmetral.tasks.media.services.MediaUrls;
 import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 public record UserResponseDto(
         UUID id,
         String email,
         String displayName,
         boolean enabled,
-        Instant emailVerifiedAt,
-        Instant lastLoginAt,
+        @Nullable Instant emailVerifiedAt,
+        @Nullable Instant lastLoginAt,
         Set<UserRole> roles,
         Instant createdAt,
         Instant updatedAt,

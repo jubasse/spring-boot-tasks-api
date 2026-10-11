@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.realtime;
 
 import io.micrometer.observation.ObservationPredicate;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
 import org.springframework.amqp.core.AnonymousQueue;
 import org.springframework.amqp.core.Base64UrlNamingStrategy;
@@ -75,6 +76,7 @@ public class RealtimeConfiguration {
     ObservationPredicate noObservationOfNotificationStreams() {
         return (name, context) ->
                 !(context instanceof ServerRequestObservationContext request
-                        && request.getCarrier().getRequestURI().endsWith("/notifications/stream"));
+                        && request.getCarrier() instanceof HttpServletRequest servletRequest
+                        && servletRequest.getRequestURI().endsWith("/notifications/stream"));
     }
 }

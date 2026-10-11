@@ -25,6 +25,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
+import org.jspecify.annotations.Nullable;
 
 @Entity
 @Table(
@@ -82,5 +83,5 @@ public class TaskComment {
     private Instant createdAt;
 
     @Column(name = "edited_at")
-    private Instant editedAt;
+    private @Nullable Instant editedAt;
 }

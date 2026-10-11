@@ -2,6 +2,7 @@ package io.julienmetral.tasks.identity.security;
 
 import java.util.Optional;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
@@ -14,7 +15,7 @@ public class CurrentUser {
         return getId(SecurityContextHolder.getContext().getAuthentication());
     }
 
-    public Optional<UUID> getId(Authentication authentication) {
+    public Optional<UUID> getId(@Nullable Authentication authentication) {
         if (!(authentication instanceof JwtAuthenticationToken jwtAuthentication)) {
             return Optional.empty();
         }

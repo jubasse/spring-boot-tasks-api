@@ -177,14 +177,13 @@ app:
 **Étape 4. Écrire le contrôle.** Un `BeanFactoryPostProcessor` passe avant tout bean ordinaire. Il lit la liste avec le `Binder` et refuse une valeur vide ou non résolue.
 
 ```java
-class RequiredSettingsCheck implements BeanFactoryPostProcessor, EnvironmentAware {
+class RequiredSettingsCheck implements BeanFactoryPostProcessor {
 
     static final String REQUIRED_SETTINGS = "app.required-settings";
 
-    private Environment environment;
+    private final Environment environment;
 
-    @Override
-    public void setEnvironment(Environment environment) {
+    RequiredSettingsCheck(Environment environment) {
         this.environment = environment;
     }
 
@@ -222,8 +221,8 @@ class RequiredSettingsCheck implements BeanFactoryPostProcessor, EnvironmentAwar
 public class StartupChecksConfiguration {
 
     @Bean
-    static RequiredSettingsCheck requiredSettingsCheck() {
-        return new RequiredSettingsCheck();
+    static RequiredSettingsCheck requiredSettingsCheck(Environment environment) {
+        return new RequiredSettingsCheck(environment);
     }
 }
 ```
@@ -321,7 +320,7 @@ Le contrôle s'exécute entre la lecture des définitions de beans et la créati
   création des beans : DataSource, Liquibase, RabbitMQ, Tomcat...
 ```
 
-- Le post-processeur est créé très tôt, donc le contrôle reçoit l'`Environment` par `EnvironmentAware`.
+- Le post-processeur est créé très tôt, avant toute injection par champ : la méthode `@Bean` statique reçoit l'`Environment` en paramètre et le passe au constructeur. Avec `EnvironmentAware`, le champ restait vide jusqu'à l'appel du setter, et NullAway le signale comme non initialisé.
 - Avec une méthode `@Bean` non statique, Spring logue en INFO que la méthode renvoie un `BeanFactoryPostProcessor`. Dans sa classe de configuration, `@Autowired`, `@Resource` et `@PostConstruct` échouent alors.
 - `Binder.get(environment).bind(..., Bindable.listOf(String.class))` lit une liste YAML ou une chaîne séparée par des virgules.
 - `environment.getProperty` résout les placeholders imbriqués et lève `IllegalArgumentException` sur un `${VAR}` non résolu. Le test `contains("${")` couvre un environnement configuré pour ignorer les placeholders non résolvables. Les deux sont nécessaires.

@@ -8,12 +8,13 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 public record CreateWebhookEndpointDto(
         @Schema(
                         description =
                                 "WEBHOOK (the default) for a signed JSON event, SLACK for a Slack incoming webhook "
                                         + "message, whose URL must start with https://hooks.slack.com/services/")
-                WebhookKind kind,
+                @Nullable WebhookKind kind,
         @Schema(example = "https://hooks.example.com/tasks") @NotBlank @Size(max = 2048) String url,
         @NotEmpty Set<@NotNull WebhookEvent> events) {}

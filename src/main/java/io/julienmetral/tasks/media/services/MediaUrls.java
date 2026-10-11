@@ -16,9 +16,8 @@ public class MediaUrls {
 
     private final MediaService mediaService;
 
-    /** Null when there is no media. */
     public String of(Media media) {
-        return media == null ? null : mediaService.downloadUrl(media).url().toString();
+        return mediaService.downloadUrl(media).url().toString();
     }
 
     /**

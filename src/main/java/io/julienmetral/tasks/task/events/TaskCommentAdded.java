@@ -2,6 +2,7 @@ package io.julienmetral.tasks.task.events;
 
 import java.util.Set;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Published when a comment is posted. {@code mentionedUserIds} lets a listener skip the assignee
@@ -13,6 +14,6 @@ public record TaskCommentAdded(
         String title,
         UUID commentId,
         String body,
-        UUID assigneeId,
+        @Nullable UUID assigneeId,
         UUID authorId,
         Set<UUID> mentionedUserIds) {}

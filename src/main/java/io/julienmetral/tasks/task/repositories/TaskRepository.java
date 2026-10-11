@@ -6,7 +6,6 @@ import io.julienmetral.tasks.task.entities.TaskStatus;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import org.jspecify.annotations.NullMarked;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -26,19 +25,16 @@ public interface TaskRepository extends JpaRepository<Task, UUID>, JpaSpecificat
     @EntityGraph(
             type = EntityGraphType.LOAD,
             attributePaths = {"assignedTo", "assignedTo.avatar", "createdBy", "createdBy.avatar"})
-    @NullMarked
     Page<Task> findAll(Specification<Task> specification, Pageable pageable);
 
     @EntityGraph(
             type = EntityGraphType.LOAD,
             attributePaths = {"assignedTo", "assignedTo.avatar", "createdBy", "createdBy.avatar"})
-    @NullMarked
     Optional<Task> findById(UUID id);
 
     @EntityGraph(
             type = EntityGraphType.LOAD,
             attributePaths = {"assignedTo", "assignedTo.avatar", "createdBy", "createdBy.avatar"})
-    @NullMarked
     List<Task> findAll();
 
     // Native on purpose: JPQL queries are filtered by @SoftDelete, but tasks_referenceUQ also

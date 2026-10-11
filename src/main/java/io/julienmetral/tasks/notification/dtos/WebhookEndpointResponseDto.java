@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 public record WebhookEndpointResponseDto(
         UUID id,
@@ -16,9 +17,9 @@ public record WebhookEndpointResponseDto(
         @Schema(description = "Masked for a Slack webhook, whose URL is its credential") String url,
         List<WebhookEvent> events,
         boolean enabled,
-        WebhookDisabledReason disabledReason,
-        Instant disabledAt,
-        Instant previousSecretExpiresAt,
+        @Nullable WebhookDisabledReason disabledReason,
+        @Nullable Instant disabledAt,
+        @Nullable Instant previousSecretExpiresAt,
         Instant createdAt,
         Instant updatedAt) {
 

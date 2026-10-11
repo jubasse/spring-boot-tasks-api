@@ -4,19 +4,20 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 record TaskCsvRow(
         UUID id,
         String reference,
         String title,
-        String description,
+        @Nullable String description,
         String status,
         String priority,
-        String assignee,
-        String createdBy,
-        Instant dueAt,
-        Instant completedAt,
-        Instant archivedAt,
+        @Nullable String assignee,
+        @Nullable String createdBy,
+        @Nullable Instant dueAt,
+        @Nullable Instant completedAt,
+        @Nullable Instant archivedAt,
         Instant createdAt,
         Instant updatedAt) {
 
@@ -36,7 +37,7 @@ record TaskCsvRow(
                     "created_at",
                     "updated_at");
 
-    List<Object> values() {
+    List<@Nullable Object> values() {
         return Arrays.asList(
                 id,
                 reference,

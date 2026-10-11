@@ -5,7 +5,6 @@ import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
-import org.springframework.context.EnvironmentAware;
 import org.springframework.core.env.Environment;
 import org.springframework.util.StringUtils;
 
@@ -18,14 +17,13 @@ import org.springframework.util.StringUtils;
  * {@code ${VAR}} as that literal text (spring-boot issue #18816): the application started with a
  * mail host named "${MAIL_HOST}".
  */
-class RequiredPropertiesCheck implements BeanFactoryPostProcessor, EnvironmentAware {
+class RequiredPropertiesCheck implements BeanFactoryPostProcessor {
 
     static final String REQUIRED_PROPERTIES = "deployment.required-properties";
 
-    private Environment environment;
+    private final Environment environment;
 
-    @Override
-    public void setEnvironment(Environment environment) {
+    RequiredPropertiesCheck(Environment environment) {
         this.environment = environment;
     }
 

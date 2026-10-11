@@ -18,6 +18,7 @@ import java.time.Clock;
 import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -56,7 +57,7 @@ public class TaskEventService {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
-    public void assignmentChanged(Task task, UUID fromUserId, UUID toUserId) {
+    public void assignmentChanged(Task task, @Nullable UUID fromUserId, UUID toUserId) {
         record(task, TaskEventType.ASSIGNED, new AssignmentChangedPayload(fromUserId, toUserId));
     }
 
@@ -120,7 +121,7 @@ public class TaskEventService {
         record(task, TaskEventType.COMMENT_DELETED, new CommentPayload(comment.getId()));
     }
 
-    private void record(Task task, TaskEventType type, Object payload) {
+    private void record(Task task, TaskEventType type, @Nullable Object payload) {
         TaskEvent event = new TaskEvent();
         UUID actorId = getCurrentActor().getId();
 
@@ -148,7 +149,7 @@ public class TaskEventService {
                 .orElseThrow(() -> new IllegalStateException("Authenticated user not found"));
     }
 
-    private Map<String, Object> serialize(Object payload) {
+    private @Nullable Map<String, Object> serialize(@Nullable Object payload) {
         if (payload == null) {
             return null;
         }
@@ -162,7 +163,7 @@ public class TaskEventService {
 
     private record StatusChangedPayload(TaskStatus from, TaskStatus to) {}
 
-    private record AssignmentChangedPayload(UUID fromUserId, UUID toUserId) {}
+    private record AssignmentChangedPayload(@Nullable UUID fromUserId, UUID toUserId) {}
 
     private record CancelledPayload(TaskStatus from, TaskStatus to, String reason) {}
 }

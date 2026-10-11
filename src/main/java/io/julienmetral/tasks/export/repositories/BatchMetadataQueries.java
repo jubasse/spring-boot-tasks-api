@@ -32,10 +32,10 @@ public class BatchMetadataQueries {
                         "cutoff",
                         Timestamp.valueOf(cutoff.atZone(ZoneId.systemDefault()).toLocalDateTime()));
         List<Long> instances =
-                jdbc.queryForList(
+                jdbc.query(
                         "SELECT DISTINCT job_instance_id FROM batch_job_execution WHERE end_time < :cutoff",
                         parameters,
-                        Long.class);
+                        (row, rowNumber) -> row.getLong(1));
 
         jdbc.update(
                 """

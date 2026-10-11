@@ -16,6 +16,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -166,7 +167,12 @@ public class PersonalDataJob {
 
         zip.putNextEntry(new ZipEntry("profile-photo." + extension));
 
-        try (InputStream content = objectStorage.open((String) photo.get("storage_key"))) {
+        String storageKey =
+                (String)
+                        Objects.requireNonNull(
+                                photo.get("storage_key"), "media.storage_key is NOT NULL");
+
+        try (InputStream content = objectStorage.open(storageKey)) {
             content.transferTo(zip);
         }
 

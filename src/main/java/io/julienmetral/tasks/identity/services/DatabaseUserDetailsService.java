@@ -1,7 +1,8 @@
 package io.julienmetral.tasks.identity.services;
 
 import io.julienmetral.tasks.identity.repositories.UserRepository;
-import org.jspecify.annotations.NullMarked;
+import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsPasswordService;
@@ -20,7 +21,6 @@ public class DatabaseUserDetailsService implements UserDetailsService, UserDetai
     }
 
     @Override
-    @NullMarked
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
 
         var user =
@@ -45,15 +45,18 @@ public class DatabaseUserDetailsService implements UserDetailsService, UserDetai
      */
     @Override
     @Transactional
-    @NullMarked
-    public UserDetails updatePassword(UserDetails user, String newPassword) {
+    public UserDetails updatePassword(UserDetails user, @Nullable String newPassword) {
+        // Null only for a null password, which cannot have just passed authentication
+        String passwordHash =
+                Objects.requireNonNull(newPassword, "The re-encoded password must not be null");
+
         userRepository
                 .findByEmailIgnoreCase(user.getUsername())
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"))
-                .setPasswordHash(newPassword);
+                .setPasswordHash(passwordHash);
 
         return org.springframework.security.core.userdetails.User.withUserDetails(user)
-                .password(newPassword)
+                .password(passwordHash)
                 .build();
     }
 }

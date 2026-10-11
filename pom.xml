@@ -43,6 +43,8 @@
 		<!-- 1.37.0 fails inside Spotless 3.10.4 (InvocationTargetException on every file, while it formats them run
 		     on its own): move to it once a Spotless release supports it -->
 		<google-java-format.version>1.36.1</google-java-format.version>
+		<error-prone.version>2.50.0</error-prone.version>
+		<nullaway.version>0.14.2</nullaway.version>
 		<!-- Above the versions Spring Boot 4.1.1 manages, which have fixed vulnerabilities: Tomcat 11.0.24 three critical
 		     (GHSA-9xv2-5v5q-p794, GHSA-gcx9-497g-6cp6, GHSA-h3x4-894j-xpx5), amqp-client 5.30.0 four high, Jackson 3.1.5
 		     and 2.21.5 (Hibernate brings 2 for JSON columns) five high in jackson-databind and jackson-core
@@ -209,6 +211,11 @@
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>
 			<optional>true</optional>
+		</dependency>
+		<!-- @NullMarked and @Nullable, the annotations of Spring 7 itself, which NullAway checks at compile time -->
+		<dependency>
+			<groupId>org.jspecify</groupId>
+			<artifactId>jspecify</artifactId>
 		</dependency>
 		<!-- Argon2 implementation used by Spring Security's Argon2PasswordEncoder -->
 		<dependency>
@@ -417,6 +424,14 @@
 				<configuration>
 					<source>${java.version}</source>
 					<target>${java.version}</target>
+					<!-- NullAway, through Error Prone, fails the build on a possible null dereference in @NullMarked code:
+					     main code only, every package being @NullMarked (package-info.java). JPA entities are filled by
+					     Hibernate, not their constructor. Error Prone needs the jdk.compiler exports of .mvn/jvm.config. -->
+					<compilerArgs>
+						<arg>-XDcompilePolicy=simple</arg>
+						<arg>--should-stop=ifError=FLOW</arg>
+						<arg>-Xplugin:ErrorProne -XepDisableAllChecks -Xep:NullAway:ERROR -XepOpt:NullAway:OnlyNullMarked=true -XepOpt:NullAway:JSpecifyMode=true -XepOpt:NullAway:ExternalInitAnnotations=jakarta.persistence.Entity,jakarta.persistence.MappedSuperclass -XepExcludedPaths:.*/(src/test|target/generated-[a-z-]+)/.*</arg>
+					</compilerArgs>
 					<annotationProcessorPaths>
 						<path>
 							<groupId>org.springframework.boot</groupId>
@@ -427,6 +442,16 @@
 							<groupId>org.projectlombok</groupId>
 							<artifactId>lombok</artifactId>
 							<version>${lombok.version}</version>
+						</path>
+						<path>
+							<groupId>com.google.errorprone</groupId>
+							<artifactId>error_prone_core</artifactId>
+							<version>${error-prone.version}</version>
+						</path>
+						<path>
+							<groupId>com.uber.nullaway</groupId>
+							<artifactId>nullaway</artifactId>
+							<version>${nullaway.version}</version>
 						</path>
 						<!-- 2. MapStruct annotation processor (must run after Lombok) -->
 						<path>

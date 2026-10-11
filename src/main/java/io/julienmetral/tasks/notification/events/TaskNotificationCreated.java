@@ -3,6 +3,7 @@ package io.julienmetral.tasks.notification.events;
 import io.julienmetral.tasks.notification.entities.WebhookEvent;
 import java.util.Map;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One task notification for one recipient, published inside the transaction of the change once the
@@ -13,4 +14,4 @@ import java.util.UUID;
  *     reminder), and the event's details ({@code comment}, {@code reason}, {@code dueAt})
  */
 public record TaskNotificationCreated(
-        WebhookEvent event, UUID recipientId, Map<String, Object> data) {}
+        WebhookEvent event, UUID recipientId, Map<String, @Nullable Object> data) {}

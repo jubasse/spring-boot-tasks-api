@@ -7,6 +7,7 @@ import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -15,6 +16,7 @@ import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import org.jspecify.annotations.Nullable;
 
 @Entity
 @Table(
@@ -38,10 +40,10 @@ public class OutboxMessage {
     // Exactly one of queue and exchange is set: a queue through the default exchange, or a
     // broadcast exchange
     @Column(name = "queue", updatable = false)
-    private String queue;
+    private @Nullable String queue;
 
     @Column(name = "exchange", updatable = false)
-    private String exchange;
+    private @Nullable String exchange;
 
     // Class name sent as the __TypeId__ header, which the consumers' message converter reads
     @Column(name = "type", nullable = false, updatable = false)
@@ -62,10 +64,10 @@ public class OutboxMessage {
     private Instant nextAttemptAt;
 
     @Column(name = "last_error", length = 1000)
-    private String lastError;
+    private @Nullable String lastError;
 
     @Column(name = "published_at")
-    private Instant publishedAt;
+    private @Nullable Instant publishedAt;
 
     public boolean isBroadcast() {
         return exchange != null;
@@ -73,6 +75,9 @@ public class OutboxMessage {
 
     /** The queue or the broadcast exchange, for metrics and logs. */
     public String destination() {
-        return isBroadcast() ? exchange : queue;
+        String destination = exchange != null ? exchange : queue;
+
+        return Objects.requireNonNull(
+                destination, "Outbox writes every message with a queue or an exchange");
     }
 }

@@ -8,6 +8,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.authorization.AuthorizationManager;
 import org.springframework.security.authorization.AuthorizationResult;
@@ -43,7 +44,7 @@ class TaskRoomAuthorization implements AuthorizationManager<MessageAuthorization
                         && taskRepository.existsById(taskId.get()));
     }
 
-    private static Optional<UUID> parse(String taskId) {
+    private static Optional<UUID> parse(@Nullable String taskId) {
         try {
             return Optional.ofNullable(taskId).map(UUID::fromString);
         } catch (IllegalArgumentException notAnId) {

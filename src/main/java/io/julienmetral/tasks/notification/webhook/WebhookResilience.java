@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A Resilience4j circuit breaker and bulkhead per receiving host, used from code because
@@ -98,7 +99,7 @@ class WebhookResilience {
      * the whole host, whose other users would otherwise wait with it. A call the address filter
      * refused never left, so it counts neither way.
      */
-    void release(Permit permit, Integer statusCode, boolean refusedByFilter) {
+    void release(Permit permit, @Nullable Integer statusCode, boolean refusedByFilter) {
         long elapsed = System.nanoTime() - permit.startNanos();
 
         try {
@@ -133,7 +134,7 @@ class WebhookResilience {
     // What the breaker records as the error of a failed call; never thrown
     private static final class HostFailure extends RuntimeException {
 
-        HostFailure(Integer statusCode) {
+        HostFailure(@Nullable Integer statusCode) {
             super(statusCode == null ? "No answer" : "HTTP " + statusCode, null, false, false);
         }
     }

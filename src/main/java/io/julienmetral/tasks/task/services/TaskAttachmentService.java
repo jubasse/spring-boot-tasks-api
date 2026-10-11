@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.Hibernate;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -46,7 +47,7 @@ public class TaskAttachmentService {
      * none).
      */
     @Transactional
-    public TaskAttachment add(Task task, TaskComment comment, MultipartFile file) {
+    public TaskAttachment add(Task task, @Nullable TaskComment comment, MultipartFile file) {
         Media media =
                 mediaService.store(
                         file, MediaUsage.TASK_ATTACHMENT, currentUser.getId().orElse(null));

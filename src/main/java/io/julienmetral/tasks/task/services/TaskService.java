@@ -26,6 +26,7 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -300,7 +301,7 @@ public class TaskService {
                         actorId()));
     }
 
-    private UUID actorId() {
+    private @Nullable UUID actorId() {
         return currentUser.getId().orElse(null);
     }
 

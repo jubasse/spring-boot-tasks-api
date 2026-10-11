@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.shared.exceptions;
 
 import java.net.URI;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 
@@ -68,7 +69,7 @@ public enum ProblemType {
         return type;
     }
 
-    public ProblemDetail problem(String detail) {
+    public ProblemDetail problem(@Nullable String detail) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
         problem.setType(type);
         problem.setTitle(title);

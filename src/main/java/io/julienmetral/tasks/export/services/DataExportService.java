@@ -25,6 +25,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -51,7 +52,8 @@ public class DataExportService {
      * @throws DataExportInProgressException when one already is
      */
     @Transactional
-    public DataExport request(UUID ownerId, DataExportType type, TaskExportFilters taskFilters) {
+    public DataExport request(
+            UUID ownerId, DataExportType type, @Nullable TaskExportFilters taskFilters) {
         userRepository.findByIdForUpdate(ownerId);
 
         if (repository.existsByOwnerIdAndTypeAndStatusIn(ownerId, type, DataExportStatus.ACTIVE)) {
@@ -142,7 +144,8 @@ public class DataExportService {
      * retention ends. The owner is emailed after the commit.
      */
     @Transactional
-    public void complete(UUID id, Path file, String filename, String contentType, Long rowCount) {
+    public void complete(
+            UUID id, Path file, String filename, String contentType, @Nullable Long rowCount) {
         DataExport export =
                 repository.findById(id).orElseThrow(() -> new DataExportNotFoundException(id));
         Instant now = clock.instant();
@@ -155,15 +158,14 @@ public class DataExportService {
         export.setStatus(DataExportStatus.COMPLETED);
         export.setRowCount(rowCount);
         export.setCompletedAt(now);
-        export.setExpiresAt(now.plus(properties.retention()));
+        Instant expiresAt = now.plus(properties.retention());
+
+        export.setExpiresAt(expiresAt);
         export.setLeaseUntil(null);
 
         eventPublisher.publishEvent(
                 new DataExportCompleted(
-                        export.getId(),
-                        export.getOwner().getId(),
-                        export.getType(),
-                        export.getExpiresAt()));
+                        export.getId(), export.getOwner().getId(), export.getType(), expiresAt));
     }
 
     /**

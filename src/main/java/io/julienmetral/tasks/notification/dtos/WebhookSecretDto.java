@@ -2,6 +2,7 @@ package io.julienmetral.tasks.notification.dtos;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
+import org.jspecify.annotations.Nullable;
 
 public record WebhookSecretDto(
         @Schema(
@@ -12,4 +13,4 @@ public record WebhookSecretDto(
                         description =
                                 "Until then, deliveries carry a signature with the previous secret too; null when the "
                                         + "previous secret could no longer be read, after a change of the server's encryption key")
-                Instant previousSecretExpiresAt) {}
+                @Nullable Instant previousSecretExpiresAt) {}

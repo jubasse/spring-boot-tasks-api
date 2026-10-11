@@ -38,7 +38,7 @@ public class UserRetentionQueries {
      */
     public List<UUID> anonymizeUsersDeletedBefore(Instant cutoff, Instant now) {
         List<UUID> ids =
-                jdbc.queryForList(
+                jdbc.query(
                         """
                         UPDATE user_profiles p
                         SET display_name = 'Deleted user',
@@ -54,7 +54,7 @@ public class UserRetentionQueries {
                         new MapSqlParameterSource()
                                 .addValue("cutoff", Timestamp.from(cutoff))
                                 .addValue("now", Timestamp.from(now)),
-                        UUID.class);
+                        (row, rowNumber) -> row.getObject(1, UUID.class));
 
         if (!ids.isEmpty()) {
             MapSqlParameterSource users = new MapSqlParameterSource("ids", ids);
@@ -119,13 +119,13 @@ public class UserRetentionQueries {
      * warning.
      */
     public List<UUID> usersWarnedBefore(Instant cutoff) {
-        return jdbc.queryForList(
+        return jdbc.query(
                 """
                         SELECT u.id FROM users u
                         WHERE u.deleted_at IS NULL AND u.inactivity_warned_at < :cutoff AND %s
                         """
                         .formatted(NOT_ADMIN),
                 new MapSqlParameterSource("cutoff", Timestamp.from(cutoff)),
-                UUID.class);
+                (row, rowNumber) -> row.getObject(1, UUID.class));
     }
 }

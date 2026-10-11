@@ -18,6 +18,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
+import org.jspecify.annotations.Nullable;
 
 @Entity
 @Table(
@@ -67,7 +68,7 @@ public class TaskAttachment {
             name = "comment_id",
             updatable = false,
             foreignKey = @ForeignKey(name = "task_attachments_commentFK"))
-    private TaskComment comment;
+    private @Nullable TaskComment comment;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

@@ -4,6 +4,8 @@ import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.identity.repositories.AccountState;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
+import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -75,8 +77,16 @@ class StompAuthentication implements ChannelInterceptor {
         // change committed after this read is broadcast, and closes the session once it arrives.
         // Read first, a disabling that landed between the read and the registration found no
         // session to close, which then lasted until its token expired.
-        String sessionId = accessor.getSessionId();
-        stompSessions.connected(sessionId, userId, jwt.getExpiresAt());
+        Instant expiresAt = jwt.getExpiresAt();
+
+        if (expiresAt == null) {
+            throw new BadCredentialsException("The access token has no expiry");
+        }
+
+        String sessionId =
+                Objects.requireNonNull(
+                        accessor.getSessionId(), "Spring gives every inbound frame its session id");
+        stompSessions.connected(sessionId, userId, expiresAt);
 
         boolean active;
 

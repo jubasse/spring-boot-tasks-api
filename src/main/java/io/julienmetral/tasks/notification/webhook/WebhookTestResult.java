@@ -1,5 +1,7 @@
 package io.julienmetral.tasks.notification.webhook;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * @param delivered whether the receiver answered with a 2xx status
  * @param statusCode the status of the answer, null when none came back
@@ -8,4 +10,7 @@ package io.julienmetral.tasks.notification.webhook;
  * @param durationMillis how long the call took
  */
 public record WebhookTestResult(
-        boolean delivered, Integer statusCode, String error, long durationMillis) {}
+        boolean delivered,
+        @Nullable Integer statusCode,
+        @Nullable String error,
+        long durationMillis) {}

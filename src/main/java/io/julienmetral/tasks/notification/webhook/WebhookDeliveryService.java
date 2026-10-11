@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import org.jspecify.annotations.Nullable;
 import org.springframework.boot.http.client.FilteredHostException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -76,7 +77,8 @@ public class WebhookDeliveryService {
 
     private record Attempt(UUID deliveryId, URI url, byte[] body, List<String> secrets) {}
 
-    private record Outcome(Integer statusCode, String error, Duration retryAfter) {
+    private record Outcome(
+            @Nullable Integer statusCode, @Nullable String error, @Nullable Duration retryAfter) {
 
         // Not HttpStatus.valueOf, which throws on codes Spring has no constant for, such as 522
         // behind Cloudflare
@@ -357,10 +359,14 @@ public class WebhookDeliveryService {
         signingSecrets.add(secrets.decrypt(endpoint.getSecret()));
 
         // An unreadable previous secret is left out: the current one still signs
-        if (endpoint.getPreviousSecret() != null
-                && endpoint.getPreviousSecretExpiresAt().isAfter(clock.instant())
-                && secrets.canDecrypt(endpoint.getPreviousSecret())) {
-            signingSecrets.add(secrets.decrypt(endpoint.getPreviousSecret()));
+        String previousSecret = endpoint.getPreviousSecret();
+        Instant previousSecretExpiresAt = endpoint.getPreviousSecretExpiresAt();
+
+        if (previousSecret != null
+                && previousSecretExpiresAt != null
+                && previousSecretExpiresAt.isAfter(clock.instant())
+                && secrets.canDecrypt(previousSecret)) {
+            signingSecrets.add(secrets.decrypt(previousSecret));
         }
 
         return signingSecrets;
@@ -467,7 +473,7 @@ public class WebhookDeliveryService {
      * Whether the receiver said it no longer exists: 410 for any endpoint; for Slack also 403 and
      * 404, its answers for a revoked webhook, a deleted channel or a disabled workspace.
      */
-    private static boolean isGone(WebhookEndpoint endpoint, Integer statusCode) {
+    private static boolean isGone(WebhookEndpoint endpoint, @Nullable Integer statusCode) {
         if (statusCode == null) {
             return false;
         }
@@ -504,7 +510,7 @@ public class WebhookDeliveryService {
                                                                         .toDays()))));
     }
 
-    private void fail(WebhookDelivery delivery, String error) {
+    private void fail(WebhookDelivery delivery, @Nullable String error) {
         delivery.setStatus(WebhookDeliveryStatus.FAILED);
         delivery.setNextAttemptAt(null);
 
@@ -517,7 +523,7 @@ public class WebhookDeliveryService {
 
     // Up to 20% either way, so the retries of many deliveries that failed together do not arrive
     // together
-    private static Duration nextDelay(int attempts, Duration retryAfter) {
+    private static Duration nextDelay(int attempts, @Nullable Duration retryAfter) {
         Duration delay = RETRY_DELAYS.get(attempts - 1);
         double factor = ThreadLocalRandom.current().nextDouble(0.8, 1.2);
         Duration jittered = Duration.ofMillis((long) (delay.toMillis() * factor));
@@ -526,7 +532,7 @@ public class WebhookDeliveryService {
     }
 
     // Retry-After holds either seconds or an HTTP date
-    private Duration retryAfter(ResponseEntity<Void> response) {
+    private @Nullable Duration retryAfter(ResponseEntity<Void> response) {
         String value = response.getHeaders().getFirst("Retry-After");
 
         if (value == null) {

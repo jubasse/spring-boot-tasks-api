@@ -2,12 +2,14 @@ package io.julienmetral.tasks.notification.dtos;
 
 import io.julienmetral.tasks.notification.webhook.WebhookTestResult;
 import io.swagger.v3.oas.annotations.media.Schema;
+import org.jspecify.annotations.Nullable;
 
 public record WebhookTestResultDto(
         @Schema(description = "Whether the receiver answered with a 2xx status") boolean delivered,
         @Schema(description = "Status of the answer, absent when none came back")
-                Integer statusCode,
-        @Schema(description = "Why no answer came back", example = "Timeout") String error,
+                @Nullable Integer statusCode,
+        @Schema(description = "Why no answer came back", example = "Timeout")
+                @Nullable String error,
         long durationMillis) {
 
     public WebhookTestResultDto(WebhookTestResult result) {

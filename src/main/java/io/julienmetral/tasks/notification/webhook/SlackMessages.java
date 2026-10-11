@@ -5,6 +5,8 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
+import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -23,8 +25,11 @@ class SlackMessages {
         this.jsonMapper = jsonMapper;
     }
 
-    String render(WebhookEvent event, Map<String, Object> data) {
-        Map<?, ?> task = (Map<?, ?>) data.get("task");
+    String render(WebhookEvent event, Map<String, @Nullable Object> data) {
+        Map<?, ?> task =
+                (Map<?, ?>)
+                        Objects.requireNonNull(
+                                data.get("task"), "Every task notification names its task");
         String subject =
                 "*%s*: %s".formatted(escape(task.get("reference")), escape(task.get("title")));
         String actor = "*" + actorName(data) + "*";
@@ -58,33 +63,36 @@ class SlackMessages {
         return jsonMapper.writeValueAsString(Map.of("text", text));
     }
 
-    private static String actorName(Map<String, Object> data) {
+    private static String actorName(Map<String, @Nullable Object> data) {
         Map<?, ?> actor = (Map<?, ?>) data.get("actor");
         Object name = actor == null ? null : actor.get("displayName");
 
         return name == null ? "Someone" : escape(name);
     }
 
-    private static String reason(Map<String, Object> data) {
+    private static String reason(Map<String, @Nullable Object> data) {
         Object reason = data.get("reason");
 
         return reason == null ? "" : "\nReason: " + escape(reason);
     }
 
     // A block quote, one ">" per line, which Slack shows as the quoted comment
-    private static String quote(Map<String, Object> data) {
-        Map<?, ?> comment = (Map<?, ?>) data.get("comment");
+    private static String quote(Map<String, @Nullable Object> data) {
+        Map<?, ?> comment =
+                (Map<?, ?>)
+                        Objects.requireNonNull(
+                                data.get("comment"), "A comment notification carries its comment");
 
         return "\n>" + escape(comment.get("excerpt")).replace("\n", "\n>");
     }
 
-    private static String dueDate(Map<String, Object> data) {
+    private static String dueDate(Map<String, @Nullable Object> data) {
         return DUE_DATE.format(Instant.parse((String) data.get("dueAt")));
     }
 
     // Slack reads &, < and > as markup: an unescaped <!channel> in a task title would notify the
     // whole channel
-    private static String escape(Object value) {
+    private static String escape(@Nullable Object value) {
         return String.valueOf(value)
                 .replace("&", "&amp;")
                 .replace("<", "&lt;")

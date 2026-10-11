@@ -65,7 +65,7 @@ class UserProfileResponseDtoTest {
 
     @Test
     void noUserGivesNullWithoutSigningAnything() {
-        assertThat(UserProfileResponseDto.of(null, mediaUrls)).isNull();
+        assertThat(UserProfileResponseDto.ofNullable(null, mediaUrls)).isNull();
 
         verifyNoInteractions(mediaUrls);
     }

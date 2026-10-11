@@ -12,6 +12,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -66,7 +67,7 @@ public class UserService {
     }
 
     @Transactional
-    public User updateProfile(UUID id, String displayName) {
+    public User updateProfile(UUID id, @Nullable String displayName) {
         User user = getUser(id);
 
         // displayName is optional in PATCH: a missing or blank value keeps the current one
