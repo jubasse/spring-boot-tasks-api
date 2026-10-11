@@ -522,6 +522,7 @@ class ArchitectureTest {
 | [`OutboundHttpConfigurationTest`][outbound-test] | MockWebServer devant le vrai client Apache et son filtre d'adresses |
 | [`AccessDescriptionTest`][access-test] | chaque règle de sécurité d'un contrôleur porte une `@AccessDescription` |
 | [`ScheduledJobLocksTest`][locks-test] | chaque `@Scheduled` a son verrou, ou est un poller autorisé (guide 21) |
+| [`NullMarkedPackagesTest`][null-marked-test] | chaque package de `src/main/java` est `@NullMarked`, sinon NullAway l'ignore (guide 34) |
 | [`ProdProfileTest`][prod-test] | le profil `prod` lu par un `Binder`, sans démarrer l'application |
 | [`RequiredPropertiesCheckTest`][required-test] | les réglages obligatoires, avec `ApplicationContextRunner` |
 
@@ -568,6 +569,7 @@ Les garde-fous tournent sans Docker, alors que les tests de comptage sont des te
 [outbound-test]: ../../src/test/java/io/julienmetral/tasks/config/OutboundHttpConfigurationTest.java
 [access-test]: ../../src/test/java/io/julienmetral/tasks/shared/security/AccessDescriptionTest.java
 [locks-test]: ../../src/test/java/io/julienmetral/tasks/config/ScheduledJobLocksTest.java
+[null-marked-test]: ../../src/test/java/io/julienmetral/tasks/NullMarkedPackagesTest.java
 [prod-test]: ../../src/test/java/io/julienmetral/tasks/config/ProdProfileTest.java
 [required-test]: ../../src/test/java/io/julienmetral/tasks/config/RequiredPropertiesCheckTest.java
 [test-yaml]: ../../src/test/resources/config/application.yaml

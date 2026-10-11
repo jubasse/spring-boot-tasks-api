@@ -91,6 +91,10 @@ Pour une première lecture : 01, 03, 05, 07, 11, 14, 16, 19, 20, puis 29. Les au
 - [32. Actuator, sondes et métriques](32-actuator-metriques.md) : port de gestion, sondes de vie, métriques Micrometer.
 - [33. Image Docker, build et CI](33-docker-build-ci.md) : image en couches, cache AOT, compose, pipeline.
 
+**Qualité du code**
+
+- [34. Formatage et vérification de la nullité](34-formatage-nullite.md) : google-java-format par Spotless, `@NullMarked` et `@Nullable` vérifiés par NullAway.
+
 ## Cas pratiques
 
 Des parcours de bout en bout, à travers plusieurs guides :
