@@ -15,8 +15,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * RustFS cannot backdate an object, so this class moves the clock forward instead: every object and media row
- * created here is already past the orphan grace period.
+ * RustFS cannot backdate an object, so this class moves the clock forward instead: every object created here is
+ * already past the orphan grace period. Media rows are dated by that same clock, so the tests backdate them.
  */
 @IntegrationTest
 class MediaCleanupOrphanObjectTests extends AbstractMediaCleanupTests {
@@ -47,10 +47,14 @@ class MediaCleanupOrphanObjectTests extends AbstractMediaCleanupTests {
         Media attachmentOfRecentlyDeletedTask = attachedToTask(recentlyDeletedTaskId, user);
         softDeleteTask(recentlyDeletedTaskId, WITHIN_RETENTION);
         Media avatar = avatarOf(user);
+        Media[] referenced = {attachment, attachmentOfRecentlyDeletedTask, avatar};
+        for (Media media : referenced) {
+            backdateMedia(media, BEYOND_GRACE_PERIOD);
+        }
 
         cleanupService.cleanUp();
 
-        for (Media media : new Media[]{attachment, attachmentOfRecentlyDeletedTask, avatar}) {
+        for (Media media : referenced) {
             assertThat(mediaExists(media)).isTrue();
             assertThat(objectExists(media.getStorageKey())).isTrue();
         }
@@ -61,6 +65,7 @@ class MediaCleanupOrphanObjectTests extends AbstractMediaCleanupTests {
     void unreferencedMediaIsDeletedWithItsObjectWithoutCountingItAsOrphanObject() {
         User user = createUser();
         Media media = storeAttachment(user);
+        backdateMedia(media, BEYOND_GRACE_PERIOD);
 
         MediaCleanupReport report = cleanupService.cleanUp();
 
@@ -79,6 +84,8 @@ class MediaCleanupOrphanObjectTests extends AbstractMediaCleanupTests {
         String orphanKey = putObjectWithoutMediaRow();
         Media unreferenced = storeAttachment(user);
         Media attachment = attachedToTask(createTask(user), user);
+        backdateMedia(unreferenced, BEYOND_GRACE_PERIOD);
+        backdateMedia(attachment, BEYOND_GRACE_PERIOD);
 
         cleanupService.cleanUp();
         MediaCleanupReport second = cleanupService.cleanUp();
