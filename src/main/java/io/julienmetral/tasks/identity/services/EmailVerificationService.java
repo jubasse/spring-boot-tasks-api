@@ -17,6 +17,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -29,6 +30,7 @@ public class EmailVerificationService {
     private final UserProfileRepository userProfileRepository;
     private final EmailVerificationProperties properties;
     private final ApplicationEventPublisher eventPublisher;
+    private final Clock clock;
 
     /** Replaces any pending token with a new one and emails it after commit. */
     @Transactional
@@ -36,7 +38,7 @@ public class EmailVerificationService {
         tokenRepository.deleteUnusedForUser(user.getId());
 
         String value = OpaqueTokens.generate();
-        Instant now = Instant.now();
+        Instant now = clock.instant();
 
         EmailVerificationToken token = new EmailVerificationToken();
 
@@ -60,7 +62,7 @@ public class EmailVerificationService {
 
     @Transactional
     public void verify(String rawToken) {
-        Instant now = Instant.now();
+        Instant now = clock.instant();
 
         EmailVerificationToken token = tokenRepository
                 .findByTokenHash(OpaqueTokens.hash(rawToken))

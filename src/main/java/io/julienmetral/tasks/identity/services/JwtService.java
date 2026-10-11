@@ -28,6 +28,8 @@ public class JwtService {
     public IssuedToken generate(
             User user
     ) {
+        // System time, not the Clock bean: the decoder's JwtTimestampValidator checks exp against the system
+        // clock, so a token issued from a pinned test clock would be expired already or valid for too long.
         Instant now = Instant.now();
         Instant expiresAt = now.plus(
                 jwtProperties.ttl()
