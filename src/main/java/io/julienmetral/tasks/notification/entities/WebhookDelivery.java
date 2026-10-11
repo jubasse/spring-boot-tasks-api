@@ -11,27 +11,25 @@ import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.time.Instant;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
 
-import java.time.Instant;
-import java.util.UUID;
-
 /**
- * One event to send to one endpoint, with its attempts. Its id is the {@code webhook-id} header, identical on every
- * attempt, so receivers can drop a duplicate.
+ * One event to send to one endpoint, with its attempts. Its id is the {@code webhook-id} header,
+ * identical on every attempt, so receivers can drop a duplicate.
  */
 @Entity
 @Table(
         name = "webhook_deliveries",
         indexes = {
-                @Index(name = "webhook_deliveries_endpoint_idIDX", columnList = "endpoint_id"),
-                @Index(name = "webhook_deliveries_dueIDX", columnList = "status, next_attempt_at")
-        }
-)
+            @Index(name = "webhook_deliveries_endpoint_idIDX", columnList = "endpoint_id"),
+            @Index(name = "webhook_deliveries_dueIDX", columnList = "status, next_attempt_at")
+        })
 @Getter
 @Setter
 @NoArgsConstructor
@@ -48,8 +46,7 @@ public class WebhookDelivery {
             name = "endpoint_id",
             nullable = false,
             updatable = false,
-            foreignKey = @ForeignKey(name = "webhook_deliveries_endpointFK")
-    )
+            foreignKey = @ForeignKey(name = "webhook_deliveries_endpointFK"))
     private WebhookEndpoint endpoint;
 
     @Enumerated(EnumType.STRING)
@@ -77,7 +74,8 @@ public class WebhookDelivery {
     @Column(name = "last_status_code")
     private Integer lastStatusCode;
 
-    // A short failure kind, never an exception message: those carry the URL, and a Slack URL carries its secret
+    // A short failure kind, never an exception message: those carry the URL, and a Slack URL
+    // carries its secret
     @Column(name = "last_error", length = 100)
     private String lastError;
 

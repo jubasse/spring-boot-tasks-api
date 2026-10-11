@@ -1,16 +1,5 @@
 package io.julienmetral.tasks.task.controllers;
 
-import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserRole;
-import org.junit.jupiter.api.Test;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import tools.jackson.databind.JsonNode;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-
 import static io.julienmetral.tasks.support.Problems.validationError;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -20,10 +9,20 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserRole;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import tools.jackson.databind.JsonNode;
+
 /**
  * {@code GET /api/v1/tasks}: pagination, default sort, and the {@code status}, {@code assigneeId}
- * and {@code archived} filters. The database is shared with other test classes, so every
- * assertion is scoped to an assignee created by the test, or checks containment.
+ * and {@code archived} filters. The database is shared with other test classes, so every assertion
+ * is scoped to an assignee created by the test, or checks containment.
  */
 class TaskListApiTests extends AbstractUserStateTaskApiTests {
 
@@ -42,16 +41,22 @@ class TaskListApiTests extends AbstractUserStateTaskApiTests {
         assertThat(page.get("page").get("size").asInt()).isEqualTo(10);
         assertThat(page.get("page").get("number").asInt()).isZero();
 
-        JsonNode firstPage = list(admin, get(TASKS)
-                .param("assigneeId", assignee.getId().toString())
-                .param("size", "2"));
+        JsonNode firstPage =
+                list(
+                        admin,
+                        get(TASKS)
+                                .param("assigneeId", assignee.getId().toString())
+                                .param("size", "2"));
         assertThat(ids(firstPage)).containsExactly(third, second);
         assertThat(totalElements(firstPage)).isEqualTo(3);
 
-        JsonNode secondPage = list(admin, get(TASKS)
-                .param("assigneeId", assignee.getId().toString())
-                .param("size", "2")
-                .param("page", "1"));
+        JsonNode secondPage =
+                list(
+                        admin,
+                        get(TASKS)
+                                .param("assigneeId", assignee.getId().toString())
+                                .param("size", "2")
+                                .param("page", "1"));
         assertThat(ids(secondPage)).containsExactly(first);
         assertThat(secondPage.get("page").get("totalPages").asInt()).isEqualTo(2);
     }
@@ -71,9 +76,12 @@ class TaskListApiTests extends AbstractUserStateTaskApiTests {
     void pageSizeAboveTheMaximumIsClamped() throws Exception {
         User admin = createUser(UserRole.ADMIN);
 
-        JsonNode page = list(admin, get(TASKS)
-                .param("assigneeId", UUID.randomUUID().toString())
-                .param("size", "500"));
+        JsonNode page =
+                list(
+                        admin,
+                        get(TASKS)
+                                .param("assigneeId", UUID.randomUUID().toString())
+                                .param("size", "500"));
 
         assertThat(page.get("page").get("size").asInt()).isEqualTo(100);
     }
@@ -85,9 +93,12 @@ class TaskListApiTests extends AbstractUserStateTaskApiTests {
         UUID first = createTask(admin, assignee);
         UUID second = createTask(admin, assignee);
 
-        JsonNode page = list(admin, get(TASKS)
-                .param("assigneeId", assignee.getId().toString())
-                .param("sort", "createdAt,asc"));
+        JsonNode page =
+                list(
+                        admin,
+                        get(TASKS)
+                                .param("assigneeId", assignee.getId().toString())
+                                .param("sort", "createdAt,asc"));
 
         assertThat(ids(page)).containsExactly(first, second);
     }
@@ -107,14 +118,18 @@ class TaskListApiTests extends AbstractUserStateTaskApiTests {
         User assignee = createUser(UserRole.USER);
         UUID taskId = createTask(admin, assignee);
 
-        JsonNode task = list(admin, get(TASKS).param("assigneeId", assignee.getId().toString()))
-                .get("content").get(0);
+        JsonNode task =
+                list(admin, get(TASKS).param("assigneeId", assignee.getId().toString()))
+                        .get("content")
+                        .get(0);
 
         assertThat(task.get("id").asString()).isEqualTo(taskId.toString());
         assertThat(task.get("title").asString()).isEqualTo("Task");
         assertThat(task.get("status").asString()).isEqualTo("TO_DO");
-        assertThat(task.get("assignedTo").get("id").asString()).isEqualTo(assignee.getId().toString());
-        assertThat(task.get("assignedTo").get("displayName").asString()).isEqualTo(assignee.getDisplayName());
+        assertThat(task.get("assignedTo").get("id").asString())
+                .isEqualTo(assignee.getId().toString());
+        assertThat(task.get("assignedTo").get("displayName").asString())
+                .isEqualTo(assignee.getDisplayName());
         assertThat(task.get("assignedTo").get("status").asString()).isEqualTo("ACTIVE");
         assertThat(task.get("createdBy").get("id").asString()).isEqualTo(admin.getId().toString());
         assertThat(task.get("createdBy").get("status").asString()).isEqualTo("ACTIVE");
@@ -155,11 +170,29 @@ class TaskListApiTests extends AbstractUserStateTaskApiTests {
 
         String assigneeId = assignee.getId().toString();
 
-        assertThat(ids(list(admin, get(TASKS).param("assigneeId", assigneeId).param("status", "IN_PROGRESS"))))
+        assertThat(
+                        ids(
+                                list(
+                                        admin,
+                                        get(TASKS)
+                                                .param("assigneeId", assigneeId)
+                                                .param("status", "IN_PROGRESS"))))
                 .containsExactly(inProgress);
-        assertThat(ids(list(admin, get(TASKS).param("assigneeId", assigneeId).param("status", "TO_DO"))))
+        assertThat(
+                        ids(
+                                list(
+                                        admin,
+                                        get(TASKS)
+                                                .param("assigneeId", assigneeId)
+                                                .param("status", "TO_DO"))))
                 .containsExactly(todo);
-        assertThat(ids(list(admin, get(TASKS).param("assigneeId", assigneeId).param("status", "DONE"))))
+        assertThat(
+                        ids(
+                                list(
+                                        admin,
+                                        get(TASKS)
+                                                .param("assigneeId", assigneeId)
+                                                .param("status", "DONE"))))
                 .isEmpty();
     }
 
@@ -170,7 +203,8 @@ class TaskListApiTests extends AbstractUserStateTaskApiTests {
         UUID todo = createTask(admin, null);
         changeStatus(admin, inProgress, "IN_PROGRESS");
 
-        JsonNode page = list(admin, get(TASKS).param("status", "IN_PROGRESS").param("size", "1000"));
+        JsonNode page =
+                list(admin, get(TASKS).param("status", "IN_PROGRESS").param("size", "1000"));
 
         assertThat(ids(page)).contains(inProgress).doesNotContain(todo);
         for (JsonNode task : page.get("content")) {
@@ -192,9 +226,21 @@ class TaskListApiTests extends AbstractUserStateTaskApiTests {
 
         assertThat(ids(list(admin, get(TASKS).param("assigneeId", assigneeId))))
                 .containsExactly(active);
-        assertThat(ids(list(admin, get(TASKS).param("assigneeId", assigneeId).param("archived", "false"))))
+        assertThat(
+                        ids(
+                                list(
+                                        admin,
+                                        get(TASKS)
+                                                .param("assigneeId", assigneeId)
+                                                .param("archived", "false"))))
                 .containsExactly(active);
-        assertThat(ids(list(admin, get(TASKS).param("assigneeId", assigneeId).param("archived", "true"))))
+        assertThat(
+                        ids(
+                                list(
+                                        admin,
+                                        get(TASKS)
+                                                .param("assigneeId", assigneeId)
+                                                .param("archived", "true"))))
                 .containsExactly(archived);
     }
 
@@ -204,8 +250,10 @@ class TaskListApiTests extends AbstractUserStateTaskApiTests {
         User assignee = createUser(UserRole.USER);
         UUID taskId = createTask(admin, assignee);
 
-        mockMvc.perform(post(TASKS + "/" + taskId + "/archive").with(asAdmin(admin))).andExpect(status().isOk());
-        mockMvc.perform(post(TASKS + "/" + taskId + "/unarchive").with(asAdmin(admin))).andExpect(status().isOk());
+        mockMvc.perform(post(TASKS + "/" + taskId + "/archive").with(asAdmin(admin)))
+                .andExpect(status().isOk());
+        mockMvc.perform(post(TASKS + "/" + taskId + "/unarchive").with(asAdmin(admin)))
+                .andExpect(status().isOk());
 
         assertThat(ids(list(admin, get(TASKS).param("assigneeId", assignee.getId().toString()))))
                 .containsExactly(taskId);
@@ -215,7 +263,8 @@ class TaskListApiTests extends AbstractUserStateTaskApiTests {
     void archivedTrueOnlyListsArchivedTasks() throws Exception {
         User admin = createUser(UserRole.ADMIN);
         UUID archived = createTask(admin, null);
-        mockMvc.perform(post(TASKS + "/" + archived + "/archive").with(asAdmin(admin))).andExpect(status().isOk());
+        mockMvc.perform(post(TASKS + "/" + archived + "/archive").with(asAdmin(admin)))
+                .andExpect(status().isOk());
 
         JsonNode page = list(admin, get(TASKS).param("archived", "true").param("size", "1000"));
 
@@ -234,13 +283,18 @@ class TaskListApiTests extends AbstractUserStateTaskApiTests {
         UUID activeDone = createTask(admin, assignee);
         changeStatus(admin, archivedDone, "DONE");
         changeStatus(admin, activeDone, "DONE");
-        mockMvc.perform(post(TASKS + "/" + archivedDone + "/archive").with(asAdmin(admin))).andExpect(status().isOk());
-        mockMvc.perform(post(TASKS + "/" + archivedTodo + "/archive").with(asAdmin(admin))).andExpect(status().isOk());
+        mockMvc.perform(post(TASKS + "/" + archivedDone + "/archive").with(asAdmin(admin)))
+                .andExpect(status().isOk());
+        mockMvc.perform(post(TASKS + "/" + archivedTodo + "/archive").with(asAdmin(admin)))
+                .andExpect(status().isOk());
 
-        JsonNode page = list(admin, get(TASKS)
-                .param("assigneeId", assignee.getId().toString())
-                .param("status", "DONE")
-                .param("archived", "true"));
+        JsonNode page =
+                list(
+                        admin,
+                        get(TASKS)
+                                .param("assigneeId", assignee.getId().toString())
+                                .param("status", "DONE")
+                                .param("archived", "true"));
 
         assertThat(ids(page)).containsExactly(archivedDone);
     }
@@ -252,7 +306,8 @@ class TaskListApiTests extends AbstractUserStateTaskApiTests {
         UUID kept = createTask(admin, assignee);
         UUID deleted = createTask(admin, assignee);
 
-        mockMvc.perform(delete(TASKS + "/" + deleted).with(asAdmin(admin))).andExpect(status().isNoContent());
+        mockMvc.perform(delete(TASKS + "/" + deleted).with(asAdmin(admin)))
+                .andExpect(status().isNoContent());
 
         assertThat(ids(list(admin, get(TASKS).param("assigneeId", assignee.getId().toString()))))
                 .containsExactly(kept);
@@ -287,19 +342,22 @@ class TaskListApiTests extends AbstractUserStateTaskApiTests {
     }
 
     private JsonNode list(User reader, MockHttpServletRequestBuilder request) throws Exception {
-        String body = mockMvc.perform(request.with(asAdmin(reader)))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String body =
+                mockMvc.perform(request.with(asAdmin(reader)))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
         return json(body);
     }
 
     private void changeStatus(User admin, UUID taskId, String status) throws Exception {
-        mockMvc.perform(patch(TASKS + "/" + taskId + "/status").with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\": \"" + status + "\"}"))
+        mockMvc.perform(
+                        patch(TASKS + "/" + taskId + "/status")
+                                .with(asAdmin(admin))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"status\": \"" + status + "\"}"))
                 .andExpect(status().isOk());
     }
 

@@ -1,9 +1,10 @@
 package io.julienmetral.tasks.media.model;
 
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.web.multipart.MultipartFile;
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -11,12 +12,10 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-
-import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.web.multipart.MultipartFile;
 
 class MediaSourceTest {
 
@@ -24,8 +23,9 @@ class MediaSourceTest {
 
     @Test
     void multipartSourceExposesTheNameSizeAndContentSentByTheClient() throws IOException {
-        MediaSource source = MediaSource.of(
-                new MockMultipartFile("file", "C:\\photos\\me.png", "image/png", CONTENT));
+        MediaSource source =
+                MediaSource.of(
+                        new MockMultipartFile("file", "C:\\photos\\me.png", "image/png", CONTENT));
 
         assertThat(source.filename()).isEqualTo("C:\\photos\\me.png");
         assertThat(source.size()).isEqualTo(CONTENT.length);
@@ -36,9 +36,11 @@ class MediaSourceTest {
 
     @Test
     void multipartSourceCanBeReadSeveralTimes() throws IOException {
-        MediaSource source = MediaSource.of(new MockMultipartFile("file", "me.png", "image/png", CONTENT));
+        MediaSource source =
+                MediaSource.of(new MockMultipartFile("file", "me.png", "image/png", CONTENT));
 
-        try (InputStream first = source.open(); InputStream second = source.open()) {
+        try (InputStream first = source.open();
+                InputStream second = source.open()) {
             assertThat(first).hasBinaryContent(CONTENT);
             assertThat(second).hasBinaryContent(CONTENT);
         }
@@ -93,7 +95,8 @@ class MediaSourceTest {
 
         assertThat(source.filename()).isEqualTo("tasks-2030-01-01.csv");
         assertThat(source.size()).isEqualTo(CONTENT.length);
-        try (InputStream first = source.open(); InputStream second = source.open()) {
+        try (InputStream first = source.open();
+                InputStream second = source.open()) {
             assertThat(first).hasBinaryContent(CONTENT);
             assertThat(second).hasBinaryContent(CONTENT);
         }

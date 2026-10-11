@@ -1,23 +1,21 @@
 package io.julienmetral.tasks.notification.webhook;
 
 import io.julienmetral.tasks.notification.entities.WebhookEvent;
-import tools.jackson.databind.json.JsonMapper;
-
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The body of a Slack incoming webhook for an event: {@code {"text": ...}} in Slack's mrkdwn, built from the same
- * data as the Standard Webhooks payload.
+ * The body of a Slack incoming webhook for an event: {@code {"text": ...}} in Slack's mrkdwn, built
+ * from the same data as the Standard Webhooks payload.
  */
 class SlackMessages {
 
     // Users have no time zone yet, as in the emails
-    private static final DateTimeFormatter DUE_DATE = DateTimeFormatter
-            .ofPattern("yyyy-MM-dd HH:mm 'UTC'")
-            .withZone(ZoneOffset.UTC);
+    private static final DateTimeFormatter DUE_DATE =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'").withZone(ZoneOffset.UTC);
 
     private final JsonMapper jsonMapper;
 
@@ -27,19 +25,27 @@ class SlackMessages {
 
     String render(WebhookEvent event, Map<String, Object> data) {
         Map<?, ?> task = (Map<?, ?>) data.get("task");
-        String subject = "*%s*: %s".formatted(escape(task.get("reference")), escape(task.get("title")));
+        String subject =
+                "*%s*: %s".formatted(escape(task.get("reference")), escape(task.get("title")));
         String actor = "*" + actorName(data) + "*";
 
-        String text = switch (event) {
-            case TASK_ASSIGNED -> "%s assigned you %s".formatted(actor, subject);
-            case TASK_UNASSIGNED -> "%s assigned %s to someone else".formatted(actor, subject);
-            case TASK_CANCELLED -> "%s cancelled %s%s".formatted(actor, subject, reason(data));
-            case TASK_DELETED -> "%s deleted %s".formatted(actor, subject);
-            case TASK_COMMENTED -> "%s commented on %s%s".formatted(actor, subject, quote(data));
-            case TASK_MENTIONED -> "%s mentioned you on %s%s".formatted(actor, subject, quote(data));
-            case TASK_DUE_SOON -> "%s is due on %s".formatted(subject, dueDate(data));
-            case TASK_OVERDUE -> "%s was due on %s and is not done yet".formatted(subject, dueDate(data));
-        };
+        String text =
+                switch (event) {
+                    case TASK_ASSIGNED -> "%s assigned you %s".formatted(actor, subject);
+                    case TASK_UNASSIGNED ->
+                            "%s assigned %s to someone else".formatted(actor, subject);
+                    case TASK_CANCELLED ->
+                            "%s cancelled %s%s".formatted(actor, subject, reason(data));
+                    case TASK_DELETED -> "%s deleted %s".formatted(actor, subject);
+                    case TASK_COMMENTED ->
+                            "%s commented on %s%s".formatted(actor, subject, quote(data));
+                    case TASK_MENTIONED ->
+                            "%s mentioned you on %s%s".formatted(actor, subject, quote(data));
+                    case TASK_DUE_SOON -> "%s is due on %s".formatted(subject, dueDate(data));
+                    case TASK_OVERDUE ->
+                            "%s was due on %s and is not done yet"
+                                    .formatted(subject, dueDate(data));
+                };
 
         return json(text);
     }
@@ -76,8 +82,12 @@ class SlackMessages {
         return DUE_DATE.format(Instant.parse((String) data.get("dueAt")));
     }
 
-    // Slack reads &, < and > as markup: an unescaped <!channel> in a task title would notify the whole channel
+    // Slack reads &, < and > as markup: an unescaped <!channel> in a task title would notify the
+    // whole channel
     private static String escape(Object value) {
-        return String.valueOf(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+        return String.valueOf(value)
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;");
     }
 }

@@ -3,6 +3,9 @@ package io.julienmetral.tasks.identity.security;
 import io.julienmetral.tasks.identity.services.DatabaseUserDetailsService;
 import io.julienmetral.tasks.realtime.stomp.StompConfiguration;
 import jakarta.servlet.DispatcherType;
+import java.util.Arrays;
+import java.util.Map;
+import java.util.stream.Stream;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -28,23 +31,20 @@ import org.springframework.security.web.servlet.util.matcher.PathPatternRequestM
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 
-import java.util.Arrays;
-import java.util.Map;
-import java.util.stream.Stream;
-
 @Configuration
 @EnableMethodSecurity
 public class SecurityConfiguration {
 
-    // The probes of the orchestrator, which sends no token; the health details stay on the management port
+    // The probes of the orchestrator, which sends no token; the health details stay on the
+    // management port
     private static final String[] PROBES = {"/livez", "/readyz"};
 
-    // The WebSocket handshake of the task rooms: browsers send no header with it, and the STOMP CONNECT frame that
-    // follows carries the token (StompAuthentication)
+    // The WebSocket handshake of the task rooms: browsers send no header with it, and the STOMP
+    // CONNECT frame that follows carries the token (StompAuthentication)
     private static final String WEBSOCKET = StompConfiguration.ENDPOINT;
 
     private static final String[] API_DOCUMENTATION = {
-            "/v3/api-docs", "/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**"
+        "/v3/api-docs", "/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**"
     };
 
     @Bean
@@ -53,9 +53,10 @@ public class SecurityConfiguration {
     }
 
     /**
-     * New hashes use Argon2id with the OWASP minimum parameters (19 MiB memory, 2 iterations, parallelism 1).
-     * BCrypt stays registered only to verify existing hashes, which are upgraded to Argon2id on the next
-     * successful login (see {@link DatabaseUserDetailsService#updatePassword}).
+     * New hashes use Argon2id with the OWASP minimum parameters (19 MiB memory, 2 iterations,
+     * parallelism 1). BCrypt stays registered only to verify existing hashes, which are upgraded to
+     * Argon2id on the next successful login (see {@link
+     * DatabaseUserDetailsService#updatePassword}).
      */
     @Bean
     PasswordEncoder passwordEncoder() {
@@ -64,76 +65,63 @@ public class SecurityConfiguration {
         return new DelegatingPasswordEncoder(
                 encodingId,
                 Map.of(
-                        encodingId, new Argon2PasswordEncoder(16, 32, 1, 19_456, 2),
-                        "bcrypt", new BCryptPasswordEncoder()
-                )
-        );
+                        encodingId,
+                        new Argon2PasswordEncoder(16, 32, 1, 19_456, 2),
+                        "bcrypt",
+                        new BCryptPasswordEncoder()));
     }
 
     @Bean
     DaoAuthenticationProvider authenticationProvider(
-            DatabaseUserDetailsService userDetailsService,
-            PasswordEncoder passwordEncoder
-    ) {
-        var provider =
-                new DaoAuthenticationProvider(
-                        userDetailsService
-                );
+            DatabaseUserDetailsService userDetailsService, PasswordEncoder passwordEncoder) {
+        var provider = new DaoAuthenticationProvider(userDetailsService);
 
-        provider.setPasswordEncoder(
-                passwordEncoder
-        );
+        provider.setPasswordEncoder(passwordEncoder);
 
-        provider.setUserDetailsPasswordService(
-                userDetailsService
-        );
+        provider.setUserDetailsPasswordService(userDetailsService);
 
         return provider;
     }
 
     @Bean
-    AuthenticationManager authenticationManager(
-            DaoAuthenticationProvider authenticationProvider
-    ) {
-        return new ProviderManager(
-                authenticationProvider
-        );
+    AuthenticationManager authenticationManager(DaoAuthenticationProvider authenticationProvider) {
+        return new ProviderManager(authenticationProvider);
     }
 
     @Bean
     JwtAuthenticationConverter jwtAuthenticationConverter() {
 
-        var authoritiesConverter =
-                new JwtGrantedAuthoritiesConverter();
+        var authoritiesConverter = new JwtGrantedAuthoritiesConverter();
 
-        authoritiesConverter
-                .setAuthoritiesClaimName("roles");
+        authoritiesConverter.setAuthoritiesClaimName("roles");
 
-        authoritiesConverter
-                .setAuthorityPrefix("");
+        authoritiesConverter.setAuthorityPrefix("");
 
-        var authenticationConverter =
-                new JwtAuthenticationConverter();
+        var authenticationConverter = new JwtAuthenticationConverter();
 
-        authenticationConverter
-                .setJwtGrantedAuthoritiesConverter(
-                        authoritiesConverter
-                );
+        authenticationConverter.setJwtGrantedAuthoritiesConverter(authoritiesConverter);
 
         return authenticationConverter;
     }
 
-    // Public endpoints, probes and the WebSocket handshake ignore the Authorization header: a client that kept its
-    // expired access token got a 401 from login and refresh, the very endpoints that give it a new one, and a probe
-    // would fail the same way
+    // Public endpoints, probes and the WebSocket handshake ignore the Authorization header: a
+    // client that kept its expired access token got a 401 from login and refresh, the very
+    // endpoints that give it a new one, and a probe would fail the same way
     @Bean
     BearerTokenResolver bearerTokenResolver() {
         DefaultBearerTokenResolver resolver = new DefaultBearerTokenResolver();
-        RequestMatcher withoutToken = new OrRequestMatcher(Stream.concat(
-                        PublicEndpoints.ALL.stream().map(endpoint -> matcher(endpoint.method(), endpoint.pattern())),
-                        Stream.concat(Arrays.stream(PROBES), Stream.of(WEBSOCKET))
-                                .map(path -> matcher(HttpMethod.GET, path)))
-                .toList());
+        RequestMatcher withoutToken =
+                new OrRequestMatcher(
+                        Stream.concat(
+                                        PublicEndpoints.ALL.stream()
+                                                .map(
+                                                        endpoint ->
+                                                                matcher(
+                                                                        endpoint.method(),
+                                                                        endpoint.pattern())),
+                                        Stream.concat(Arrays.stream(PROBES), Stream.of(WEBSOCKET))
+                                                .map(path -> matcher(HttpMethod.GET, path)))
+                                .toList());
 
         return request -> withoutToken.matches(request) ? null : resolver.resolve(request);
     }
@@ -147,66 +135,80 @@ public class SecurityConfiguration {
             HttpSecurity http,
             JwtAuthenticationConverter jwtAuthenticationConverter,
             ActiveUserAuthorizationManager activeUserAuthorizationManager,
-            Environment environment
-    ) {
+            Environment environment) {
 
-        http
-                .csrf(AbstractHttpConfigurer::disable)
-                .sessionManagement(session ->
-                        session.sessionCreationPolicy(
-                                SessionCreationPolicy.STATELESS
-                        )
-                )
-                .authorizeHttpRequests(auth -> {
-                    // Errors are rendered by an internal dispatch to /error, after the request itself was authorized.
-                    // Securing that dispatch turned every 400 of a public endpoint (malformed JSON on login or
-                    // sign-up, an invalid identicon id) into a 401.
-                    auth.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
-                    // The dispatch that ends an asynchronous response (a notification stream) belongs to a request
-                    // authorized when it started: checked again, a stream closed because its account was disabled
-                    // would end on a refusal
-                    auth.dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll();
+        http.csrf(AbstractHttpConfigurer::disable)
+                .sessionManagement(
+                        session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(
+                        auth -> {
+                            // Errors are rendered by an internal dispatch to /error, after the
+                            // request
+                            // itself was authorized. Securing that dispatch turned every 400 of a
+                            // public
+                            // endpoint (malformed JSON on login or sign-up, an invalid identicon
+                            // id) into a
+                            // 401.
+                            auth.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
+                            // The dispatch that ends an asynchronous response (a notification
+                            // stream)
+                            // belongs to a request authorized when it started: checked again, a
+                            // stream
+                            // closed because its account was disabled would end on a refusal
+                            auth.dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll();
 
-                    PublicEndpoints.ALL.forEach(endpoint ->
-                            auth.requestMatchers(endpoint.method(), endpoint.pattern()).permitAll());
+                            PublicEndpoints.ALL.forEach(
+                                    endpoint ->
+                                            auth.requestMatchers(
+                                                            endpoint.method(), endpoint.pattern())
+                                                    .permitAll());
 
-                    auth
-                            // Everything on the management port is public, that port being private by deployment.
-                            // Matching the endpoints only left its error page (404, 406, 500) behind
-                            // authentication, so every error there answered 401.
-                            .requestMatchers(onManagementPort(environment))
-                            .permitAll()
-                            // The documentation of a public API; API_DOCS_ENABLED and SWAGGER_UI_ENABLED turn it off
-                            .requestMatchers(HttpMethod.GET, API_DOCUMENTATION)
-                            .permitAll()
-                            .requestMatchers(HttpMethod.GET, PROBES)
-                            .permitAll()
-                            .requestMatchers(HttpMethod.GET, WEBSOCKET)
-                            .permitAll()
-                            // Tasks, their notifications and exports are reserved to enabled users with a verified
-                            // email, whatever the API version
-                            .requestMatchers("/api/*/tasks/**", "/api/*/notifications/**", "/api/*/exports/**")
-                            .access(activeUserAuthorizationManager)
-                            .anyRequest()
-                            .authenticated();
-                })
-                .oauth2ResourceServer(oauth ->
-                        oauth.jwt(jwt ->
-                                jwt.jwtAuthenticationConverter(
-                                        jwtAuthenticationConverter
-                                )
-                        )
-                )
+                            auth
+                                    // Everything on the management port is public, that port being
+                                    // private
+                                    // by deployment. Matching the endpoints only left its error
+                                    // page (404,
+                                    // 406, 500) behind authentication, so every error there
+                                    // answered 401.
+                                    .requestMatchers(onManagementPort(environment))
+                                    .permitAll()
+                                    // The documentation of a public API; API_DOCS_ENABLED and
+                                    // SWAGGER_UI_ENABLED turn it off
+                                    .requestMatchers(HttpMethod.GET, API_DOCUMENTATION)
+                                    .permitAll()
+                                    .requestMatchers(HttpMethod.GET, PROBES)
+                                    .permitAll()
+                                    .requestMatchers(HttpMethod.GET, WEBSOCKET)
+                                    .permitAll()
+                                    // Tasks, their notifications and exports are reserved to
+                                    // enabled users
+                                    // with a verified email, whatever the API version
+                                    .requestMatchers(
+                                            "/api/*/tasks/**",
+                                            "/api/*/notifications/**",
+                                            "/api/*/exports/**")
+                                    .access(activeUserAuthorizationManager)
+                                    .anyRequest()
+                                    .authenticated();
+                        })
+                .oauth2ResourceServer(
+                        oauth ->
+                                oauth.jwt(
+                                        jwt ->
+                                                jwt.jwtAuthenticationConverter(
+                                                        jwtAuthenticationConverter)))
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable);
 
         return http.build();
     }
 
-    // local.management.port is published once the management server has started, with its actual port (also when
-    // it is random). It is absent when management shares the API port, and then nothing matches.
+    // local.management.port is published once the management server has started, with its actual
+    // port (also when it is random). It is absent when management shares the API port, and then
+    // nothing matches.
     private static RequestMatcher onManagementPort(Environment environment) {
-        return request -> String.valueOf(request.getLocalPort())
-                .equals(environment.getProperty("local.management.port"));
+        return request ->
+                String.valueOf(request.getLocalPort())
+                        .equals(environment.getProperty("local.management.port"));
     }
 }

@@ -4,6 +4,7 @@ import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.identity.repositories.AccountState;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.messaging.Message;
@@ -21,14 +22,13 @@ import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.stereotype.Component;
 
-import java.util.UUID;
-
 /**
- * Authenticates the CONNECT frame with the access token of its {@code Authorization} header, as the HTTP API does:
- * a browser sends no header with the WebSocket handshake, so the frame carries it. The session keeps that user until
- * it closes; {@link StompSessions} closes it when the token expires or the account stops being active.
- * <p>
- * A refusal answers an ERROR frame and closes the connection.
+ * Authenticates the CONNECT frame with the access token of its {@code Authorization} header, as the
+ * HTTP API does: a browser sends no header with the WebSocket handshake, so the frame carries it.
+ * The session keeps that user until it closes; {@link StompSessions} closes it when the token
+ * expires or the account stops being active.
+ *
+ * <p>A refusal answers an ERROR frame and closes the connection.
  */
 @Component
 @RequiredArgsConstructor
@@ -44,7 +44,8 @@ class StompAuthentication implements ChannelInterceptor {
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
-        StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
+        StompHeaderAccessor accessor =
+                MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
 
         if (accessor == null || accessor.getCommand() != StompCommand.CONNECT) {
             return message;
@@ -55,18 +56,25 @@ class StompAuthentication implements ChannelInterceptor {
         accessor.removeNativeHeader(HttpHeaders.AUTHORIZATION);
 
         // The scheme is case-insensitive (RFC 9110), as the HTTP API's resolver treats it
-        if (authorization == null || !authorization.regionMatches(true, 0, BEARER, 0, BEARER.length())) {
+        if (authorization == null
+                || !authorization.regionMatches(true, 0, BEARER, 0, BEARER.length())) {
             throw new BadCredentialsException("A bearer access token is required");
         }
 
         Jwt jwt = decode(authorization.substring(BEARER.length()));
         AbstractAuthenticationToken authentication = jwtAuthenticationConverter.convert(jwt);
-        UUID userId = currentUser.getId(authentication)
-                .orElseThrow(() -> new BadCredentialsException("No user id in the access token"));
+        UUID userId =
+                currentUser
+                        .getId(authentication)
+                        .orElseThrow(
+                                () ->
+                                        new BadCredentialsException(
+                                                "No user id in the access token"));
 
-        // Registered before the account is read, from the account rather than the status cache: a change committed
-        // after this read is broadcast, and closes the session once it arrives. Read first, a disabling that landed
-        // between the read and the registration found no session to close, which then lasted until its token expired.
+        // Registered before the account is read, from the account rather than the status cache: a
+        // change committed after this read is broadcast, and closes the session once it arrives.
+        // Read first, a disabling that landed between the read and the registration found no
+        // session to close, which then lasted until its token expired.
         String sessionId = accessor.getSessionId();
         stompSessions.connected(sessionId, userId, jwt.getExpiresAt());
 
@@ -98,8 +106,10 @@ class StompAuthentication implements ChannelInterceptor {
     }
 
     private boolean isActive(UUID userId) {
-        return userRepository.findAccountStateById(userId)
-                .map(AccountState::status)
-                .orElse(UserStatus.DELETED) == UserStatus.ACTIVE;
+        return userRepository
+                        .findAccountStateById(userId)
+                        .map(AccountState::status)
+                        .orElse(UserStatus.DELETED)
+                == UserStatus.ACTIVE;
     }
 }

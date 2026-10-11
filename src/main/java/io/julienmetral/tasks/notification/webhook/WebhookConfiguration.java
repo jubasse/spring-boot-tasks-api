@@ -1,17 +1,16 @@
 package io.julienmetral.tasks.notification.webhook;
 
 import io.micrometer.core.instrument.MeterRegistry;
+import java.time.Clock;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.http.client.InetAddressFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.resilience.annotation.EnableResilientMethods;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.resilience.annotation.EnableResilientMethods;
 import org.springframework.web.client.support.RestClientHttpServiceGroupConfigurer;
 import org.springframework.web.service.registry.ImportHttpServices;
 import tools.jackson.databind.json.JsonMapper;
-
-import java.time.Clock;
 
 @Configuration
 @EnableResilientMethods
@@ -33,7 +32,8 @@ public class WebhookConfiguration {
     }
 
     @Bean
-    WebhookResilience webhookResilience(WebhookProperties properties, Clock clock, MeterRegistry meterRegistry) {
+    WebhookResilience webhookResilience(
+            WebhookProperties properties, Clock clock, MeterRegistry meterRegistry) {
         return new WebhookResilience(properties, clock, meterRegistry);
     }
 
@@ -45,14 +45,20 @@ public class WebhookConfiguration {
     // Every status is a result to record, so none raises an exception
     @Bean
     RestClientHttpServiceGroupConfigurer webhookClientGroup() {
-        return groups -> groups.filterByName(CLIENT_GROUP).forEachClient((group, builder) -> builder
-                .defaultStatusHandler(HttpStatusCode::isError, (request, response) -> {
-                })
-                .observationConvention(new WebhookObservationConvention()));
+        return groups ->
+                groups.filterByName(CLIENT_GROUP)
+                        .forEachClient(
+                                (group, builder) ->
+                                        builder.defaultStatusHandler(
+                                                        HttpStatusCode::isError,
+                                                        (request, response) -> {})
+                                                .observationConvention(
+                                                        new WebhookObservationConvention()));
     }
 
     @Bean
-    WebhookUrlPolicy webhookUrlPolicy(InetAddressFilter outboundAddressFilter, WebhookProperties properties) {
+    WebhookUrlPolicy webhookUrlPolicy(
+            InetAddressFilter outboundAddressFilter, WebhookProperties properties) {
         return new WebhookUrlPolicy(outboundAddressFilter, properties.requireHttps());
     }
 }

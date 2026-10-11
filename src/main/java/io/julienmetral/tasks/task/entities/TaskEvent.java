@@ -11,6 +11,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.time.Instant;
+import java.util.Map;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -18,10 +21,6 @@ import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
-
-import java.time.Instant;
-import java.util.Map;
-import java.util.UUID;
 
 @Entity
 @Getter
@@ -40,15 +39,11 @@ public class TaskEvent {
     @JoinColumn(
             name = "task_id",
             nullable = false,
-            foreignKey = @ForeignKey(name = "task_events_taskFK")
-    )
+            foreignKey = @ForeignKey(name = "task_events_taskFK"))
     private Task task;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(
-            name = "actor_id",
-            foreignKey = @ForeignKey(name = "task_events_actorFK")
-    )
+    @JoinColumn(name = "actor_id", foreignKey = @ForeignKey(name = "task_events_actorFK"))
     private UserProfile actor;
 
     @Enumerated(EnumType.STRING)

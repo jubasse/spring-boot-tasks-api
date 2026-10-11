@@ -1,9 +1,17 @@
 package io.julienmetral.tasks.media.services;
 
+import static io.julienmetral.tasks.support.UserProfiles.profile;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.identity.entities.UserProfile;
 import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.model.MediaDownload;
+import java.net.URI;
+import java.time.Instant;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -17,32 +25,21 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
-import java.net.URI;
-import java.time.Instant;
-import java.util.UUID;
-
-import static io.julienmetral.tasks.support.UserProfiles.profile;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
-
 @ExtendWith(MockitoExtension.class)
 class MediaUrlsTest {
 
     private static final UUID PROFILE_ID = UUID.fromString("0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b");
-    private static final String PRESIGNED_URL = "https://storage.example/avatar/key?X-Amz-Signature=abc";
+    private static final String PRESIGNED_URL =
+            "https://storage.example/avatar/key?X-Amz-Signature=abc";
 
-    @Mock
-    private MediaService mediaService;
+    @Mock private MediaService mediaService;
 
-    @InjectMocks
-    private MediaUrls mediaUrls;
+    @InjectMocks private MediaUrls mediaUrls;
 
     private void presign(Media media) throws Exception {
-        MediaDownload download = new MediaDownload(
-                URI.create(PRESIGNED_URL).toURL(),
-                Instant.parse("2026-01-01T00:10:00Z")
-        );
+        MediaDownload download =
+                new MediaDownload(
+                        URI.create(PRESIGNED_URL).toURL(), Instant.parse("2026-01-01T00:10:00Z"));
 
         when(mediaService.downloadUrl(media)).thenReturn(download);
     }
@@ -77,7 +74,9 @@ class MediaUrlsTest {
         }
 
         @ParameterizedTest
-        @EnumSource(value = UserStatus.class, names = {"ACTIVE", "UNVERIFIED"})
+        @EnumSource(
+                value = UserStatus.class,
+                names = {"ACTIVE", "UNVERIFIED"})
         void visiblePhotoGivesItsPresignedUrl(UserStatus status) throws Exception {
             Media avatar = new Media();
             presign(avatar);
@@ -94,7 +93,9 @@ class MediaUrlsTest {
         }
 
         @ParameterizedTest
-        @EnumSource(value = UserStatus.class, names = {"DISABLED", "DELETED"})
+        @EnumSource(
+                value = UserStatus.class,
+                names = {"DISABLED", "DELETED"})
         void hiddenPhotoGivesTheIdenticonWithoutSigning(UserStatus status) {
             assertThat(mediaUrls.avatarOf(withAvatar(status, new Media())))
                     .isEqualTo("/api/v1/identicons/" + PROFILE_ID);

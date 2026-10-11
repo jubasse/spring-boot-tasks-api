@@ -1,37 +1,5 @@
 package io.julienmetral.tasks.task.controllers;
 
-import io.julienmetral.tasks.identity.entities.UserStatus;
-import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
-import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.support.WebLayerTest;
-import io.julienmetral.tasks.task.entities.Task;
-import io.julienmetral.tasks.task.exceptions.AssigneeNotActiveException;
-import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
-import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException;
-import io.julienmetral.tasks.task.security.TaskAuthorization;
-import io.julienmetral.tasks.task.services.TaskService;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
-import org.mockito.ArgumentCaptor;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.http.MediaType;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.ResultActions;
-import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import org.springframework.test.web.servlet.request.RequestPostProcessor;
-
-import java.util.List;
-import java.util.UUID;
-
 import static io.julienmetral.tasks.support.Problems.invalidBodyValue;
 import static io.julienmetral.tasks.support.Problems.invalidParameter;
 import static io.julienmetral.tasks.support.Problems.typedProblem;
@@ -57,6 +25,37 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.julienmetral.tasks.identity.entities.UserStatus;
+import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
+import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.support.WebLayerTest;
+import io.julienmetral.tasks.task.entities.Task;
+import io.julienmetral.tasks.task.exceptions.AssigneeNotActiveException;
+import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
+import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException;
+import io.julienmetral.tasks.task.security.TaskAuthorization;
+import io.julienmetral.tasks.task.services.TaskService;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.MediaType;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
+
 @WebLayerTest
 class TaskControllerWebMvcTests {
 
@@ -64,17 +63,13 @@ class TaskControllerWebMvcTests {
 
     private static final String NEW_TASK = "{\"reference\": \"T-1\", \"title\": \"Task\"}";
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private TaskService taskService;
+    @Autowired private TaskService taskService;
 
-    @Autowired
-    private TaskAuthorization taskAuthorization;
+    @Autowired private TaskAuthorization taskAuthorization;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
     private final UUID taskId = UUID.randomUUID();
 
@@ -88,18 +83,20 @@ class TaskControllerWebMvcTests {
 
         @Test
         void everyEndpointRequiresAuthentication() throws Exception {
-            List<MockHttpServletRequestBuilder> requests = List.of(
-                    get(TASKS),
-                    get(TASKS + "/" + taskId),
-                    json(post(TASKS), "{\"reference\": \"T-1\", \"title\": \"x\"}"),
-                    json(patch(TASKS + "/" + taskId), "{\"title\": \"x\"}"),
-                    json(patch(TASKS + "/" + taskId + "/status"), "{\"status\": \"DONE\"}"),
-                    json(patch(TASKS + "/" + taskId + "/assign"), "{\"userId\": \"%s\"}".formatted(UUID.randomUUID())),
-                    post(TASKS + "/" + taskId + "/archive"),
-                    post(TASKS + "/" + taskId + "/unarchive"),
-                    json(post(TASKS + "/" + taskId + "/cancel"), "{\"reason\": \"x\"}"),
-                    delete(TASKS + "/" + taskId)
-            );
+            List<MockHttpServletRequestBuilder> requests =
+                    List.of(
+                            get(TASKS),
+                            get(TASKS + "/" + taskId),
+                            json(post(TASKS), "{\"reference\": \"T-1\", \"title\": \"x\"}"),
+                            json(patch(TASKS + "/" + taskId), "{\"title\": \"x\"}"),
+                            json(patch(TASKS + "/" + taskId + "/status"), "{\"status\": \"DONE\"}"),
+                            json(
+                                    patch(TASKS + "/" + taskId + "/assign"),
+                                    "{\"userId\": \"%s\"}".formatted(UUID.randomUUID())),
+                            post(TASKS + "/" + taskId + "/archive"),
+                            post(TASKS + "/" + taskId + "/unarchive"),
+                            json(post(TASKS + "/" + taskId + "/cancel"), "{\"reason\": \"x\"}"),
+                            delete(TASKS + "/" + taskId));
 
             for (MockHttpServletRequestBuilder request : requests) {
                 mockMvc.perform(request).andExpect(status().isUnauthorized());
@@ -110,7 +107,12 @@ class TaskControllerWebMvcTests {
 
         @Test
         void tokenWithoutUidClaimIsForbiddenOnTasksEvenForAnAdmin() throws Exception {
-            mockMvc.perform(get(TASKS).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
+            mockMvc.perform(
+                            get(TASKS)
+                                    .with(
+                                            jwt().authorities(
+                                                            new SimpleGrantedAuthority(
+                                                                    "ROLE_ADMIN"))))
                     .andExpect(status().isForbidden());
 
             verifyNoInteractions(userRepository, taskService);
@@ -132,7 +134,8 @@ class TaskControllerWebMvcTests {
 
         @Test
         void createWithReferenceLongerThan30CharsReturns400() throws Exception {
-            expectCreateRejected("{\"reference\": \"%s\", \"title\": \"Task\"}".formatted("R".repeat(31)));
+            expectCreateRejected(
+                    "{\"reference\": \"%s\", \"title\": \"Task\"}".formatted("R".repeat(31)));
         }
 
         @Test
@@ -147,26 +150,32 @@ class TaskControllerWebMvcTests {
 
         @Test
         void createWithTitleLongerThan255CharsReturns400() throws Exception {
-            expectCreateRejected("{\"reference\": \"T-1\", \"title\": \"%s\"}".formatted("t".repeat(256)));
+            expectCreateRejected(
+                    "{\"reference\": \"T-1\", \"title\": \"%s\"}".formatted("t".repeat(256)));
         }
 
         @Test
         void createWithUnknownPriorityPointsToItAndListsThePriorities() throws Exception {
-            expectCreateRejected("{\"reference\": \"T-1\", \"title\": \"Task\", \"priority\": \"CRITICAL\"}")
-                    .andExpect(invalidBodyValue("#/priority", "must be one of LOW, MEDIUM, HIGH, URGENT"))
+            expectCreateRejected(
+                            "{\"reference\": \"T-1\", \"title\": \"Task\", \"priority\": \"CRITICAL\"}")
+                    .andExpect(
+                            invalidBodyValue(
+                                    "#/priority", "must be one of LOW, MEDIUM, HIGH, URGENT"))
                     .andExpect(withoutJavaTypeNames());
         }
 
         @Test
         void createWithMalformedDueDatePointsToItAndAsksForAnIsoInstant() throws Exception {
-            expectCreateRejected("{\"reference\": \"T-1\", \"title\": \"Task\", \"dueAt\": \"tomorrow\"}")
+            expectCreateRejected(
+                            "{\"reference\": \"T-1\", \"title\": \"Task\", \"dueAt\": \"tomorrow\"}")
                     .andExpect(invalidBodyValue("#/dueAt", "must be an ISO 8601 date and time"))
                     .andExpect(withoutJavaTypeNames());
         }
 
         @Test
         void createWithMalformedAssigneeIdPointsToItWithoutParserDetails() throws Exception {
-            expectCreateRejected("{\"reference\": \"T-1\", \"title\": \"Task\", \"assignedTo\": \"not-a-uuid\"}")
+            expectCreateRejected(
+                            "{\"reference\": \"T-1\", \"title\": \"Task\", \"assignedTo\": \"not-a-uuid\"}")
                     .andExpect(invalidBodyValue("#/assignedTo", "must be a UUID"))
                     .andExpect(withoutJavaTypeNames());
         }
@@ -189,7 +198,9 @@ class TaskControllerWebMvcTests {
 
         @Test
         void createWithSeveralInvalidFieldsListsEachByPointerInOrder() throws Exception {
-            String body = "{\"title\": \"%s\", \"reference\": \"%s\"}".formatted("t".repeat(256), "R".repeat(31));
+            String body =
+                    "{\"title\": \"%s\", \"reference\": \"%s\"}"
+                            .formatted("t".repeat(256), "R".repeat(31));
 
             expectCreateRejected(body)
                     .andExpect(jsonPath("$.errors.length()").value(2))
@@ -201,8 +212,7 @@ class TaskControllerWebMvcTests {
         void userCannotAssignTaskOnCreation() throws Exception {
             UUID self = UUID.randomUUID();
 
-            create(user(self), newTaskAssignedTo(self))
-                    .andExpect(status().isForbidden());
+            create(user(self), newTaskAssignedTo(self)).andExpect(status().isForbidden());
 
             verifyNoInteractions(taskService);
         }
@@ -226,20 +236,24 @@ class TaskControllerWebMvcTests {
 
         @Test
         void takenReferenceReturnsReferenceTakenProblem() throws Exception {
-            when(taskService.create(any())).thenThrow(new TaskReferenceAlreadyExistsException("T-1"));
+            when(taskService.create(any()))
+                    .thenThrow(new TaskReferenceAlreadyExistsException("T-1"));
 
             create(user(UUID.randomUUID()), NEW_TASK)
-                    .andExpect(typedProblem(409, "reference-taken", "Task reference already in use"))
+                    .andExpect(
+                            typedProblem(409, "reference-taken", "Task reference already in use"))
                     .andExpect(jsonPath("$.detail").value("Task reference already exists: T-1"));
         }
 
         @Test
         void referenceTakenByAConcurrentCreationReturnsAnUntypedConflict() throws Exception {
-            when(taskService.create(any())).thenThrow(new DataIntegrityViolationException("tasks_referenceUQ"));
+            when(taskService.create(any()))
+                    .thenThrow(new DataIntegrityViolationException("tasks_referenceUQ"));
 
             create(user(UUID.randomUUID()), NEW_TASK)
                     .andExpect(untypedProblem(409, "Conflict"))
-                    .andExpect(jsonPath("$.detail").value("The request conflicts with existing data"));
+                    .andExpect(
+                            jsonPath("$.detail").value("The request conflicts with existing data"));
         }
 
         @Test
@@ -255,7 +269,8 @@ class TaskControllerWebMvcTests {
         @Test
         void inactiveAssigneeReturnsAssigneeNotActiveProblemNamingTheStatus() throws Exception {
             UUID disabled = UUID.randomUUID();
-            when(taskService.create(any())).thenThrow(new AssigneeNotActiveException(disabled, UserStatus.DISABLED));
+            when(taskService.create(any()))
+                    .thenThrow(new AssigneeNotActiveException(disabled, UserStatus.DISABLED));
 
             create(admin(UUID.randomUUID()), newTaskAssignedTo(disabled))
                     .andExpect(typedProblem(422, "assignee-not-active", "Assignee not active"))
@@ -263,7 +278,8 @@ class TaskControllerWebMvcTests {
         }
 
         private ResultActions expectCreateRejected(String body) throws Exception {
-            ResultActions result = create(admin(UUID.randomUUID()), body).andExpect(status().isBadRequest());
+            ResultActions result =
+                    create(admin(UUID.randomUUID()), body).andExpect(status().isBadRequest());
 
             verifyNoInteractions(taskService);
             return result;
@@ -274,7 +290,8 @@ class TaskControllerWebMvcTests {
         }
 
         private static String newTaskAssignedTo(UUID assignee) {
-            return "{\"reference\": \"T-1\", \"title\": \"Task\", \"assignedTo\": \"%s\"}".formatted(assignee);
+            return "{\"reference\": \"T-1\", \"title\": \"Task\", \"assignedTo\": \"%s\"}"
+                    .formatted(assignee);
         }
     }
 
@@ -284,9 +301,10 @@ class TaskControllerWebMvcTests {
         @Test
         void invalidStatusNamesTheParameterAndListsTheStatuses() throws Exception {
             expectListRejected("status", "NOT_A_STATUS")
-                    .andExpect(invalidParameter(
-                            "status", "must be one of TO_DO, IN_PROGRESS, IN_REVIEW, BLOCKED, DONE, ARCHIVED, CANCELLED"
-                    ))
+                    .andExpect(
+                            invalidParameter(
+                                    "status",
+                                    "must be one of TO_DO, IN_PROGRESS, IN_REVIEW, BLOCKED, DONE, ARCHIVED, CANCELLED"))
                     .andExpect(withoutJavaTypeNames());
         }
 
@@ -308,17 +326,21 @@ class TaskControllerWebMvcTests {
         void listDefaultsToUnarchivedTasksNewestFirst() throws Exception {
             when(taskService.findAll(any(), any(), eq(false), any())).thenReturn(Page.empty());
 
-            mockMvc.perform(get(TASKS).with(user(UUID.randomUUID())))
-                    .andExpect(status().isOk());
+            mockMvc.perform(get(TASKS).with(user(UUID.randomUUID()))).andExpect(status().isOk());
 
             ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
             verify(taskService).findAll(isNull(), isNull(), eq(false), pageable.capture());
-            assertThat(pageable.getValue().getSort()).isEqualTo(Sort.by(Sort.Direction.DESC, "createdAt"));
+            assertThat(pageable.getValue().getSort())
+                    .isEqualTo(Sort.by(Sort.Direction.DESC, "createdAt"));
         }
 
         private ResultActions expectListRejected(String parameter, String value) throws Exception {
-            ResultActions result = mockMvc.perform(get(TASKS).param(parameter, value).with(admin(UUID.randomUUID())))
-                    .andExpect(status().isBadRequest());
+            ResultActions result =
+                    mockMvc.perform(
+                                    get(TASKS)
+                                            .param(parameter, value)
+                                            .with(admin(UUID.randomUUID())))
+                            .andExpect(status().isBadRequest());
 
             verifyNoInteractions(taskService);
             return result;
@@ -353,7 +375,8 @@ class TaskControllerWebMvcTests {
 
         @Test
         void updateWithTitleLongerThan255CharsReturns400() throws Exception {
-            expectRejected(patch(TASKS + "/" + taskId), "{\"title\": \"%s\"}".formatted("t".repeat(256)));
+            expectRejected(
+                    patch(TASKS + "/" + taskId), "{\"title\": \"%s\"}".formatted("t".repeat(256)));
         }
 
         @Test
@@ -372,9 +395,10 @@ class TaskControllerWebMvcTests {
         @Test
         void statusOutsideTheEnumListsTheStatuses() throws Exception {
             expectRejected(patch(TASKS + "/" + taskId + "/status"), "{\"status\": \"FINISHED\"}")
-                    .andExpect(invalidBodyValue(
-                            "#/status", "must be one of TO_DO, IN_PROGRESS, IN_REVIEW, BLOCKED, DONE, ARCHIVED, CANCELLED"
-                    ));
+                    .andExpect(
+                            invalidBodyValue(
+                                    "#/status",
+                                    "must be one of TO_DO, IN_PROGRESS, IN_REVIEW, BLOCKED, DONE, ARCHIVED, CANCELLED"));
         }
 
         @ParameterizedTest
@@ -385,7 +409,9 @@ class TaskControllerWebMvcTests {
 
         @Test
         void cancelWithTooLongReasonReturns400() throws Exception {
-            expectRejected(post(TASKS + "/" + taskId + "/cancel"), "{\"reason\": \"%s\"}".formatted("r".repeat(501)));
+            expectRejected(
+                    post(TASKS + "/" + taskId + "/cancel"),
+                    "{\"reason\": \"%s\"}".formatted("r".repeat(501)));
         }
 
         @Test
@@ -393,11 +419,17 @@ class TaskControllerWebMvcTests {
             UUID caller = UUID.randomUUID();
             when(taskAuthorization.currentUserIsAssignedTo(eq(taskId), any())).thenReturn(false);
 
-            mockMvc.perform(json(patch(TASKS + "/" + taskId), "{\"title\": \"x\"}").with(user(caller)))
+            mockMvc.perform(
+                            json(patch(TASKS + "/" + taskId), "{\"title\": \"x\"}")
+                                    .with(user(caller)))
                     .andExpect(status().isForbidden());
-            mockMvc.perform(json(patch(TASKS + "/" + taskId + "/status"), "{\"status\": \"DONE\"}").with(user(caller)))
+            mockMvc.perform(
+                            json(patch(TASKS + "/" + taskId + "/status"), "{\"status\": \"DONE\"}")
+                                    .with(user(caller)))
                     .andExpect(status().isForbidden());
-            mockMvc.perform(json(post(TASKS + "/" + taskId + "/cancel"), "{\"reason\": \"x\"}").with(user(caller)))
+            mockMvc.perform(
+                            json(post(TASKS + "/" + taskId + "/cancel"), "{\"reason\": \"x\"}")
+                                    .with(user(caller)))
                     .andExpect(status().isForbidden());
 
             verifyNoInteractions(taskService);
@@ -408,7 +440,9 @@ class TaskControllerWebMvcTests {
             when(taskAuthorization.currentUserIsAssignedTo(eq(taskId), any())).thenReturn(true);
             when(taskService.update(eq(taskId), any())).thenReturn(task("T-1"));
 
-            mockMvc.perform(json(patch(TASKS + "/" + taskId), "{\"title\": \"x\"}").with(user(UUID.randomUUID())))
+            mockMvc.perform(
+                            json(patch(TASKS + "/" + taskId), "{\"title\": \"x\"}")
+                                    .with(user(UUID.randomUUID())))
                     .andExpect(status().isOk());
 
             verify(taskAuthorization).currentUserIsAssignedTo(eq(taskId), any());
@@ -418,8 +452,11 @@ class TaskControllerWebMvcTests {
         void adminSkipsTheAssigneeCheck() throws Exception {
             when(taskService.cancel(taskId, "Out of scope")).thenReturn(task("T-1"));
 
-            mockMvc.perform(json(post(TASKS + "/" + taskId + "/cancel"), "{\"reason\": \"Out of scope\"}")
-                            .with(admin(UUID.randomUUID())))
+            mockMvc.perform(
+                            json(
+                                            post(TASKS + "/" + taskId + "/cancel"),
+                                            "{\"reason\": \"Out of scope\"}")
+                                    .with(admin(UUID.randomUUID())))
                     .andExpect(status().isOk());
 
             verifyNoInteractions(taskAuthorization);
@@ -430,15 +467,22 @@ class TaskControllerWebMvcTests {
             when(taskService.update(eq(taskId), any()))
                     .thenThrow(new ObjectOptimisticLockingFailureException(Task.class, taskId));
 
-            mockMvc.perform(json(patch(TASKS + "/" + taskId), "{\"title\": \"x\"}").with(admin(UUID.randomUUID())))
+            mockMvc.perform(
+                            json(patch(TASKS + "/" + taskId), "{\"title\": \"x\"}")
+                                    .with(admin(UUID.randomUUID())))
                     .andExpect(typedProblem(409, "version-conflict", "Changed by another request"))
-                    .andExpect(jsonPath("$.detail", startsWith("Another request changed this resource")))
+                    .andExpect(
+                            jsonPath(
+                                    "$.detail",
+                                    startsWith("Another request changed this resource")))
                     .andExpect(withoutJavaTypeNames());
         }
 
-        private ResultActions expectRejected(MockHttpServletRequestBuilder request, String body) throws Exception {
-            ResultActions result = mockMvc.perform(json(request, body).with(admin(UUID.randomUUID())))
-                    .andExpect(status().isBadRequest());
+        private ResultActions expectRejected(MockHttpServletRequestBuilder request, String body)
+                throws Exception {
+            ResultActions result =
+                    mockMvc.perform(json(request, body).with(admin(UUID.randomUUID())))
+                            .andExpect(status().isBadRequest());
 
             verifyNoInteractions(taskService);
             return result;
@@ -453,8 +497,11 @@ class TaskControllerWebMvcTests {
             UUID assignee = UUID.randomUUID();
             when(taskAuthorization.currentUserIsAssignedTo(any(), any())).thenReturn(true);
 
-            mockMvc.perform(json(patch(TASKS + "/" + taskId + "/assign"), "{\"userId\": \"%s\"}".formatted(assignee))
-                            .with(user(assignee)))
+            mockMvc.perform(
+                            json(
+                                            patch(TASKS + "/" + taskId + "/assign"),
+                                            "{\"userId\": \"%s\"}".formatted(assignee))
+                                    .with(user(assignee)))
                     .andExpect(status().isForbidden());
 
             verifyNoInteractions(taskService);
@@ -488,7 +535,9 @@ class TaskControllerWebMvcTests {
 
         @Test
         void assignWithoutUserIdPointsToIt() throws Exception {
-            mockMvc.perform(json(patch(TASKS + "/" + taskId + "/assign"), "{}").with(admin(UUID.randomUUID())))
+            mockMvc.perform(
+                            json(patch(TASKS + "/" + taskId + "/assign"), "{}")
+                                    .with(admin(UUID.randomUUID())))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.errors.length()").value(1))
                     .andExpect(jsonPath("$.errors[0].pointer").value("#/userId"));
@@ -498,8 +547,11 @@ class TaskControllerWebMvcTests {
 
         @Test
         void assignWithMalformedUserIdPointsToIt() throws Exception {
-            mockMvc.perform(json(patch(TASKS + "/" + taskId + "/assign"), "{\"userId\": \"not-a-uuid\"}")
-                            .with(admin(UUID.randomUUID())))
+            mockMvc.perform(
+                            json(
+                                            patch(TASKS + "/" + taskId + "/assign"),
+                                            "{\"userId\": \"not-a-uuid\"}")
+                                    .with(admin(UUID.randomUUID())))
                     .andExpect(invalidBodyValue("#/userId", "must be a UUID"));
 
             verifyNoInteractions(taskService);
@@ -512,12 +564,17 @@ class TaskControllerWebMvcTests {
             when(taskService.archive(taskId)).thenReturn(task("T-1"));
             when(taskService.unarchive(taskId)).thenReturn(task("T-1"));
 
-            mockMvc.perform(json(patch(TASKS + "/" + taskId + "/assign"), "{\"userId\": \"%s\"}".formatted(assignee))
-                            .with(admin(UUID.randomUUID())))
+            mockMvc.perform(
+                            json(
+                                            patch(TASKS + "/" + taskId + "/assign"),
+                                            "{\"userId\": \"%s\"}".formatted(assignee))
+                                    .with(admin(UUID.randomUUID())))
                     .andExpect(status().isOk());
             mockMvc.perform(post(TASKS + "/" + taskId + "/archive").with(admin(UUID.randomUUID())))
                     .andExpect(status().isOk());
-            mockMvc.perform(post(TASKS + "/" + taskId + "/unarchive").with(admin(UUID.randomUUID())))
+            mockMvc.perform(
+                            post(TASKS + "/" + taskId + "/unarchive")
+                                    .with(admin(UUID.randomUUID())))
                     .andExpect(status().isOk());
             mockMvc.perform(delete(TASKS + "/" + taskId).with(admin(UUID.randomUUID())))
                     .andExpect(status().isNoContent());
@@ -531,13 +588,17 @@ class TaskControllerWebMvcTests {
             when(taskService.assign(taskId, unverified))
                     .thenThrow(new AssigneeNotActiveException(unverified, UserStatus.UNVERIFIED));
 
-            mockMvc.perform(json(patch(TASKS + "/" + taskId + "/assign"), "{\"userId\": \"%s\"}".formatted(unverified))
-                            .with(admin(UUID.randomUUID())))
+            mockMvc.perform(
+                            json(
+                                            patch(TASKS + "/" + taskId + "/assign"),
+                                            "{\"userId\": \"%s\"}".formatted(unverified))
+                                    .with(admin(UUID.randomUUID())))
                     .andExpect(typedProblem(422, "assignee-not-active", "Assignee not active"))
                     .andExpect(jsonPath("$.detail").value(containsString("UNVERIFIED")));
         }
 
-        private void expectForbiddenEvenToTheAssignee(MockHttpServletRequestBuilder request) throws Exception {
+        private void expectForbiddenEvenToTheAssignee(MockHttpServletRequestBuilder request)
+                throws Exception {
             when(taskAuthorization.currentUserIsAssignedTo(any(), any())).thenReturn(true);
 
             mockMvc.perform(request.with(user(UUID.randomUUID())))
@@ -547,7 +608,8 @@ class TaskControllerWebMvcTests {
         }
     }
 
-    private static MockHttpServletRequestBuilder json(MockHttpServletRequestBuilder request, String body) {
+    private static MockHttpServletRequestBuilder json(
+            MockHttpServletRequestBuilder request, String body) {
         return request.contentType(MediaType.APPLICATION_JSON).content(body);
     }
 

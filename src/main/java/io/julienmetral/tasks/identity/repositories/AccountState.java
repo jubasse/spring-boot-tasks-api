@@ -1,7 +1,6 @@
 package io.julienmetral.tasks.identity.repositories;
 
 import io.julienmetral.tasks.identity.entities.UserStatus;
-
 import java.time.Instant;
 
 /** The two account columns a status depends on, read without loading the account. */

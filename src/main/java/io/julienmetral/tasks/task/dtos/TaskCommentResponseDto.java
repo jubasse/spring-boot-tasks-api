@@ -3,13 +3,15 @@ package io.julienmetral.tasks.task.dtos;
 import io.julienmetral.tasks.identity.dtos.UserProfileResponseDto;
 import io.julienmetral.tasks.media.services.MediaUrls;
 import io.julienmetral.tasks.task.entities.TaskComment;
-
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
-/** {@code body} keeps the {@code <@user-id>} mention tokens; {@code mentions} gives the users to render them. */
+/**
+ * {@code body} keeps the {@code <@user-id>} mention tokens; {@code mentions} gives the users to
+ * render them.
+ */
 public record TaskCommentResponseDto(
         UUID id,
         String body,
@@ -17,25 +19,21 @@ public record TaskCommentResponseDto(
         List<UserProfileResponseDto> mentions,
         List<TaskAttachmentResponseDto> attachments,
         Instant createdAt,
-        Instant editedAt
-) {
+        Instant editedAt) {
 
     public TaskCommentResponseDto(TaskComment comment, MediaUrls mediaUrls) {
         this(
                 comment.getId(),
                 comment.getBody(),
                 UserProfileResponseDto.of(comment.getAuthor(), mediaUrls),
-                comment.getMentions()
-                        .stream()
+                comment.getMentions().stream()
                         .map(user -> UserProfileResponseDto.of(user, mediaUrls))
                         .sorted(Comparator.comparing(UserProfileResponseDto::displayName))
                         .toList(),
-                comment.getAttachments()
-                        .stream()
+                comment.getAttachments().stream()
                         .map(attachment -> new TaskAttachmentResponseDto(attachment, mediaUrls))
                         .toList(),
                 comment.getCreatedAt(),
-                comment.getEditedAt()
-        );
+                comment.getEditedAt());
     }
 }

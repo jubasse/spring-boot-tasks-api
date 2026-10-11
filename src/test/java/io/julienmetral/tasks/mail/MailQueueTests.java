@@ -1,7 +1,14 @@
 package io.julienmetral.tasks.mail;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
+import java.net.URI;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.listener.RabbitListenerEndpointRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,14 +20,6 @@ import org.testcontainers.rabbitmq.RabbitMQContainer;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.net.URI;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Map;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
  * End-to-end tests of the mail queue: {@link MailService} queues on RabbitMQ after commit, and
  * {@link MailQueueListener} sends to the Mailpit container.
@@ -28,46 +27,49 @@ import static org.assertj.core.api.Assertions.assertThat;
 @IntegrationTest
 class MailQueueTests {
 
-    // Mail is queued asynchronously after commit: "nothing sent" can only be checked after a grace period
+    // Mail is queued asynchronously after commit: "nothing sent" can only be checked after a grace
+    // period
     private static final Duration NO_MAIL_GRACE_PERIOD = Duration.ofMillis(800);
 
-    @Autowired
-    private MailService mailService;
+    @Autowired private MailService mailService;
 
-    @Autowired
-    private Mailpit mailpit;
+    @Autowired private Mailpit mailpit;
 
-    @Autowired
-    private RabbitListenerEndpointRegistry listenerRegistry;
+    @Autowired private RabbitListenerEndpointRegistry listenerRegistry;
 
-    @Autowired
-    private RabbitMQContainer rabbitContainer;
+    @Autowired private RabbitMQContainer rabbitContainer;
 
-    @Autowired
-    private JsonMapper jsonMapper;
+    @Autowired private JsonMapper jsonMapper;
 
-    @Autowired
-    private PlatformTransactionManager transactionManager;
+    @Autowired private PlatformTransactionManager transactionManager;
 
     @Test
     void emailSentInCommittedTransactionReachesSmtpThroughTheQueue() {
         String email = uniqueEmail();
 
-        inTransaction().executeWithoutResult(status ->
-                mailService.send(new MailMessage(email, "Queued", "Sent through RabbitMQ")));
+        inTransaction()
+                .executeWithoutResult(
+                        status ->
+                                mailService.send(
+                                        new MailMessage(email, "Queued", "Sent through RabbitMQ")));
 
         assertThat(mailpit.latestTextTo(email).strip()).isEqualTo("Sent through RabbitMQ");
         assertThat(mailpit.countTo(email)).isEqualTo(1);
     }
 
     @Test
-    void emailWaitsInTheQueueWhileNoConsumerRunsAndIsSentOnceOneStarts() throws InterruptedException {
+    void emailWaitsInTheQueueWhileNoConsumerRunsAndIsSentOnceOneStarts()
+            throws InterruptedException {
         String email = uniqueEmail();
 
         listenerRegistry.stop();
         try {
-            inTransaction().executeWithoutResult(status ->
-                    mailService.send(new MailMessage(email, "Waiting", "Waited in the queue")));
+            inTransaction()
+                    .executeWithoutResult(
+                            status ->
+                                    mailService.send(
+                                            new MailMessage(
+                                                    email, "Waiting", "Waited in the queue")));
 
             awaitQueuedFor(email);
             assertThat(mailpit.countTo(email)).isZero();
@@ -82,12 +84,19 @@ class MailQueueTests {
     void emailSentInRolledBackTransactionIsNeverQueued() throws InterruptedException {
         String email = uniqueEmail();
 
-        inTransaction().executeWithoutResult(status -> {
-            mailService.send(new MailMessage(email, "Rolled back", "Must not be sent"));
-            status.setRollbackOnly();
-        });
-        inTransaction().executeWithoutResult(status ->
-                mailService.send(new MailMessage(email, "Committed", "Sent after the rollback")));
+        inTransaction()
+                .executeWithoutResult(
+                        status -> {
+                            mailService.send(
+                                    new MailMessage(email, "Rolled back", "Must not be sent"));
+                            status.setRollbackOnly();
+                        });
+        inTransaction()
+                .executeWithoutResult(
+                        status ->
+                                mailService.send(
+                                        new MailMessage(
+                                                email, "Committed", "Sent after the rollback")));
 
         assertThat(mailpit.latestTextTo(email).strip()).isEqualTo("Sent after the rollback");
         Thread.sleep(NO_MAIL_GRACE_PERIOD);
@@ -121,15 +130,22 @@ class MailQueueTests {
         return new TransactionTemplate(transactionManager);
     }
 
-    // Peeks with ackmode ack_requeue_true: the messages go back to the queue for the consumer started afterwards
+    // Peeks with ackmode ack_requeue_true: the messages go back to the queue for the consumer
+    // started afterwards
     private void awaitQueuedFor(String email) throws InterruptedException {
         Instant deadline = Instant.now().plus(Duration.ofSeconds(5));
 
         while (true) {
-            JsonNode messages = managementApiPost(
-                    "/api/queues/%2F/" + MailQueues.SEND + "/get",
-                    Map.of("count", 100, "ackmode", "ack_requeue_true", "encoding", "auto")
-            );
+            JsonNode messages =
+                    managementApiPost(
+                            "/api/queues/%2F/" + MailQueues.SEND + "/get",
+                            Map.of(
+                                    "count",
+                                    100,
+                                    "ackmode",
+                                    "ack_requeue_true",
+                                    "encoding",
+                                    "auto"));
 
             for (JsonNode message : messages) {
                 JsonNode payload = jsonMapper.readTree(message.path("payload").asString());
@@ -148,33 +164,36 @@ class MailQueueTests {
     }
 
     private JsonNode managementApi(String path) {
-        String body = managementClient()
-                .get()
-                .uri(URI.create(rabbitContainer.getHttpUrl() + path))
-                .retrieve()
-                .body(String.class);
+        String body =
+                managementClient()
+                        .get()
+                        .uri(URI.create(rabbitContainer.getHttpUrl() + path))
+                        .retrieve()
+                        .body(String.class);
 
         return jsonMapper.readTree(body);
     }
 
     private JsonNode managementApiPost(String path, Object request) {
-        String body = managementClient()
-                .post()
-                .uri(URI.create(rabbitContainer.getHttpUrl() + path))
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(jsonMapper.writeValueAsString(request))
-                .retrieve()
-                .body(String.class);
+        String body =
+                managementClient()
+                        .post()
+                        .uri(URI.create(rabbitContainer.getHttpUrl() + path))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(jsonMapper.writeValueAsString(request))
+                        .retrieve()
+                        .body(String.class);
 
         return jsonMapper.readTree(body);
     }
 
     private RestClient managementClient() {
         return RestClient.builder()
-                .defaultHeaders(headers -> headers.setBasicAuth(
-                        rabbitContainer.getAdminUsername(),
-                        rabbitContainer.getAdminPassword()
-                ))
+                .defaultHeaders(
+                        headers ->
+                                headers.setBasicAuth(
+                                        rabbitContainer.getAdminUsername(),
+                                        rabbitContainer.getAdminPassword()))
                 .build();
     }
 

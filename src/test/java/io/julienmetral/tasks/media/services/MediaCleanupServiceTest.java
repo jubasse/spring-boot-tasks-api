@@ -1,9 +1,25 @@
 package io.julienmetral.tasks.media.services;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.config.MediaCleanupProperties;
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
 import io.julienmetral.tasks.media.model.MediaCleanupReport;
 import io.julienmetral.tasks.media.repositories.MediaCleanupQueries;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,23 +31,6 @@ import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
-import static org.mockito.Mockito.when;
 
 @ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class MediaCleanupServiceTest {
@@ -46,18 +45,19 @@ class MediaCleanupServiceTest {
 
     private static final Instant GRACE_CUTOFF = Instant.parse("2026-09-25T03:30:00Z");
 
-    @Mock
-    private MediaCleanupQueries queries;
+    @Mock private MediaCleanupQueries queries;
 
-    @Mock
-    private ObjectStorage objectStorage;
+    @Mock private ObjectStorage objectStorage;
 
     private MediaCleanupService service;
 
     @BeforeEach
     void setUp() {
-        MediaCleanupProperties properties = new MediaCleanupProperties(true, "0 30 3 * * *", RETENTION, GRACE_PERIOD);
-        service = new MediaCleanupService(queries, objectStorage, properties, Clock.fixed(NOW, ZoneOffset.UTC));
+        MediaCleanupProperties properties =
+                new MediaCleanupProperties(true, "0 30 3 * * *", RETENTION, GRACE_PERIOD);
+        service =
+                new MediaCleanupService(
+                        queries, objectStorage, properties, Clock.fixed(NOW, ZoneOffset.UTC));
         TransactionSynchronizationManager.initSynchronization();
     }
 
@@ -70,7 +70,8 @@ class MediaCleanupServiceTest {
     void purgesWithCutoffsComputedFromTheClockAndTheProperties() {
         when(queries.detachAttachmentsOfTasksDeletedBefore(RETENTION_CUTOFF))
                 .thenReturn(List.of(UUID.randomUUID(), UUID.randomUUID()));
-        when(queries.detachAvatarsOfUsersDeletedBefore(RETENTION_CUTOFF)).thenReturn(List.of(UUID.randomUUID()));
+        when(queries.detachAvatarsOfUsersDeletedBefore(RETENTION_CUTOFF))
+                .thenReturn(List.of(UUID.randomUUID()));
         when(queries.deleteUnreferencedMediaCreatedBefore(GRACE_CUTOFF))
                 .thenReturn(List.of("avatar/a", "task-attachment/b", "task-attachment/c"));
         List<String> oldObjects = List.of("task-attachment/kept", "avatar/orphan");
@@ -90,8 +91,10 @@ class MediaCleanupServiceTest {
 
     @Test
     void deletesObjectsOnlyAfterCommit() {
-        when(queries.deleteUnreferencedMediaCreatedBefore(GRACE_CUTOFF)).thenReturn(List.of("avatar/unreferenced"));
-        when(objectStorage.listKeysModifiedBefore(GRACE_CUTOFF)).thenReturn(List.of("avatar/orphan"));
+        when(queries.deleteUnreferencedMediaCreatedBefore(GRACE_CUTOFF))
+                .thenReturn(List.of("avatar/unreferenced"));
+        when(objectStorage.listKeysModifiedBefore(GRACE_CUTOFF))
+                .thenReturn(List.of("avatar/orphan"));
         when(queries.existingStorageKeys(List.of("avatar/orphan"))).thenReturn(Set.of());
 
         service.cleanUp();
@@ -118,7 +121,8 @@ class MediaCleanupServiceTest {
 
     @Test
     void anOrphanObjectOfADeletedMediaRowIsDeletedAndCountedOnce() {
-        when(queries.deleteUnreferencedMediaCreatedBefore(GRACE_CUTOFF)).thenReturn(List.of("avatar/shared"));
+        when(queries.deleteUnreferencedMediaCreatedBefore(GRACE_CUTOFF))
+                .thenReturn(List.of("avatar/shared"));
         List<String> oldObjects = List.of("avatar/shared", "avatar/orphan");
         when(objectStorage.listKeysModifiedBefore(GRACE_CUTOFF)).thenReturn(oldObjects);
         when(queries.existingStorageKeys(oldObjects)).thenReturn(Set.of());
@@ -151,8 +155,10 @@ class MediaCleanupServiceTest {
                 .thenReturn(List.of("avatar/first", "avatar/failing", "avatar/last"));
         when(objectStorage.listKeysModifiedBefore(GRACE_CUTOFF)).thenReturn(List.of());
         when(queries.existingStorageKeys(List.of())).thenReturn(Set.of());
-        lenient().doThrow(new StorageUnavailableException(new RuntimeException("unreachable")))
-                .when(objectStorage).delete("avatar/failing");
+        lenient()
+                .doThrow(new StorageUnavailableException(new RuntimeException("unreachable")))
+                .when(objectStorage)
+                .delete("avatar/failing");
 
         service.cleanUp();
         commit();
@@ -165,7 +171,8 @@ class MediaCleanupServiceTest {
     }
 
     private static void commit() {
-        List<TransactionSynchronization> synchronizations = TransactionSynchronizationManager.getSynchronizations();
+        List<TransactionSynchronization> synchronizations =
+                TransactionSynchronizationManager.getSynchronizations();
         assertThat(synchronizations).hasSize(1);
         synchronizations.forEach(TransactionSynchronization::afterCommit);
     }

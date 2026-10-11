@@ -1,5 +1,10 @@
 package io.julienmetral.tasks.identity.repositories;
 
+import static org.assertj.core.api.Assertions.as;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.InstanceOfAssertFactories.STRING;
+
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserProfile;
 import io.julienmetral.tasks.identity.entities.UserRole;
@@ -9,38 +14,28 @@ import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.support.RepositoryTest;
 import io.julienmetral.tasks.support.SqlStatementCounter;
 import jakarta.persistence.PersistenceUnitUtil;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.core.JdbcTemplate;
-
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.as;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.InstanceOfAssertFactories.STRING;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 @RepositoryTest
 class UserRepositoryTests {
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
-    @Autowired
-    private UserProfileRepository userProfileRepository;
+    @Autowired private UserProfileRepository userProfileRepository;
 
-    @Autowired
-    private TestEntityManager entityManager;
+    @Autowired private TestEntityManager entityManager;
 
-    @Autowired
-    private JdbcTemplate jdbc;
+    @Autowired private JdbcTemplate jdbc;
 
     @Test
     void existsByEmailIncludingDeletedSeesASoftDeletedUserThatDerivedQueriesIgnore() {
@@ -81,7 +76,10 @@ class UserRepositoryTests {
                 .get()
                 .extracting(UserProfile::getStatus)
                 .isEqualTo(UserStatus.DELETED);
-        assertThat(jdbc.queryForObject("SELECT deleted_at FROM users WHERE id = ?", Timestamp.class, id)).isNotNull();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT deleted_at FROM users WHERE id = ?", Timestamp.class, id))
+                .isNotNull();
     }
 
     @Test
@@ -100,9 +98,11 @@ class UserRepositoryTests {
         UUID id = persistUser(uniqueEmail()).getId();
         entityManager.clear();
 
-        List<String> statements = SqlStatementCounter.statementsDuring(() -> userRepository.findByIdForUpdate(id));
+        List<String> statements =
+                SqlStatementCounter.statementsDuring(() -> userRepository.findByIdForUpdate(id));
 
-        assertThat(statements).anySatisfy(sql -> assertThat(sql).containsPattern("(?i)for (no key )?update"));
+        assertThat(statements)
+                .anySatisfy(sql -> assertThat(sql).containsPattern("(?i)for (no key )?update"));
     }
 
     @Test
@@ -114,7 +114,8 @@ class UserRepositoryTests {
         UUID id = entityManager.persistAndFlush(user).getId();
         entityManager.clear();
 
-        assertThat(userRepository.findAccountStateById(id)).contains(new AccountState(false, verifiedAt));
+        assertThat(userRepository.findAccountStateById(id))
+                .contains(new AccountState(false, verifiedAt));
     }
 
     @Test
@@ -131,7 +132,8 @@ class UserRepositoryTests {
         UUID id = persistUser(uniqueEmail()).getId();
         entityManager.clear();
 
-        List<String> statements = SqlStatementCounter.statementsDuring(() -> userRepository.findAccountStateById(id));
+        List<String> statements =
+                SqlStatementCounter.statementsDuring(() -> userRepository.findAccountStateById(id));
 
         assertThat(statements)
                 .singleElement(as(STRING))
@@ -150,30 +152,33 @@ class UserRepositoryTests {
 
         User loaded = userRepository.findWithProfileById(id).orElseThrow();
 
-        PersistenceUnitUtil loadState = entityManager.getEntityManager()
-                .getEntityManagerFactory()
-                .getPersistenceUnitUtil();
+        PersistenceUnitUtil loadState =
+                entityManager.getEntityManager().getEntityManagerFactory().getPersistenceUnitUtil();
         assertThat(loadState.isLoaded(loaded, "profile")).isTrue();
         assertThat(loadState.isLoaded(loaded.getProfile(), "avatar")).isTrue();
         assertThat(loadState.isLoaded(loaded.getProfile(), "pendingAvatar")).isTrue();
-        // Warning: the roles are EAGER and not in the graph. A FETCH graph, instead of LOAD, left them unloaded.
+        // Warning: the roles are EAGER and not in the graph. A FETCH graph, instead of LOAD, left
+        // them unloaded.
         assertThat(loadState.isLoaded(loaded, "roles")).isTrue();
         assertThat(loaded.getRoles()).containsExactlyInAnyOrder(UserRole.USER, UserRole.ADMIN);
     }
 
     @Test
     void updatingAUserWritesOnlyTheColumnsItChanged() throws Exception {
-        // Warning: rewriting the whole row from the loaded state once re-enabled an account that an admin disabled
-        // while its photo was being processed (see @DynamicUpdate on User and UserProfile)
+        // Warning: rewriting the whole row from the loaded state once re-enabled an account that an
+        // admin disabled while its photo was being processed (see @DynamicUpdate on User and
+        // UserProfile)
         UUID id = persistUser(uniqueEmail()).getId();
         entityManager.clear();
         User user = userRepository.findWithProfileById(id).orElseThrow();
 
-        List<String> statements = SqlStatementCounter.statementsDuring(() -> {
-            user.markActive(Instant.now());
-            user.getProfile().setAvatar(persistMedia());
-            entityManager.flush();
-        });
+        List<String> statements =
+                SqlStatementCounter.statementsDuring(
+                        () -> {
+                            user.markActive(Instant.now());
+                            user.getProfile().setAvatar(persistMedia());
+                            entityManager.flush();
+                        });
 
         assertThat(statements)
                 .filteredOn(sql -> sql.startsWith("update users "))

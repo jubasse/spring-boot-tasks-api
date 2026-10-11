@@ -17,7 +17,10 @@ public class UserRetentionJob {
     private final UserRetentionService retentionService;
 
     @Scheduled(cron = "${identity.retention.cron}")
-    @SchedulerLock(name = ScheduledJobLocks.USER_RETENTION, lockAtMostFor = "PT2H", lockAtLeastFor = "PT5M")
+    @SchedulerLock(
+            name = ScheduledJobLocks.USER_RETENTION,
+            lockAtMostFor = "PT2H",
+            lockAtLeastFor = "PT5M")
     public void run() {
         UserRetentionReport report = retentionService.apply();
 
@@ -25,7 +28,6 @@ public class UserRetentionJob {
                 "User retention: {} deleted users anonymized, {} inactive accounts warned, {} deleted",
                 report.anonymized(),
                 report.warned(),
-                report.deleted()
-        );
+                report.deleted());
     }
 }

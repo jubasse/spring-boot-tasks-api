@@ -7,23 +7,23 @@ import io.julienmetral.tasks.export.events.DataExportFailed;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.mail.MailMessage;
 import io.julienmetral.tasks.mail.MailService;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
-
 /**
- * Tells the owner when an export is ready, with a link to the page that downloads it, never the download link
- * itself: that one expires within minutes. Runs in the transaction of the run, so the email leaves once it commits.
+ * Tells the owner when an export is ready, with a link to the page that downloads it, never the
+ * download link itself: that one expires within minutes. Runs in the transaction of the run, so the
+ * email leaves once it commits.
  */
 @Component
 @RequiredArgsConstructor
 public class DataExportEmailSender {
 
-    private static final DateTimeFormatter EXPIRY = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'")
-            .withZone(ZoneOffset.UTC);
+    private static final DateTimeFormatter EXPIRY =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'").withZone(ZoneOffset.UTC);
 
     private final MailService mailService;
     private final UserRepository userRepository;
@@ -31,38 +31,51 @@ public class DataExportEmailSender {
 
     @EventListener
     public void onCompleted(DataExportCompleted event) {
-        userRepository.findById(event.ownerId()).ifPresent(owner -> mailService.send(new MailMessage(
-                owner.getEmail(),
-                "Your export is ready",
-                """
+        userRepository
+                .findById(event.ownerId())
+                .ifPresent(
+                        owner ->
+                                mailService.send(
+                                        new MailMessage(
+                                                owner.getEmail(),
+                                                "Your export is ready",
+                                                """
                         Hello %s,
 
                         Your export of %s is ready. Download it from this page:
                         %s?id=%s
 
                         It stays available until %s, then it is deleted.
-                        """.formatted(
-                        owner.getDisplayName(),
-                        subject(event.type()),
-                        properties.downloadPageUrl(),
-                        event.exportId(),
-                        EXPIRY.format(event.expiresAt())
-                )
-        )));
+                        """
+                                                        .formatted(
+                                                                owner.getDisplayName(),
+                                                                subject(event.type()),
+                                                                properties.downloadPageUrl(),
+                                                                event.exportId(),
+                                                                EXPIRY.format(
+                                                                        event.expiresAt())))));
     }
 
     @EventListener
     public void onFailed(DataExportFailed event) {
-        userRepository.findById(event.ownerId()).ifPresent(owner -> mailService.send(new MailMessage(
-                owner.getEmail(),
-                "Your export could not be produced",
-                """
+        userRepository
+                .findById(event.ownerId())
+                .ifPresent(
+                        owner ->
+                                mailService.send(
+                                        new MailMessage(
+                                                owner.getEmail(),
+                                                "Your export could not be produced",
+                                                """
                         Hello %s,
 
                         Your export of %s could not be produced. Please ask for it again; if it keeps failing, \
                         contact your administrator with this reference: %s.
-                        """.formatted(owner.getDisplayName(), subject(event.type()), event.exportId())
-        )));
+                        """
+                                                        .formatted(
+                                                                owner.getDisplayName(),
+                                                                subject(event.type()),
+                                                                event.exportId()))));
     }
 
     private static String subject(DataExportType type) {

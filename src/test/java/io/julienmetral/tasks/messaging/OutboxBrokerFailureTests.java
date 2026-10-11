@@ -1,5 +1,11 @@
 package io.julienmetral.tasks.messaging;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+
 import io.julienmetral.tasks.mail.MailMessage;
 import io.julienmetral.tasks.mail.MailService;
 import io.julienmetral.tasks.messaging.entities.OutboxMessage;
@@ -8,18 +14,6 @@ import io.julienmetral.tasks.messaging.services.OutboxRelay;
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
 import io.julienmetral.tasks.support.TestClock;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.amqp.AmqpConnectException;
-import org.springframework.amqp.rabbit.connection.CorrelationData;
-import org.springframework.amqp.core.Message;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
-
 import java.net.ConnectException;
 import java.time.Duration;
 import java.time.Instant;
@@ -27,18 +21,24 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.awaitility.Awaitility.await;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doAnswer;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.amqp.AmqpConnectException;
+import org.springframework.amqp.core.Message;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * The outbox while RabbitMQ refuses messages: the business transaction still commits, the row keeps the failure,
- * and the relay publishes it once the broker is back. {@link RabbitTemplate} is spied so that publishing fails on
- * demand, and the clock is settable so that retries become due without waiting. The poller runs once at startup,
- * then not before an hour, so each test drives {@link OutboxRelay#publishDue} itself.
+ * The outbox while RabbitMQ refuses messages: the business transaction still commits, the row keeps
+ * the failure, and the relay publishes it once the broker is back. {@link RabbitTemplate} is spied
+ * so that publishing fails on demand, and the clock is settable so that retries become due without
+ * waiting. The poller runs once at startup, then not before an hour, so each test drives {@link
+ * OutboxRelay#publishDue} itself.
  */
 @IntegrationTest
 class OutboxBrokerFailureTests {
@@ -48,29 +48,21 @@ class OutboxBrokerFailureTests {
 
     private static final Duration PUBLISH_TIMEOUT = Duration.ofSeconds(10);
 
-    @MockitoSpyBean
-    private RabbitTemplate rabbitTemplate;
+    @MockitoSpyBean private RabbitTemplate rabbitTemplate;
 
-    @Autowired
-    private TestClock clock;
+    @Autowired private TestClock clock;
 
-    @Autowired
-    private MailService mailService;
+    @Autowired private MailService mailService;
 
-    @Autowired
-    private OutboxRelay relay;
+    @Autowired private OutboxRelay relay;
 
-    @Autowired
-    private OutboxMessageRepository repository;
+    @Autowired private OutboxMessageRepository repository;
 
-    @Autowired
-    private Mailpit mailpit;
+    @Autowired private Mailpit mailpit;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
-    @Autowired
-    private PlatformTransactionManager transactionManager;
+    @Autowired private PlatformTransactionManager transactionManager;
 
     private final AtomicBoolean brokerDown = new AtomicBoolean();
 
@@ -78,27 +70,37 @@ class OutboxBrokerFailureTests {
     void refusePublishingWhileTheBrokerIsDown() {
         clock.set(Instant.now().truncatedTo(ChronoUnit.SECONDS));
 
-        doAnswer(invocation -> {
-            if (brokerDown.get()) {
-                throw new AmqpConnectException(new ConnectException("Connection refused"));
-            }
-            return invocation.callRealMethod();
-        }).when(rabbitTemplate).send(anyString(), anyString(), any(Message.class), any(CorrelationData.class));
+        doAnswer(
+                        invocation -> {
+                            if (brokerDown.get()) {
+                                throw new AmqpConnectException(
+                                        new ConnectException("Connection refused"));
+                            }
+                            return invocation.callRealMethod();
+                        })
+                .when(rabbitTemplate)
+                .send(anyString(), anyString(), any(Message.class), any(CorrelationData.class));
     }
 
     @Test
-    void emailIsKeptWhileTheBrokerIsDownThenRetriedWithBackoffAndDeliveredOnce() throws InterruptedException {
+    void emailIsKeptWhileTheBrokerIsDownThenRetriedWithBackoffAndDeliveredOnce()
+            throws InterruptedException {
         String email = uniqueEmail();
         Instant sentAt = clock.instant();
         brokerDown.set(true);
 
-        inTransaction().executeWithoutResult(status ->
-                mailService.send(new MailMessage(email, "Delayed", "Sent once the broker is back")));
+        inTransaction()
+                .executeWithoutResult(
+                        status ->
+                                mailService.send(
+                                        new MailMessage(
+                                                email, "Delayed", "Sent once the broker is back")));
 
         UUID id = rowIdSentTo(email);
         OutboxMessage failed = awaitAttempts(id, 1);
         assertThat(failed.getPublishedAt()).isNull();
-        assertThat(failed.getLastError()).isEqualTo("java.net.ConnectException: Connection refused");
+        assertThat(failed.getLastError())
+                .isEqualTo("java.net.ConnectException: Connection refused");
         assertThat(failed.getNextAttemptAt()).isEqualTo(sentAt.plusSeconds(5));
         assertThat(mailpit.countTo(email)).isZero();
 
@@ -136,8 +138,12 @@ class OutboxBrokerFailureTests {
         String email = uniqueEmail();
         brokerDown.set(true);
 
-        inTransaction().executeWithoutResult(status ->
-                mailService.send(new MailMessage(email, "Never confirmed", "Broker down for good")));
+        inTransaction()
+                .executeWithoutResult(
+                        status ->
+                                mailService.send(
+                                        new MailMessage(
+                                                email, "Never confirmed", "Broker down for good")));
 
         UUID id = rowIdSentTo(email);
         awaitAttempts(id, 1);
@@ -165,11 +171,11 @@ class OutboxBrokerFailureTests {
     }
 
     private UUID rowIdSentTo(String email) {
-        List<UUID> ids = jdbcTemplate.queryForList(
-                "select id from outbox_messages where payload ->> 'to' = ?",
-                UUID.class,
-                email
-        );
+        List<UUID> ids =
+                jdbcTemplate.queryForList(
+                        "select id from outbox_messages where payload ->> 'to' = ?",
+                        UUID.class,
+                        email);
 
         assertThat(ids).hasSize(1);
         return ids.getFirst();
@@ -179,9 +185,11 @@ class OutboxBrokerFailureTests {
         return repository.findById(id).orElseThrow();
     }
 
-    // The failed publish is recorded by the async relay, in its own transaction, after the sender's commit
+    // The failed publish is recorded by the async relay, in its own transaction, after the sender's
+    // commit
     private OutboxMessage awaitAttempts(UUID id, int attempts) {
-        await().atMost(PUBLISH_TIMEOUT).pollInterval(Duration.ofMillis(50))
+        await().atMost(PUBLISH_TIMEOUT)
+                .pollInterval(Duration.ofMillis(50))
                 .until(() -> row(id).getAttempts() == attempts);
 
         return row(id);

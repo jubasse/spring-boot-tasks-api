@@ -1,9 +1,18 @@
 package io.julienmetral.tasks.task.services;
 
+import static io.julienmetral.tasks.support.UserProfiles.reference;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserProfile;
-import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
+import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.task.entities.Task;
@@ -16,6 +25,13 @@ import io.julienmetral.tasks.task.events.TaskEventRecorded;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.repositories.TaskEventRepository;
 import io.julienmetral.tasks.task.repositories.TaskRepository;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,23 +45,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.function.Consumer;
-
-import static io.julienmetral.tasks.support.UserProfiles.reference;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
-
 @ExtendWith(MockitoExtension.class)
 class TaskEventServiceTest {
 
@@ -57,23 +56,17 @@ class TaskEventServiceTest {
 
     private static final UUID EVENT_ID = UUID.fromString("00000000-0000-0000-0000-0000000000c1");
 
-    @Mock
-    private TaskRepository taskRepository;
+    @Mock private TaskRepository taskRepository;
 
-    @Mock
-    private TaskEventRepository taskEventRepository;
+    @Mock private TaskEventRepository taskEventRepository;
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
-    @Mock
-    private UserProfileRepository userProfileRepository;
+    @Mock private UserProfileRepository userProfileRepository;
 
-    @Mock
-    private CurrentUser currentUser;
+    @Mock private CurrentUser currentUser;
 
-    @Mock
-    private ApplicationEventPublisher eventPublisher;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     private TaskEventService service;
 
@@ -83,16 +76,16 @@ class TaskEventServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new TaskEventService(
-                taskRepository,
-                taskEventRepository,
-                userRepository,
-                userProfileRepository,
-                currentUser,
-                JsonMapper.builder().build(),
-                eventPublisher,
-                Clock.fixed(NOW, ZoneOffset.UTC)
-        );
+        service =
+                new TaskEventService(
+                        taskRepository,
+                        taskEventRepository,
+                        userRepository,
+                        userProfileRepository,
+                        currentUser,
+                        JsonMapper.builder().build(),
+                        eventPublisher,
+                        Clock.fixed(NOW, ZoneOffset.UTC));
         actor.setId(ACTOR_ID);
         task.setId(TASK_ID);
     }
@@ -151,7 +144,8 @@ class TaskEventServiceTest {
 
     @Test
     void statusChangedRecordsFromAndTo() {
-        TaskEvent event = recordedEvent(s -> s.statusChanged(task, TaskStatus.TO_DO, TaskStatus.IN_PROGRESS));
+        TaskEvent event =
+                recordedEvent(s -> s.statusChanged(task, TaskStatus.TO_DO, TaskStatus.IN_PROGRESS));
 
         assertThat(event.getType()).isEqualTo(TaskEventType.STATUS_CHANGED);
         assertThat(event.getPayload())
@@ -201,19 +195,26 @@ class TaskEventServiceTest {
     void recordingPublishesTheRowsIdTypeActorAndTimeAfterSavingIt() {
         stubActor();
         // The database generates the id on insert, which the mocked repository stands in for
-        when(taskEventRepository.save(any(TaskEvent.class))).thenAnswer(invocation -> {
-            TaskEvent saved = invocation.getArgument(0);
-            saved.setId(EVENT_ID);
-            return saved;
-        });
+        when(taskEventRepository.save(any(TaskEvent.class)))
+                .thenAnswer(
+                        invocation -> {
+                            TaskEvent saved = invocation.getArgument(0);
+                            saved.setId(EVENT_ID);
+                            return saved;
+                        });
 
         service.statusChanged(task, TaskStatus.TO_DO, TaskStatus.DONE);
 
         ArgumentCaptor<TaskEvent> saved = ArgumentCaptor.forClass(TaskEvent.class);
         verify(taskEventRepository).save(saved.capture());
-        verify(eventPublisher).publishEvent(new TaskEventRecorded(
-                TASK_ID, EVENT_ID, TaskEventType.STATUS_CHANGED, ACTOR_ID, saved.getValue().getOccurredAt()
-        ));
+        verify(eventPublisher)
+                .publishEvent(
+                        new TaskEventRecorded(
+                                TASK_ID,
+                                EVENT_ID,
+                                TaskEventType.STATUS_CHANGED,
+                                ACTOR_ID,
+                                saved.getValue().getOccurredAt()));
     }
 
     @Test
@@ -224,11 +225,13 @@ class TaskEventServiceTest {
         service.commentAdded(task, comment(UUID.randomUUID()));
         service.archived(task);
 
-        ArgumentCaptor<TaskEventRecorded> published = ArgumentCaptor.forClass(TaskEventRecorded.class);
+        ArgumentCaptor<TaskEventRecorded> published =
+                ArgumentCaptor.forClass(TaskEventRecorded.class);
         verify(eventPublisher, times(3)).publishEvent(published.capture());
         assertThat(published.getAllValues())
                 .extracting(TaskEventRecorded::type)
-                .containsExactly(TaskEventType.CREATED, TaskEventType.COMMENT_ADDED, TaskEventType.ARCHIVED);
+                .containsExactly(
+                        TaskEventType.CREATED, TaskEventType.COMMENT_ADDED, TaskEventType.ARCHIVED);
     }
 
     private static TaskAttachment attachment(UUID id, String filename) {
@@ -244,7 +247,8 @@ class TaskEventServiceTest {
     void attachmentAddedRecordsAttachmentIdAndFilename() {
         UUID attachmentId = UUID.randomUUID();
 
-        TaskEvent event = recordedEvent(s -> s.attachmentAdded(task, attachment(attachmentId, "specs.pdf")));
+        TaskEvent event =
+                recordedEvent(s -> s.attachmentAdded(task, attachment(attachmentId, "specs.pdf")));
 
         assertThat(event.getType()).isEqualTo(TaskEventType.ATTACHMENT_ADDED);
         assertThat(event.getPayload())
@@ -257,7 +261,8 @@ class TaskEventServiceTest {
     void attachmentRemovedRecordsAttachmentIdAndFilename() {
         UUID attachmentId = UUID.randomUUID();
 
-        TaskEvent event = recordedEvent(s -> s.attachmentRemoved(task, attachment(attachmentId, "old.png")));
+        TaskEvent event =
+                recordedEvent(s -> s.attachmentRemoved(task, attachment(attachmentId, "old.png")));
 
         assertThat(event.getType()).isEqualTo(TaskEventType.ATTACHMENT_REMOVED);
         assertThat(event.getPayload())
@@ -316,7 +321,8 @@ class TaskEventServiceTest {
         assertThatThrownBy(() -> service.created(task))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("No authenticated user");
-        verifyNoInteractions(taskEventRepository, userRepository, userProfileRepository, eventPublisher);
+        verifyNoInteractions(
+                taskEventRepository, userRepository, userProfileRepository, eventPublisher);
     }
 
     @Test
@@ -349,7 +355,6 @@ class TaskEventServiceTest {
         assertThatThrownBy(() -> service.findAllByTaskId(taskId, PageRequest.of(0, 20)))
                 .isInstanceOf(TaskNotFoundException.class)
                 .hasMessageContaining(taskId.toString());
-        verify(taskEventRepository, org.mockito.Mockito.never())
-                .findAllByTaskId(any(), any());
+        verify(taskEventRepository, org.mockito.Mockito.never()).findAllByTaskId(any(), any());
     }
 }

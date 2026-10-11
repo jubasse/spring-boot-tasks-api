@@ -11,17 +11,6 @@ import io.julienmetral.tasks.media.model.MediaDownload;
 import io.julienmetral.tasks.media.model.MediaSource;
 import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.media.repositories.MediaRepository;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.annotation.Cacheable;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.springframework.util.StringUtils;
-import org.springframework.util.unit.DataSize;
-import org.springframework.web.multipart.MultipartFile;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -32,6 +21,16 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.util.HexFormat;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.util.StringUtils;
+import org.springframework.util.unit.DataSize;
+import org.springframework.web.multipart.MultipartFile;
 
 @Slf4j
 @Service
@@ -56,8 +55,8 @@ public class MediaService {
     }
 
     /**
-     * Validates the content (see {@link #validate}), uploads it and saves its metadata. Must run in the caller's
-     * transaction: if it rolls back, the uploaded object is deleted again.
+     * Validates the content (see {@link #validate}), uploads it and saves its metadata. Must run in
+     * the caller's transaction: if it rolls back, the uploaded object is deleted again.
      */
     @Transactional
     public Media store(MediaSource source, MediaUsage usage, UUID uploadedById) {
@@ -77,29 +76,36 @@ public class MediaService {
         media.setContentType(contentType);
         media.setSizeBytes(source.size());
         media.setSha256(sha256);
-        media.setUploadedBy(uploadedById == null ? null : userProfileRepository.getReferenceById(uploadedById));
+        media.setUploadedBy(
+                uploadedById == null ? null : userProfileRepository.getReferenceById(uploadedById));
         media.setCreatedAt(clock.instant());
 
         return mediaRepository.save(media);
     }
 
     /**
-     * Stores a file the application wrote itself, such as an export or a re-encoded profile photo: no type detection
-     * and no antivirus scan, which guard against what clients send. Must run in the caller's transaction, like
-     * {@link #store}.
+     * Stores a file the application wrote itself, such as an export or a re-encoded profile photo:
+     * no type detection and no antivirus scan, which guard against what clients send. Must run in
+     * the caller's transaction, like {@link #store}.
      */
     @Transactional
-    public Media storeGenerated(Path file, String filename, String contentType, MediaUsage usage, UUID ownerId) {
+    public Media storeGenerated(
+            Path file, String filename, String contentType, MediaUsage usage, UUID ownerId) {
         return storeGenerated(MediaSource.of(file, filename), contentType, usage, ownerId);
     }
 
-    /** Same as {@link #storeGenerated(Path, String, String, MediaUsage, UUID)}, for content held in memory. */
+    /**
+     * Same as {@link #storeGenerated(Path, String, String, MediaUsage, UUID)}, for content held in
+     * memory.
+     */
     @Transactional
-    public Media storeGenerated(byte[] content, String filename, String contentType, MediaUsage usage, UUID ownerId) {
+    public Media storeGenerated(
+            byte[] content, String filename, String contentType, MediaUsage usage, UUID ownerId) {
         return storeGenerated(MediaSource.of(content, filename), contentType, usage, ownerId);
     }
 
-    private Media storeGenerated(MediaSource source, String contentType, MediaUsage usage, UUID ownerId) {
+    private Media storeGenerated(
+            MediaSource source, String contentType, MediaUsage usage, UUID ownerId) {
         if (!usage.allows(contentType)) {
             throw new IllegalArgumentException(contentType + " is not a type of " + usage);
         }
@@ -117,21 +123,22 @@ public class MediaService {
         media.setContentType(contentType);
         media.setSizeBytes(source.size());
         media.setSha256(sha256);
-        media.setUploadedBy(ownerId == null ? null : userProfileRepository.getReferenceById(ownerId));
+        media.setUploadedBy(
+                ownerId == null ? null : userProfileRepository.getReferenceById(ownerId));
         media.setCreatedAt(clock.instant());
 
         return mediaRepository.save(media);
     }
 
     /**
-     * Checks the content against the usage's rules without storing it, for callers that transform the file first
-     * (a profile photo is validated as uploaded, then re-encoded).
+     * Checks the content against the usage's rules without storing it, for callers that transform
+     * the file first (a profile photo is validated as uploaded, then re-encoded).
      *
      * @return the content type detected from the bytes
-     * @throws EmptyMediaException           when the content is empty
-     * @throws MediaTooLargeException        when it exceeds the usage's size limit
+     * @throws EmptyMediaException when the content is empty
+     * @throws MediaTooLargeException when it exceeds the usage's size limit
      * @throws UnsupportedMediaTypeException when the detected type is not allowed for the usage
-     * @throws InfectedMediaException        when the antivirus finds a threat
+     * @throws InfectedMediaException when the antivirus finds a threat
      */
     public String validate(MediaSource source, MediaUsage usage) {
         if (source.size() == 0) {
@@ -155,26 +162,36 @@ public class MediaService {
         return contentType;
     }
 
-    /** Deletes the row now and the stored object once the transaction commits (kept if it rolls back). */
+    /**
+     * Deletes the row now and the stored object once the transaction commits (kept if it rolls
+     * back).
+     */
     @Transactional
     public void delete(Media media) {
         mediaRepository.delete(media);
 
         String storageKey = media.getStorageKey();
 
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                try {
-                    objectStorage.delete(storageKey);
-                } catch (RuntimeException exception) {
-                    log.warn("Could not delete object {} of a deleted media", storageKey, exception);
-                }
-            }
-        });
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        try {
+                            objectStorage.delete(storageKey);
+                        } catch (RuntimeException exception) {
+                            log.warn(
+                                    "Could not delete object {} of a deleted media",
+                                    storageKey,
+                                    exception);
+                        }
+                    }
+                });
     }
 
-    /** Reads the whole stored file; meant for small files processed in memory, such as profile photos. */
+    /**
+     * Reads the whole stored file; meant for small files processed in memory, such as profile
+     * photos.
+     */
     public byte[] read(Media media) {
         try (InputStream content = objectStorage.open(media.getStorageKey())) {
             return content.readAllBytes();
@@ -184,32 +201,31 @@ public class MediaService {
     }
 
     /**
-     * The same URL for every request within half its validity, so a browser can reuse the file it already
-     * downloaded: a new signature, even for the same file, is a new URL to the browser's cache. See
-     * {@code CacheConfiguration} for how long an entry lives.
+     * The same URL for every request within half its validity, so a browser can reuse the file it
+     * already downloaded: a new signature, even for the same file, is a new URL to the browser's
+     * cache. See {@code CacheConfiguration} for how long an entry lives.
      */
     @Cacheable(cacheNames = DOWNLOAD_URLS, key = "#media.id")
     public MediaDownload downloadUrl(Media media) {
         return objectStorage.presignDownload(
-                media.getStorageKey(),
-                media.getOriginalFilename(),
-                media.getContentType()
-        );
+                media.getStorageKey(), media.getOriginalFilename(), media.getContentType());
     }
 
     private DataSize maxSize(MediaUsage usage) {
         return switch (usage) {
             case AVATAR, AVATAR_UPLOAD -> properties.avatarMaxSize();
             case TASK_ATTACHMENT -> properties.attachmentMaxSize();
-            case EXPORT -> throw new IllegalArgumentException("Exports are written by the application, not uploaded");
+            case EXPORT ->
+                    throw new IllegalArgumentException(
+                            "Exports are written by the application, not uploaded");
         };
     }
 
     // Path segments are dropped: some clients send "C:\\Users\\...\\report.pdf"
     private static String originalFilename(String sent) {
-        String name = StringUtils.getFilename(StringUtils.cleanPath(
-                String.valueOf(sent).replace('\\', '/')
-        ));
+        String name =
+                StringUtils.getFilename(
+                        StringUtils.cleanPath(String.valueOf(sent).replace('\\', '/')));
 
         if (!StringUtils.hasText(name) || "null".equals(name)) {
             return FALLBACK_FILENAME;
@@ -228,9 +244,12 @@ public class MediaService {
 
     private void rejectIfInfected(MediaSource source) {
         try (InputStream content = source.open()) {
-            virusScanner.findThreat(content).ifPresent(threat -> {
-                throw new InfectedMediaException(threat);
-            });
+            virusScanner
+                    .findThreat(content)
+                    .ifPresent(
+                            threat -> {
+                                throw new InfectedMediaException(threat);
+                            });
         } catch (IOException exception) {
             throw new UncheckedIOException(exception);
         }
@@ -250,18 +269,22 @@ public class MediaService {
     }
 
     private void deleteObjectIfRolledBack(String storageKey) {
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCompletion(int status) {
-                if (status != STATUS_COMMITTED) {
-                    try {
-                        objectStorage.delete(storageKey);
-                    } catch (RuntimeException exception) {
-                        log.warn("Could not delete object {} after a rollback", storageKey, exception);
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCompletion(int status) {
+                        if (status != STATUS_COMMITTED) {
+                            try {
+                                objectStorage.delete(storageKey);
+                            } catch (RuntimeException exception) {
+                                log.warn(
+                                        "Could not delete object {} after a rollback",
+                                        storageKey,
+                                        exception);
+                            }
+                        }
                     }
-                }
-            }
-        });
+                });
     }
 
     private static MessageDigest sha256() {

@@ -1,24 +1,5 @@
 package io.julienmetral.tasks.realtime.stomp;
 
-import io.julienmetral.tasks.identity.repositories.AccountState;
-import io.julienmetral.tasks.identity.repositories.UserRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.scheduling.TaskScheduler;
-import org.springframework.web.socket.CloseStatus;
-import org.springframework.web.socket.WebSocketHandler;
-import org.springframework.web.socket.WebSocketSession;
-
-import java.io.IOException;
-import java.time.Instant;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.concurrent.ScheduledFuture;
-
 import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -31,30 +12,46 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import io.julienmetral.tasks.identity.repositories.AccountState;
+import io.julienmetral.tasks.identity.repositories.UserRepository;
+import java.io.IOException;
+import java.time.Instant;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ScheduledFuture;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.scheduling.TaskScheduler;
+import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.WebSocketHandler;
+import org.springframework.web.socket.WebSocketSession;
+
 @ExtendWith(MockitoExtension.class)
 class StompSessionsTest {
 
     private static final UUID USER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
-    private static final UUID OTHER_USER_ID = UUID.fromString("00000000-0000-0000-0000-000000000002");
+    private static final UUID OTHER_USER_ID =
+            UUID.fromString("00000000-0000-0000-0000-000000000002");
 
     private static final Instant EXPIRES_AT = Instant.parse("2026-03-04T05:15:00Z");
 
     private static final CloseStatus TOKEN_EXPIRED = new CloseStatus(1008, "Access token expired");
 
-    private static final CloseStatus ACCOUNT_NOT_ACTIVE = new CloseStatus(1008, "Account not active");
+    private static final CloseStatus ACCOUNT_NOT_ACTIVE =
+            new CloseStatus(1008, "Account not active");
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
-    @Mock
-    private TaskScheduler scheduler;
+    @Mock private TaskScheduler scheduler;
 
-    @Mock
-    private ScheduledFuture<Object> expiry;
+    @Mock private ScheduledFuture<Object> expiry;
 
-    @Mock
-    private WebSocketHandler handler;
+    @Mock private WebSocketHandler handler;
 
     private StompSessions sessions;
 
@@ -183,7 +180,8 @@ class StompSessionsTest {
         WebSocketSession session = open("s1");
         doReturn(expiry).when(scheduler).schedule(any(Runnable.class), eq(EXPIRES_AT));
         sessions.connected("s1", USER_ID, EXPIRES_AT);
-        when(userRepository.findAccountStateById(USER_ID)).thenReturn(Optional.of(new AccountState(true, null)));
+        when(userRepository.findAccountStateById(USER_ID))
+                .thenReturn(Optional.of(new AccountState(true, null)));
 
         sessions.closeIfNoLongerActive(USER_ID);
 

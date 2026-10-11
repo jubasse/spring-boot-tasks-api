@@ -1,23 +1,5 @@
 package io.julienmetral.tasks.ratelimit.services;
 
-import io.julienmetral.tasks.config.RateLimitProperties;
-import io.julienmetral.tasks.config.RateLimitProperties.Limit;
-import io.julienmetral.tasks.ratelimit.exceptions.RateLimitExceededException;
-import io.julienmetral.tasks.ratelimit.repositories.RateLimitQueries;
-import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.Locale;
-import java.util.UUID;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.catchThrowable;
@@ -28,6 +10,23 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
+
+import io.julienmetral.tasks.config.RateLimitProperties;
+import io.julienmetral.tasks.config.RateLimitProperties.Limit;
+import io.julienmetral.tasks.ratelimit.exceptions.RateLimitExceededException;
+import io.julienmetral.tasks.ratelimit.repositories.RateLimitQueries;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.Locale;
+import java.util.UUID;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class RateLimiterTest {
@@ -59,11 +58,14 @@ class RateLimiterTest {
 
     private static final String SIGN_UP_IP_KEY = RateLimitKeys.address("sign-up", ADDRESS);
 
-    private static final String PASSWORD_RESET_IP_KEY = RateLimitKeys.address("password-reset", ADDRESS);
+    private static final String PASSWORD_RESET_IP_KEY =
+            RateLimitKeys.address("password-reset", ADDRESS);
 
-    private static final String PASSWORD_RESET_EMAIL_KEY = RateLimitKeys.email("password-reset", EMAIL);
+    private static final String PASSWORD_RESET_EMAIL_KEY =
+            RateLimitKeys.email("password-reset", EMAIL);
 
-    private static final String VERIFICATION_RESEND_KEY = RateLimitKeys.user("verification-resend", USER_ID);
+    private static final String VERIFICATION_RESEND_KEY =
+            RateLimitKeys.user("verification-resend", USER_ID);
 
     // Each limit differs from the others, so a key checked against another key's limit fails a test
     private static final int LOGIN_PER_IP = 30;
@@ -75,8 +77,7 @@ class RateLimiterTest {
 
     private static final int WEBHOOK_TEST_PER_USER = 10;
 
-    @Mock
-    private RateLimitQueries queries;
+    @Mock private RateLimitQueries queries;
 
     @Nested
     class Keys {
@@ -151,7 +152,8 @@ class RateLimiterTest {
         @Test
         void lowerCasingDoesNotDependOnTheDefaultLocale() {
             Locale defaultLocale = Locale.getDefault();
-            // In Turkish, "I".toLowerCase() is a dotless i, which would give the same email a second key
+            // In Turkish, "I".toLowerCase() is a dotless i, which would give the same email a
+            // second key
             Locale.setDefault(Locale.forLanguageTag("tr-TR"));
 
             try {
@@ -171,7 +173,8 @@ class RateLimiterTest {
         void oneMinuteWindowEndsAtTheNextMinute() {
             when(queries.increment(LOGIN_IP_KEY, MINUTE_START)).thenReturn(LOGIN_PER_IP + 1);
 
-            assertThat(retryAfterOf(() -> limiter().login(ADDRESS, EMAIL))).isEqualTo(UNTIL_NEXT_MINUTE);
+            assertThat(retryAfterOf(() -> limiter().login(ADDRESS, EMAIL)))
+                    .isEqualTo(UNTIL_NEXT_MINUTE);
         }
 
         @Test
@@ -179,7 +182,8 @@ class RateLimiterTest {
             when(queries.increment(LOGIN_IP_KEY, MINUTE_START)).thenReturn(1);
             when(queries.increment(LOGIN_EMAIL_KEY, QUARTER_START)).thenReturn(LOGIN_PER_EMAIL + 1);
 
-            assertThat(retryAfterOf(() -> limiter().login(ADDRESS, EMAIL))).isEqualTo(UNTIL_NEXT_QUARTER);
+            assertThat(retryAfterOf(() -> limiter().login(ADDRESS, EMAIL)))
+                    .isEqualTo(UNTIL_NEXT_QUARTER);
         }
 
         @Test
@@ -217,12 +221,18 @@ class RateLimiterTest {
 
         @Test
         void windowsAreAlignedOnTheEpochRatherThanOnTheHour() {
-            RateLimitProperties sevenMinutes = properties(true, new Limit(1, Duration.ofMinutes(7)));
-            // 10:13 is a multiple of 7 minutes since 1970-01-01T00:00Z, although 13 is not a multiple of 7
+            RateLimitProperties sevenMinutes =
+                    properties(true, new Limit(1, Duration.ofMinutes(7)));
+            // 10:13 is a multiple of 7 minutes since 1970-01-01T00:00Z, although 13 is not a
+            // multiple of 7
             Instant windowStart = Instant.parse("2026-09-26T10:13:00Z");
             when(queries.increment(SIGN_UP_IP_KEY, windowStart)).thenReturn(2);
 
-            assertThat(retryAfterOf(() -> new RateLimiter(queries, sevenMinutes, clockAt(NOW)).signUp(ADDRESS)))
+            assertThat(
+                            retryAfterOf(
+                                    () ->
+                                            new RateLimiter(queries, sevenMinutes, clockAt(NOW))
+                                                    .signUp(ADDRESS)))
                     .isEqualTo(Duration.parse("PT2M17.5S"));
         }
     }
@@ -256,7 +266,8 @@ class RateLimiterTest {
         void loginOverTheAddressLimitIsRefusedWithoutCountingTheEmail() {
             when(queries.increment(LOGIN_IP_KEY, MINUTE_START)).thenReturn(LOGIN_PER_IP + 1);
 
-            assertThat(retryAfterOf(() -> limiter().login(ADDRESS, EMAIL))).isEqualTo(UNTIL_NEXT_MINUTE);
+            assertThat(retryAfterOf(() -> limiter().login(ADDRESS, EMAIL)))
+                    .isEqualTo(UNTIL_NEXT_MINUTE);
 
             verify(queries, never()).increment(startsWith("login:email:"), any());
         }
@@ -266,22 +277,27 @@ class RateLimiterTest {
             when(queries.increment(LOGIN_IP_KEY, MINUTE_START)).thenReturn(1);
             when(queries.increment(LOGIN_EMAIL_KEY, QUARTER_START)).thenReturn(LOGIN_PER_EMAIL + 1);
 
-            assertThat(retryAfterOf(() -> limiter().login(ADDRESS, EMAIL))).isEqualTo(UNTIL_NEXT_QUARTER);
+            assertThat(retryAfterOf(() -> limiter().login(ADDRESS, EMAIL)))
+                    .isEqualTo(UNTIL_NEXT_QUARTER);
 
             verify(queries).increment(LOGIN_IP_KEY, MINUTE_START);
         }
 
         @Test
         void passwordResetRequestAtBothLimitsIsAccepted() {
-            when(queries.increment(PASSWORD_RESET_IP_KEY, HOUR_START)).thenReturn(PASSWORD_RESET_PER_IP);
-            when(queries.increment(PASSWORD_RESET_EMAIL_KEY, HOUR_START)).thenReturn(PASSWORD_RESET_PER_EMAIL);
+            when(queries.increment(PASSWORD_RESET_IP_KEY, HOUR_START))
+                    .thenReturn(PASSWORD_RESET_PER_IP);
+            when(queries.increment(PASSWORD_RESET_EMAIL_KEY, HOUR_START))
+                    .thenReturn(PASSWORD_RESET_PER_EMAIL);
 
-            assertThatNoException().isThrownBy(() -> limiter().passwordResetRequest(ADDRESS, EMAIL));
+            assertThatNoException()
+                    .isThrownBy(() -> limiter().passwordResetRequest(ADDRESS, EMAIL));
         }
 
         @Test
         void passwordResetRequestOverTheAddressLimitIsRefusedWithoutCountingTheEmail() {
-            when(queries.increment(PASSWORD_RESET_IP_KEY, HOUR_START)).thenReturn(PASSWORD_RESET_PER_IP + 1);
+            when(queries.increment(PASSWORD_RESET_IP_KEY, HOUR_START))
+                    .thenReturn(PASSWORD_RESET_PER_IP + 1);
 
             assertThat(retryAfterOf(() -> limiter().passwordResetRequest(ADDRESS, EMAIL)))
                     .isEqualTo(UNTIL_NEXT_HOUR);
@@ -292,7 +308,8 @@ class RateLimiterTest {
         @Test
         void passwordResetRequestOverTheEmailLimitIsRefusedAfterCountingTheAddress() {
             when(queries.increment(PASSWORD_RESET_IP_KEY, HOUR_START)).thenReturn(1);
-            when(queries.increment(PASSWORD_RESET_EMAIL_KEY, HOUR_START)).thenReturn(PASSWORD_RESET_PER_EMAIL + 1);
+            when(queries.increment(PASSWORD_RESET_EMAIL_KEY, HOUR_START))
+                    .thenReturn(PASSWORD_RESET_PER_EMAIL + 1);
 
             assertThat(retryAfterOf(() -> limiter().passwordResetRequest(ADDRESS, EMAIL)))
                     .isEqualTo(UNTIL_NEXT_HOUR);
@@ -302,9 +319,11 @@ class RateLimiterTest {
 
         @Test
         void passwordResetConfirmOverTheAddressLimitIsRefused() {
-            when(queries.increment(PASSWORD_RESET_IP_KEY, HOUR_START)).thenReturn(PASSWORD_RESET_PER_IP + 1);
+            when(queries.increment(PASSWORD_RESET_IP_KEY, HOUR_START))
+                    .thenReturn(PASSWORD_RESET_PER_IP + 1);
 
-            assertThat(retryAfterOf(() -> limiter().passwordResetConfirm(ADDRESS))).isEqualTo(UNTIL_NEXT_HOUR);
+            assertThat(retryAfterOf(() -> limiter().passwordResetConfirm(ADDRESS)))
+                    .isEqualTo(UNTIL_NEXT_HOUR);
         }
 
         @Test
@@ -313,7 +332,8 @@ class RateLimiterTest {
                     .thenReturn(VERIFICATION_RESEND_PER_USER, VERIFICATION_RESEND_PER_USER + 1);
 
             assertThatNoException().isThrownBy(() -> limiter().verificationResend(USER_ID));
-            assertThat(retryAfterOf(() -> limiter().verificationResend(USER_ID))).isEqualTo(UNTIL_NEXT_HOUR);
+            assertThat(retryAfterOf(() -> limiter().verificationResend(USER_ID)))
+                    .isEqualTo(UNTIL_NEXT_HOUR);
         }
     }
 
@@ -369,7 +389,6 @@ class RateLimiterTest {
                 new Limit(PASSWORD_RESET_PER_IP, Duration.ofHours(1)),
                 new Limit(PASSWORD_RESET_PER_EMAIL, Duration.ofHours(1)),
                 new Limit(VERIFICATION_RESEND_PER_USER, Duration.ofHours(1)),
-                new Limit(WEBHOOK_TEST_PER_USER, Duration.ofHours(1))
-        );
+                new Limit(WEBHOOK_TEST_PER_USER, Duration.ofHours(1)));
     }
 }

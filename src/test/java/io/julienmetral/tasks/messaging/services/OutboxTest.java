@@ -1,5 +1,11 @@
 package io.julienmetral.tasks.messaging.services;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.identity.messaging.AvatarQueues;
 import io.julienmetral.tasks.identity.messaging.AvatarUploaded;
 import io.julienmetral.tasks.mail.MailMessage;
@@ -8,6 +14,12 @@ import io.julienmetral.tasks.messaging.entities.OutboxMessage;
 import io.julienmetral.tasks.messaging.repositories.OutboxMessageRepository;
 import io.julienmetral.tasks.realtime.RealtimeConfiguration;
 import io.julienmetral.tasks.realtime.messaging.AccountStatusChanged;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,19 +32,6 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.transaction.support.TransactionSynchronizationUtils;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
-
 @ExtendWith(MockitoExtension.class)
 class OutboxTest {
 
@@ -42,20 +41,24 @@ class OutboxTest {
 
     private static final MailMessage MAIL = new MailMessage("jane@example.com", "Subject", "Body");
 
-    @Mock
-    private OutboxMessageRepository repository;
+    @Mock private OutboxMessageRepository repository;
 
-    @Mock
-    private OutboxRelay relay;
+    @Mock private OutboxRelay relay;
 
     private Outbox outbox;
 
     @BeforeEach
     void setUp() {
-        outbox = new Outbox(repository, relay, JsonMapper.builder().build(), Clock.fixed(NOW, ZoneOffset.UTC));
+        outbox =
+                new Outbox(
+                        repository,
+                        relay,
+                        JsonMapper.builder().build(),
+                        Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
-    // Stands in for the transaction that Propagation.MANDATORY requires: enqueue registers its after-commit hook here
+    // Stands in for the transaction that Propagation.MANDATORY requires: enqueue registers its
+    // after-commit hook here
     @BeforeEach
     void beginTransactionSynchronization() {
         TransactionSynchronizationManager.initSynchronization();
@@ -72,7 +75,8 @@ class OutboxTest {
 
         assertThat(row.getQueue()).isEqualTo("mail.send");
         assertThat(row.getType()).isEqualTo("io.julienmetral.tasks.mail.MailMessage");
-        assertThat(row.getPayload()).isEqualTo(Map.of("to", "jane@example.com", "subject", "Subject", "text", "Body"));
+        assertThat(row.getPayload())
+                .isEqualTo(Map.of("to", "jane@example.com", "subject", "Subject", "text", "Body"));
         assertThat(row.getCreatedAt()).isEqualTo(NOW);
         assertThat(row.getNextAttemptAt()).isEqualTo(NOW);
         assertThat(row.getAttempts()).isZero();
@@ -85,11 +89,13 @@ class OutboxTest {
         UUID userId = UUID.fromString("00000000-0000-0000-0000-000000000001");
         UUID uploadId = UUID.fromString("00000000-0000-0000-0000-00000000000a");
 
-        OutboxMessage row = enqueueAndCaptureRow(AvatarQueues.PROCESS, new AvatarUploaded(userId, uploadId));
+        OutboxMessage row =
+                enqueueAndCaptureRow(AvatarQueues.PROCESS, new AvatarUploaded(userId, uploadId));
 
         assertThat(row.getQueue()).isEqualTo("avatar.process");
         assertThat(row.getType()).isEqualTo(AvatarUploaded.class.getName());
-        assertThat(row.getPayload()).isEqualTo(Map.of("userId", userId.toString(), "uploadId", uploadId.toString()));
+        assertThat(row.getPayload())
+                .isEqualTo(Map.of("userId", userId.toString(), "uploadId", uploadId.toString()));
     }
 
     @Test
@@ -109,7 +115,8 @@ class OutboxTest {
 
         TransactionSynchronizationUtils.triggerBeforeCommit(false);
         TransactionSynchronizationUtils.triggerAfterCommit();
-        TransactionSynchronizationUtils.triggerAfterCompletion(TransactionSynchronization.STATUS_COMMITTED);
+        TransactionSynchronizationUtils.triggerAfterCompletion(
+                TransactionSynchronization.STATUS_COMMITTED);
 
         verify(relay).publishNow(List.of(ROW_ID));
     }
@@ -119,7 +126,8 @@ class OutboxTest {
         savingAssignsTheRowId();
         outbox.enqueue(MailQueues.SEND, MAIL);
 
-        TransactionSynchronizationUtils.triggerAfterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK);
+        TransactionSynchronizationUtils.triggerAfterCompletion(
+                TransactionSynchronization.STATUS_ROLLED_BACK);
 
         verifyNoInteractions(relay);
     }
@@ -157,7 +165,8 @@ class OutboxTest {
     @Test
     void broadcastIsPublishedRightAfterTheCommit() {
         savingAssignsTheRowId();
-        outbox.broadcast(RealtimeConfiguration.EXCHANGE, new AccountStatusChanged(UUID.randomUUID()));
+        outbox.broadcast(
+                RealtimeConfiguration.EXCHANGE, new AccountStatusChanged(UUID.randomUUID()));
 
         verifyNoInteractions(relay);
         TransactionSynchronizationUtils.triggerAfterCommit();
@@ -168,9 +177,11 @@ class OutboxTest {
     @Test
     void rolledBackBroadcastPublishesNothing() {
         savingAssignsTheRowId();
-        outbox.broadcast(RealtimeConfiguration.EXCHANGE, new AccountStatusChanged(UUID.randomUUID()));
+        outbox.broadcast(
+                RealtimeConfiguration.EXCHANGE, new AccountStatusChanged(UUID.randomUUID()));
 
-        TransactionSynchronizationUtils.triggerAfterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK);
+        TransactionSynchronizationUtils.triggerAfterCompletion(
+                TransactionSynchronization.STATUS_ROLLED_BACK);
 
         verifyNoInteractions(relay);
     }
@@ -187,10 +198,12 @@ class OutboxTest {
 
     // The database generates the id on insert
     private void savingAssignsTheRowId() {
-        when(repository.save(any(OutboxMessage.class))).thenAnswer(invocation -> {
-            OutboxMessage row = invocation.getArgument(0);
-            row.setId(ROW_ID);
-            return row;
-        });
+        when(repository.save(any(OutboxMessage.class)))
+                .thenAnswer(
+                        invocation -> {
+                            OutboxMessage row = invocation.getArgument(0);
+                            row.setId(ROW_ID);
+                            return row;
+                        });
     }
 }

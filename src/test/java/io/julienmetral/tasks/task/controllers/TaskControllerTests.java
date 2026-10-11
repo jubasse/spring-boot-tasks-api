@@ -1,75 +1,73 @@
 package io.julienmetral.tasks.task.controllers;
 
-import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserRole;
-import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.support.IntegrationTest;
-import io.julienmetral.tasks.task.entities.TaskEventType;
-import io.julienmetral.tasks.task.repositories.TaskEventRepository;
-import org.junit.jupiter.api.Test;
-import org.springframework.data.domain.Sort;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Pageable;
-import org.springframework.http.MediaType;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.request.RequestPostProcessor;
-
-import java.time.Instant;
-import java.util.EnumSet;
-import java.util.UUID;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserRole;
+import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.task.entities.TaskEventType;
+import io.julienmetral.tasks.task.repositories.TaskEventRepository;
+import java.time.Instant;
+import java.util.EnumSet;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
+
 @IntegrationTest
 class TaskControllerTests {
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    @Autowired private PasswordEncoder passwordEncoder;
 
-    @Autowired
-    private TaskEventRepository taskEventRepository;
+    @Autowired private TaskEventRepository taskEventRepository;
 
     @Test
     void userCanCreateUnassignedTaskAndCreatedEventIsRecorded() throws Exception {
         User user = createUser(UserRole.USER);
         String reference = uniqueReference();
 
-        String location = mockMvc.perform(
-                        post("/api/v1/tasks")
-                                .with(as(user, UserRole.USER))
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
+        String location =
+                mockMvc.perform(
+                                post("/api/v1/tasks")
+                                        .with(as(user, UserRole.USER))
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                """
                                         {"reference": "%s", "title": "  Write tests  "}
-                                        """.formatted(reference))
-                )
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.reference").value(reference))
-                .andExpect(jsonPath("$.title").value("Write tests"))
-                .andExpect(jsonPath("$.priority").value("MEDIUM"))
-                .andExpect(jsonPath("$.createdBy.id").value(user.getId().toString()))
-                .andReturn()
-                .getResponse()
-                .getHeader("Location");
+                                        """
+                                                        .formatted(reference)))
+                        .andExpect(status().isCreated())
+                        .andExpect(jsonPath("$.reference").value(reference))
+                        .andExpect(jsonPath("$.title").value("Write tests"))
+                        .andExpect(jsonPath("$.priority").value("MEDIUM"))
+                        .andExpect(jsonPath("$.createdBy.id").value(user.getId().toString()))
+                        .andReturn()
+                        .getResponse()
+                        .getHeader("Location");
 
-        UUID taskId = UUID.fromString(
-                location.substring(location.lastIndexOf('/') + 1)
-        );
+        UUID taskId = UUID.fromString(location.substring(location.lastIndexOf('/') + 1));
 
-        var events = taskEventRepository
-                .findAllByTaskId(taskId, Pageable.unpaged(Sort.by(Sort.Direction.DESC, "occurredAt", "id")))
-                .getContent();
+        var events =
+                taskEventRepository
+                        .findAllByTaskId(
+                                taskId,
+                                Pageable.unpaged(Sort.by(Sort.Direction.DESC, "occurredAt", "id")))
+                        .getContent();
 
         assertThat(events).hasSize(1);
         assertThat(events.getFirst().getType()).isEqualTo(TaskEventType.CREATED);
@@ -85,10 +83,11 @@ class TaskControllerTests {
                         post("/api/v1/tasks")
                                 .with(as(admin, UserRole.ADMIN))
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
+                                .content(
+                                        """
                                         {"reference": "%s", "title": "Task", "assignedTo": "%s"}
-                                        """.formatted(uniqueReference(), assignee.getId()))
-                )
+                                        """
+                                                .formatted(uniqueReference(), assignee.getId())))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.assignedTo.id").value(assignee.getId().toString()));
     }
@@ -107,8 +106,7 @@ class TaskControllerTests {
     }
 
     private RequestPostProcessor as(User user, UserRole role) {
-        return jwt()
-                .jwt(token -> token.claim("uid", user.getId().toString()))
+        return jwt().jwt(token -> token.claim("uid", user.getId().toString()))
                 .authorities(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
 

@@ -7,6 +7,7 @@ import io.julienmetral.tasks.shared.security.AllowedRolesOrSelfOnly;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,8 +16,6 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/users/{id}/notification-settings")
@@ -29,23 +28,15 @@ public class NotificationSettingsController {
     @Operation(summary = "Get the notification settings")
     @GetMapping
     @AllowedRolesOrSelfOnly(UserRole.ADMIN)
-    public ResponseEntity<NotificationSettingsDto> getNotificationSettings(
-            @PathVariable UUID id
-    ) {
-        return ResponseEntity.ok(
-                new NotificationSettingsDto(settingsService.get(id))
-        );
+    public ResponseEntity<NotificationSettingsDto> getNotificationSettings(@PathVariable UUID id) {
+        return ResponseEntity.ok(new NotificationSettingsDto(settingsService.get(id)));
     }
 
     @Operation(summary = "Replace the notification settings")
     @PutMapping
     @AllowedRolesOrSelfOnly(UserRole.ADMIN)
     public ResponseEntity<NotificationSettingsDto> updateNotificationSettings(
-            @PathVariable UUID id,
-            @Valid @RequestBody NotificationSettingsDto dto
-    ) {
-        return ResponseEntity.ok(
-                new NotificationSettingsDto(settingsService.update(id, dto))
-        );
+            @PathVariable UUID id, @Valid @RequestBody NotificationSettingsDto dto) {
+        return ResponseEntity.ok(new NotificationSettingsDto(settingsService.update(id, dto)));
     }
 }

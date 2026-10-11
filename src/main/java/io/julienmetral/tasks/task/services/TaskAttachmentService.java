@@ -12,15 +12,14 @@ import io.julienmetral.tasks.task.exceptions.TaskAttachmentNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.repositories.TaskAttachmentRepository;
 import io.julienmetral.tasks.task.repositories.TaskRepository;
+import java.time.Clock;
+import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.time.Clock;
-import java.util.List;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -33,16 +32,24 @@ public class TaskAttachmentService {
     private final CurrentUser currentUser;
     private final Clock clock;
 
-    /** Validates (size, type, antivirus) and stores the file, then records an ATTACHMENT_ADDED event. */
+    /**
+     * Validates (size, type, antivirus) and stores the file, then records an ATTACHMENT_ADDED
+     * event.
+     */
     @Transactional
     public TaskAttachment add(UUID taskId, MultipartFile file) {
         return add(getTask(taskId), null, file);
     }
 
-    /** Same as {@link #add(UUID, MultipartFile)}, for a file posted with {@code comment} (null for none). */
+    /**
+     * Same as {@link #add(UUID, MultipartFile)}, for a file posted with {@code comment} (null for
+     * none).
+     */
     @Transactional
     public TaskAttachment add(Task task, TaskComment comment, MultipartFile file) {
-        Media media = mediaService.store(file, MediaUsage.TASK_ATTACHMENT, currentUser.getId().orElse(null));
+        Media media =
+                mediaService.store(
+                        file, MediaUsage.TASK_ATTACHMENT, currentUser.getId().orElse(null));
 
         TaskAttachment attachment = new TaskAttachment();
 
@@ -72,7 +79,10 @@ public class TaskAttachmentService {
         return getAttachment(taskId, attachmentId);
     }
 
-    /** Deletes the attachment and its file (the object once the transaction commits), and records the removal. */
+    /**
+     * Deletes the attachment and its file (the object once the transaction commits), and records
+     * the removal.
+     */
     @Transactional
     public void remove(UUID taskId, UUID attachmentId) {
         remove(getTask(taskId), getAttachment(taskId, attachmentId));
@@ -87,9 +97,7 @@ public class TaskAttachmentService {
     }
 
     private Task getTask(UUID taskId) {
-        return taskRepository
-                .findById(taskId)
-                .orElseThrow(() -> new TaskNotFoundException(taskId));
+        return taskRepository.findById(taskId).orElseThrow(() -> new TaskNotFoundException(taskId));
     }
 
     private TaskAttachment getAttachment(UUID taskId, UUID attachmentId) {
@@ -98,7 +106,8 @@ public class TaskAttachmentService {
                 .orElseThrow(() -> new TaskAttachmentNotFoundException(attachmentId));
     }
 
-    // The response shows the file and its uploader; the uploader is a proxy set with getReferenceById
+    // The response shows the file and its uploader; the uploader is a proxy set with
+    // getReferenceById
     static TaskAttachment withMediaLoaded(TaskAttachment attachment) {
         Hibernate.initialize(attachment.getMedia());
         ProfilesForDisplay.load(attachment.getMedia().getUploadedBy());

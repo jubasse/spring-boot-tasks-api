@@ -15,45 +15,33 @@ public class DatabaseUserDetailsService implements UserDetailsService, UserDetai
 
     private final UserRepository userRepository;
 
-    public DatabaseUserDetailsService(
-            UserRepository userRepository
-    ) {
+    public DatabaseUserDetailsService(UserRepository userRepository) {
         this.userRepository = userRepository;
     }
 
     @Override
     @NullMarked
-    public UserDetails loadUserByUsername(String email)
-            throws UsernameNotFoundException {
+    public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
 
-        var user = userRepository
-                .findByEmailIgnoreCase(email)
-                .orElseThrow(
-                        () -> new UsernameNotFoundException(
-                                "User not found"
-                        )
-                );
+        var user =
+                userRepository
+                        .findByEmailIgnoreCase(email)
+                        .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
-        return org.springframework.security.core.userdetails.User
-                .withUsername(user.getEmail())
+        return org.springframework.security.core.userdetails.User.withUsername(user.getEmail())
                 .password(user.getPasswordHash())
                 .disabled(!user.isEnabled())
                 .authorities(
-                        user.getRoles()
-                                .stream()
-                                .map(role ->
-                                        new SimpleGrantedAuthority(
-                                                "ROLE_" + role.name()
-                                        )
-                                )
-                                .toList()
-                )
+                        user.getRoles().stream()
+                                .map(role -> new SimpleGrantedAuthority("ROLE_" + role.name()))
+                                .toList())
                 .build();
     }
 
     /**
-     * Called by {@code DaoAuthenticationProvider} after a successful login when the stored hash uses an outdated
-     * algorithm or parameters, with the password already re-encoded by the current encoder.
+     * Called by {@code DaoAuthenticationProvider} after a successful login when the stored hash
+     * uses an outdated algorithm or parameters, with the password already re-encoded by the current
+     * encoder.
      */
     @Override
     @Transactional
@@ -61,15 +49,10 @@ public class DatabaseUserDetailsService implements UserDetailsService, UserDetai
     public UserDetails updatePassword(UserDetails user, String newPassword) {
         userRepository
                 .findByEmailIgnoreCase(user.getUsername())
-                .orElseThrow(
-                        () -> new UsernameNotFoundException(
-                                "User not found"
-                        )
-                )
+                .orElseThrow(() -> new UsernameNotFoundException("User not found"))
                 .setPasswordHash(newPassword);
 
-        return org.springframework.security.core.userdetails.User
-                .withUserDetails(user)
+        return org.springframework.security.core.userdetails.User.withUserDetails(user)
                 .password(newPassword)
                 .build();
     }

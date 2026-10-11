@@ -4,15 +4,14 @@ import io.julienmetral.tasks.config.UserRetentionProperties;
 import io.julienmetral.tasks.identity.mail.InactiveAccountWarned;
 import io.julienmetral.tasks.identity.repositories.UserRetentionQueries;
 import io.julienmetral.tasks.identity.repositories.UserRetentionQueries.InactiveUser;
-import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -26,29 +25,35 @@ public class UserRetentionService {
 
     /**
      * Anonymizes users deleted for longer than {@code anonymize-after}, warns accounts inactive for
-     * {@code inactivity-period} (email after commit, enabled accounts only), and deletes the warned accounts still inactive after
-     * {@code deletion-notice}, which revokes their sessions. Deleted accounts are anonymized by a later run.
-     * {@link UserRetentionJob}'s scheduler lock keeps it to one instance at a time.
+     * {@code inactivity-period} (email after commit, enabled accounts only), and deletes the warned
+     * accounts still inactive after {@code deletion-notice}, which revokes their sessions. Deleted
+     * accounts are anonymized by a later run. {@link UserRetentionJob}'s scheduler lock keeps it to
+     * one instance at a time.
      */
     @Transactional
     public UserRetentionReport apply() {
         Instant now = clock.instant();
 
-        List<UUID> anonymized = queries.anonymizeUsersDeletedBefore(now.minus(properties.anonymizeAfter()), now);
+        List<UUID> anonymized =
+                queries.anonymizeUsersDeletedBefore(now.minus(properties.anonymizeAfter()), now);
 
         List<UUID> expired = queries.usersWarnedBefore(now.minus(properties.deletionNotice()));
 
         expired.forEach(userService::delete);
 
-        List<InactiveUser> warned = queries.warnUsersInactiveSince(now.minus(properties.inactivityPeriod()), now);
+        List<InactiveUser> warned =
+                queries.warnUsersInactiveSince(now.minus(properties.inactivityPeriod()), now);
         Instant deletionAt = now.plus(properties.deletionNotice());
 
-        // A disabled account cannot log in to keep itself: it is deleted after the same notice, without an email
+        // A disabled account cannot log in to keep itself: it is deleted after the same notice,
+        // without an email
         warned.stream()
                 .filter(InactiveUser::enabled)
-                .forEach(user -> eventPublisher.publishEvent(
-                        new InactiveAccountWarned(user.email(), user.displayName(), deletionAt)
-                ));
+                .forEach(
+                        user ->
+                                eventPublisher.publishEvent(
+                                        new InactiveAccountWarned(
+                                                user.email(), user.displayName(), deletionAt)));
 
         return new UserRetentionReport(anonymized.size(), warned.size(), expired.size());
     }

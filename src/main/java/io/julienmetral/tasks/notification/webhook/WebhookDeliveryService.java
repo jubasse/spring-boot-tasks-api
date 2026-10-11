@@ -15,18 +15,6 @@ import io.julienmetral.tasks.notification.repositories.WebhookDeliveryQueries;
 import io.julienmetral.tasks.notification.repositories.WebhookDeliveryRepository;
 import io.julienmetral.tasks.notification.repositories.WebhookEndpointRepository;
 import io.micrometer.core.instrument.MeterRegistry;
-import org.springframework.boot.http.client.FilteredHostException;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.web.client.ResourceAccessException;
-import org.springframework.web.client.RestClientException;
-import tools.jackson.databind.json.JsonMapper;
-
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -43,26 +31,39 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import org.springframework.boot.http.client.FilteredHostException;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClientException;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Sends webhook deliveries and records how each attempt ended. An attempt reads the delivery, calls the receiver
- * outside any transaction, then records the result: a slow receiver never holds a database connection.
+ * Sends webhook deliveries and records how each attempt ended. An attempt reads the delivery, calls
+ * the receiver outside any transaction, then records the result: a slow receiver never holds a
+ * database connection.
  */
 @Service
 public class WebhookDeliveryService {
 
     /**
-     * The wait before each retry, after the Standard Webhooks schedule cut at about one day, since task notifications
-     * lose their value quickly. A receiver down for a deployment or an afternoon still gets the event.
+     * The wait before each retry, after the Standard Webhooks schedule cut at about one day, since
+     * task notifications lose their value quickly. A receiver down for a deployment or an afternoon
+     * still gets the event.
      */
-    static final List<Duration> RETRY_DELAYS = List.of(
-            Duration.ofSeconds(5),
-            Duration.ofMinutes(5),
-            Duration.ofMinutes(30),
-            Duration.ofHours(2),
-            Duration.ofHours(5),
-            Duration.ofHours(10)
-    );
+    static final List<Duration> RETRY_DELAYS =
+            List.of(
+                    Duration.ofSeconds(5),
+                    Duration.ofMinutes(5),
+                    Duration.ofMinutes(30),
+                    Duration.ofHours(2),
+                    Duration.ofHours(5),
+                    Duration.ofHours(10));
 
     // A Retry-After above this is capped: past it, the event has lost its value
     private static final Duration MAX_RETRY_AFTER = Duration.ofHours(10);
@@ -73,12 +74,12 @@ public class WebhookDeliveryService {
 
     private static final String TEST_EVENT = "webhook.test";
 
-    private record Attempt(UUID deliveryId, URI url, byte[] body, List<String> secrets) {
-    }
+    private record Attempt(UUID deliveryId, URI url, byte[] body, List<String> secrets) {}
 
     private record Outcome(Integer statusCode, String error, Duration retryAfter) {
 
-        // Not HttpStatus.valueOf, which throws on codes Spring has no constant for, such as 522 behind Cloudflare
+        // Not HttpStatus.valueOf, which throws on codes Spring has no constant for, such as 522
+        // behind Cloudflare
         boolean delivered() {
             return statusCode != null && statusCode / 100 == 2;
         }
@@ -117,8 +118,7 @@ public class WebhookDeliveryService {
             Outbox outbox,
             PlatformTransactionManager transactionManager,
             Clock clock,
-            MeterRegistry meterRegistry
-    ) {
+            MeterRegistry meterRegistry) {
         this.deliveryRepository = deliveryRepository;
         this.endpointRepository = endpointRepository;
         this.deliveryQueries = deliveryQueries;
@@ -138,8 +138,8 @@ public class WebhookDeliveryService {
     }
 
     /**
-     * Creates the delivery of one event to one endpoint and queues its first attempt, in the caller's transaction:
-     * nothing is sent for a change that rolls back.
+     * Creates the delivery of one event to one endpoint and queues its first attempt, in the
+     * caller's transaction: nothing is sent for a change that rolls back.
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void schedule(WebhookEndpoint endpoint, WebhookEvent event, String payload) {
@@ -158,12 +158,16 @@ public class WebhookDeliveryService {
         outbox.enqueue(WebhookQueues.DELIVER, new WebhookDeliveryRequested(deliveryId));
     }
 
-    /** Queues the pending deliveries whose retry is due; each one is leased so no other poll queues it again. */
+    /**
+     * Queues the pending deliveries whose retry is due; each one is leased so no other poll queues
+     * it again.
+     */
     @Transactional
     public int enqueueDue() {
         Instant now = clock.instant();
-        List<UUID> due = deliveryQueries.claimDue(now, now.plus(properties.deliveryLease()),
-                properties.retryBatchSize());
+        List<UUID> due =
+                deliveryQueries.claimDue(
+                        now, now.plus(properties.deliveryLease()), properties.retryBatchSize());
 
         due.forEach(id -> outbox.enqueue(WebhookQueues.DELIVER, new WebhookDeliveryRequested(id)));
 
@@ -171,8 +175,8 @@ public class WebhookDeliveryService {
     }
 
     /**
-     * Starts a delivery over, whatever its state: the full retry schedule applies again, under the same
-     * {@code webhook-id}, so a receiver that already processed it can drop it.
+     * Starts a delivery over, whatever its state: the full retry schedule applies again, under the
+     * same {@code webhook-id}, so a receiver that already processed it can drop it.
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void requeue(WebhookDelivery delivery) {
@@ -188,8 +192,8 @@ public class WebhookDeliveryService {
     }
 
     /**
-     * Sends a {@code webhook.test} event to the endpoint at once, signed like a delivery, whether the endpoint is
-     * paused or not, and records nothing. Runs outside any transaction.
+     * Sends a {@code webhook.test} event to the endpoint at once, signed like a delivery, whether
+     * the endpoint is paused or not, and records nothing. Runs outside any transaction.
      */
     public WebhookTestResult sendTest(WebhookEndpoint endpoint) {
         if (!credentialReadable(endpoint)) {
@@ -209,28 +213,34 @@ public class WebhookDeliveryService {
         }
 
         long start = System.nanoTime();
-        Outcome outcome = send(new Attempt(
-                UUID.randomUUID(),
-                targetUrl(endpoint),
-                payload.getBytes(StandardCharsets.UTF_8),
-                signingSecrets(endpoint)
-        ));
+        Outcome outcome =
+                send(
+                        new Attempt(
+                                UUID.randomUUID(),
+                                targetUrl(endpoint),
+                                payload.getBytes(StandardCharsets.UTF_8),
+                                signingSecrets(endpoint)));
 
         return new WebhookTestResult(
                 outcome.delivered(),
                 outcome.statusCode(),
                 outcome.error(),
-                Duration.ofNanos(System.nanoTime() - start).toMillis()
-        );
+                Duration.ofNanos(System.nanoTime() - start).toMillis());
     }
 
-    /** Deletes the deliveries older than {@code webhooks.delivery-retention}, whatever their state. */
+    /**
+     * Deletes the deliveries older than {@code webhooks.delivery-retention}, whatever their state.
+     */
     @Transactional
     public int purge() {
-        return deliveryQueries.deleteCreatedBefore(clock.instant().minus(properties.deliveryRetention()));
+        return deliveryQueries.deleteCreatedBefore(
+                clock.instant().minus(properties.deliveryRetention()));
     }
 
-    /** One attempt of a pending delivery; a delivery already finished, by a duplicate message for example, is left. */
+    /**
+     * One attempt of a pending delivery; a delivery already finished, by a duplicate message for
+     * example, is left.
+     */
     public void deliver(UUID deliveryId) {
         Optional<Attempt> attempt = transactions.execute(status -> prepare(deliveryId));
 
@@ -238,7 +248,8 @@ public class WebhookDeliveryService {
             return;
         }
 
-        Optional<WebhookResilience.Permit> permit = resilience.tryAcquire(attempt.get().url().getHost());
+        Optional<WebhookResilience.Permit> permit =
+                resilience.tryAcquire(attempt.get().url().getHost());
 
         if (permit.isEmpty()) {
             transactions.executeWithoutResult(status -> postpone(deliveryId));
@@ -250,7 +261,9 @@ public class WebhookDeliveryService {
         try {
             outcome = send(attempt.get());
         } finally {
-            resilience.release(permit.get(), outcome == null ? null : outcome.statusCode(),
+            resilience.release(
+                    permit.get(),
+                    outcome == null ? null : outcome.statusCode(),
                     outcome != null && DESTINATION_NOT_ALLOWED.equals(outcome.error()));
         }
 
@@ -259,20 +272,26 @@ public class WebhookDeliveryService {
     }
 
     /**
-     * The host's breaker is open, or as many calls as allowed are in flight to it: the delivery waits without using
-     * one of its attempts, and the retry job tries it again once the breaker may let a call through.
+     * The host's breaker is open, or as many calls as allowed are in flight to it: the delivery
+     * waits without using one of its attempts, and the retry job tries it again once the breaker
+     * may let a call through.
      */
     private void postpone(UUID deliveryId) {
-        deliveryRepository.findForUpdateById(deliveryId)
+        deliveryRepository
+                .findForUpdateById(deliveryId)
                 .filter(delivery -> delivery.getStatus() == WebhookDeliveryStatus.PENDING)
-                .ifPresent(delivery -> {
-                    // A second past the open duration: the breaker lets a call through only once it has elapsed
-                    delivery.setNextAttemptAt(clock.instant()
-                            .plus(properties.circuitBreaker().openDuration())
-                            .plusSeconds(1));
-                    delivery.setLastError("HostUnavailable");
-                    count("postponed");
-                });
+                .ifPresent(
+                        delivery -> {
+                            // A second past the open duration: the breaker lets a call through only
+                            // once it
+                            // has elapsed
+                            delivery.setNextAttemptAt(
+                                    clock.instant()
+                                            .plus(properties.circuitBreaker().openDuration())
+                                            .plusSeconds(1));
+                            delivery.setLastError("HostUnavailable");
+                            count("postponed");
+                        });
     }
 
     private Optional<Attempt> prepare(UUID deliveryId) {
@@ -289,38 +308,43 @@ public class WebhookDeliveryService {
             return Optional.empty();
         }
 
-        // Retries run for about a day: an account disabled or deleted meanwhile stops receiving, as for new events
+        // Retries run for about a day: an account disabled or deleted meanwhile stops receiving, as
+        // for new events
         if (!isActive(endpoint.getUser().getId())) {
             fail(delivery, "AccountNotActive");
             return Optional.empty();
         }
 
-        // An unreadable value once threw here: the message was dead-lettered and the retry job queued it every 5 min
+        // An unreadable value once threw here: the message was dead-lettered and the retry job
+        // queued it every 5 min
         if (!credentialReadable(endpoint)) {
             fail(delivery, SECRET_UNREADABLE);
             return Optional.empty();
         }
 
-        return Optional.of(new Attempt(
-                deliveryId,
-                targetUrl(endpoint),
-                delivery.getPayload().getBytes(StandardCharsets.UTF_8),
-                signingSecrets(endpoint)
-        ));
+        return Optional.of(
+                new Attempt(
+                        deliveryId,
+                        targetUrl(endpoint),
+                        delivery.getPayload().getBytes(StandardCharsets.UTF_8),
+                        signingSecrets(endpoint)));
     }
 
     /**
-     * Whether the value a call cannot do without decrypts: the URL of a Slack endpoint, the current secret of a signed
-     * one. A change of {@code webhooks.encryption-key} leaves it unreadable until the owner replaces it.
+     * Whether the value a call cannot do without decrypts: the URL of a Slack endpoint, the current
+     * secret of a signed one. A change of {@code webhooks.encryption-key} leaves it unreadable
+     * until the owner replaces it.
      */
     private boolean credentialReadable(WebhookEndpoint endpoint) {
-        return secrets.canDecrypt(endpoint.getKind() == WebhookKind.SLACK ? endpoint.getUrl() : endpoint.getSecret());
+        return secrets.canDecrypt(
+                endpoint.getKind() == WebhookKind.SLACK ? endpoint.getUrl() : endpoint.getSecret());
     }
 
     private URI targetUrl(WebhookEndpoint endpoint) {
-        return URI.create(endpoint.getKind() == WebhookKind.SLACK
-                ? secrets.decrypt(endpoint.getUrl())
-                : endpoint.getUrl());
+        return URI.create(
+                endpoint.getKind() == WebhookKind.SLACK
+                        ? secrets.decrypt(endpoint.getUrl())
+                        : endpoint.getUrl());
     }
 
     // None for Slack, which verifies nothing: its URL is the credential
@@ -333,7 +357,8 @@ public class WebhookDeliveryService {
         signingSecrets.add(secrets.decrypt(endpoint.getSecret()));
 
         // An unreadable previous secret is left out: the current one still signs
-        if (endpoint.getPreviousSecret() != null && endpoint.getPreviousSecretExpiresAt().isAfter(clock.instant())
+        if (endpoint.getPreviousSecret() != null
+                && endpoint.getPreviousSecretExpiresAt().isAfter(clock.instant())
                 && secrets.canDecrypt(endpoint.getPreviousSecret())) {
             signingSecrets.add(secrets.decrypt(endpoint.getPreviousSecret()));
         }
@@ -342,9 +367,14 @@ public class WebhookDeliveryService {
     }
 
     private Outcome send(Attempt attempt) {
-        Map<String, String> headers = attempt.secrets().isEmpty()
-                ? Map.of()
-                : signer.headers(attempt.deliveryId().toString(), clock.instant(), attempt.body(), attempt.secrets());
+        Map<String, String> headers =
+                attempt.secrets().isEmpty()
+                        ? Map.of()
+                        : signer.headers(
+                                attempt.deliveryId().toString(),
+                                clock.instant(),
+                                attempt.body(),
+                                attempt.secrets());
 
         try {
             ResponseEntity<Void> response = client.send(attempt.url(), headers, attempt.body());
@@ -353,9 +383,12 @@ public class WebhookDeliveryService {
         } catch (FilteredHostException refused) {
             return new Outcome(null, DESTINATION_NOT_ALLOWED, null);
         } catch (ResourceAccessException unreachable) {
-            return new Outcome(null, unreachable.getCause() instanceof SocketTimeoutException
-                    ? "Timeout"
-                    : "ConnectionFailed", null);
+            return new Outcome(
+                    null,
+                    unreachable.getCause() instanceof SocketTimeoutException
+                            ? "Timeout"
+                            : "ConnectionFailed",
+                    null);
         } catch (RestClientException invalid) {
             return new Outcome(null, "InvalidResponse", null);
         }
@@ -369,8 +402,8 @@ public class WebhookDeliveryService {
             return;
         }
 
-        // The endpoint too, read under the lock: two failures of one endpoint recorded together both saw it enabled,
-        // both disabled it and both emailed its owner
+        // The endpoint too, read under the lock: two failures of one endpoint recorded together
+        // both saw it enabled, both disabled it and both emailed its owner
         endpointRepository.findByIdForUpdate(delivery.getEndpoint().getId());
 
         Instant now = clock.instant();
@@ -395,7 +428,8 @@ public class WebhookDeliveryService {
         }
 
         // Slack answers 400 to a message it cannot read: sending the same one again cannot succeed
-        if (delivery.getEndpoint().getKind() == WebhookKind.SLACK && outcome.statusCode() != null
+        if (delivery.getEndpoint().getKind() == WebhookKind.SLACK
+                && outcome.statusCode() != null
                 && outcome.statusCode() == HttpStatus.BAD_REQUEST.value()) {
             fail(delivery, null);
             return;
@@ -409,14 +443,15 @@ public class WebhookDeliveryService {
         } else if (delivery.getAttempts() > RETRY_DELAYS.size()) {
             fail(delivery, outcome.error());
         } else {
-            delivery.setNextAttemptAt(now.plus(nextDelay(delivery.getAttempts(), outcome.retryAfter())));
+            delivery.setNextAttemptAt(
+                    now.plus(nextDelay(delivery.getAttempts(), outcome.retryAfter())));
             count("retried");
         }
     }
 
     /**
-     * Disables an endpoint whose every attempt failed for {@code webhooks.disable-after}, and emails its owner: without
-     * it, a dead receiver would be called for every task event, forever.
+     * Disables an endpoint whose every attempt failed for {@code webhooks.disable-after}, and
+     * emails its owner: without it, a dead receiver would be called for every task event, forever.
      */
     private void trackFailure(WebhookEndpoint endpoint, Instant now) {
         if (endpoint.getFailingSince() == null) {
@@ -429,33 +464,44 @@ public class WebhookDeliveryService {
     }
 
     /**
-     * Whether the receiver said it no longer exists: 410 for any endpoint; for Slack also 403 and 404, its answers
-     * for a revoked webhook, a deleted channel or a disabled workspace.
+     * Whether the receiver said it no longer exists: 410 for any endpoint; for Slack also 403 and
+     * 404, its answers for a revoked webhook, a deleted channel or a disabled workspace.
      */
     private static boolean isGone(WebhookEndpoint endpoint, Integer statusCode) {
         if (statusCode == null) {
             return false;
         }
 
-        return statusCode == HttpStatus.GONE.value() || (endpoint.getKind() == WebhookKind.SLACK
-                && (statusCode == HttpStatus.FORBIDDEN.value() || statusCode == HttpStatus.NOT_FOUND.value()));
+        return statusCode == HttpStatus.GONE.value()
+                || (endpoint.getKind() == WebhookKind.SLACK
+                        && (statusCode == HttpStatus.FORBIDDEN.value()
+                                || statusCode == HttpStatus.NOT_FOUND.value()));
     }
 
     // The host only: the rest of a URL can hold a secret, the path of a Slack webhook for one
     private void notifyDisabled(WebhookEndpoint endpoint) {
-        userRepository.findById(endpoint.getUser().getId()).ifPresent(owner -> mailService.send(new MailMessage(
-                owner.getEmail(),
-                "Your webhook was disabled",
-                """
+        userRepository
+                .findById(endpoint.getUser().getId())
+                .ifPresent(
+                        owner ->
+                                mailService.send(
+                                        new MailMessage(
+                                                owner.getEmail(),
+                                                "Your webhook was disabled",
+                                                """
                         Hello %s,
 
                         Your webhook to %s failed every attempt for %d days, so it was disabled: task notifications \
                         are no longer sent to it.
 
                         Once the receiver works again, turn the webhook back on in your webhook settings.
-                        """.formatted(owner.getDisplayName(), targetUrl(endpoint).getHost(),
-                        properties.disableAfter().toDays())
-        )));
+                        """
+                                                        .formatted(
+                                                                owner.getDisplayName(),
+                                                                targetUrl(endpoint).getHost(),
+                                                                properties
+                                                                        .disableAfter()
+                                                                        .toDays()))));
     }
 
     private void fail(WebhookDelivery delivery, String error) {
@@ -469,7 +515,8 @@ public class WebhookDeliveryService {
         count("failed");
     }
 
-    // Up to 20% either way, so the retries of many deliveries that failed together do not arrive together
+    // Up to 20% either way, so the retries of many deliveries that failed together do not arrive
+    // together
     private static Duration nextDelay(int attempts, Duration retryAfter) {
         Duration delay = RETRY_DELAYS.get(attempts - 1);
         double factor = ThreadLocalRandom.current().nextDouble(0.8, 1.2);
@@ -492,8 +539,12 @@ public class WebhookDeliveryService {
             requested = Duration.ofSeconds(Long.parseLong(value.trim()));
         } catch (NumberFormatException notSeconds) {
             try {
-                requested = Duration.between(clock.instant(),
-                        ZonedDateTime.parse(value.trim(), DateTimeFormatter.RFC_1123_DATE_TIME).toInstant());
+                requested =
+                        Duration.between(
+                                clock.instant(),
+                                ZonedDateTime.parse(
+                                                value.trim(), DateTimeFormatter.RFC_1123_DATE_TIME)
+                                        .toInstant());
             } catch (DateTimeParseException neither) {
                 return null;
             }
@@ -507,7 +558,8 @@ public class WebhookDeliveryService {
     }
 
     private boolean isActive(UUID userId) {
-        return userRepository.findById(userId).map(UserStatus::of).orElse(null) == UserStatus.ACTIVE;
+        return userRepository.findById(userId).map(UserStatus::of).orElse(null)
+                == UserStatus.ACTIVE;
     }
 
     private void count(String outcome) {

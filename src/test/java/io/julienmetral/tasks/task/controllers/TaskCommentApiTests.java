@@ -1,22 +1,5 @@
 package io.julienmetral.tasks.task.controllers;
 
-import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserRole;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.test.web.servlet.request.RequestPostProcessor;
-import tools.jackson.databind.JsonNode;
-
-import java.nio.charset.StandardCharsets;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
-import java.util.stream.StreamSupport;
-
 import static io.julienmetral.tasks.support.Problems.invalidParameter;
 import static io.julienmetral.tasks.support.Problems.typedProblem;
 import static io.julienmetral.tasks.support.Problems.untypedProblem;
@@ -29,7 +12,26 @@ import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Posting, listing, editing and deleting task comments, their files and mentions, and the history they leave. */
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserRole;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.StreamSupport;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import tools.jackson.databind.JsonNode;
+
+/**
+ * Posting, listing, editing and deleting task comments, their files and mentions, and the history
+ * they leave.
+ */
 class TaskCommentApiTests extends AbstractTaskCommentApiTests {
 
     private static final int MAX_BODY_LENGTH = 10_000;
@@ -44,23 +46,26 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID taskId = createTask(admin, null);
             Instant before = Instant.now();
 
-            MockHttpServletResponse response = postComment(asUser(author), taskId, "Looks good to me")
-                    .andExpect(status().isCreated())
-                    .andExpect(jsonPath("$.body").value("Looks good to me"))
-                    .andExpect(jsonPath("$.author.id").value(author.getId().toString()))
-                    .andExpect(jsonPath("$.author.displayName").value(author.getDisplayName()))
-                    .andExpect(jsonPath("$.author.status").value("ACTIVE"))
-                    .andExpect(jsonPath("$.mentions", hasSize(0)))
-                    .andExpect(jsonPath("$.attachments", hasSize(0)))
-                    .andExpect(jsonPath("$.editedAt").value(nullValue()))
-                    .andReturn()
-                    .getResponse();
+            MockHttpServletResponse response =
+                    postComment(asUser(author), taskId, "Looks good to me")
+                            .andExpect(status().isCreated())
+                            .andExpect(jsonPath("$.body").value("Looks good to me"))
+                            .andExpect(jsonPath("$.author.id").value(author.getId().toString()))
+                            .andExpect(
+                                    jsonPath("$.author.displayName").value(author.getDisplayName()))
+                            .andExpect(jsonPath("$.author.status").value("ACTIVE"))
+                            .andExpect(jsonPath("$.mentions", hasSize(0)))
+                            .andExpect(jsonPath("$.attachments", hasSize(0)))
+                            .andExpect(jsonPath("$.editedAt").value(nullValue()))
+                            .andReturn()
+                            .getResponse();
 
             JsonNode body = json(response.getContentAsString());
             UUID commentId = UUID.fromString(body.get("id").asString());
 
             assertThat(response.getHeader("Location")).isEqualTo(comment(taskId, commentId));
-            assertThat(Instant.parse(body.get("createdAt").asString())).isBetween(before, Instant.now());
+            assertThat(Instant.parse(body.get("createdAt").asString()))
+                    .isBetween(before, Instant.now());
             assertThat(bodyOf(commentId)).isEqualTo("Looks good to me");
         }
 
@@ -69,9 +74,9 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             User admin = createUser(UserRole.ADMIN);
             UUID taskId = createTask(admin, null);
 
-            postComment(asAdmin(admin), taskId, "Only text")
-                    .andExpect(status().isCreated());
-            UUID commentId = addComment(asAdmin(admin), taskId, "Multipart text", new MockMultipartFile[0]);
+            postComment(asAdmin(admin), taskId, "Only text").andExpect(status().isCreated());
+            UUID commentId =
+                    addComment(asAdmin(admin), taskId, "Multipart text", new MockMultipartFile[0]);
 
             findComment(asAdmin(admin), taskId, commentId)
                     .andExpect(status().isOk())
@@ -86,19 +91,28 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID taskId = createTask(admin, null);
             byte[] text = uniqueText();
 
-            MockHttpServletResponse response = postComment(asUser(author), taskId, "Minutes attached",
-                    pdfFile("minutes.pdf"), new MockMultipartFile("files", "notes.txt", "text/plain", text))
-                    .andExpect(status().isCreated())
-                    .andExpect(jsonPath("$.body").value("Minutes attached"))
-                    .andExpect(jsonPath("$.attachments", hasSize(2)))
-                    .andExpect(jsonPath("$.attachments[0].filename").value("minutes.pdf"))
-                    .andExpect(jsonPath("$.attachments[0].contentType").value("application/pdf"))
-                    .andExpect(jsonPath("$.attachments[0].uploadedBy.id").value(author.getId().toString()))
-                    .andExpect(jsonPath("$.attachments[0].downloadUrl").isNotEmpty())
-                    .andExpect(jsonPath("$.attachments[1].filename").value("notes.txt"))
-                    .andExpect(jsonPath("$.attachments[1].sizeBytes").value(text.length))
-                    .andReturn()
-                    .getResponse();
+            MockHttpServletResponse response =
+                    postComment(
+                                    asUser(author),
+                                    taskId,
+                                    "Minutes attached",
+                                    pdfFile("minutes.pdf"),
+                                    new MockMultipartFile("files", "notes.txt", "text/plain", text))
+                            .andExpect(status().isCreated())
+                            .andExpect(jsonPath("$.body").value("Minutes attached"))
+                            .andExpect(jsonPath("$.attachments", hasSize(2)))
+                            .andExpect(jsonPath("$.attachments[0].filename").value("minutes.pdf"))
+                            .andExpect(
+                                    jsonPath("$.attachments[0].contentType")
+                                            .value("application/pdf"))
+                            .andExpect(
+                                    jsonPath("$.attachments[0].uploadedBy.id")
+                                            .value(author.getId().toString()))
+                            .andExpect(jsonPath("$.attachments[0].downloadUrl").isNotEmpty())
+                            .andExpect(jsonPath("$.attachments[1].filename").value("notes.txt"))
+                            .andExpect(jsonPath("$.attachments[1].sizeBytes").value(text.length))
+                            .andReturn()
+                            .getResponse();
 
             JsonNode body = json(response.getContentAsString());
             UUID commentId = UUID.fromString(body.get("id").asString());
@@ -109,9 +123,12 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             }
             assertThat(attachmentIdsOfComment(commentId)).hasSize(2);
 
-            UUID textAttachmentId = UUID.fromString(body.get("attachments").get(1).get("id").asString());
+            UUID textAttachmentId =
+                    UUID.fromString(body.get("attachments").get(1).get("id").asString());
             assertThat(objectBytes(storageKeyOf(textAttachmentId))).isEqualTo(text);
-            assertThat(download(body.get("attachments").get(1).get("downloadUrl").asString()).body())
+            assertThat(
+                            download(body.get("attachments").get(1).get("downloadUrl").asString())
+                                    .body())
                     .isEqualTo(text);
         }
 
@@ -120,7 +137,8 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             User admin = createUser(UserRole.ADMIN);
             UUID taskId = createTask(admin, null);
             UUID direct = uploadPdf(asAdmin(admin), taskId, "direct.pdf");
-            UUID commentId = addComment(asAdmin(admin), taskId, "See file", pdfFile("from-comment.pdf"));
+            UUID commentId =
+                    addComment(asAdmin(admin), taskId, "See file", pdfFile("from-comment.pdf"));
 
             list(asAdmin(admin), taskId)
                     .andExpect(status().isOk())
@@ -150,8 +168,15 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             User admin = createUser(UserRole.ADMIN);
             UUID taskId = createTask(admin, null);
 
-            postComment(asAdmin(admin), taskId, "Five files", pdfFile("1.pdf"), pdfFile("2.pdf"), pdfFile("3.pdf"),
-                    pdfFile("4.pdf"), pdfFile("5.pdf"))
+            postComment(
+                            asAdmin(admin),
+                            taskId,
+                            "Five files",
+                            pdfFile("1.pdf"),
+                            pdfFile("2.pdf"),
+                            pdfFile("3.pdf"),
+                            pdfFile("4.pdf"),
+                            pdfFile("5.pdf"))
                     .andExpect(status().isCreated())
                     .andExpect(jsonPath("$.attachments", hasSize(5)));
 
@@ -164,8 +189,16 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID taskId = createTask(admin, null);
             Set<String> keysBefore = storedAttachmentKeys();
 
-            postComment(asAdmin(admin), taskId, "Six files", pdfFile("1.pdf"), pdfFile("2.pdf"), pdfFile("3.pdf"),
-                    pdfFile("4.pdf"), pdfFile("5.pdf"), pdfFile("6.pdf"))
+            postComment(
+                            asAdmin(admin),
+                            taskId,
+                            "Six files",
+                            pdfFile("1.pdf"),
+                            pdfFile("2.pdf"),
+                            pdfFile("3.pdf"),
+                            pdfFile("4.pdf"),
+                            pdfFile("5.pdf"),
+                            pdfFile("6.pdf"))
                     .andExpect(invalidParameter("files", "A comment can have at most 5 files"));
 
             assertNothingPosted(admin, taskId, keysBefore);
@@ -187,15 +220,24 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID taskId = createTask(admin, null);
             Set<String> keysBefore = storedAttachmentKeys();
 
-            // The clean PDF comes first, so it is already in the bucket when the antivirus rejects the second file
-            postComment(asAdmin(admin), taskId, "Ping " + mention(mentioned),
-                    pdfFile("clean.pdf"), file("notes.txt", EICAR))
-                    .andExpect(typedProblem(422, "infected-file", "File rejected by the antivirus"));
+            // The clean PDF comes first, so it is already in the bucket when the antivirus rejects
+            // the second file
+            postComment(
+                            asAdmin(admin),
+                            taskId,
+                            "Ping " + mention(mentioned),
+                            pdfFile("clean.pdf"),
+                            file("notes.txt", EICAR))
+                    .andExpect(
+                            typedProblem(422, "infected-file", "File rejected by the antivirus"));
 
             assertNothingPosted(admin, taskId, keysBefore);
-            assertThat(jdbcTemplate.queryForObject(
-                    "select count(*) from task_comment_mentions where user_id = ?", Integer.class, mentioned.getId()
-            )).isZero();
+            assertThat(
+                            jdbcTemplate.queryForObject(
+                                    "select count(*) from task_comment_mentions where user_id = ?",
+                                    Integer.class,
+                                    mentioned.getId()))
+                    .isZero();
         }
 
         @Test
@@ -203,10 +245,18 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             User admin = createUser(UserRole.ADMIN);
             UUID taskId = createTask(admin, null);
             Set<String> keysBefore = storedAttachmentKeys();
-            byte[] html = ("<!DOCTYPE html><html><head><title>" + UUID.randomUUID()
-                    + "</title></head><body></body></html>").getBytes(StandardCharsets.UTF_8);
+            byte[] html =
+                    ("<!DOCTYPE html><html><head><title>"
+                                    + UUID.randomUUID()
+                                    + "</title></head><body></body></html>")
+                            .getBytes(StandardCharsets.UTF_8);
 
-            postComment(asAdmin(admin), taskId, "Page attached", pdfFile("clean.pdf"), file("page.html", html))
+            postComment(
+                            asAdmin(admin),
+                            taskId,
+                            "Page attached",
+                            pdfFile("clean.pdf"),
+                            file("page.html", html))
                     .andExpect(untypedProblem(415, "Unsupported Media Type"))
                     .andExpect(jsonPath("$.detail").value(containsString("are not accepted")));
 
@@ -252,27 +302,29 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
                     .andExpect(jsonPath("$.detail").value(startsWith("Task not found")));
             postComment(asAdmin(admin), taskId, "Too late", pdfFile("late.pdf"))
                     .andExpect(status().isNotFound());
-            listComments(asAdmin(admin), taskId, "")
-                    .andExpect(status().isNotFound());
-            findComment(asAdmin(admin), taskId, commentId)
-                    .andExpect(status().isNotFound());
+            listComments(asAdmin(admin), taskId, "").andExpect(status().isNotFound());
+            findComment(asAdmin(admin), taskId, commentId).andExpect(status().isNotFound());
             editComment(asAdmin(admin), taskId, commentId, "Edited")
                     .andExpect(status().isNotFound());
-            deleteComment(asAdmin(admin), taskId, commentId)
-                    .andExpect(status().isNotFound());
+            deleteComment(asAdmin(admin), taskId, commentId).andExpect(status().isNotFound());
 
             assertThat(bodyOf(commentId)).isEqualTo("Before deletion");
             assertThat(mediaCountUploadedBy(admin)).isZero();
         }
 
-        private void assertNothingPosted(User author, UUID taskId, Set<String> keysBefore) throws Exception {
+        private void assertNothingPosted(User author, UUID taskId, Set<String> keysBefore)
+                throws Exception {
             assertThat(commentCount(taskId)).isZero();
             assertThat(attachmentCount(taskId)).isZero();
             assertThat(mediaCountUploadedBy(author)).isZero();
             assertThat(storedAttachmentKeys()).isSubsetOf(keysBefore);
             assertThat(eventsThroughApi(author, taskId))
-                    .noneMatch(event -> event.get("type").asString().startsWith("COMMENT_")
-                            || event.get("type").asString().equals("ATTACHMENT_ADDED"));
+                    .noneMatch(
+                            event ->
+                                    event.get("type").asString().startsWith("COMMENT_")
+                                            || event.get("type")
+                                                    .asString()
+                                                    .equals("ATTACHMENT_ADDED"));
         }
     }
 
@@ -286,13 +338,19 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID taskId = createTask(admin, null);
             String body = "Can you check, " + mention(mentioned) + "?";
 
-            UUID commentId = idOf(postComment(asAdmin(admin), taskId, body)
-                    .andExpect(status().isCreated())
-                    .andExpect(jsonPath("$.body").value(body))
-                    .andExpect(jsonPath("$.mentions", hasSize(1)))
-                    .andExpect(jsonPath("$.mentions[0].id").value(mentioned.getId().toString()))
-                    .andExpect(jsonPath("$.mentions[0].displayName").value(mentioned.getDisplayName()))
-                    .andExpect(jsonPath("$.mentions[0].status").value("ACTIVE")));
+            UUID commentId =
+                    idOf(
+                            postComment(asAdmin(admin), taskId, body)
+                                    .andExpect(status().isCreated())
+                                    .andExpect(jsonPath("$.body").value(body))
+                                    .andExpect(jsonPath("$.mentions", hasSize(1)))
+                                    .andExpect(
+                                            jsonPath("$.mentions[0].id")
+                                                    .value(mentioned.getId().toString()))
+                                    .andExpect(
+                                            jsonPath("$.mentions[0].displayName")
+                                                    .value(mentioned.getDisplayName()))
+                                    .andExpect(jsonPath("$.mentions[0].status").value("ACTIVE")));
 
             assertThat(mentionRowsOf(commentId)).containsExactly(mentioned.getId());
         }
@@ -317,10 +375,17 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             User mentioned = createUser(UserRole.USER);
             UUID taskId = createTask(admin, null);
 
-            UUID commentId = idOf(postComment(asAdmin(admin), taskId, "For " + mention(mentioned),
-                    pdfFile("report.pdf"))
-                    .andExpect(status().isCreated())
-                    .andExpect(jsonPath("$.mentions[0].id").value(mentioned.getId().toString())));
+            UUID commentId =
+                    idOf(
+                            postComment(
+                                            asAdmin(admin),
+                                            taskId,
+                                            "For " + mention(mentioned),
+                                            pdfFile("report.pdf"))
+                                    .andExpect(status().isCreated())
+                                    .andExpect(
+                                            jsonPath("$.mentions[0].id")
+                                                    .value(mentioned.getId().toString())));
 
             assertThat(mentionRowsOf(commentId)).containsExactly(mentioned.getId());
         }
@@ -332,10 +397,12 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID taskId = createTask(admin, null);
             String body = mention(mentioned) + " and again " + mention(mentioned);
 
-            UUID commentId = idOf(postComment(asAdmin(admin), taskId, body)
-                    .andExpect(status().isCreated())
-                    .andExpect(jsonPath("$.body").value(body))
-                    .andExpect(jsonPath("$.mentions", hasSize(1))));
+            UUID commentId =
+                    idOf(
+                            postComment(asAdmin(admin), taskId, body)
+                                    .andExpect(status().isCreated())
+                                    .andExpect(jsonPath("$.body").value(body))
+                                    .andExpect(jsonPath("$.mentions", hasSize(1))));
 
             assertThat(mentionRowsOf(commentId)).containsExactly(mentioned.getId());
         }
@@ -346,10 +413,14 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             User author = createUser(UserRole.USER);
             UUID taskId = createTask(admin, null);
 
-            UUID commentId = idOf(postComment(asUser(author), taskId, "Note to " + mention(author))
-                    .andExpect(status().isCreated())
-                    .andExpect(jsonPath("$.mentions", hasSize(1)))
-                    .andExpect(jsonPath("$.mentions[0].id").value(author.getId().toString())));
+            UUID commentId =
+                    idOf(
+                            postComment(asUser(author), taskId, "Note to " + mention(author))
+                                    .andExpect(status().isCreated())
+                                    .andExpect(jsonPath("$.mentions", hasSize(1)))
+                                    .andExpect(
+                                            jsonPath("$.mentions[0].id")
+                                                    .value(author.getId().toString())));
 
             assertThat(mentionRowsOf(commentId)).containsExactly(author.getId());
         }
@@ -359,7 +430,10 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             User admin = createUser(UserRole.ADMIN);
             UUID taskId = createTask(admin, null);
 
-            postComment(asAdmin(admin), taskId, "Write <@not-a-uuid> or @" + admin.getId() + " as text")
+            postComment(
+                            asAdmin(admin),
+                            taskId,
+                            "Write <@not-a-uuid> or @" + admin.getId() + " as text")
                     .andExpect(status().isCreated())
                     .andExpect(jsonPath("$.mentions", hasSize(0)));
         }
@@ -399,7 +473,11 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             User disabled = createDisabledUser(UserRole.USER);
             UUID taskId = createTask(admin, null);
 
-            postComment(asAdmin(admin), taskId, mention(active) + " " + mention(disabled), pdfFile("report.pdf"))
+            postComment(
+                            asAdmin(admin),
+                            taskId,
+                            mention(active) + " " + mention(disabled),
+                            pdfFile("report.pdf"))
                     .andExpect(typedProblem(422, "invalid-mention", "Invalid mention"));
 
             assertThat(commentCount(taskId)).isZero();
@@ -490,13 +568,22 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             User admin = createUser(UserRole.ADMIN);
             User mentioned = createUser(UserRole.USER);
             UUID taskId = createTask(admin, null);
-            UUID commentId = addComment(asAdmin(admin), taskId, "See " + mention(mentioned), pdfFile("plan.pdf"));
+            UUID commentId =
+                    addComment(
+                            asAdmin(admin),
+                            taskId,
+                            "See " + mention(mentioned),
+                            pdfFile("plan.pdf"));
 
             listComments(asAdmin(admin), taskId, "")
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.content[0].mentions[0].id").value(mentioned.getId().toString()))
+                    .andExpect(
+                            jsonPath("$.content[0].mentions[0].id")
+                                    .value(mentioned.getId().toString()))
                     .andExpect(jsonPath("$.content[0].attachments[0].filename").value("plan.pdf"))
-                    .andExpect(jsonPath("$.content[0].attachments[0].commentId").value(commentId.toString()));
+                    .andExpect(
+                            jsonPath("$.content[0].attachments[0].commentId")
+                                    .value(commentId.toString()));
         }
 
         @Test
@@ -517,21 +604,33 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             String body = "Report for " + mention(mentioned);
             UUID commentId = addComment(asUser(author), taskId, body, pdfFile("report.pdf"));
 
-            String found = findComment(asUser(mentioned), taskId, commentId)
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.id").value(commentId.toString()))
-                    .andExpect(jsonPath("$.body").value(body))
-                    .andExpect(jsonPath("$.author.id").value(author.getId().toString()))
-                    .andExpect(jsonPath("$.mentions[0].id").value(mentioned.getId().toString()))
-                    .andExpect(jsonPath("$.attachments", hasSize(1)))
-                    .andExpect(jsonPath("$.attachments[0].commentId").value(commentId.toString()))
-                    .andExpect(jsonPath("$.createdAt").value(notNullValue()))
-                    .andExpect(jsonPath("$.editedAt").value(nullValue()))
-                    .andReturn()
-                    .getResponse()
-                    .getContentAsString();
+            String found =
+                    findComment(asUser(mentioned), taskId, commentId)
+                            .andExpect(status().isOk())
+                            .andExpect(jsonPath("$.id").value(commentId.toString()))
+                            .andExpect(jsonPath("$.body").value(body))
+                            .andExpect(jsonPath("$.author.id").value(author.getId().toString()))
+                            .andExpect(
+                                    jsonPath("$.mentions[0].id")
+                                            .value(mentioned.getId().toString()))
+                            .andExpect(jsonPath("$.attachments", hasSize(1)))
+                            .andExpect(
+                                    jsonPath("$.attachments[0].commentId")
+                                            .value(commentId.toString()))
+                            .andExpect(jsonPath("$.createdAt").value(notNullValue()))
+                            .andExpect(jsonPath("$.editedAt").value(nullValue()))
+                            .andReturn()
+                            .getResponse()
+                            .getContentAsString();
 
-            assertThat(download(json(found).get("attachments").get(0).get("downloadUrl").asString()).body())
+            assertThat(
+                            download(
+                                            json(found)
+                                                    .get("attachments")
+                                                    .get(0)
+                                                    .get("downloadUrl")
+                                                    .asString())
+                                    .body())
                     .startsWith("%PDF".getBytes(StandardCharsets.US_ASCII));
         }
 
@@ -582,20 +681,27 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             User author = createUser(UserRole.USER);
             UUID taskId = createTask(admin, null);
             UUID commentId = addComment(asUser(author), taskId, "Frist");
-            String createdAt = json(findComment(asUser(author), taskId, commentId)
-                    .andReturn().getResponse().getContentAsString()).get("createdAt").asString();
+            String createdAt =
+                    json(findComment(asUser(author), taskId, commentId)
+                                    .andReturn()
+                                    .getResponse()
+                                    .getContentAsString())
+                            .get("createdAt")
+                            .asString();
             Instant before = Instant.now();
 
-            String edited = editComment(asUser(author), taskId, commentId, "First")
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.id").value(commentId.toString()))
-                    .andExpect(jsonPath("$.body").value("First"))
-                    .andExpect(jsonPath("$.author.id").value(author.getId().toString()))
-                    .andReturn()
-                    .getResponse()
-                    .getContentAsString();
+            String edited =
+                    editComment(asUser(author), taskId, commentId, "First")
+                            .andExpect(status().isOk())
+                            .andExpect(jsonPath("$.id").value(commentId.toString()))
+                            .andExpect(jsonPath("$.body").value("First"))
+                            .andExpect(jsonPath("$.author.id").value(author.getId().toString()))
+                            .andReturn()
+                            .getResponse()
+                            .getContentAsString();
 
-            assertThat(Instant.parse(json(edited).get("editedAt").asString())).isBetween(before, Instant.now());
+            assertThat(Instant.parse(json(edited).get("editedAt").asString()))
+                    .isBetween(before, Instant.now());
             assertThat(json(edited).get("createdAt").asString()).isEqualTo(createdAt);
             assertThat(bodyOf(commentId)).isEqualTo("First");
             findComment(asUser(author), taskId, commentId)
@@ -724,7 +830,11 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID taskId = createTask(admin, null);
             UUID commentId = addComment(asAdmin(admin), taskId, "For " + mention(kept));
 
-            editComment(asAdmin(admin), taskId, commentId, mention(kept) + " " + mention(unverified))
+            editComment(
+                            asAdmin(admin),
+                            taskId,
+                            commentId,
+                            mention(kept) + " " + mention(unverified))
                     .andExpect(typedProblem(422, "invalid-mention", "Invalid mention"))
                     .andExpect(jsonPath("$.detail").value(containsString("UNVERIFIED")));
 
@@ -783,12 +893,10 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID taskId = createTask(admin, null);
             UUID commentId = addComment(asUser(author), taskId, "Oops");
 
-            deleteComment(asUser(author), taskId, commentId)
-                    .andExpect(status().isNoContent());
+            deleteComment(asUser(author), taskId, commentId).andExpect(status().isNoContent());
 
             assertThat(commentExists(commentId)).isFalse();
-            findComment(asUser(author), taskId, commentId)
-                    .andExpect(status().isNotFound());
+            findComment(asUser(author), taskId, commentId).andExpect(status().isNotFound());
         }
 
         @Test
@@ -798,8 +906,7 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID taskId = createTask(admin, null);
             UUID commentId = addComment(asUser(author), taskId, "Spam");
 
-            deleteComment(asAdmin(admin), taskId, commentId)
-                    .andExpect(status().isNoContent());
+            deleteComment(asAdmin(admin), taskId, commentId).andExpect(status().isNoContent());
 
             assertThat(commentExists(commentId)).isFalse();
         }
@@ -812,8 +919,7 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID taskId = createTask(admin, assignee);
             UUID commentId = addComment(asUser(author), taskId, "Keep me", pdfFile("report.pdf"));
 
-            deleteComment(asUser(assignee), taskId, commentId)
-                    .andExpect(status().isForbidden());
+            deleteComment(asUser(assignee), taskId, commentId).andExpect(status().isForbidden());
 
             assertThat(commentExists(commentId)).isTrue();
             assertThat(attachmentIdsOfComment(commentId)).hasSize(1);
@@ -825,14 +931,14 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             User author = createUser(UserRole.USER);
             UUID taskId = createTask(admin, null);
             UUID direct = uploadPdf(asAdmin(admin), taskId, "direct.pdf");
-            UUID commentId = addComment(asUser(author), taskId, "Files", pdfFile("a.pdf"), pdfFile("b.pdf"));
+            UUID commentId =
+                    addComment(asUser(author), taskId, "Files", pdfFile("a.pdf"), pdfFile("b.pdf"));
             List<String> keys = new ArrayList<>();
             for (UUID attachmentId : attachmentIdsOfComment(commentId)) {
                 keys.add(storageKeyOf(attachmentId));
             }
 
-            deleteComment(asUser(author), taskId, commentId)
-                    .andExpect(status().isNoContent());
+            deleteComment(asUser(author), taskId, commentId).andExpect(status().isNoContent());
 
             list(asAdmin(admin), taskId)
                     .andExpect(status().isOk())
@@ -855,8 +961,7 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID taskId = createTask(admin, null);
             UUID commentId = addComment(asAdmin(admin), taskId, "For " + mention(mentioned));
 
-            deleteComment(asAdmin(admin), taskId, commentId)
-                    .andExpect(status().isNoContent());
+            deleteComment(asAdmin(admin), taskId, commentId).andExpect(status().isNoContent());
 
             assertThat(mentionRowsOf(commentId)).isEmpty();
         }
@@ -868,8 +973,7 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID removed = addComment(asAdmin(admin), taskId, "Removed");
             UUID kept = addComment(asAdmin(admin), taskId, "Kept");
 
-            deleteComment(asAdmin(admin), taskId, removed)
-                    .andExpect(status().isNoContent());
+            deleteComment(asAdmin(admin), taskId, removed).andExpect(status().isNoContent());
 
             listComments(asAdmin(admin), taskId, "")
                     .andExpect(jsonPath("$.content", hasSize(1)))
@@ -886,8 +990,7 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
 
             findComment(asAdmin(admin), taskId, commentId)
                     .andExpect(jsonPath("$.attachments", hasSize(0)));
-            deleteComment(asAdmin(admin), taskId, commentId)
-                    .andExpect(status().isNoContent());
+            deleteComment(asAdmin(admin), taskId, commentId).andExpect(status().isNoContent());
 
             assertThat(commentExists(commentId)).isFalse();
         }
@@ -909,8 +1012,7 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID otherTaskId = createTask(admin, null);
             UUID commentId = addComment(asAdmin(admin), taskId, "Mine", pdfFile("a.pdf"));
 
-            deleteComment(asAdmin(admin), otherTaskId, commentId)
-                    .andExpect(status().isNotFound());
+            deleteComment(asAdmin(admin), otherTaskId, commentId).andExpect(status().isNotFound());
 
             assertThat(commentExists(commentId)).isTrue();
             assertThat(attachmentIdsOfComment(commentId)).hasSize(1);
@@ -926,17 +1028,23 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             User author = createUser(UserRole.USER);
             UUID taskId = createTask(admin, null);
 
-            UUID commentId = addComment(asUser(author), taskId, "Files", pdfFile("a.pdf"), pdfFile("b.pdf"));
+            UUID commentId =
+                    addComment(asUser(author), taskId, "Files", pdfFile("a.pdf"), pdfFile("b.pdf"));
 
             List<JsonNode> added = eventsOfType(admin, taskId, "COMMENT_ADDED");
             assertThat(added).hasSize(1);
-            assertThat(added.getFirst().get("actor").get("id").asString()).isEqualTo(author.getId().toString());
-            assertThat(added.getFirst().get("payload").get("commentId").asString()).isEqualTo(commentId.toString());
+            assertThat(added.getFirst().get("actor").get("id").asString())
+                    .isEqualTo(author.getId().toString());
+            assertThat(added.getFirst().get("payload").get("commentId").asString())
+                    .isEqualTo(commentId.toString());
 
             List<JsonNode> files = eventsOfType(admin, taskId, "ATTACHMENT_ADDED");
             assertThat(files).hasSize(2);
             assertThat(files)
-                    .extracting(event -> UUID.fromString(event.get("payload").get("attachmentId").asString()))
+                    .extracting(
+                            event ->
+                                    UUID.fromString(
+                                            event.get("payload").get("attachmentId").asString()))
                     .containsExactlyInAnyOrderElementsOf(attachmentIdsOfComment(commentId));
             assertThat(files)
                     .extracting(event -> event.get("payload").get("filename").asString())
@@ -954,8 +1062,10 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
 
             JsonNode latest = eventsThroughApi(admin, taskId).get(0);
             assertThat(latest.get("type").asString()).isEqualTo("COMMENT_EDITED");
-            assertThat(latest.get("actor").get("id").asString()).isEqualTo(author.getId().toString());
-            assertThat(latest.get("payload").get("commentId").asString()).isEqualTo(commentId.toString());
+            assertThat(latest.get("actor").get("id").asString())
+                    .isEqualTo(author.getId().toString());
+            assertThat(latest.get("payload").get("commentId").asString())
+                    .isEqualTo(commentId.toString());
         }
 
         @Test
@@ -963,24 +1073,31 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             User admin = createUser(UserRole.ADMIN);
             User author = createUser(UserRole.USER);
             UUID taskId = createTask(admin, null);
-            UUID commentId = addComment(asUser(author), taskId, "Files", pdfFile("a.pdf"), pdfFile("b.pdf"));
+            UUID commentId =
+                    addComment(asUser(author), taskId, "Files", pdfFile("a.pdf"), pdfFile("b.pdf"));
             Set<UUID> attachmentIds = attachmentIdsOfComment(commentId);
 
             deleteComment(asAdmin(admin), taskId, commentId).andExpect(status().isNoContent());
 
             List<JsonNode> deleted = eventsOfType(admin, taskId, "COMMENT_DELETED");
             assertThat(deleted).hasSize(1);
-            assertThat(deleted.getFirst().get("actor").get("id").asString()).isEqualTo(admin.getId().toString());
+            assertThat(deleted.getFirst().get("actor").get("id").asString())
+                    .isEqualTo(admin.getId().toString());
             assertThat(deleted.getFirst().get("payload").get("commentId").asString())
                     .isEqualTo(commentId.toString());
 
             List<JsonNode> removed = eventsOfType(admin, taskId, "ATTACHMENT_REMOVED");
             assertThat(removed)
-                    .extracting(event -> UUID.fromString(event.get("payload").get("attachmentId").asString()))
+                    .extracting(
+                            event ->
+                                    UUID.fromString(
+                                            event.get("payload").get("attachmentId").asString()))
                     .containsExactlyInAnyOrderElementsOf(attachmentIds);
             assertThat(removed)
-                    .allSatisfy(event -> assertThat(event.get("actor").get("id").asString())
-                            .isEqualTo(admin.getId().toString()));
+                    .allSatisfy(
+                            event ->
+                                    assertThat(event.get("actor").get("id").asString())
+                                            .isEqualTo(admin.getId().toString()));
         }
 
         @Test
@@ -990,14 +1107,16 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             UUID taskId = createTask(admin, null);
             UUID commentId = addComment(asUser(author), taskId, "Draft");
 
-            editComment(asAdmin(admin), taskId, commentId, "Not yours").andExpect(status().isForbidden());
+            editComment(asAdmin(admin), taskId, commentId, "Not yours")
+                    .andExpect(status().isForbidden());
             editComment(asUser(author), taskId, commentId, "<@" + UUID.randomUUID() + ">")
                     .andExpect(status().isUnprocessableContent());
 
             assertThat(eventsOfType(admin, taskId, "COMMENT_EDITED")).isEmpty();
         }
 
-        private List<JsonNode> eventsOfType(User reader, UUID taskId, String type) throws Exception {
+        private List<JsonNode> eventsOfType(User reader, UUID taskId, String type)
+                throws Exception {
             return StreamSupport.stream(eventsThroughApi(reader, taskId).spliterator(), false)
                     .filter(event -> event.get("type").asString().equals(type))
                     .toList();
@@ -1050,10 +1169,11 @@ class TaskCommentApiTests extends AbstractTaskCommentApiTests {
             assertForbiddenOnEveryCommentEndpoint(asUser(author), taskId, commentId);
         }
 
-        private void assertForbiddenOnEveryCommentEndpoint(RequestPostProcessor caller, UUID taskId, UUID commentId)
-                throws Exception {
+        private void assertForbiddenOnEveryCommentEndpoint(
+                RequestPostProcessor caller, UUID taskId, UUID commentId) throws Exception {
             postComment(caller, taskId, "Denied").andExpect(status().isForbidden());
-            postComment(caller, taskId, "Denied", pdfFile("denied.pdf")).andExpect(status().isForbidden());
+            postComment(caller, taskId, "Denied", pdfFile("denied.pdf"))
+                    .andExpect(status().isForbidden());
             listComments(caller, taskId, "").andExpect(status().isForbidden());
             findComment(caller, taskId, commentId).andExpect(status().isForbidden());
             editComment(caller, taskId, commentId, "Denied").andExpect(status().isForbidden());

@@ -1,9 +1,6 @@
 package io.julienmetral.tasks.shared.exceptions;
 
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
-import org.springframework.http.ProblemDetail;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.net.URI;
@@ -16,8 +13,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.http.ProblemDetail;
 
 class ProblemTypeTest {
 
@@ -27,7 +26,8 @@ class ProblemTypeTest {
             "https://github.com/jubasse/spring-boot-tasks-api/blob/main/docs/problems.md";
 
     // A section documents a type when its first paragraph states "**Status 409, title "...".**"
-    private static final Pattern STATUS_AND_TITLE = Pattern.compile("^\\*\\*Status (\\d{3}), title \"([^\"]+)\"\\.\\*\\*");
+    private static final Pattern STATUS_AND_TITLE =
+            Pattern.compile("^\\*\\*Status (\\d{3}), title \"([^\"]+)\"\\.\\*\\*");
 
     @ParameterizedTest
     @EnumSource(ProblemType.class)
@@ -57,21 +57,29 @@ class ProblemTypeTest {
 
     @Test
     void everyTypeTheDocumentDescribesExistsInTheCode() throws IOException {
-        List<String> documented = sectionsByAnchor().entrySet().stream()
-                .filter(section -> STATUS_AND_TITLE.matcher(firstParagraph(section.getValue())).find())
-                .map(Map.Entry::getKey)
-                .toList();
+        List<String> documented =
+                sectionsByAnchor().entrySet().stream()
+                        .filter(
+                                section ->
+                                        STATUS_AND_TITLE
+                                                .matcher(firstParagraph(section.getValue()))
+                                                .find())
+                        .map(Map.Entry::getKey)
+                        .toList();
 
-        assertThat(documented).containsExactlyInAnyOrderElementsOf(
-                Arrays.stream(ProblemType.values()).map(type -> type.type().getFragment()).toList()
-        );
+        assertThat(documented)
+                .containsExactlyInAnyOrderElementsOf(
+                        Arrays.stream(ProblemType.values())
+                                .map(type -> type.type().getFragment())
+                                .toList());
     }
 
     @Test
     void titlesAreUnique() {
-        List<String> titles = Arrays.stream(ProblemType.values())
-                .map(type -> type.problem("detail").getTitle())
-                .toList();
+        List<String> titles =
+                Arrays.stream(ProblemType.values())
+                        .map(type -> type.problem("detail").getTitle())
+                        .toList();
 
         assertThat(titles).doesNotHaveDuplicates().doesNotContainNull();
     }

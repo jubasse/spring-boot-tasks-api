@@ -1,20 +1,19 @@
 package io.julienmetral.tasks.identity.mail;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
+
 import io.julienmetral.tasks.mail.MailMessage;
 import io.julienmetral.tasks.mail.MailService;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.time.Duration;
-import java.time.Instant;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class VerificationEmailSenderTest {
@@ -23,25 +22,24 @@ class VerificationEmailSenderTest {
 
     private static final Instant EXPIRES_AT = Instant.parse("2030-01-02T03:04:05Z");
 
-    private static final EmailVerificationRequested EVENT = new EmailVerificationRequested(
-            UUID.fromString("00000000-0000-0000-0000-000000000001"),
-            "jane@example.com",
-            "Jane Doe",
-            "the-raw-token",
-            EXPIRES_AT
-    );
+    private static final EmailVerificationRequested EVENT =
+            new EmailVerificationRequested(
+                    UUID.fromString("00000000-0000-0000-0000-000000000001"),
+                    "jane@example.com",
+                    "Jane Doe",
+                    "the-raw-token",
+                    EXPIRES_AT);
 
-    @Mock
-    private MailService mailService;
+    @Mock private MailService mailService;
 
     private VerificationEmailSender sender;
 
     @BeforeEach
     void setUp() {
-        sender = new VerificationEmailSender(
-                mailService,
-                new EmailVerificationProperties(Duration.ofHours(24), VERIFY_URL)
-        );
+        sender =
+                new VerificationEmailSender(
+                        mailService,
+                        new EmailVerificationProperties(Duration.ofHours(24), VERIFY_URL));
     }
 
     @Test

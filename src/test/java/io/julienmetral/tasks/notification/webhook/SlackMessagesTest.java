@@ -1,17 +1,16 @@
 package io.julienmetral.tasks.notification.webhook;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.julienmetral.tasks.notification.entities.WebhookEvent;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
-
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 class SlackMessagesTest {
 
@@ -43,7 +42,10 @@ class SlackMessagesTest {
         data.put("reason", "Customer withdrew the request");
 
         assertThat(text(WebhookEvent.TASK_CANCELLED, data))
-                .isEqualTo("*Ada Lovelace* cancelled " + SUBJECT + "\nReason: Customer withdrew the request");
+                .isEqualTo(
+                        "*Ada Lovelace* cancelled "
+                                + SUBJECT
+                                + "\nReason: Customer withdrew the request");
     }
 
     @Test
@@ -51,12 +53,14 @@ class SlackMessagesTest {
         Map<String, Object> data = data();
         data.put("reason", null);
 
-        assertThat(text(WebhookEvent.TASK_CANCELLED, data)).isEqualTo("*Ada Lovelace* cancelled " + SUBJECT);
+        assertThat(text(WebhookEvent.TASK_CANCELLED, data))
+                .isEqualTo("*Ada Lovelace* cancelled " + SUBJECT);
     }
 
     @Test
     void deletedNamesTheActorAndTheTask() {
-        assertThat(text(WebhookEvent.TASK_DELETED, data())).isEqualTo("*Ada Lovelace* deleted " + SUBJECT);
+        assertThat(text(WebhookEvent.TASK_DELETED, data()))
+                .isEqualTo("*Ada Lovelace* deleted " + SUBJECT);
     }
 
     @Test
@@ -68,7 +72,10 @@ class SlackMessagesTest {
     @Test
     void mentionedQuotesTheExcerpt() {
         assertThat(text(WebhookEvent.TASK_MENTIONED, withComment("Please review, @Grace Hopper")))
-                .isEqualTo("*Ada Lovelace* mentioned you on " + SUBJECT + "\n>Please review, @Grace Hopper");
+                .isEqualTo(
+                        "*Ada Lovelace* mentioned you on "
+                                + SUBJECT
+                                + "\n>Please review, @Grace Hopper");
     }
 
     @Test
@@ -77,7 +84,8 @@ class SlackMessagesTest {
         data.put("actor", null);
         data.put("dueAt", "2030-01-01T10:00:00Z");
 
-        assertThat(text(WebhookEvent.TASK_DUE_SOON, data)).isEqualTo(SUBJECT + " is due on 2030-01-01 10:00 UTC");
+        assertThat(text(WebhookEvent.TASK_DUE_SOON, data))
+                .isEqualTo(SUBJECT + " is due on 2030-01-01 10:00 UTC");
     }
 
     @Test
@@ -95,11 +103,14 @@ class SlackMessagesTest {
         Map<String, Object> data = data();
         data.put("dueAt", "2030-12-31T23:59:59.999999Z");
 
-        assertThat(text(WebhookEvent.TASK_DUE_SOON, data)).endsWith(" is due on 2030-12-31 23:59 UTC");
+        assertThat(text(WebhookEvent.TASK_DUE_SOON, data))
+                .endsWith(" is due on 2030-12-31 23:59 UTC");
     }
 
     @ParameterizedTest
-    @EnumSource(value = WebhookEvent.class, names = {"TASK_DUE_SOON", "TASK_OVERDUE"})
+    @EnumSource(
+            value = WebhookEvent.class,
+            names = {"TASK_DUE_SOON", "TASK_OVERDUE"})
     void reminderNeverNamesAnActor(WebhookEvent event) {
         Map<String, Object> data = data();
         data.put("dueAt", "2030-01-01T10:00:00Z");
@@ -125,7 +136,8 @@ class SlackMessagesTest {
         Map<String, Object> data = data();
         data.put("actor", actor);
 
-        assertThat(text(WebhookEvent.TASK_ASSIGNED, data)).isEqualTo("*Someone* assigned you " + SUBJECT);
+        assertThat(text(WebhookEvent.TASK_ASSIGNED, data))
+                .isEqualTo("*Someone* assigned you " + SUBJECT);
     }
 
     // Escaping and quoting
@@ -136,7 +148,8 @@ class SlackMessagesTest {
         task(data).put("title", "Ship it <!channel> & <!here>");
 
         assertThat(text(WebhookEvent.TASK_ASSIGNED, data))
-                .isEqualTo("*Ada Lovelace* assigned you *OPS-12*: Ship it &lt;!channel&gt; &amp; &lt;!here&gt;")
+                .isEqualTo(
+                        "*Ada Lovelace* assigned you *OPS-12*: Ship it &lt;!channel&gt; &amp; &lt;!here&gt;")
                 .doesNotContain("<")
                 .doesNotContain(">");
     }
@@ -166,22 +179,31 @@ class SlackMessagesTest {
         data.put("actor", actor("<@U024BE7LH> & co"));
         data.put("reason", "Moved to <#C024BE7LR>");
 
-        assertThat(text(WebhookEvent.TASK_CANCELLED, data)).isEqualTo(
-                "*&lt;@U024BE7LH&gt; &amp; co* cancelled *&lt;OPS&gt;&amp;1*: Renew the TLS certificates"
-                        + "\nReason: Moved to &lt;#C024BE7LR&gt;");
+        assertThat(text(WebhookEvent.TASK_CANCELLED, data))
+                .isEqualTo(
+                        "*&lt;@U024BE7LH&gt; &amp; co* cancelled *&lt;OPS&gt;&amp;1*: Renew the TLS certificates"
+                                + "\nReason: Moved to &lt;#C024BE7LR&gt;");
     }
 
     @Test
     void commentExcerptIsEscaped() {
-        assertThat(text(WebhookEvent.TASK_COMMENTED, withComment("<!everyone> fixed in <https://x.example|PR> & more")))
+        assertThat(
+                        text(
+                                WebhookEvent.TASK_COMMENTED,
+                                withComment("<!everyone> fixed in <https://x.example|PR> & more")))
                 .endsWith("\n>&lt;!everyone&gt; fixed in &lt;https://x.example|PR&gt; &amp; more");
     }
 
     @Test
     void everyLineOfAMultiLineExcerptIsQuoted() {
-        assertThat(text(WebhookEvent.TASK_COMMENTED, withComment("First line\nSecond line\n\nFourth line")))
-                .isEqualTo("*Ada Lovelace* commented on " + SUBJECT
-                        + "\n>First line\n>Second line\n>\n>Fourth line");
+        assertThat(
+                        text(
+                                WebhookEvent.TASK_COMMENTED,
+                                withComment("First line\nSecond line\n\nFourth line")))
+                .isEqualTo(
+                        "*Ada Lovelace* commented on "
+                                + SUBJECT
+                                + "\n>First line\n>Second line\n>\n>Fourth line");
     }
 
     @Test
@@ -196,7 +218,9 @@ class SlackMessagesTest {
     void bodyIsAJsonObjectWithTheTextOnly() {
         String body = slackMessages.render(WebhookEvent.TASK_ASSIGNED, data());
 
-        assertThat(body).isEqualTo("{\"text\":\"*Ada Lovelace* assigned you *OPS-12*: Renew the TLS certificates\"}");
+        assertThat(body)
+                .isEqualTo(
+                        "{\"text\":\"*Ada Lovelace* assigned you *OPS-12*: Renew the TLS certificates\"}");
     }
 
     @Test
@@ -204,17 +228,20 @@ class SlackMessagesTest {
         Map<String, Object> data = withComment("He said \"done\" \\ really\nSure");
         task(data).put("title", "Fix \"quotes\"");
 
-        JsonNode body = jsonMapper.readTree(slackMessages.render(WebhookEvent.TASK_COMMENTED, data));
+        JsonNode body =
+                jsonMapper.readTree(slackMessages.render(WebhookEvent.TASK_COMMENTED, data));
 
         assertThat(body.propertyNames()).containsExactly("text");
         assertThat(body.get("text").asString())
-                .isEqualTo("*Ada Lovelace* commented on *OPS-12*: Fix \"quotes\"\n>He said \"done\" \\ really\n>Sure");
+                .isEqualTo(
+                        "*Ada Lovelace* commented on *OPS-12*: Fix \"quotes\"\n>He said \"done\" \\ really\n>Sure");
     }
 
     @Test
     void testMessageSaysTheWebhookWorks() {
         assertThat(slackMessages.renderTest())
-                .isEqualTo("{\"text\":\"Test message from the Tasks API: this Slack webhook works.\"}");
+                .isEqualTo(
+                        "{\"text\":\"Test message from the Tasks API: this Slack webhook works.\"}");
     }
 
     private String text(WebhookEvent event, Map<String, Object> data) {

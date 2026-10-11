@@ -1,5 +1,13 @@
 package io.julienmetral.tasks.identity.security;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Base64;
+import java.util.List;
+import javax.crypto.SecretKey;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
@@ -9,15 +17,6 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.jwt.JwtValidationException;
-
-import javax.crypto.SecretKey;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Base64;
-import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class JwtConfigurationTest {
 
@@ -30,7 +29,8 @@ class JwtConfigurationTest {
         for (int i = 0; i < secret.length; i++) {
             secret[i] = (byte) (i + 1);
         }
-        return new JwtProperties(ISSUER, Duration.ofMinutes(15), Base64.getEncoder().encodeToString(secret));
+        return new JwtProperties(
+                ISSUER, Duration.ofMinutes(15), Base64.getEncoder().encodeToString(secret));
     }
 
     private static JwtClaimsSet claims(String issuer) {
@@ -46,8 +46,10 @@ class JwtConfigurationTest {
     }
 
     private static String encode(JwtEncoder encoder, JwtClaimsSet claims) {
-        return encoder.encode(JwtEncoderParameters.from(
-                JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
+        return encoder.encode(
+                        JwtEncoderParameters.from(
+                                JwsHeader.with(MacAlgorithm.HS256).build(), claims))
+                .getTokenValue();
     }
 
     @Test
@@ -76,7 +78,8 @@ class JwtConfigurationTest {
 
         assertThat(decoded.getSubject()).isEqualTo("jane@example.com");
         assertThat(decoded.getClaimAsString("iss")).isEqualTo(ISSUER);
-        assertThat(decoded.getClaimAsString("uid")).isEqualTo("00000000-0000-0000-0000-000000000001");
+        assertThat(decoded.getClaimAsString("uid"))
+                .isEqualTo("00000000-0000-0000-0000-000000000001");
         assertThat(decoded.getClaimAsStringList("roles")).containsExactly("ROLE_USER");
         assertThat(decoded.getHeaders()).containsEntry("alg", "HS256");
     }
@@ -88,8 +91,7 @@ class JwtConfigurationTest {
         String token = encode(configuration.jwtEncoder(key), claims("someone-else"));
         JwtDecoder decoder = configuration.jwtDecoder(key, props);
 
-        assertThatThrownBy(() -> decoder.decode(token))
-                .isInstanceOf(JwtValidationException.class);
+        assertThatThrownBy(() -> decoder.decode(token)).isInstanceOf(JwtValidationException.class);
     }
 
     @Test

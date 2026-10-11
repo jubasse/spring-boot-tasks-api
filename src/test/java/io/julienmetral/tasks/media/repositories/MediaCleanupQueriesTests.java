@@ -1,23 +1,22 @@
 package io.julienmetral.tasks.media.repositories;
 
-import io.julienmetral.tasks.support.JdbcSliceTest;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.JdbcTemplate;
+import static org.assertj.core.api.Assertions.assertThat;
 
+import io.julienmetral.tasks.support.JdbcSliceTest;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 @JdbcSliceTest
 class MediaCleanupQueriesTests {
 
-    // Every date sits in 2000, before anything the other test contexts write to the shared database: the cutoffs
-    // below reach only this class's rows
+    // Every date sits in 2000, before anything the other test contexts write to the shared
+    // database: the cutoffs below reach only this class's rows
     private static final Instant NOW = Instant.parse("2000-06-01T00:00:00Z");
 
     private static final Instant RETENTION_CUTOFF = NOW.minus(Duration.ofDays(30));
@@ -26,11 +25,9 @@ class MediaCleanupQueriesTests {
 
     private static final Instant LONG_AGO = NOW.minus(Duration.ofDays(365));
 
-    @Autowired
-    private MediaCleanupQueries queries;
+    @Autowired private MediaCleanupQueries queries;
 
-    @Autowired
-    private JdbcTemplate jdbc;
+    @Autowired private JdbcTemplate jdbc;
 
     // Attachments of deleted tasks
 
@@ -46,7 +43,8 @@ class MediaCleanupQueriesTests {
 
         assertThat(detached).contains(first, second);
         assertThat(count("SELECT count(*) FROM task_attachments WHERE task_id = ?", task)).isZero();
-        assertThat(count("SELECT count(*) FROM media WHERE id IN (?, ?)", first, second)).isEqualTo(2);
+        assertThat(count("SELECT count(*) FROM media WHERE id IN (?, ?)", first, second))
+                .isEqualTo(2);
     }
 
     @Test
@@ -61,8 +59,12 @@ class MediaCleanupQueriesTests {
         List<UUID> detached = queries.detachAttachmentsOfTasksDeletedBefore(RETENTION_CUTOFF);
 
         assertThat(detached).doesNotContain(ofRecentlyDeleted, ofNotDeleted);
-        assertThat(count("SELECT count(*) FROM task_attachments WHERE media_id IN (?, ?)", ofRecentlyDeleted,
-                ofNotDeleted)).isEqualTo(2);
+        assertThat(
+                        count(
+                                "SELECT count(*) FROM task_attachments WHERE media_id IN (?, ?)",
+                                ofRecentlyDeleted,
+                                ofNotDeleted))
+                .isEqualTo(2);
     }
 
     // Photos of deleted users
@@ -77,8 +79,10 @@ class MediaCleanupQueriesTests {
         List<UUID> detached = queries.detachAvatarsOfUsersDeletedBefore(RETENTION_CUTOFF);
 
         assertThat(detached).contains(avatar, pendingAvatar);
-        assertThat(jdbc.queryForMap("SELECT avatar_media_id, pending_avatar_media_id FROM user_profiles WHERE id = ?",
-                user))
+        assertThat(
+                        jdbc.queryForMap(
+                                "SELECT avatar_media_id, pending_avatar_media_id FROM user_profiles WHERE id = ?",
+                                user))
                 .containsEntry("avatar_media_id", null)
                 .containsEntry("pending_avatar_media_id", null);
     }
@@ -128,7 +132,8 @@ class MediaCleanupQueriesTests {
         UUID uploadInProgress = insertMedia(GRACE_CUTOFF);
         String storageKey = storageKeyOf(uploadInProgress);
 
-        assertThat(queries.deleteUnreferencedMediaCreatedBefore(GRACE_CUTOFF)).doesNotContain(storageKey);
+        assertThat(queries.deleteUnreferencedMediaCreatedBefore(GRACE_CUTOFF))
+                .doesNotContain(storageKey);
         assertThat(count("SELECT count(*) FROM media WHERE id = ?", uploadInProgress)).isOne();
     }
 
@@ -143,12 +148,17 @@ class MediaCleanupQueriesTests {
 
         List<String> deletedKeys = queries.deleteUnreferencedMediaCreatedBefore(GRACE_CUTOFF);
 
-        assertThat(deletedKeys).doesNotContain(
-                storageKeyOf(avatar),
-                storageKeyOf(pendingAvatar),
-                storageKeyOf(attachment)
-        );
-        assertThat(count("SELECT count(*) FROM media WHERE id IN (?, ?, ?)", avatar, pendingAvatar, attachment))
+        assertThat(deletedKeys)
+                .doesNotContain(
+                        storageKeyOf(avatar),
+                        storageKeyOf(pendingAvatar),
+                        storageKeyOf(attachment));
+        assertThat(
+                        count(
+                                "SELECT count(*) FROM media WHERE id IN (?, ?, ?)",
+                                avatar,
+                                pendingAvatar,
+                                attachment))
                 .isEqualTo(3);
     }
 
@@ -157,7 +167,8 @@ class MediaCleanupQueriesTests {
         UUID file = insertMedia(LONG_AGO);
         insertExport(insertUser(null), file);
 
-        assertThat(queries.deleteUnreferencedMediaCreatedBefore(GRACE_CUTOFF)).doesNotContain(storageKeyOf(file));
+        assertThat(queries.deleteUnreferencedMediaCreatedBefore(GRACE_CUTOFF))
+                .doesNotContain(storageKeyOf(file));
         assertThat(count("SELECT count(*) FROM media WHERE id = ?", file)).isOne();
     }
 
@@ -166,7 +177,8 @@ class MediaCleanupQueriesTests {
         UUID file = insertMedia(LONG_AGO);
         UUID export = insertExport(insertUser(null), file);
         String storageKey = storageKeyOf(file);
-        jdbc.update("UPDATE data_exports SET media_id = NULL, status = 'EXPIRED' WHERE id = ?", export);
+        jdbc.update(
+                "UPDATE data_exports SET media_id = NULL, status = 'EXPIRED' WHERE id = ?", export);
 
         assertThat(queries.deleteUnreferencedMediaCreatedBefore(GRACE_CUTOFF)).contains(storageKey);
     }
@@ -189,7 +201,8 @@ class MediaCleanupQueriesTests {
         String stored = storageKeyOf(insertMedia(LONG_AGO));
         String orphanObject = "task-attachment/" + UUID.randomUUID();
 
-        assertThat(queries.existingStorageKeys(List.of(stored, orphanObject))).containsExactly(stored);
+        assertThat(queries.existingStorageKeys(List.of(stored, orphanObject)))
+                .containsExactly(stored);
     }
 
     @Test
@@ -198,23 +211,27 @@ class MediaCleanupQueriesTests {
     }
 
     private UUID insertUser(Instant deletedAt) {
-        UUID id = jdbc.queryForObject(
-                """
+        UUID id =
+                jdbc.queryForObject(
+                        """
                         INSERT INTO user_profiles (display_name, status, created_at, updated_at)
                         VALUES ('Media cleanup', ?, ?, ?)
                         RETURNING id
                         """,
-                UUID.class,
-                deletedAt == null ? "ACTIVE" : "DELETED", timestamp(LONG_AGO), timestamp(LONG_AGO)
-        );
+                        UUID.class,
+                        deletedAt == null ? "ACTIVE" : "DELETED",
+                        timestamp(LONG_AGO),
+                        timestamp(LONG_AGO));
         jdbc.update(
                 """
                         INSERT INTO users (id, email, password_hash, enabled, created_at, updated_at, deleted_at)
                         VALUES (?, ?, '!', true, ?, ?, ?)
                         """,
-                id, "cleanup-" + UUID.randomUUID() + "@example.com", timestamp(LONG_AGO), timestamp(LONG_AGO),
-                timestamp(deletedAt)
-        );
+                id,
+                "cleanup-" + UUID.randomUUID() + "@example.com",
+                timestamp(LONG_AGO),
+                timestamp(LONG_AGO),
+                timestamp(deletedAt));
         return id;
     }
 
@@ -227,9 +244,10 @@ class MediaCleanupQueriesTests {
                         RETURNING id
                         """,
                 UUID.class,
-                timestamp(LONG_AGO), timestamp(LONG_AGO), "MED-" + UUID.randomUUID().toString().substring(0, 18),
-                timestamp(deletedAt)
-        );
+                timestamp(LONG_AGO),
+                timestamp(LONG_AGO),
+                "MED-" + UUID.randomUUID().toString().substring(0, 18),
+                timestamp(deletedAt));
     }
 
     private UUID insertMedia(Instant createdAt) {
@@ -241,8 +259,8 @@ class MediaCleanupQueriesTests {
                         RETURNING id
                         """,
                 UUID.class,
-                "task-attachment/" + UUID.randomUUID(), timestamp(createdAt)
-        );
+                "task-attachment/" + UUID.randomUUID(),
+                timestamp(createdAt));
     }
 
     private UUID insertExport(UUID owner, UUID media) {
@@ -253,30 +271,35 @@ class MediaCleanupQueriesTests {
                         RETURNING id
                         """,
                 UUID.class,
-                owner, media, timestamp(LONG_AGO)
-        );
+                owner,
+                media,
+                timestamp(LONG_AGO));
     }
 
     private void attach(UUID task, UUID media) {
         jdbc.update(
                 "INSERT INTO task_attachments (task_id, media_id, created_at) VALUES (?, ?, ?)",
-                task, media, timestamp(LONG_AGO)
-        );
+                task,
+                media,
+                timestamp(LONG_AGO));
     }
 
     private void setPhotos(UUID user, UUID avatar, UUID pendingAvatar) {
         jdbc.update(
                 "UPDATE user_profiles SET avatar_media_id = ?, pending_avatar_media_id = ? WHERE id = ?",
-                avatar, pendingAvatar, user
-        );
+                avatar,
+                pendingAvatar,
+                user);
     }
 
     private UUID avatarOf(UUID user) {
-        return jdbc.queryForObject("SELECT avatar_media_id FROM user_profiles WHERE id = ?", UUID.class, user);
+        return jdbc.queryForObject(
+                "SELECT avatar_media_id FROM user_profiles WHERE id = ?", UUID.class, user);
     }
 
     private String storageKeyOf(UUID media) {
-        return jdbc.queryForObject("SELECT storage_key FROM media WHERE id = ?", String.class, media);
+        return jdbc.queryForObject(
+                "SELECT storage_key FROM media WHERE id = ?", String.class, media);
     }
 
     private int count(String sql, Object... arguments) {

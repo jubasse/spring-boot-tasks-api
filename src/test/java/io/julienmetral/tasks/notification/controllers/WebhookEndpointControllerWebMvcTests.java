@@ -1,48 +1,5 @@
 package io.julienmetral.tasks.notification.controllers;
 
-import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
-import io.julienmetral.tasks.notification.dtos.CreateWebhookEndpointDto;
-import io.julienmetral.tasks.notification.dtos.UpdateWebhookEndpointDto;
-import io.julienmetral.tasks.notification.entities.WebhookDelivery;
-import io.julienmetral.tasks.notification.entities.WebhookDeliveryStatus;
-import io.julienmetral.tasks.notification.entities.WebhookEndpoint;
-import io.julienmetral.tasks.notification.entities.WebhookEvent;
-import io.julienmetral.tasks.notification.entities.WebhookKind;
-import io.julienmetral.tasks.notification.exceptions.WebhookDeliveryNotFoundException;
-import io.julienmetral.tasks.notification.exceptions.WebhookEndpointNotFoundException;
-import io.julienmetral.tasks.notification.exceptions.WebhookLimitReachedException;
-import io.julienmetral.tasks.notification.exceptions.WebhookUrlNotAllowedException;
-import io.julienmetral.tasks.notification.services.WebhookEndpointService;
-import io.julienmetral.tasks.notification.services.WebhookEndpointService.CreatedWebhookEndpoint;
-import io.julienmetral.tasks.notification.services.WebhookEndpointService.RotatedWebhookSecret;
-import io.julienmetral.tasks.notification.webhook.WebhookTestResult;
-import io.julienmetral.tasks.ratelimit.exceptions.RateLimitExceededException;
-import io.julienmetral.tasks.support.UserProfiles;
-import io.julienmetral.tasks.support.WebLayerTest;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
-import org.junit.jupiter.params.provider.ValueSource;
-import org.mockito.ArgumentCaptor;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.ResultActions;
-import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import org.springframework.test.web.servlet.request.RequestPostProcessor;
-
-import java.time.Duration;
-import java.time.Instant;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.UUID;
-
 import static io.julienmetral.tasks.support.Problems.invalidBodyValue;
 import static io.julienmetral.tasks.support.Problems.invalidParameter;
 import static io.julienmetral.tasks.support.Problems.typedProblem;
@@ -71,6 +28,48 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
+import io.julienmetral.tasks.notification.dtos.CreateWebhookEndpointDto;
+import io.julienmetral.tasks.notification.dtos.UpdateWebhookEndpointDto;
+import io.julienmetral.tasks.notification.entities.WebhookDelivery;
+import io.julienmetral.tasks.notification.entities.WebhookDeliveryStatus;
+import io.julienmetral.tasks.notification.entities.WebhookEndpoint;
+import io.julienmetral.tasks.notification.entities.WebhookEvent;
+import io.julienmetral.tasks.notification.entities.WebhookKind;
+import io.julienmetral.tasks.notification.exceptions.WebhookDeliveryNotFoundException;
+import io.julienmetral.tasks.notification.exceptions.WebhookEndpointNotFoundException;
+import io.julienmetral.tasks.notification.exceptions.WebhookLimitReachedException;
+import io.julienmetral.tasks.notification.exceptions.WebhookUrlNotAllowedException;
+import io.julienmetral.tasks.notification.services.WebhookEndpointService;
+import io.julienmetral.tasks.notification.services.WebhookEndpointService.CreatedWebhookEndpoint;
+import io.julienmetral.tasks.notification.services.WebhookEndpointService.RotatedWebhookSecret;
+import io.julienmetral.tasks.notification.webhook.WebhookTestResult;
+import io.julienmetral.tasks.ratelimit.exceptions.RateLimitExceededException;
+import io.julienmetral.tasks.support.UserProfiles;
+import io.julienmetral.tasks.support.WebLayerTest;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
+
 @WebLayerTest
 class WebhookEndpointControllerWebMvcTests {
 
@@ -88,31 +87,34 @@ class WebhookEndpointControllerWebMvcTests {
 
     private static final String URL = "https://hooks.example.com/tasks";
 
-    private static final String CREATE_BODY = """
+    private static final String CREATE_BODY =
+            """
             {"url": "https://hooks.example.com/tasks", "events": ["task.overdue", "task.assigned"]}
             """;
 
-    private static final String UPDATE_BODY = """
+    private static final String UPDATE_BODY =
+            """
             {"url": "https://hooks.example.com/tasks", "events": ["task.due_soon"], "enabled": false}
             """;
 
     private static final String SLACK_TOKEN = "slack-path-token";
 
-    private static final String SLACK_URL = "https://hooks.slack.com/services/T0001/B0002/" + SLACK_TOKEN;
+    private static final String SLACK_URL =
+            "https://hooks.slack.com/services/T0001/B0002/" + SLACK_TOKEN;
 
     private static final String SLACK_MASK = "https://hooks.slack.com/services/****";
 
-    private static final String SLACK_CREATE_BODY = """
+    private static final String SLACK_CREATE_BODY =
+            """
             {"kind": "SLACK", "url": "%s", "events": ["task.assigned"]}
-            """.formatted(SLACK_URL);
+            """
+                    .formatted(SLACK_URL);
 
     private static final Instant CREATED_AT = Instant.parse("2026-05-06T07:08:09Z");
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private WebhookEndpointService webhookService;
+    @Autowired private WebhookEndpointService webhookService;
 
     // Authentication and access
 
@@ -142,7 +144,8 @@ class WebhookEndpointControllerWebMvcTests {
 
     @Test
     void callerWithoutUidCannotReachAnyEndpoint() throws Exception {
-        for (MockHttpServletRequestBuilder request : everyEndpoint(UUID.randomUUID(), UUID.randomUUID())) {
+        for (MockHttpServletRequestBuilder request :
+                everyEndpoint(UUID.randomUUID(), UUID.randomUUID())) {
             mockMvc.perform(request.with(withoutUid())).andExpect(status().isForbidden());
         }
 
@@ -172,7 +175,10 @@ class WebhookEndpointControllerWebMvcTests {
 
         mockMvc.perform(json(post(WEBHOOKS, id), user(id), CREATE_BODY))
                 .andExpect(status().isCreated())
-                .andExpect(header().string("Location", "/api/v1/users/" + id + "/webhooks/" + webhookId))
+                .andExpect(
+                        header().string(
+                                        "Location",
+                                        "/api/v1/users/" + id + "/webhooks/" + webhookId))
                 .andExpect(jsonPath("$.id").value(webhookId.toString()))
                 .andExpect(jsonPath("$.url").value(URL))
                 .andExpect(jsonPath("$.events").value(contains("task.assigned", "task.overdue")))
@@ -180,7 +186,8 @@ class WebhookEndpointControllerWebMvcTests {
                 .andExpect(jsonPath("$.createdAt").value(CREATED_AT.toString()))
                 .andExpect(jsonPath("$.secret").value("whsec_secret"));
 
-        ArgumentCaptor<CreateWebhookEndpointDto> dto = ArgumentCaptor.forClass(CreateWebhookEndpointDto.class);
+        ArgumentCaptor<CreateWebhookEndpointDto> dto =
+                ArgumentCaptor.forClass(CreateWebhookEndpointDto.class);
         verify(webhookService).create(eq(id), dto.capture());
         assertThat(dto.getValue().url()).isEqualTo(URL);
         assertThat(dto.getValue().events())
@@ -192,11 +199,15 @@ class WebhookEndpointControllerWebMvcTests {
         UUID id = UUID.randomUUID();
         UUID webhookId = UUID.randomUUID();
         when(webhookService.create(eq(id), any()))
-                .thenReturn(new CreatedWebhookEndpoint(slackEndpoint(id, webhookId), "whsec_unused"));
+                .thenReturn(
+                        new CreatedWebhookEndpoint(slackEndpoint(id, webhookId), "whsec_unused"));
 
         mockMvc.perform(json(post(WEBHOOKS, id), user(id), SLACK_CREATE_BODY))
                 .andExpect(status().isCreated())
-                .andExpect(header().string("Location", "/api/v1/users/" + id + "/webhooks/" + webhookId))
+                .andExpect(
+                        header().string(
+                                        "Location",
+                                        "/api/v1/users/" + id + "/webhooks/" + webhookId))
                 .andExpect(jsonPath("$.id").value(webhookId.toString()))
                 .andExpect(jsonPath("$.kind").value("SLACK"))
                 .andExpect(jsonPath("$.url").value(SLACK_MASK))
@@ -204,7 +215,8 @@ class WebhookEndpointControllerWebMvcTests {
                 .andExpect(content().string(not(containsString(SLACK_TOKEN))))
                 .andExpect(content().string(not(containsString("whsec_unused"))));
 
-        ArgumentCaptor<CreateWebhookEndpointDto> dto = ArgumentCaptor.forClass(CreateWebhookEndpointDto.class);
+        ArgumentCaptor<CreateWebhookEndpointDto> dto =
+                ArgumentCaptor.forClass(CreateWebhookEndpointDto.class);
         verify(webhookService).create(eq(id), dto.capture());
         assertThat(dto.getValue().kind()).isEqualTo(WebhookKind.SLACK);
         assertThat(dto.getValue().url()).isEqualTo(SLACK_URL);
@@ -217,14 +229,20 @@ class WebhookEndpointControllerWebMvcTests {
         when(webhookService.create(eq(id), any()))
                 .thenReturn(new CreatedWebhookEndpoint(endpoint(id, webhookId), "whsec_secret"));
 
-        mockMvc.perform(json(post(WEBHOOKS, id), user(id),
-                        "{\"kind\": \"WEBHOOK\", \"url\": \"" + URL + "\", \"events\": [\"task.assigned\"]}"))
+        mockMvc.perform(
+                        json(
+                                post(WEBHOOKS, id),
+                                user(id),
+                                "{\"kind\": \"WEBHOOK\", \"url\": \""
+                                        + URL
+                                        + "\", \"events\": [\"task.assigned\"]}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.kind").value("WEBHOOK"))
                 .andExpect(jsonPath("$.url").value(URL))
                 .andExpect(jsonPath("$.secret").value("whsec_secret"));
 
-        ArgumentCaptor<CreateWebhookEndpointDto> dto = ArgumentCaptor.forClass(CreateWebhookEndpointDto.class);
+        ArgumentCaptor<CreateWebhookEndpointDto> dto =
+                ArgumentCaptor.forClass(CreateWebhookEndpointDto.class);
         verify(webhookService).create(eq(id), dto.capture());
         assertThat(dto.getValue().kind()).isEqualTo(WebhookKind.WEBHOOK);
     }
@@ -233,13 +251,16 @@ class WebhookEndpointControllerWebMvcTests {
     void createWithoutAKindLeavesTheDefaultToTheService() throws Exception {
         UUID id = UUID.randomUUID();
         when(webhookService.create(eq(id), any()))
-                .thenReturn(new CreatedWebhookEndpoint(endpoint(id, UUID.randomUUID()), "whsec_secret"));
+                .thenReturn(
+                        new CreatedWebhookEndpoint(
+                                endpoint(id, UUID.randomUUID()), "whsec_secret"));
 
         mockMvc.perform(json(post(WEBHOOKS, id), user(id), CREATE_BODY))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.kind").value("WEBHOOK"));
 
-        ArgumentCaptor<CreateWebhookEndpointDto> dto = ArgumentCaptor.forClass(CreateWebhookEndpointDto.class);
+        ArgumentCaptor<CreateWebhookEndpointDto> dto =
+                ArgumentCaptor.forClass(CreateWebhookEndpointDto.class);
         verify(webhookService).create(eq(id), dto.capture());
         assertThat(dto.getValue().kind()).isNull();
     }
@@ -249,7 +270,8 @@ class WebhookEndpointControllerWebMvcTests {
         UUID id = UUID.randomUUID();
         UUID slack = UUID.randomUUID();
         UUID webhook = UUID.randomUUID();
-        when(webhookService.findAll(id)).thenReturn(List.of(slackEndpoint(id, slack), endpoint(id, webhook)));
+        when(webhookService.findAll(id))
+                .thenReturn(List.of(slackEndpoint(id, slack), endpoint(id, webhook)));
         when(webhookService.get(id, slack)).thenReturn(slackEndpoint(id, slack));
 
         mockMvc.perform(get(WEBHOOKS, id).with(user(id)))
@@ -268,16 +290,23 @@ class WebhookEndpointControllerWebMvcTests {
     void updateResponseMasksTheUrlOfASlackWebhook() throws Exception {
         UUID id = UUID.randomUUID();
         UUID webhookId = UUID.randomUUID();
-        when(webhookService.update(eq(id), eq(webhookId), any())).thenReturn(slackEndpoint(id, webhookId));
+        when(webhookService.update(eq(id), eq(webhookId), any()))
+                .thenReturn(slackEndpoint(id, webhookId));
 
-        mockMvc.perform(json(put(WEBHOOK, id, webhookId), user(id),
-                        "{\"url\": \"" + SLACK_MASK + "\", \"events\": [\"task.assigned\"], \"enabled\": true}"))
+        mockMvc.perform(
+                        json(
+                                put(WEBHOOK, id, webhookId),
+                                user(id),
+                                "{\"url\": \""
+                                        + SLACK_MASK
+                                        + "\", \"events\": [\"task.assigned\"], \"enabled\": true}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.kind").value("SLACK"))
                 .andExpect(jsonPath("$.url").value(SLACK_MASK))
                 .andExpect(content().string(not(containsString(SLACK_TOKEN))));
 
-        ArgumentCaptor<UpdateWebhookEndpointDto> dto = ArgumentCaptor.forClass(UpdateWebhookEndpointDto.class);
+        ArgumentCaptor<UpdateWebhookEndpointDto> dto =
+                ArgumentCaptor.forClass(UpdateWebhookEndpointDto.class);
         verify(webhookService).update(eq(id), eq(webhookId), dto.capture());
         assertThat(dto.getValue().url()).isEqualTo(SLACK_MASK);
     }
@@ -286,15 +315,22 @@ class WebhookEndpointControllerWebMvcTests {
     void kindInAnUpdateBodyIsIgnored() throws Exception {
         UUID id = UUID.randomUUID();
         UUID webhookId = UUID.randomUUID();
-        when(webhookService.update(eq(id), eq(webhookId), any())).thenReturn(slackEndpoint(id, webhookId));
+        when(webhookService.update(eq(id), eq(webhookId), any()))
+                .thenReturn(slackEndpoint(id, webhookId));
 
-        mockMvc.perform(json(put(WEBHOOK, id, webhookId), user(id),
-                        "{\"kind\": \"WEBHOOK\", \"url\": \"" + URL + "\", \"events\": [\"task.assigned\"], "
-                                + "\"enabled\": true}"))
+        mockMvc.perform(
+                        json(
+                                put(WEBHOOK, id, webhookId),
+                                user(id),
+                                "{\"kind\": \"WEBHOOK\", \"url\": \""
+                                        + URL
+                                        + "\", \"events\": [\"task.assigned\"], "
+                                        + "\"enabled\": true}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.kind").value("SLACK"));
 
-        ArgumentCaptor<UpdateWebhookEndpointDto> dto = ArgumentCaptor.forClass(UpdateWebhookEndpointDto.class);
+        ArgumentCaptor<UpdateWebhookEndpointDto> dto =
+                ArgumentCaptor.forClass(UpdateWebhookEndpointDto.class);
         verify(webhookService).update(eq(id), eq(webhookId), dto.capture());
         assertThat(dto.getValue().url()).isEqualTo(URL);
     }
@@ -304,7 +340,8 @@ class WebhookEndpointControllerWebMvcTests {
         UUID id = UUID.randomUUID();
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();
-        when(webhookService.findAll(id)).thenReturn(List.of(endpoint(id, first), endpoint(id, second)));
+        when(webhookService.findAll(id))
+                .thenReturn(List.of(endpoint(id, first), endpoint(id, second)));
 
         mockMvc.perform(get(WEBHOOKS, id).with(user(id)))
                 .andExpect(status().isOk())
@@ -331,14 +368,16 @@ class WebhookEndpointControllerWebMvcTests {
     void updatePassesBothIdsAndTheParsedBody() throws Exception {
         UUID id = UUID.randomUUID();
         UUID webhookId = UUID.randomUUID();
-        when(webhookService.update(eq(id), eq(webhookId), any())).thenReturn(endpoint(id, webhookId));
+        when(webhookService.update(eq(id), eq(webhookId), any()))
+                .thenReturn(endpoint(id, webhookId));
 
         mockMvc.perform(json(put(WEBHOOK, id, webhookId), user(id), UPDATE_BODY))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(webhookId.toString()))
                 .andExpect(jsonPath("$.secret").doesNotExist());
 
-        ArgumentCaptor<UpdateWebhookEndpointDto> dto = ArgumentCaptor.forClass(UpdateWebhookEndpointDto.class);
+        ArgumentCaptor<UpdateWebhookEndpointDto> dto =
+                ArgumentCaptor.forClass(UpdateWebhookEndpointDto.class);
         verify(webhookService).update(eq(id), eq(webhookId), dto.capture());
         assertThat(dto.getValue().url()).isEqualTo(URL);
         assertThat(dto.getValue().events()).containsExactly(WebhookEvent.TASK_DUE_SOON);
@@ -361,7 +400,8 @@ class WebhookEndpointControllerWebMvcTests {
         UUID id = UUID.randomUUID();
         UUID webhookId = UUID.randomUUID();
         Instant expiry = Instant.parse("2026-05-07T07:08:09Z");
-        when(webhookService.rotateSecret(id, webhookId)).thenReturn(new RotatedWebhookSecret("whsec_new", expiry));
+        when(webhookService.rotateSecret(id, webhookId))
+                .thenReturn(new RotatedWebhookSecret("whsec_new", expiry));
 
         mockMvc.perform(post(SECRET, id, webhookId).with(user(id)))
                 .andExpect(status().isOk())
@@ -379,8 +419,7 @@ class WebhookEndpointControllerWebMvcTests {
         UUID webhookId = UUID.randomUUID();
         when(webhookService.findDeliveries(eq(id), eq(webhookId), any())).thenReturn(Page.empty());
 
-        mockMvc.perform(get(DELIVERIES, id, webhookId).with(user(id)))
-                .andExpect(status().isOk());
+        mockMvc.perform(get(DELIVERIES, id, webhookId).with(user(id))).andExpect(status().isOk());
 
         Pageable pageable = requestedDeliveryPage(id, webhookId);
         assertThat(pageable.getPageNumber()).isZero();
@@ -394,11 +433,12 @@ class WebhookEndpointControllerWebMvcTests {
         UUID webhookId = UUID.randomUUID();
         when(webhookService.findDeliveries(eq(id), eq(webhookId), any())).thenReturn(Page.empty());
 
-        mockMvc.perform(get(DELIVERIES, id, webhookId)
-                        .param("page", "3")
-                        .param("size", "5")
-                        .param("sort", "attempts,asc")
-                        .with(user(id)))
+        mockMvc.perform(
+                        get(DELIVERIES, id, webhookId)
+                                .param("page", "3")
+                                .param("size", "5")
+                                .param("sort", "attempts,asc")
+                                .with(user(id)))
                 .andExpect(status().isOk());
 
         Pageable pageable = requestedDeliveryPage(id, webhookId);
@@ -430,7 +470,11 @@ class WebhookEndpointControllerWebMvcTests {
         when(webhookService.findDeliveries(eq(id), eq(webhookId), any()))
                 .thenReturn(new PageImpl<>(List.of(pending), PageRequest.of(1, 1), 3));
 
-        mockMvc.perform(get(DELIVERIES, id, webhookId).param("page", "1").param("size", "1").with(user(id)))
+        mockMvc.perform(
+                        get(DELIVERIES, id, webhookId)
+                                .param("page", "1")
+                                .param("size", "1")
+                                .with(user(id)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content.length()").value(1))
                 .andExpect(jsonPath("$.content[0].id").value(pending.getId().toString()))
@@ -439,8 +483,12 @@ class WebhookEndpointControllerWebMvcTests {
                 .andExpect(jsonPath("$.content[0].attempts").value(2))
                 .andExpect(jsonPath("$.content[0].lastStatusCode").value(503))
                 .andExpect(jsonPath("$.content[0].lastError").value(nullValue()))
-                .andExpect(jsonPath("$.content[0].nextAttemptAt").value(CREATED_AT.plusSeconds(310).toString()))
-                .andExpect(jsonPath("$.content[0].lastAttemptAt").value(CREATED_AT.plusSeconds(10).toString()))
+                .andExpect(
+                        jsonPath("$.content[0].nextAttemptAt")
+                                .value(CREATED_AT.plusSeconds(310).toString()))
+                .andExpect(
+                        jsonPath("$.content[0].lastAttemptAt")
+                                .value(CREATED_AT.plusSeconds(10).toString()))
                 .andExpect(jsonPath("$.content[0].deliveredAt").value(nullValue()))
                 .andExpect(jsonPath("$.content[0].createdAt").value(CREATED_AT.toString()))
                 .andExpect(jsonPath("$.content[0].payload").doesNotExist())
@@ -452,7 +500,9 @@ class WebhookEndpointControllerWebMvcTests {
     }
 
     @ParameterizedTest
-    @EnumSource(value = WebhookDeliveryStatus.class, names = {"DELIVERED", "FAILED"})
+    @EnumSource(
+            value = WebhookDeliveryStatus.class,
+            names = {"DELIVERED", "FAILED"})
     void finishedDeliveryShowsNoNextAttempt(WebhookDeliveryStatus status) throws Exception {
         UUID id = UUID.randomUUID();
         UUID webhookId = UUID.randomUUID();
@@ -469,7 +519,8 @@ class WebhookEndpointControllerWebMvcTests {
     void adminPassesTheCheckForTheDeliveriesOfAnotherUsersWebhook() throws Exception {
         UUID other = UUID.randomUUID();
         UUID webhookId = UUID.randomUUID();
-        when(webhookService.findDeliveries(eq(other), eq(webhookId), any())).thenReturn(Page.empty());
+        when(webhookService.findDeliveries(eq(other), eq(webhookId), any()))
+                .thenReturn(Page.empty());
 
         mockMvc.perform(get(DELIVERIES, other, webhookId).with(admin(UUID.randomUUID())))
                 .andExpect(status().isOk())
@@ -508,7 +559,8 @@ class WebhookEndpointControllerWebMvcTests {
                 .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.attempts").value(0))
                 .andExpect(jsonPath("$.lastStatusCode").value(500))
-                .andExpect(jsonPath("$.nextAttemptAt").value(CREATED_AT.plusSeconds(310).toString()))
+                .andExpect(
+                        jsonPath("$.nextAttemptAt").value(CREATED_AT.plusSeconds(310).toString()))
                 .andExpect(jsonPath("$.deliveredAt").value(nullValue()))
                 .andExpect(jsonPath("$.payload").doesNotExist())
                 .andExpect(jsonPath("$.endpoint").doesNotExist());
@@ -523,7 +575,9 @@ class WebhookEndpointControllerWebMvcTests {
         WebhookDelivery requeued = delivery(WebhookDeliveryStatus.PENDING);
         when(webhookService.redeliver(other, webhookId, requeued.getId())).thenReturn(requeued);
 
-        mockMvc.perform(post(REDELIVER, other, webhookId, requeued.getId()).with(admin(UUID.randomUUID())))
+        mockMvc.perform(
+                        post(REDELIVER, other, webhookId, requeued.getId())
+                                .with(admin(UUID.randomUUID())))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.id").value(requeued.getId().toString()));
 
@@ -540,7 +594,9 @@ class WebhookEndpointControllerWebMvcTests {
 
         mockMvc.perform(post(REDELIVER, id, webhookId, deliveryId).with(user(id)))
                 .andExpect(untypedProblem(404, "Not Found"))
-                .andExpect(jsonPath("$.detail").value("Webhook delivery not found with id: " + deliveryId));
+                .andExpect(
+                        jsonPath("$.detail")
+                                .value("Webhook delivery not found with id: " + deliveryId));
     }
 
     @Test
@@ -572,7 +628,8 @@ class WebhookEndpointControllerWebMvcTests {
     void testPassesBothIdsAndReturnsHowTheReceiverAnswered() throws Exception {
         UUID id = UUID.randomUUID();
         UUID webhookId = UUID.randomUUID();
-        when(webhookService.sendTest(id, webhookId)).thenReturn(new WebhookTestResult(true, 204, null, 42));
+        when(webhookService.sendTest(id, webhookId))
+                .thenReturn(new WebhookTestResult(true, 204, null, 42));
 
         mockMvc.perform(post(TEST, id, webhookId).with(user(id)))
                 .andExpect(status().isOk())
@@ -603,7 +660,8 @@ class WebhookEndpointControllerWebMvcTests {
     void adminPassesTheCheckToTestAnotherUsersWebhook() throws Exception {
         UUID other = UUID.randomUUID();
         UUID webhookId = UUID.randomUUID();
-        when(webhookService.sendTest(other, webhookId)).thenReturn(new WebhookTestResult(false, 500, null, 7));
+        when(webhookService.sendTest(other, webhookId))
+                .thenReturn(new WebhookTestResult(false, 500, null, 7));
 
         mockMvc.perform(post(TEST, other, webhookId).with(admin(UUID.randomUUID())))
                 .andExpect(status().isOk())
@@ -617,19 +675,22 @@ class WebhookEndpointControllerWebMvcTests {
     void testPastTheRateLimitIsATooManyRequestsProblemWithRetryAfter() throws Exception {
         UUID id = UUID.randomUUID();
         UUID webhookId = UUID.randomUUID();
-        when(webhookService.sendTest(id, webhookId)).thenThrow(new RateLimitExceededException(Duration.ofMinutes(20)));
+        when(webhookService.sendTest(id, webhookId))
+                .thenThrow(new RateLimitExceededException(Duration.ofMinutes(20)));
 
         mockMvc.perform(post(TEST, id, webhookId).with(user(id)))
                 .andExpect(untypedProblem(429, "Too Many Requests"))
                 .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1200"))
-                .andExpect(jsonPath("$.detail").value("Too many requests, try again in 1200 seconds"));
+                .andExpect(
+                        jsonPath("$.detail").value("Too many requests, try again in 1200 seconds"));
     }
 
     @Test
     void testOfAWebhookTheServiceCannotFindIsANotFoundProblem() throws Exception {
         UUID id = UUID.randomUUID();
         UUID webhookId = UUID.randomUUID();
-        when(webhookService.sendTest(id, webhookId)).thenThrow(new WebhookEndpointNotFoundException(webhookId));
+        when(webhookService.sendTest(id, webhookId))
+                .thenThrow(new WebhookEndpointNotFoundException(webhookId));
 
         mockMvc.perform(post(TEST, id, webhookId).with(user(id)))
                 .andExpect(untypedProblem(404, "Not Found"))
@@ -692,7 +753,12 @@ class WebhookEndpointControllerWebMvcTests {
     @ParameterizedTest
     @ValueSource(strings = {"\"TEAMS\"", "\"slack\"", "\"\"", "true", "{}", "1", "0"})
     void createWithAnUnknownKindPointsToIt(String kind) throws Exception {
-        expectCreateRejected("{\"kind\": " + kind + ", \"url\": \"" + URL + "\", \"events\": [\"task.assigned\"]}")
+        expectCreateRejected(
+                        "{\"kind\": "
+                                + kind
+                                + ", \"url\": \""
+                                + URL
+                                + "\", \"events\": [\"task.assigned\"]}")
                 .andExpect(invalidBodyValue("#/kind", "must be one of WEBHOOK, SLACK"))
                 .andExpect(withoutJavaTypeNames());
     }
@@ -700,8 +766,11 @@ class WebhookEndpointControllerWebMvcTests {
     @Test
     void createWithTheIndexOfAnEventInsteadOfItsNamePointsToIt() throws Exception {
         expectCreateRejected("{\"url\": \"" + URL + "\", \"events\": [1]}")
-                .andExpect(invalidBodyValue("#/events/0", "must be one of task.assigned, task.unassigned, "
-                        + "task.cancelled, task.deleted, task.commented, task.mentioned, task.due_soon, task.overdue"));
+                .andExpect(
+                        invalidBodyValue(
+                                "#/events/0",
+                                "must be one of task.assigned, task.unassigned, "
+                                        + "task.cancelled, task.deleted, task.commented, task.mentioned, task.due_soon, task.overdue"));
     }
 
     @Test
@@ -717,7 +786,10 @@ class WebhookEndpointControllerWebMvcTests {
 
     @Test
     void updateWithEnabledThatIsNotABooleanPointsToIt() throws Exception {
-        expectUpdateRejected("{\"url\": \"" + URL + "\", \"events\": [\"task.assigned\"], \"enabled\": \"maybe\"}")
+        expectUpdateRejected(
+                        "{\"url\": \""
+                                + URL
+                                + "\", \"events\": [\"task.assigned\"], \"enabled\": \"maybe\"}")
                 .andExpect(invalidBodyValue("#/enabled", "must be true or false"));
     }
 
@@ -765,7 +837,8 @@ class WebhookEndpointControllerWebMvcTests {
     void webhookTheServiceCannotFindIsANotFoundProblem() throws Exception {
         UUID id = UUID.randomUUID();
         UUID webhookId = UUID.randomUUID();
-        when(webhookService.get(id, webhookId)).thenThrow(new WebhookEndpointNotFoundException(webhookId));
+        when(webhookService.get(id, webhookId))
+                .thenThrow(new WebhookEndpointNotFoundException(webhookId));
 
         mockMvc.perform(get(WEBHOOK, id, webhookId).with(user(id)))
                 .andExpect(untypedProblem(404, "Not Found"))
@@ -786,7 +859,9 @@ class WebhookEndpointControllerWebMvcTests {
     void refusedUrlOnCreationIsAWebhookUrlNotAllowedProblem() throws Exception {
         UUID id = UUID.randomUUID();
         when(webhookService.create(eq(id), any()))
-                .thenThrow(new WebhookUrlNotAllowedException("The URL must point to a public address"));
+                .thenThrow(
+                        new WebhookUrlNotAllowedException(
+                                "The URL must point to a public address"));
 
         mockMvc.perform(json(post(WEBHOOKS, id), user(id), CREATE_BODY))
                 .andExpect(typedProblem(422, "webhook-url-not-allowed", "Webhook URL not allowed"))
@@ -818,8 +893,9 @@ class WebhookEndpointControllerWebMvcTests {
     private ResultActions expectCreateRejected(String body) throws Exception {
         UUID id = UUID.randomUUID();
 
-        ResultActions result = mockMvc.perform(json(post(WEBHOOKS, id), user(id), body))
-                .andExpect(status().isBadRequest());
+        ResultActions result =
+                mockMvc.perform(json(post(WEBHOOKS, id), user(id), body))
+                        .andExpect(status().isBadRequest());
 
         verifyNoInteractions(webhookService);
         return result;
@@ -828,18 +904,16 @@ class WebhookEndpointControllerWebMvcTests {
     private ResultActions expectUpdateRejected(String body) throws Exception {
         UUID id = UUID.randomUUID();
 
-        ResultActions result = mockMvc.perform(json(put(WEBHOOK, id, UUID.randomUUID()), user(id), body))
-                .andExpect(status().isBadRequest());
+        ResultActions result =
+                mockMvc.perform(json(put(WEBHOOK, id, UUID.randomUUID()), user(id), body))
+                        .andExpect(status().isBadRequest());
 
         verifyNoInteractions(webhookService);
         return result;
     }
 
     private static MockHttpServletRequestBuilder json(
-            MockHttpServletRequestBuilder request,
-            RequestPostProcessor caller,
-            String body
-    ) {
+            MockHttpServletRequestBuilder request, RequestPostProcessor caller, String body) {
         return request.with(caller).contentType(MediaType.APPLICATION_JSON).content(body);
     }
 
@@ -848,13 +922,14 @@ class WebhookEndpointControllerWebMvcTests {
                 post(WEBHOOKS, id).contentType(MediaType.APPLICATION_JSON).content(CREATE_BODY),
                 get(WEBHOOKS, id),
                 get(WEBHOOK, id, webhookId),
-                put(WEBHOOK, id, webhookId).contentType(MediaType.APPLICATION_JSON).content(UPDATE_BODY),
+                put(WEBHOOK, id, webhookId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(UPDATE_BODY),
                 delete(WEBHOOK, id, webhookId),
                 post(SECRET, id, webhookId),
                 get(DELIVERIES, id, webhookId),
                 post(REDELIVER, id, webhookId, UUID.randomUUID()),
-                post(TEST, id, webhookId)
-        );
+                post(TEST, id, webhookId));
     }
 
     private Pageable requestedDeliveryPage(UUID id, UUID webhookId) {

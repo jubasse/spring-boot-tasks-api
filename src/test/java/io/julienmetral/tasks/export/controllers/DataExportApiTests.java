@@ -1,30 +1,5 @@
 package io.julienmetral.tasks.export.controllers;
 
-import io.julienmetral.tasks.config.StorageProperties;
-import io.julienmetral.tasks.export.AbstractDataExportTests;
-import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserRole;
-import org.apache.commons.csv.CSVRecord;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.MvcResult;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
-import tools.jackson.databind.JsonNode;
-
-import java.net.http.HttpResponse;
-import java.nio.file.Path;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-import java.util.stream.IntStream;
-
 import static io.julienmetral.tasks.support.Problems.typedProblem;
 import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,25 +11,65 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.julienmetral.tasks.config.StorageProperties;
+import io.julienmetral.tasks.export.AbstractDataExportTests;
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserRole;
+import java.net.http.HttpResponse;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.IntStream;
+import org.apache.commons.csv.CSVRecord;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MvcResult;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
+import tools.jackson.databind.JsonNode;
+
 class DataExportApiTests extends AbstractDataExportTests {
 
-    private static final List<String> TASK_COLUMNS = List.of(
-            "id", "reference", "title", "description", "status", "priority", "assignee", "created_by",
-            "due_at", "completed_at", "archived_at", "created_at", "updated_at"
-    );
+    private static final List<String> TASK_COLUMNS =
+            List.of(
+                    "id",
+                    "reference",
+                    "title",
+                    "description",
+                    "status",
+                    "priority",
+                    "assignee",
+                    "created_by",
+                    "due_at",
+                    "completed_at",
+                    "archived_at",
+                    "created_at",
+                    "updated_at");
 
-    private static final List<String> USER_COLUMNS = List.of(
-            "id", "email", "display_name", "status", "roles", "email_verified_at", "created_at", "last_active_at"
-    );
+    private static final List<String> USER_COLUMNS =
+            List.of(
+                    "id",
+                    "email",
+                    "display_name",
+                    "status",
+                    "roles",
+                    "email_verified_at",
+                    "created_at",
+                    "last_active_at");
 
     private static final DateTimeFormatter EMAIL_EXPIRY =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'").withZone(ZoneOffset.UTC);
 
-    @Autowired
-    private S3Client s3Client;
+    @Autowired private S3Client s3Client;
 
-    @Autowired
-    private StorageProperties storageProperties;
+    @Autowired private StorageProperties storageProperties;
 
     // Requests and their progress
 
@@ -63,20 +78,28 @@ class DataExportApiTests extends AbstractDataExportTests {
         User owner = createUser(UserRole.USER);
         insertTask(TaskRow.assignedTo(owner));
 
-        MvcResult accepted = mockMvc.perform(post(TASKS_EXPORT)
-                        .with(as(owner))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"assigneeId\": \"%s\"}".formatted(owner.getId())))
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.type").value("TASKS_CSV"))
-                .andExpect(jsonPath("$.status").value("QUEUED"))
-                .andExpect(jsonPath("$.filters.status").value(nullValue()))
-                .andExpect(jsonPath("$.filters.assigneeId").value(owner.getId().toString()))
-                .andExpect(jsonPath("$.filters.archived").value(false))
-                .andExpect(jsonPath("$.downloadUrl").value(nullValue()))
-                .andReturn();
+        MvcResult accepted =
+                mockMvc.perform(
+                                post(TASKS_EXPORT)
+                                        .with(as(owner))
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                "{\"assigneeId\": \"%s\"}"
+                                                        .formatted(owner.getId())))
+                        .andExpect(status().isAccepted())
+                        .andExpect(jsonPath("$.type").value("TASKS_CSV"))
+                        .andExpect(jsonPath("$.status").value("QUEUED"))
+                        .andExpect(jsonPath("$.filters.status").value(nullValue()))
+                        .andExpect(jsonPath("$.filters.assigneeId").value(owner.getId().toString()))
+                        .andExpect(jsonPath("$.filters.archived").value(false))
+                        .andExpect(jsonPath("$.downloadUrl").value(nullValue()))
+                        .andReturn();
         UUID exportId = exportIdOf(accepted);
-        assertThat(jsonMapper.readTree(accepted.getResponse().getContentAsString()).path("id").asString())
+        assertThat(
+                        jsonMapper
+                                .readTree(accepted.getResponse().getContentAsString())
+                                .path("id")
+                                .asString())
                 .isEqualTo(exportId.toString());
 
         awaitCompleted(exportId);
@@ -85,40 +108,55 @@ class DataExportApiTests extends AbstractDataExportTests {
         Instant completedAt = Instant.parse(export.path("completedAt").asString());
         assertThat(export.path("status").asString()).isEqualTo("COMPLETED");
         assertThat(export.path("rowCount").asLong()).isOne();
-        assertThat(Instant.parse(export.path("expiresAt").asString())).isEqualTo(completedAt.plus(Duration.ofDays(7)));
+        assertThat(Instant.parse(export.path("expiresAt").asString()))
+                .isEqualTo(completedAt.plus(Duration.ofDays(7)));
         assertThat(export.path("downloadUrl").asString()).contains(storageKeyOf(exportId));
-        assertThat(Path.of(System.getProperty("java.io.tmpdir"), "exports", exportId.toString())).doesNotExist();
+        assertThat(Path.of(System.getProperty("java.io.tmpdir"), "exports", exportId.toString()))
+                .doesNotExist();
     }
 
     @Test
-    void secondExportOfTheSameTypeWhileTheFirstIsQueuedIsAConflictButAnotherTypeIsAccepted() throws Exception {
+    void secondExportOfTheSameTypeWhileTheFirstIsQueuedIsAConflictButAnotherTypeIsAccepted()
+            throws Exception {
         User admin = createUser(UserRole.ADMIN);
         List<UUID> accepted = new ArrayList<>();
 
-        withExportListenerStopped(() -> {
-            accepted.add(exportIdOf(requestTasksExport(admin, "{\"assigneeId\": \"%s\"}".formatted(admin.getId()))));
+        withExportListenerStopped(
+                () -> {
+                    accepted.add(
+                            exportIdOf(
+                                    requestTasksExport(
+                                            admin,
+                                            "{\"assigneeId\": \"%s\"}".formatted(admin.getId()))));
 
-            mockMvc.perform(post(TASKS_EXPORT).with(as(admin)))
-                    .andExpect(typedProblem(409, "export-in-progress", "Export already in progress"));
+                    mockMvc.perform(post(TASKS_EXPORT).with(as(admin)))
+                            .andExpect(
+                                    typedProblem(
+                                            409,
+                                            "export-in-progress",
+                                            "Export already in progress"));
 
-            accepted.add(exportIdOf(requestUsersExport(admin)));
-        });
+                    accepted.add(exportIdOf(requestUsersExport(admin)));
+                });
 
         accepted.forEach(this::awaitCompleted);
-        assertThat(jdbcTemplate.queryForObject(
-                "SELECT count(*) FROM data_exports WHERE owner_id = ? AND type = 'TASKS_CSV'",
-                Integer.class,
-                admin.getId()
-        )).isOne();
-        awaitCompleted(exportIdOf(requestTasksExport(admin, "{\"assigneeId\": \"%s\"}".formatted(admin.getId()))));
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT count(*) FROM data_exports WHERE owner_id = ? AND type = 'TASKS_CSV'",
+                                Integer.class,
+                                admin.getId()))
+                .isOne();
+        awaitCompleted(
+                exportIdOf(
+                        requestTasksExport(
+                                admin, "{\"assigneeId\": \"%s\"}".formatted(admin.getId()))));
     }
 
     @Test
     void usersExportIsReservedToAdmins() throws Exception {
         User member = createUser(UserRole.USER);
 
-        mockMvc.perform(post(USERS_EXPORT).with(as(member)))
-                .andExpect(status().isForbidden());
+        mockMvc.perform(post(USERS_EXPORT).with(as(member))).andExpect(status().isForbidden());
 
         assertThat(exportCountOf(member)).isZero();
     }
@@ -127,12 +165,11 @@ class DataExportApiTests extends AbstractDataExportTests {
     void disabledAccountCannotAskForAnExport() throws Exception {
         User disabled = createUser(UserRole.ADMIN);
         jdbcTemplate.update("UPDATE users SET enabled = false WHERE id = ?", disabled.getId());
-        jdbcTemplate.update("UPDATE user_profiles SET status = 'DISABLED' WHERE id = ?", disabled.getId());
+        jdbcTemplate.update(
+                "UPDATE user_profiles SET status = 'DISABLED' WHERE id = ?", disabled.getId());
 
-        mockMvc.perform(post(TASKS_EXPORT).with(as(disabled)))
-                .andExpect(status().isForbidden());
-        mockMvc.perform(post(USERS_EXPORT).with(as(disabled)))
-                .andExpect(status().isForbidden());
+        mockMvc.perform(post(TASKS_EXPORT).with(as(disabled))).andExpect(status().isForbidden());
+        mockMvc.perform(post(USERS_EXPORT).with(as(disabled))).andExpect(status().isForbidden());
 
         assertThat(exportCountOf(disabled)).isZero();
     }
@@ -145,9 +182,11 @@ class DataExportApiTests extends AbstractDataExportTests {
         User assignee = createUser(UserRole.USER);
         User creator = createUser(UserRole.USER);
         Instant dueAt = Instant.parse("2031-02-03T04:05:06Z");
-        String open = insertTask(TaskRow.assignedTo(assignee)
-                .titled("Prepare the audit", "Gather the invoices")
-                .createdBy(creator, dueAt));
+        String open =
+                insertTask(
+                        TaskRow.assignedTo(assignee)
+                                .titled("Prepare the audit", "Gather the invoices")
+                                .createdBy(creator, dueAt));
         String done = insertTask(TaskRow.assignedTo(assignee).withStatus("DONE"));
         insertTask(TaskRow.assignedTo(assignee).archived());
         insertTask(TaskRow.assignedTo(assignee).deleted());
@@ -181,7 +220,9 @@ class DataExportApiTests extends AbstractDataExportTests {
 
         Csv csv = downloadCsv(owner, exportTasksOf(owner, owner, ""));
 
-        String header = String.join(",", TASK_COLUMNS.stream().map(column -> "\"" + column + "\"").toList());
+        String header =
+                String.join(
+                        ",", TASK_COLUMNS.stream().map(column -> "\"" + column + "\"").toList());
         assertThat(csv.text())
                 .startsWith(header + "\r\n")
                 .contains(",\"" + reference + "\",\"Exported task\",\"\",\"TO_DO\",\"HIGH\",")
@@ -198,7 +239,8 @@ class DataExportApiTests extends AbstractDataExportTests {
         UUID exportId = exportTasksOf(owner, owner, "\"status\": \"BLOCKED\"");
 
         assertThat(downloadCsv(owner, exportId).column("reference")).containsExactly(blocked);
-        assertThat(exportJson(owner, exportId).path("filters").path("status").asString()).isEqualTo("BLOCKED");
+        assertThat(exportJson(owner, exportId).path("filters").path("status").asString())
+                .isEqualTo("BLOCKED");
     }
 
     @Test
@@ -226,7 +268,8 @@ class DataExportApiTests extends AbstractDataExportTests {
         CSVRecord row = csv.rowWhere("reference", reference);
         assertThat(row.get("title")).isEqualTo("'" + title);
         assertThat(row.get("description")).isEqualTo(description);
-        assertThat(csv.text()).contains("\"'=HYPERLINK(\"\"https://evil.example\"\",\"\"Open\"\")\"");
+        assertThat(csv.text())
+                .contains("\"'=HYPERLINK(\"\"https://evil.example\"\",\"\"Open\"\")\"");
     }
 
     @Test
@@ -241,8 +284,8 @@ class DataExportApiTests extends AbstractDataExportTests {
         assertThat(exportJson(owner, exportId).path("rowCount").asLong()).isZero();
     }
 
-    // More rows than a chunk (exports.chunk-size, 500): the reader pages by id, with named parameters when the export
-    // has filters and positional ones otherwise
+    // More rows than a chunk (exports.chunk-size, 500): the reader pages by id, with named
+    // parameters when the export has filters and positional ones otherwise
     @Test
     void exportsLongerThanAChunkAreReadPageByPageInIdOrder() throws Exception {
         User owner = createUser(UserRole.USER);
@@ -254,9 +297,10 @@ class DataExportApiTests extends AbstractDataExportTests {
                         SELECT ? || '-' || n, 'Bulk task ' || n, 'TO_DO', 'LOW', ?, now(), now(), 0
                         FROM generate_series(1, 1001) AS n
                         """,
-                prefix, owner.getId()
-        );
-        List<String> references = IntStream.rangeClosed(1, 1001).mapToObj(n -> prefix + "-" + n).toList();
+                prefix,
+                owner.getId());
+        List<String> references =
+                IntStream.rangeClosed(1, 1001).mapToObj(n -> prefix + "-" + n).toList();
 
         try {
             UUID filtered = exportTasksOf(owner, owner, "");
@@ -271,12 +315,15 @@ class DataExportApiTests extends AbstractDataExportTests {
 
             assertThat(downloadCsv(owner, unfiltered).column("reference")).containsAll(references);
 
-            // It holds every task of the shared database: its file does not stay in the reused bucket
+            // It holds every task of the shared database: its file does not stay in the reused
+            // bucket
             mockMvc.perform(delete(EXPORTS + "/{id}", unfiltered).with(as(owner)))
                     .andExpect(status().isNoContent());
         } finally {
-            jdbcTemplate.update("DELETE FROM tasks WHERE assigned_to_id = ? AND reference LIKE ?",
-                    owner.getId(), prefix + "-%");
+            jdbcTemplate.update(
+                    "DELETE FROM tasks WHERE assigned_to_id = ? AND reference LIKE ?",
+                    owner.getId(),
+                    prefix + "-%");
         }
     }
 
@@ -284,14 +331,20 @@ class DataExportApiTests extends AbstractDataExportTests {
     void downloadLinkServesTheCsvAsAnAttachmentNamedAfterTheDay() throws Exception {
         User owner = createUser(UserRole.USER);
         UUID exportId = exportTasksOf(owner, owner, "");
-        LocalDate day = LocalDate.ofInstant(
-                Instant.parse(exportJson(owner, exportId).path("completedAt").asString()), ZoneOffset.UTC);
+        LocalDate day =
+                LocalDate.ofInstant(
+                        Instant.parse(exportJson(owner, exportId).path("completedAt").asString()),
+                        ZoneOffset.UTC);
 
         HttpResponse<byte[]> response = download(owner, exportId);
 
         assertThat(response.headers().firstValue("Content-Type")).hasValue("text/csv");
-        assertThat(response.headers().firstValue("Content-Disposition")).hasValueSatisfying(disposition ->
-                assertThat(disposition).startsWith("attachment").contains("tasks-" + day + ".csv"));
+        assertThat(response.headers().firstValue("Content-Disposition"))
+                .hasValueSatisfying(
+                        disposition ->
+                                assertThat(disposition)
+                                        .startsWith("attachment")
+                                        .contains("tasks-" + day + ".csv"));
     }
 
     @Test
@@ -305,7 +358,10 @@ class DataExportApiTests extends AbstractDataExportTests {
                 .startsWith("Hello " + owner.getDisplayName() + ",")
                 .contains("Your export of tasks is ready.")
                 .contains("http://localhost:3000/exports?id=" + exportId)
-                .contains("It stays available until " + EMAIL_EXPIRY.format(expiresAt) + ", then it is deleted.")
+                .contains(
+                        "It stays available until "
+                                + EMAIL_EXPIRY.format(expiresAt)
+                                + ", then it is deleted.")
                 .doesNotContain(storageKeyOf(exportId));
     }
 
@@ -328,9 +384,14 @@ class DataExportApiTests extends AbstractDataExportTests {
         Csv csv = downloadCsv(admin, exportId);
         assertThat(csv.header()).containsExactlyElementsOf(USER_COLUMNS);
         assertThat(csv.column("email"))
-                .contains(admin.getEmail(), member.getEmail(), unverified.getEmail(), disabled.getEmail())
+                .contains(
+                        admin.getEmail(),
+                        member.getEmail(),
+                        unverified.getEmail(),
+                        disabled.getEmail())
                 .doesNotContain(deleted.getEmail());
-        assertThat(exportJson(admin, exportId).path("rowCount").asLong()).isEqualTo(csv.records().size());
+        assertThat(exportJson(admin, exportId).path("rowCount").asLong())
+                .isEqualTo(csv.records().size());
 
         CSVRecord adminRow = csv.rowWhere("email", admin.getEmail());
         assertThat(adminRow.get("id")).isEqualTo(admin.getId().toString());
@@ -340,7 +401,8 @@ class DataExportApiTests extends AbstractDataExportTests {
         assertThat(adminRow.get("email_verified_at")).isNotEmpty();
         assertThat(adminRow.get("last_active_at")).isEmpty();
         assertThat(csv.rowWhere("email", member.getEmail()).get("roles")).isEqualTo("USER");
-        assertThat(csv.rowWhere("email", unverified.getEmail()).get("status")).isEqualTo("UNVERIFIED");
+        assertThat(csv.rowWhere("email", unverified.getEmail()).get("status"))
+                .isEqualTo("UNVERIFIED");
         assertThat(csv.rowWhere("email", unverified.getEmail()).get("email_verified_at")).isEmpty();
         assertThat(csv.rowWhere("email", disabled.getEmail()).get("status")).isEqualTo("DISABLED");
     }
@@ -391,11 +453,18 @@ class DataExportApiTests extends AbstractDataExportTests {
 
         mockMvc.perform(get(EXPORTS + "/{id}", exportId).with(as(owner)))
                 .andExpect(status().isNotFound());
-        assertThat(jdbcTemplate.queryForObject(
-                "SELECT count(*) FROM media WHERE storage_key = ?", Integer.class, storageKey)).isZero();
-        assertThatThrownBy(() -> s3Client.headObject(request -> request
-                .bucket(storageProperties.bucket())
-                .key(storageKey)))
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT count(*) FROM media WHERE storage_key = ?",
+                                Integer.class,
+                                storageKey))
+                .isZero();
+        assertThatThrownBy(
+                        () ->
+                                s3Client.headObject(
+                                        request ->
+                                                request.bucket(storageProperties.bucket())
+                                                        .key(storageKey)))
                 .isInstanceOf(NoSuchKeyException.class);
     }
 
@@ -404,31 +473,44 @@ class DataExportApiTests extends AbstractDataExportTests {
         User owner = createUser(UserRole.USER);
         List<UUID> queued = new ArrayList<>();
 
-        withExportListenerStopped(() -> {
-            queued.add(exportIdOf(requestTasksExport(owner, "{\"assigneeId\": \"%s\"}".formatted(owner.getId()))));
+        withExportListenerStopped(
+                () -> {
+                    queued.add(
+                            exportIdOf(
+                                    requestTasksExport(
+                                            owner,
+                                            "{\"assigneeId\": \"%s\"}".formatted(owner.getId()))));
 
-            mockMvc.perform(delete(EXPORTS + "/{id}", queued.getFirst()).with(as(owner)))
-                    .andExpect(typedProblem(409, "export-in-progress", "Export already in progress"));
-            mockMvc.perform(get(EXPORTS + "/{id}", queued.getFirst()).with(as(owner)))
-                    .andExpect(jsonPath("$.status").value("QUEUED"))
-                    .andExpect(jsonPath("$.downloadUrl").value(nullValue()));
-        });
+                    mockMvc.perform(delete(EXPORTS + "/{id}", queued.getFirst()).with(as(owner)))
+                            .andExpect(
+                                    typedProblem(
+                                            409,
+                                            "export-in-progress",
+                                            "Export already in progress"));
+                    mockMvc.perform(get(EXPORTS + "/{id}", queued.getFirst()).with(as(owner)))
+                            .andExpect(jsonPath("$.status").value("QUEUED"))
+                            .andExpect(jsonPath("$.downloadUrl").value(nullValue()));
+                });
 
         awaitCompleted(queued.getFirst());
     }
 
     private UUID taskIdOf(String reference) {
-        return jdbcTemplate.queryForObject("SELECT id FROM tasks WHERE reference = ?", UUID.class, reference);
+        return jdbcTemplate.queryForObject(
+                "SELECT id FROM tasks WHERE reference = ?", UUID.class, reference);
     }
 
     private int exportCountOf(User owner) {
         return jdbcTemplate.queryForObject(
-                "SELECT count(*) FROM data_exports WHERE owner_id = ?", Integer.class, owner.getId());
+                "SELECT count(*) FROM data_exports WHERE owner_id = ?",
+                Integer.class,
+                owner.getId());
     }
 
     // Changes an account as native SQL must: the account and the copy of its status on the profile
     private void changeAccount(User user, String accountChange, String status) {
         jdbcTemplate.update("UPDATE users SET " + accountChange + " WHERE id = ?", user.getId());
-        jdbcTemplate.update("UPDATE user_profiles SET status = ? WHERE id = ?", status, user.getId());
+        jdbcTemplate.update(
+                "UPDATE user_profiles SET status = ? WHERE id = ?", status, user.getId());
     }
 }

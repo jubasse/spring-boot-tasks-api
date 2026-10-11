@@ -1,12 +1,11 @@
 package io.julienmetral.tasks.export.dtos;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.julienmetral.tasks.export.entities.TaskExportFilters;
 import io.julienmetral.tasks.task.entities.TaskStatus;
-import org.junit.jupiter.api.Test;
-
 import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
 
 class ExportTasksDtoTest {
 
@@ -16,12 +15,14 @@ class ExportTasksDtoTest {
     void filtersKeepTheStatusTheAssigneeAndTheArchivedFlag() {
         ExportTasksDto dto = new ExportTasksDto(TaskStatus.BLOCKED, ASSIGNEE_ID, true);
 
-        assertThat(dto.filters()).isEqualTo(new TaskExportFilters(TaskStatus.BLOCKED, ASSIGNEE_ID, true));
+        assertThat(dto.filters())
+                .isEqualTo(new TaskExportFilters(TaskStatus.BLOCKED, ASSIGNEE_ID, true));
     }
 
     @Test
     void missingArchivedFlagMeansTheTasksThatAreNotArchived() {
-        assertThat(new ExportTasksDto(null, null, null).filters()).isEqualTo(new TaskExportFilters(null, null, false));
+        assertThat(new ExportTasksDto(null, null, null).filters())
+                .isEqualTo(new TaskExportFilters(null, null, false));
     }
 
     @Test

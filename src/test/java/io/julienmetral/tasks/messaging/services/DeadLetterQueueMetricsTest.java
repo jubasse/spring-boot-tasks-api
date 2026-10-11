@@ -1,8 +1,16 @@
 package io.julienmetral.tasks.messaging.services;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.Tag;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.io.IOException;
+import java.net.ConnectException;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -11,15 +19,6 @@ import org.springframework.amqp.AmqpConnectException;
 import org.springframework.amqp.AmqpIOException;
 import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.core.QueueInformation;
-
-import java.io.IOException;
-import java.net.ConnectException;
-import java.util.ArrayList;
-import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class DeadLetterQueueMetricsTest {
@@ -30,8 +29,7 @@ class DeadLetterQueueMetricsTest {
 
     private final SimpleMeterRegistry registry = new SimpleMeterRegistry();
 
-    @Mock
-    private AmqpAdmin amqpAdmin;
+    @Mock private AmqpAdmin amqpAdmin;
 
     @Test
     void registersOneGaugeTaggedWithEachQueue() {
@@ -82,7 +80,8 @@ class DeadLetterQueueMetricsTest {
     @Test
     void unreachableBrokerIsNaN() {
         bind(List.of(MAIL));
-        when(amqpAdmin.getQueueInfo(MAIL)).thenThrow(new AmqpConnectException(new ConnectException("Connection refused")));
+        when(amqpAdmin.getQueueInfo(MAIL))
+                .thenThrow(new AmqpConnectException(new ConnectException("Connection refused")));
 
         assertThat(gauge(MAIL).value()).isNaN();
     }
@@ -90,7 +89,8 @@ class DeadLetterQueueMetricsTest {
     @Test
     void brokerFailureOnOneQueueLeavesTheOthersMeasured() {
         bind(List.of(MAIL, AVATAR));
-        when(amqpAdmin.getQueueInfo(MAIL)).thenThrow(new AmqpIOException(new IOException("channel closed")));
+        when(amqpAdmin.getQueueInfo(MAIL))
+                .thenThrow(new AmqpIOException(new IOException("channel closed")));
         when(amqpAdmin.getQueueInfo(AVATAR)).thenReturn(new QueueInformation(AVATAR, 2, 0));
 
         assertThat(gauge(MAIL).value()).isNaN();
@@ -105,8 +105,12 @@ class DeadLetterQueueMetricsTest {
 
         metrics.bindTo(registry);
 
-        assertThat(registry.get("rabbitmq.dead.letter.messages").gauges()).singleElement()
-                .satisfies(gauge -> assertThat(gauge.getId().getTags()).containsExactly(Tag.of("queue", MAIL)));
+        assertThat(registry.get("rabbitmq.dead.letter.messages").gauges())
+                .singleElement()
+                .satisfies(
+                        gauge ->
+                                assertThat(gauge.getId().getTags())
+                                        .containsExactly(Tag.of("queue", MAIL)));
     }
 
     private void bind(List<String> queues) {

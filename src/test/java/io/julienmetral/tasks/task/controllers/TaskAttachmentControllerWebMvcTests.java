@@ -1,36 +1,5 @@
 package io.julienmetral.tasks.task.controllers;
 
-import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.media.exceptions.AntivirusUnavailableException;
-import io.julienmetral.tasks.media.exceptions.EmptyMediaException;
-import io.julienmetral.tasks.media.exceptions.InfectedMediaException;
-import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
-import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
-import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
-import io.julienmetral.tasks.media.model.Media;
-import io.julienmetral.tasks.media.model.MediaUsage;
-import io.julienmetral.tasks.support.WebLayerTest;
-import io.julienmetral.tasks.task.entities.TaskAttachment;
-import io.julienmetral.tasks.task.exceptions.TaskAttachmentNotFoundException;
-import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
-import io.julienmetral.tasks.task.security.TaskAttachmentAuthorization;
-import io.julienmetral.tasks.task.security.TaskAuthorization;
-import io.julienmetral.tasks.task.services.TaskAttachmentService;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.ResultActions;
-import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
-import org.springframework.util.unit.DataSize;
-import org.springframework.web.multipart.MaxUploadSizeExceededException;
-
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.util.UUID;
-
 import static io.julienmetral.tasks.support.Problems.invalidParameter;
 import static io.julienmetral.tasks.support.Problems.typedProblem;
 import static io.julienmetral.tasks.support.Problems.untypedProblem;
@@ -50,25 +19,50 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.media.exceptions.AntivirusUnavailableException;
+import io.julienmetral.tasks.media.exceptions.EmptyMediaException;
+import io.julienmetral.tasks.media.exceptions.InfectedMediaException;
+import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
+import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
+import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
+import io.julienmetral.tasks.media.model.Media;
+import io.julienmetral.tasks.media.model.MediaUsage;
+import io.julienmetral.tasks.support.WebLayerTest;
+import io.julienmetral.tasks.task.entities.TaskAttachment;
+import io.julienmetral.tasks.task.exceptions.TaskAttachmentNotFoundException;
+import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
+import io.julienmetral.tasks.task.security.TaskAttachmentAuthorization;
+import io.julienmetral.tasks.task.security.TaskAuthorization;
+import io.julienmetral.tasks.task.services.TaskAttachmentService;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
+import org.springframework.util.unit.DataSize;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+
 @WebLayerTest
 class TaskAttachmentControllerWebMvcTests {
 
     private static final byte[] PDF_BYTES = "%PDF-1.4\n".getBytes(StandardCharsets.US_ASCII);
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private TaskAttachmentService attachmentService;
+    @Autowired private TaskAttachmentService attachmentService;
 
-    @Autowired
-    private TaskAuthorization taskAuthorization;
+    @Autowired private TaskAuthorization taskAuthorization;
 
-    @Autowired
-    private TaskAttachmentAuthorization taskAttachmentAuthorization;
+    @Autowired private TaskAttachmentAuthorization taskAttachmentAuthorization;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
     private final UUID taskId = UUID.randomUUID();
 
@@ -81,14 +75,10 @@ class TaskAttachmentControllerWebMvcTests {
 
     @Test
     void anonymousCallerIsUnauthorized() throws Exception {
-        mockMvc.perform(upload())
-                .andExpect(status().isUnauthorized());
-        mockMvc.perform(get(attachments()))
-                .andExpect(status().isUnauthorized());
-        mockMvc.perform(get(attachment()))
-                .andExpect(status().isUnauthorized());
-        mockMvc.perform(delete(attachment()))
-                .andExpect(status().isUnauthorized());
+        mockMvc.perform(upload()).andExpect(status().isUnauthorized());
+        mockMvc.perform(get(attachments())).andExpect(status().isUnauthorized());
+        mockMvc.perform(get(attachment())).andExpect(status().isUnauthorized());
+        mockMvc.perform(delete(attachment())).andExpect(status().isUnauthorized());
 
         verifyNoInteractions(attachmentService);
     }
@@ -137,45 +127,61 @@ class TaskAttachmentControllerWebMvcTests {
         void tooLargeFileReturnsContentTooLargeWithTheLimit() throws Exception {
             expectUploadRejected(new MediaTooLargeException(DataSize.ofMegabytes(25)))
                     .andExpect(untypedProblem(413, "Content Too Large"))
-                    .andExpect(jsonPath("$.detail").value("The file exceeds the maximum size of 25 MB"));
+                    .andExpect(
+                            jsonPath("$.detail")
+                                    .value("The file exceeds the maximum size of 25 MB"));
         }
 
         @Test
         void requestAboveTheMultipartLimitReturnsContentTooLarge() throws Exception {
             expectUploadRejected(new MaxUploadSizeExceededException(26L * 1024 * 1024))
                     .andExpect(untypedProblem(413, "Content Too Large"))
-                    .andExpect(jsonPath("$.detail").value("The request exceeds the maximum upload size"))
+                    .andExpect(
+                            jsonPath("$.detail")
+                                    .value("The request exceeds the maximum upload size"))
                     .andExpect(withoutJavaTypeNames());
         }
 
         @Test
         void unsupportedTypeReturnsUnsupportedMediaType() throws Exception {
-            expectUploadRejected(new UnsupportedMediaTypeException("text/html", MediaUsage.TASK_ATTACHMENT))
+            expectUploadRejected(
+                            new UnsupportedMediaTypeException(
+                                    "text/html", MediaUsage.TASK_ATTACHMENT))
                     .andExpect(untypedProblem(415, "Unsupported Media Type"))
-                    .andExpect(jsonPath("$.detail")
-                            .value("Files of type text/html are not accepted for TASK_ATTACHMENT"));
+                    .andExpect(
+                            jsonPath("$.detail")
+                                    .value(
+                                            "Files of type text/html are not accepted for TASK_ATTACHMENT"));
         }
 
         @Test
         void infectedFileReturnsUnprocessableNamingTheThreat() throws Exception {
             expectUploadRejected(new InfectedMediaException("Eicar-Test-Signature"))
                     .andExpect(typedProblem(422, "infected-file", "File rejected by the antivirus"))
-                    .andExpect(jsonPath("$.detail")
-                            .value("The file was rejected by the antivirus: Eicar-Test-Signature"));
+                    .andExpect(
+                            jsonPath("$.detail")
+                                    .value(
+                                            "The file was rejected by the antivirus: Eicar-Test-Signature"));
         }
 
         @Test
         void unreachableAntivirusReturnsServiceUnavailableWithoutTheCause() throws Exception {
-            expectUploadRejected(new AntivirusUnavailableException("ERROR INSTREAM size limit exceeded"))
+            expectUploadRejected(
+                            new AntivirusUnavailableException("ERROR INSTREAM size limit exceeded"))
                     .andExpect(untypedProblem(503, "Service Unavailable"))
-                    .andExpect(jsonPath("$.detail").value("The antivirus is temporarily unavailable, try again later"));
+                    .andExpect(
+                            jsonPath("$.detail")
+                                    .value(
+                                            "The antivirus is temporarily unavailable, try again later"));
         }
 
         @Test
         void unreachableStorageReturnsServiceUnavailable() throws Exception {
-            expectUploadRejected(new StorageUnavailableException(new IOException("Connection refused")))
+            expectUploadRejected(
+                            new StorageUnavailableException(new IOException("Connection refused")))
                     .andExpect(untypedProblem(503, "Service Unavailable"))
-                    .andExpect(jsonPath("$.detail").value("File storage is temporarily unavailable"));
+                    .andExpect(
+                            jsonPath("$.detail").value("File storage is temporarily unavailable"));
         }
 
         @Test
@@ -202,7 +208,9 @@ class TaskAttachmentControllerWebMvcTests {
 
             mockMvc.perform(get(attachment()).with(user(UUID.randomUUID())))
                     .andExpect(untypedProblem(404, "Not Found"))
-                    .andExpect(jsonPath("$.detail").value("Attachment not found with id: " + attachmentId));
+                    .andExpect(
+                            jsonPath("$.detail")
+                                    .value("Attachment not found with id: " + attachmentId));
         }
 
         @Test
@@ -219,7 +227,8 @@ class TaskAttachmentControllerWebMvcTests {
 
         @Test
         void userWhoDidNotUploadIsForbiddenBeforeTheRemoval() throws Exception {
-            when(taskAttachmentAuthorization.currentUserUploaded(eq(attachmentId), any())).thenReturn(false);
+            when(taskAttachmentAuthorization.currentUserUploaded(eq(attachmentId), any()))
+                    .thenReturn(false);
 
             mockMvc.perform(delete(attachment()).with(user(UUID.randomUUID())))
                     .andExpect(status().isForbidden());
@@ -229,7 +238,8 @@ class TaskAttachmentControllerWebMvcTests {
 
         @Test
         void uploaderCheckIsAskedAboutTheAttachmentOfThePath() throws Exception {
-            when(taskAttachmentAuthorization.currentUserUploaded(eq(attachmentId), any())).thenReturn(true);
+            when(taskAttachmentAuthorization.currentUserUploaded(eq(attachmentId), any()))
+                    .thenReturn(true);
 
             mockMvc.perform(delete(attachment()).with(user(UUID.randomUUID())))
                     .andExpect(status().isNoContent());
@@ -248,11 +258,14 @@ class TaskAttachmentControllerWebMvcTests {
         @Test
         void removingThroughAnotherTaskReturnsNotFoundProblem() throws Exception {
             doThrow(new TaskAttachmentNotFoundException(attachmentId))
-                    .when(attachmentService).remove(taskId, attachmentId);
+                    .when(attachmentService)
+                    .remove(taskId, attachmentId);
 
             mockMvc.perform(delete(attachment()).with(admin(UUID.randomUUID())))
                     .andExpect(untypedProblem(404, "Not Found"))
-                    .andExpect(jsonPath("$.detail").value("Attachment not found with id: " + attachmentId));
+                    .andExpect(
+                            jsonPath("$.detail")
+                                    .value("Attachment not found with id: " + attachmentId));
         }
     }
 
@@ -265,7 +278,8 @@ class TaskAttachmentControllerWebMvcTests {
     }
 
     private MockMultipartHttpServletRequestBuilder upload() {
-        return multipart(attachments()).file(new MockMultipartFile("file", "report.pdf", "application/pdf", PDF_BYTES));
+        return multipart(attachments())
+                .file(new MockMultipartFile("file", "report.pdf", "application/pdf", PDF_BYTES));
     }
 
     private static TaskAttachment attachment(String filename) {

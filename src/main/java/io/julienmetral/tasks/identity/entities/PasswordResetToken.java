@@ -10,29 +10,24 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.time.Instant;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
 
-import java.time.Instant;
-import java.util.UUID;
-
 /** A single-use password reset token, stored as a SHA-256 hash. */
 @Entity
 @Table(
         name = "password_reset_tokens",
         uniqueConstraints = {
-                @UniqueConstraint(
-                        name = "password_reset_tokens_token_hashUQ",
-                        columnNames = "token_hash"
-                )
+            @UniqueConstraint(
+                    name = "password_reset_tokens_token_hashUQ",
+                    columnNames = "token_hash")
         },
-        indexes = {
-                @Index(name = "password_reset_tokens_user_idIDX", columnList = "user_id")
-        }
-)
+        indexes = {@Index(name = "password_reset_tokens_user_idIDX", columnList = "user_id")})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -49,8 +44,7 @@ public class PasswordResetToken {
             name = "user_id",
             nullable = false,
             updatable = false,
-            foreignKey = @ForeignKey(name = "password_reset_tokens_userFK")
-    )
+            foreignKey = @ForeignKey(name = "password_reset_tokens_userFK"))
     private UserProfile user;
 
     @Column(name = "token_hash", nullable = false, updatable = false, length = 64)

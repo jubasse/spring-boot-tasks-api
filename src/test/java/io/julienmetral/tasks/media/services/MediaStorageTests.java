@@ -1,5 +1,9 @@
 package io.julienmetral.tasks.media.services;
 
+import static io.julienmetral.tasks.support.Presigning.waitForTheNextSecond;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import io.julienmetral.tasks.config.StorageProperties;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
@@ -14,21 +18,6 @@ import io.julienmetral.tasks.media.model.MediaDownload;
 import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.media.repositories.MediaRepository;
 import io.julienmetral.tasks.support.IntegrationTest;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ContentDisposition;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.transaction.support.TransactionTemplate;
-import software.amazon.awssdk.core.ResponseBytes;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.GetObjectResponse;
-import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
-import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
-import software.amazon.awssdk.services.s3.model.S3Object;
-
-import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -47,44 +36,47 @@ import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static io.julienmetral.tasks.support.Presigning.waitForTheNextSecond;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import javax.imageio.ImageIO;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ContentDisposition;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.support.TransactionTemplate;
+import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
+import software.amazon.awssdk.services.s3.model.S3Object;
 
 @IntegrationTest
 class MediaStorageTests {
 
     private static final long AVATAR_MAX_BYTES = 5L * 1024 * 1024;
 
-    private static final byte[] PNG_SIGNATURE = {(byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+    private static final byte[] PNG_SIGNATURE = {
+        (byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'
+    };
 
-    @Autowired
-    private MediaService mediaService;
+    @Autowired private MediaService mediaService;
 
-    @Autowired
-    private MediaRepository mediaRepository;
+    @Autowired private MediaRepository mediaRepository;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
-    @Autowired
-    private UserService userService;
+    @Autowired private UserService userService;
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    @Autowired private PasswordEncoder passwordEncoder;
 
-    @Autowired
-    private S3Client s3Client;
+    @Autowired private S3Client s3Client;
 
-    @Autowired
-    private StorageProperties storageProperties;
+    @Autowired private StorageProperties storageProperties;
 
-    @Autowired
-    private TransactionTemplate transactionTemplate;
+    @Autowired private TransactionTemplate transactionTemplate;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
@@ -94,11 +86,11 @@ class MediaStorageTests {
         byte[] png = uniquePng();
         Instant before = Instant.now().truncatedTo(ChronoUnit.MICROS);
 
-        Media stored = mediaService.store(
-                new MockMultipartFile("file", "avatar.png", "image/png", png),
-                MediaUsage.AVATAR,
-                uploader.getId()
-        );
+        Media stored =
+                mediaService.store(
+                        new MockMultipartFile("file", "avatar.png", "image/png", png),
+                        MediaUsage.AVATAR,
+                        uploader.getId());
 
         Instant after = Instant.now();
         Media reloaded = reload(stored.getId());
@@ -122,11 +114,14 @@ class MediaStorageTests {
         assertThat(download.statusCode()).isEqualTo(200);
         assertThat(download.body()).isEqualTo(png);
         assertThat(download.headers().firstValue("Content-Type")).hasValue("image/png");
-        assertThat(ContentDisposition.parse(download.headers().firstValue("Content-Disposition").orElseThrow()))
-                .satisfies(disposition -> {
-                    assertThat(disposition.isAttachment()).isTrue();
-                    assertThat(disposition.getFilename()).isEqualTo("avatar.png");
-                });
+        assertThat(
+                        ContentDisposition.parse(
+                                download.headers().firstValue("Content-Disposition").orElseThrow()))
+                .satisfies(
+                        disposition -> {
+                            assertThat(disposition.isAttachment()).isTrue();
+                            assertThat(disposition.getFilename()).isEqualTo("avatar.png");
+                        });
     }
 
     @Test
@@ -134,11 +129,11 @@ class MediaStorageTests {
         User uploader = createUser();
         byte[] pdf = uniquePdf();
 
-        Media stored = mediaService.store(
-                new MockMultipartFile("file", "Été rapport.pdf", "application/pdf", pdf),
-                MediaUsage.TASK_ATTACHMENT,
-                uploader.getId()
-        );
+        Media stored =
+                mediaService.store(
+                        new MockMultipartFile("file", "Été rapport.pdf", "application/pdf", pdf),
+                        MediaUsage.TASK_ATTACHMENT,
+                        uploader.getId());
 
         Media reloaded = reload(stored.getId());
 
@@ -158,35 +153,41 @@ class MediaStorageTests {
         assertThat(download.statusCode()).isEqualTo(200);
         assertThat(download.body()).isEqualTo(pdf);
         assertThat(download.headers().firstValue("Content-Type")).hasValue("application/pdf");
-        assertThat(ContentDisposition.parse(download.headers().firstValue("Content-Disposition").orElseThrow()))
-                .satisfies(disposition -> {
-                    assertThat(disposition.isAttachment()).isTrue();
-                    assertThat(disposition.getFilename()).isEqualTo("Été rapport.pdf");
-                });
+        assertThat(
+                        ContentDisposition.parse(
+                                download.headers().firstValue("Content-Disposition").orElseThrow()))
+                .satisfies(
+                        disposition -> {
+                            assertThat(disposition.isAttachment()).isTrue();
+                            assertThat(disposition.getFilename()).isEqualTo("Été rapport.pdf");
+                        });
     }
 
     @Test
     void downloadIsServedWithTheCacheControlSignedIntoItsUrl() throws Exception {
-        Media stored = mediaService.store(
-                new MockMultipartFile("file", "notes.pdf", "application/pdf", uniquePdf()),
-                MediaUsage.TASK_ATTACHMENT,
-                createUser().getId()
-        );
+        Media stored =
+                mediaService.store(
+                        new MockMultipartFile("file", "notes.pdf", "application/pdf", uniquePdf()),
+                        MediaUsage.TASK_ATTACHMENT,
+                        createUser().getId());
 
         HttpResponse<byte[]> download = download(mediaService.downloadUrl(stored));
 
         assertThat(download.statusCode()).isEqualTo(200);
         assertThat(download.headers().firstValue("Cache-Control"))
-                .hasValue("private, max-age=" + storageProperties.presignedUrlTtl().toSeconds() + ", immutable");
+                .hasValue(
+                        "private, max-age="
+                                + storageProperties.presignedUrlTtl().toSeconds()
+                                + ", immutable");
     }
 
     @Test
     void downloadUrlOfAMediaIsHandedOutAgainAfterItWasSigned() throws Exception {
-        Media stored = mediaService.store(
-                new MockMultipartFile("file", "notes.pdf", "application/pdf", uniquePdf()),
-                MediaUsage.TASK_ATTACHMENT,
-                createUser().getId()
-        );
+        Media stored =
+                mediaService.store(
+                        new MockMultipartFile("file", "notes.pdf", "application/pdf", uniquePdf()),
+                        MediaUsage.TASK_ATTACHMENT,
+                        createUser().getId());
 
         MediaDownload first = mediaService.downloadUrl(stored);
         waitForTheNextSecond();
@@ -200,16 +201,16 @@ class MediaStorageTests {
     void twoMediaGetDistinctDownloadUrls() {
         User uploader = createUser();
         byte[] pdf = uniquePdf();
-        Media first = mediaService.store(
-                new MockMultipartFile("file", "same.pdf", "application/pdf", pdf),
-                MediaUsage.TASK_ATTACHMENT,
-                uploader.getId()
-        );
-        Media second = mediaService.store(
-                new MockMultipartFile("file", "same.pdf", "application/pdf", pdf),
-                MediaUsage.TASK_ATTACHMENT,
-                uploader.getId()
-        );
+        Media first =
+                mediaService.store(
+                        new MockMultipartFile("file", "same.pdf", "application/pdf", pdf),
+                        MediaUsage.TASK_ATTACHMENT,
+                        uploader.getId());
+        Media second =
+                mediaService.store(
+                        new MockMultipartFile("file", "same.pdf", "application/pdf", pdf),
+                        MediaUsage.TASK_ATTACHMENT,
+                        uploader.getId());
 
         String firstUrl = mediaService.downloadUrl(first).url().toString();
         String secondUrl = mediaService.downloadUrl(second).url().toString();
@@ -223,11 +224,11 @@ class MediaStorageTests {
         User uploader = createUser();
         byte[] png = uniquePng();
 
-        Media stored = mediaService.store(
-                new MockMultipartFile("file", "photo", "application/octet-stream", png),
-                MediaUsage.AVATAR,
-                uploader.getId()
-        );
+        Media stored =
+                mediaService.store(
+                        new MockMultipartFile("file", "photo", "application/octet-stream", png),
+                        MediaUsage.AVATAR,
+                        uploader.getId());
 
         assertThat(stored.getContentType()).isEqualTo("image/png");
         assertThat(headObject(stored.getStorageKey()).contentType()).isEqualTo("image/png");
@@ -239,11 +240,16 @@ class MediaStorageTests {
         byte[] executable = uniqueExecutable();
         Set<String> keysBefore = objectKeys(MediaUsage.TASK_ATTACHMENT);
 
-        assertThatThrownBy(() -> mediaService.store(
-                new MockMultipartFile("file", "invoice.pdf", "application/pdf", executable),
-                MediaUsage.TASK_ATTACHMENT,
-                uploader.getId()
-        ))
+        assertThatThrownBy(
+                        () ->
+                                mediaService.store(
+                                        new MockMultipartFile(
+                                                "file",
+                                                "invoice.pdf",
+                                                "application/pdf",
+                                                executable),
+                                        MediaUsage.TASK_ATTACHMENT,
+                                        uploader.getId()))
                 .isInstanceOf(UnsupportedMediaTypeException.class)
                 .hasMessageNotContaining("application/pdf");
 
@@ -257,11 +263,14 @@ class MediaStorageTests {
         byte[] png = pngOfSize(AVATAR_MAX_BYTES + 1);
         Set<String> keysBefore = objectKeys(MediaUsage.AVATAR);
 
-        assertThatThrownBy(() -> mediaService.store(
-                new MockMultipartFile("file", "large.png", "image/png", png),
-                MediaUsage.AVATAR,
-                uploader.getId()
-        )).isInstanceOf(MediaTooLargeException.class);
+        assertThatThrownBy(
+                        () ->
+                                mediaService.store(
+                                        new MockMultipartFile(
+                                                "file", "large.png", "image/png", png),
+                                        MediaUsage.AVATAR,
+                                        uploader.getId()))
+                .isInstanceOf(MediaTooLargeException.class);
 
         assertThat(mediaCountUploadedBy(uploader)).isZero();
         assertNoNewObjectHolds(png, MediaUsage.AVATAR, keysBefore);
@@ -272,11 +281,11 @@ class MediaStorageTests {
         User uploader = createUser();
         byte[] png = pngOfSize(AVATAR_MAX_BYTES + 1);
 
-        Media stored = mediaService.store(
-                new MockMultipartFile("file", "large.png", "image/png", png),
-                MediaUsage.TASK_ATTACHMENT,
-                uploader.getId()
-        );
+        Media stored =
+                mediaService.store(
+                        new MockMultipartFile("file", "large.png", "image/png", png),
+                        MediaUsage.TASK_ATTACHMENT,
+                        uploader.getId());
 
         assertThat(stored.getSizeBytes()).isEqualTo(png.length);
         assertThat(stored.getSha256()).isEqualTo(sha256(png));
@@ -287,11 +296,17 @@ class MediaStorageTests {
     void emptyFileIsRejected() {
         User uploader = createUser();
 
-        assertThatThrownBy(() -> mediaService.store(
-                new MockMultipartFile("file", "empty.pdf", "application/pdf", new byte[0]),
-                MediaUsage.TASK_ATTACHMENT,
-                uploader.getId()
-        )).isInstanceOf(EmptyMediaException.class);
+        assertThatThrownBy(
+                        () ->
+                                mediaService.store(
+                                        new MockMultipartFile(
+                                                "file",
+                                                "empty.pdf",
+                                                "application/pdf",
+                                                new byte[0]),
+                                        MediaUsage.TASK_ATTACHMENT,
+                                        uploader.getId()))
+                .isInstanceOf(EmptyMediaException.class);
 
         assertThat(mediaCountUploadedBy(uploader)).isZero();
     }
@@ -301,17 +316,20 @@ class MediaStorageTests {
         User uploader = createUser();
         byte[] pdf = uniquePdf();
 
-        Media stored = transactionTemplate.execute(status -> {
-            Media media = mediaService.store(
-                    new MockMultipartFile("file", "draft.pdf", "application/pdf", pdf),
-                    MediaUsage.TASK_ATTACHMENT,
-                    uploader.getId()
-            );
+        Media stored =
+                transactionTemplate.execute(
+                        status -> {
+                            Media media =
+                                    mediaService.store(
+                                            new MockMultipartFile(
+                                                    "file", "draft.pdf", "application/pdf", pdf),
+                                            MediaUsage.TASK_ATTACHMENT,
+                                            uploader.getId());
 
-            assertThat(objectBytes(media.getStorageKey())).isEqualTo(pdf);
-            status.setRollbackOnly();
-            return media;
-        });
+                            assertThat(objectBytes(media.getStorageKey())).isEqualTo(pdf);
+                            status.setRollbackOnly();
+                            return media;
+                        });
 
         assertThat(mediaRepository.findById(stored.getId())).isEmpty();
         assertObjectMissing(stored.getStorageKey());
@@ -323,15 +341,24 @@ class MediaStorageTests {
         byte[] pdf = uniquePdf();
         AtomicReference<Media> stored = new AtomicReference<>();
 
-        assertThatThrownBy(() -> transactionTemplate.executeWithoutResult(status -> {
-            stored.set(mediaService.store(
-                    new MockMultipartFile("file", "draft.pdf", "application/pdf", pdf),
-                    MediaUsage.TASK_ATTACHMENT,
-                    uploader.getId()
-            ));
+        assertThatThrownBy(
+                        () ->
+                                transactionTemplate.executeWithoutResult(
+                                        status -> {
+                                            stored.set(
+                                                    mediaService.store(
+                                                            new MockMultipartFile(
+                                                                    "file",
+                                                                    "draft.pdf",
+                                                                    "application/pdf",
+                                                                    pdf),
+                                                            MediaUsage.TASK_ATTACHMENT,
+                                                            uploader.getId()));
 
-            throw new IllegalStateException("Caller failed after the upload");
-        })).isInstanceOf(IllegalStateException.class);
+                                            throw new IllegalStateException(
+                                                    "Caller failed after the upload");
+                                        }))
+                .isInstanceOf(IllegalStateException.class);
 
         assertThat(stored.get()).isNotNull();
         assertThat(mediaRepository.findById(stored.get().getId())).isEmpty();
@@ -342,11 +369,11 @@ class MediaStorageTests {
     void mediaOfSoftDeletedUploaderStillLoadsItsUploader() {
         User uploader = createUser();
 
-        Media stored = mediaService.store(
-                new MockMultipartFile("file", "notes.pdf", "application/pdf", uniquePdf()),
-                MediaUsage.TASK_ATTACHMENT,
-                uploader.getId()
-        );
+        Media stored =
+                mediaService.store(
+                        new MockMultipartFile("file", "notes.pdf", "application/pdf", uniquePdf()),
+                        MediaUsage.TASK_ATTACHMENT,
+                        uploader.getId());
 
         userService.delete(uploader.getId());
 
@@ -363,16 +390,16 @@ class MediaStorageTests {
         User uploader = createUser();
         byte[] pdf = uniquePdf();
 
-        Media first = mediaService.store(
-                new MockMultipartFile("file", "same.pdf", "application/pdf", pdf),
-                MediaUsage.TASK_ATTACHMENT,
-                uploader.getId()
-        );
-        Media second = mediaService.store(
-                new MockMultipartFile("file", "same.pdf", "application/pdf", pdf),
-                MediaUsage.TASK_ATTACHMENT,
-                uploader.getId()
-        );
+        Media first =
+                mediaService.store(
+                        new MockMultipartFile("file", "same.pdf", "application/pdf", pdf),
+                        MediaUsage.TASK_ATTACHMENT,
+                        uploader.getId());
+        Media second =
+                mediaService.store(
+                        new MockMultipartFile("file", "same.pdf", "application/pdf", pdf),
+                        MediaUsage.TASK_ATTACHMENT,
+                        uploader.getId());
 
         assertThat(second.getStorageKey()).isNotEqualTo(first.getStorageKey());
         assertThat(second.getSha256()).isEqualTo(first.getSha256());
@@ -393,20 +420,20 @@ class MediaStorageTests {
     }
 
     private Media reload(UUID mediaId) {
-        return transactionTemplate.execute(status -> {
-            Media media = mediaRepository.findById(mediaId).orElseThrow();
-            // Initializes the lazy uploader while the session is open
-            media.getUploadedBy().getDisplayName();
-            return media;
-        });
+        return transactionTemplate.execute(
+                status -> {
+                    Media media = mediaRepository.findById(mediaId).orElseThrow();
+                    // Initializes the lazy uploader while the session is open
+                    media.getUploadedBy().getDisplayName();
+                    return media;
+                });
     }
 
     private int mediaCountUploadedBy(User uploader) {
         return jdbcTemplate.queryForObject(
                 "select count(*) from media where uploaded_by_id = ?",
                 Integer.class,
-                uploader.getId()
-        );
+                uploader.getId());
     }
 
     private HeadObjectResponse headObject(String key) {
@@ -414,9 +441,9 @@ class MediaStorageTests {
     }
 
     private byte[] objectBytes(String key) {
-        ResponseBytes<GetObjectResponse> object = s3Client.getObjectAsBytes(
-                request -> request.bucket(storageProperties.bucket()).key(key)
-        );
+        ResponseBytes<GetObjectResponse> object =
+                s3Client.getObjectAsBytes(
+                        request -> request.bucket(storageProperties.bucket()).key(key));
         return object.asByteArray();
     }
 
@@ -426,16 +453,18 @@ class MediaStorageTests {
 
     private Set<String> objectKeys(MediaUsage usage) {
         return s3Client
-                .listObjectsV2Paginator(request -> request
-                        .bucket(storageProperties.bucket())
-                        .prefix(usage.storagePrefix() + "/"))
+                .listObjectsV2Paginator(
+                        request ->
+                                request.bucket(storageProperties.bucket())
+                                        .prefix(usage.storagePrefix() + "/"))
                 .contents()
                 .stream()
                 .map(S3Object::key)
                 .collect(Collectors.toSet());
     }
 
-    // Other test classes share the bucket, so a new key alone proves nothing: compare contents instead
+    // Other test classes share the bucket, so a new key alone proves nothing: compare contents
+    // instead
     private void assertNoNewObjectHolds(byte[] content, MediaUsage usage, Set<String> keysBefore) {
         objectKeys(usage).stream()
                 .filter(key -> !keysBefore.contains(key))
@@ -460,7 +489,8 @@ class MediaStorageTests {
         }
     }
 
-    // Detection only reads the leading bytes, so a PNG signature followed by random padding is typed as a PNG
+    // Detection only reads the leading bytes, so a PNG signature followed by random padding is
+    // typed as a PNG
     private static byte[] pngOfSize(long size) {
         byte[] content = new byte[Math.toIntExact(size)];
         ThreadLocalRandom.current().nextBytes(content);
@@ -475,7 +505,9 @@ class MediaStorageTests {
                 1 0 obj << /Type /Catalog >> endobj
                 trailer << /Root 1 0 R >>
                 %%%%EOF
-                """.formatted(UUID.randomUUID()).getBytes(StandardCharsets.US_ASCII);
+                """
+                .formatted(UUID.randomUUID())
+                .getBytes(StandardCharsets.US_ASCII);
     }
 
     // DOS header ("MZ") of a Windows executable

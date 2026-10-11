@@ -5,14 +5,14 @@ import io.julienmetral.tasks.export.entities.DataExportStatus;
 import io.julienmetral.tasks.export.entities.DataExportType;
 import io.julienmetral.tasks.export.entities.TaskExportFilters;
 import io.julienmetral.tasks.media.services.MediaUrls;
-
 import java.time.Instant;
 import java.util.UUID;
 
 /**
- * @param filters     the filters of a tasks export, null for the other types
- * @param rowCount    rows written, once completed
- * @param downloadUrl a link to the file, valid a few minutes, while the export is completed; ask again for a new one
+ * @param filters the filters of a tasks export, null for the other types
+ * @param rowCount rows written, once completed
+ * @param downloadUrl a link to the file, valid a few minutes, while the export is completed; ask
+ *     again for a new one
  */
 public record DataExportResponseDto(
         UUID id,
@@ -23,8 +23,7 @@ public record DataExportResponseDto(
         Instant createdAt,
         Instant completedAt,
         Instant expiresAt,
-        String downloadUrl
-) {
+        String downloadUrl) {
 
     public DataExportResponseDto(DataExport export, MediaUrls mediaUrls) {
         this(
@@ -38,7 +37,6 @@ public record DataExportResponseDto(
                 export.getExpiresAt(),
                 export.getStatus() == DataExportStatus.COMPLETED && export.getMedia() != null
                         ? mediaUrls.of(export.getMedia())
-                        : null
-        );
+                        : null);
     }
 }

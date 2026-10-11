@@ -1,16 +1,5 @@
 package io.julienmetral.tasks.identity.controllers;
 
-import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.identity.services.IdenticonGenerator;
-import io.julienmetral.tasks.support.WebLayerTest;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.MockMvc;
-
-import java.util.UUID;
-
 import static io.julienmetral.tasks.support.Problems.invalidParameter;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
@@ -22,19 +11,26 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.identity.services.IdenticonGenerator;
+import io.julienmetral.tasks.support.WebLayerTest;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+
 @WebLayerTest
 class IdenticonControllerWebMvcTests {
 
     private static final String IDENTICON = "/api/v1/identicons/{id}";
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private IdenticonGenerator generator;
+    @Autowired private IdenticonGenerator generator;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
     @Test
     void identiconIsServedAsSvgWithoutAToken() throws Exception {
@@ -50,7 +46,10 @@ class IdenticonControllerWebMvcTests {
     void identiconIsCachedForAYearByAnyCache() throws Exception {
         mockMvc.perform(get(IDENTICON, UUID.randomUUID()))
                 .andExpect(status().isOk())
-                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("max-age=31536000")))
+                .andExpect(
+                        header().string(
+                                        HttpHeaders.CACHE_CONTROL,
+                                        containsString("max-age=31536000")))
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("public")))
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("immutable")));
     }
@@ -77,8 +76,10 @@ class IdenticonControllerWebMvcTests {
     void sameIdGivesTheSameImageOnEveryRequest() throws Exception {
         UUID id = UUID.randomUUID();
 
-        String first = mockMvc.perform(get(IDENTICON, id)).andReturn().getResponse().getContentAsString();
-        String second = mockMvc.perform(get(IDENTICON, id)).andReturn().getResponse().getContentAsString();
+        String first =
+                mockMvc.perform(get(IDENTICON, id)).andReturn().getResponse().getContentAsString();
+        String second =
+                mockMvc.perform(get(IDENTICON, id)).andReturn().getResponse().getContentAsString();
 
         assertThat(second).isEqualTo(first);
     }
@@ -100,13 +101,14 @@ class IdenticonControllerWebMvcTests {
 
     @Test
     void invalidIdRequestedByAnImageTagStillGetsAProblem() throws Exception {
-        mockMvc.perform(get("/api/v1/identicons/not-a-uuid").accept(MediaType.parseMediaType("image/*")))
+        mockMvc.perform(
+                        get("/api/v1/identicons/not-a-uuid")
+                                .accept(MediaType.parseMediaType("image/*")))
                 .andExpect(invalidParameter("id", "must be a UUID"));
     }
 
     @Test
     void onlyGetIsPublic() throws Exception {
-        mockMvc.perform(post(IDENTICON, UUID.randomUUID()))
-                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post(IDENTICON, UUID.randomUUID())).andExpect(status().isUnauthorized());
     }
 }

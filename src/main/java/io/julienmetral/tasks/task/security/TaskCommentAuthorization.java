@@ -2,11 +2,10 @@ package io.julienmetral.tasks.task.security;
 
 import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.task.repositories.TaskCommentRepository;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
-
-import java.util.UUID;
 
 @Component("taskCommentAuthorization")
 @RequiredArgsConstructor

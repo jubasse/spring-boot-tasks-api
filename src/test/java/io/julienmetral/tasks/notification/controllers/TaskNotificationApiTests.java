@@ -1,10 +1,23 @@
 package io.julienmetral.tasks.notification.controllers;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.EnumSet;
+import java.util.UUID;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,20 +32,6 @@ import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.time.Duration;
-import java.time.Instant;
-import java.util.EnumSet;
-import java.util.UUID;
-import java.util.function.Consumer;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 /**
  * End-to-end tests of task email notifications: task requests go through the API, and the emails
  * sent after commit are read back from the Mailpit container.
@@ -44,35 +43,30 @@ class TaskNotificationApiTests {
 
     private static final String TITLE = "Write the quarterly report";
 
-    // Mail is dispatched asynchronously after commit: "nothing sent" can only be checked after a grace period
+    // Mail is dispatched asynchronously after commit: "nothing sent" can only be checked after a
+    // grace period
     private static final Duration NO_MAIL_GRACE_PERIOD = Duration.ofMillis(800);
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    @Autowired private PasswordEncoder passwordEncoder;
 
-    @Autowired
-    private JsonMapper jsonMapper;
+    @Autowired private JsonMapper jsonMapper;
 
-    @Autowired
-    private Mailpit mailpit;
+    @Autowired private Mailpit mailpit;
 
-    @Autowired
-    private TransactionTemplate transactionTemplate;
+    @Autowired private TransactionTemplate transactionTemplate;
 
     @Value("${mailpit.api-url}")
     private String mailpitApiUrl;
 
-    private record CreatedTask(UUID id, String reference) {
-    }
+    private record CreatedTask(UUID id, String reference) {}
 
     @Test
-    void creatingAssignedTaskEmailsAssigneeWithGreetingActorReferenceTitleAndSettingsFooter() throws Exception {
+    void creatingAssignedTaskEmailsAssigneeWithGreetingActorReferenceTitleAndSettingsFooter()
+            throws Exception {
         User admin = createUser(UserRole.ADMIN);
         User assignee = createUser(UserRole.USER);
 
@@ -242,10 +236,11 @@ class TaskNotificationApiTests {
         CreatedTask task = createTask(admin, assignee);
         awaitTextWithSubject(assignee, assignedSubject(task));
 
-        mockMvc.perform(post(TASKS + "/" + task.id() + "/cancel")
-                        .with(asUser(assignee))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"reason\": \"Not needed\"}"))
+        mockMvc.perform(
+                        post(TASKS + "/" + task.id() + "/cancel")
+                                .with(asUser(assignee))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"reason\": \"Not needed\"}"))
                 .andExpect(status().isOk());
 
         waitForAsyncDispatch();
@@ -446,10 +441,11 @@ class TaskNotificationApiTests {
         User unverified = createUser(UserRole.USER);
         unverify(unverified);
 
-        mockMvc.perform(post(TASKS)
-                        .with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(createTaskBody(uniqueReference(), unverified)))
+        mockMvc.perform(
+                        post(TASKS)
+                                .with(asAdmin(admin))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(createTaskBody(uniqueReference(), unverified)))
                 .andExpect(status().isUnprocessableContent());
 
         waitForAsyncDispatch();
@@ -544,7 +540,8 @@ class TaskNotificationApiTests {
         user.setPasswordHash(passwordEncoder.encode("password"));
         // Only enabled users with a verified email can work on tasks and receive notifications
         user.setEmailVerifiedAt(Instant.now());
-        user.setDisplayName("Notified " + role + " " + UUID.randomUUID().toString().substring(0, 6));
+        user.setDisplayName(
+                "Notified " + role + " " + UUID.randomUUID().toString().substring(0, 6));
         user.setRoles(EnumSet.of(UserRole.USER, role));
 
         return userRepository.saveAndFlush(user);
@@ -558,7 +555,8 @@ class TaskNotificationApiTests {
         updateUser(user, reloaded -> reloaded.setEmailVerifiedAt(null));
     }
 
-    // On a managed entity, as a service does: saving a detached User would not carry the change to its profile
+    // On a managed entity, as a service does: saving a detached User would not carry the change to
+    // its profile
     private void updateUser(User user, Consumer<User> change) {
         transactionTemplate.executeWithoutResult(
                 status -> change.accept(userRepository.findById(user.getId()).orElseThrow()));
@@ -572,8 +570,7 @@ class TaskNotificationApiTests {
     }
 
     private RequestPostProcessor as(User user, UserRole role) {
-        return jwt()
-                .jwt(token -> token.claim("uid", user.getId().toString()))
+        return jwt().jwt(token -> token.claim("uid", user.getId().toString()))
                 .authorities(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
 
@@ -595,43 +592,51 @@ class TaskNotificationApiTests {
         return """
                 {"reference": "%s", "title": "%s", "description": "Initial description",
                  "priority": "LOW", "dueAt": "2030-01-01T10:00:00Z", "assignedTo": %s}
-                """.formatted(reference, TITLE, assigned);
+                """
+                .formatted(reference, TITLE, assigned);
     }
 
     private CreatedTask createTask(User admin, User assignee) throws Exception {
         String reference = uniqueReference();
 
-        String body = mockMvc.perform(post(TASKS)
-                        .with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(createTaskBody(reference, assignee)))
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String body =
+                mockMvc.perform(
+                                post(TASKS)
+                                        .with(asAdmin(admin))
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(createTaskBody(reference, assignee)))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
-        return new CreatedTask(UUID.fromString(jsonMapper.readTree(body).get("id").asString()), reference);
+        return new CreatedTask(
+                UUID.fromString(jsonMapper.readTree(body).get("id").asString()), reference);
     }
 
     private ResultActions assign(User admin, CreatedTask task, User assignee) throws Exception {
-        return mockMvc.perform(patch(TASKS + "/" + task.id() + "/assign")
-                .with(asAdmin(admin))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"userId\": \"" + assignee.getId() + "\"}"));
+        return mockMvc.perform(
+                patch(TASKS + "/" + task.id() + "/assign")
+                        .with(asAdmin(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\": \"" + assignee.getId() + "\"}"));
     }
 
     private ResultActions cancel(User admin, CreatedTask task, String reason) throws Exception {
-        return mockMvc.perform(post(TASKS + "/" + task.id() + "/cancel")
-                .with(asAdmin(admin))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"reason\": \"" + reason + "\"}"));
+        return mockMvc.perform(
+                post(TASKS + "/" + task.id() + "/cancel")
+                        .with(asAdmin(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\": \"" + reason + "\"}"));
     }
 
-    private ResultActions changeStatus(RequestPostProcessor actor, CreatedTask task, String status) throws Exception {
-        return mockMvc.perform(patch(TASKS + "/" + task.id() + "/status")
-                .with(actor)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"status\": \"" + status + "\"}"));
+    private ResultActions changeStatus(RequestPostProcessor actor, CreatedTask task, String status)
+            throws Exception {
+        return mockMvc.perform(
+                patch(TASKS + "/" + task.id() + "/status")
+                        .with(actor)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\": \"" + status + "\"}"));
     }
 
     private ResultActions deleteTask(User admin, CreatedTask task) throws Exception {
@@ -639,16 +644,20 @@ class TaskNotificationApiTests {
     }
 
     private void updateSettings(
-            User user, boolean assigned, boolean unassigned, boolean cancelled, boolean deleted
-    ) throws Exception {
-        mockMvc.perform(put("/api/v1/users/{id}/notification-settings", user.getId())
-                        .with(asUser(user))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+            User user, boolean assigned, boolean unassigned, boolean cancelled, boolean deleted)
+            throws Exception {
+        mockMvc.perform(
+                        put("/api/v1/users/{id}/notification-settings", user.getId())
+                                .with(asUser(user))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
                                 {"taskAssigned": %s, "taskUnassigned": %s, "taskCancelled": %s, "taskDeleted": %s,
                                  "taskCommented": true, "taskMentioned": true,
                                  "taskDueSoon": true, "taskOverdue": true}
-                                """.formatted(assigned, unassigned, cancelled, deleted)))
+                                """
+                                                .formatted(
+                                                        assigned, unassigned, cancelled, deleted)))
                 .andExpect(status().isOk());
     }
 
@@ -672,8 +681,12 @@ class TaskNotificationApiTests {
         return searchBySubject(recipient, subject).path("messages_count").asInt();
     }
 
-    /** Plain-text body of the latest email with this subject, waiting up to 5 seconds for the async dispatch. */
-    private String awaitTextWithSubject(User recipient, String subject) throws InterruptedException {
+    /**
+     * Plain-text body of the latest email with this subject, waiting up to 5 seconds for the async
+     * dispatch.
+     */
+    private String awaitTextWithSubject(User recipient, String subject)
+            throws InterruptedException {
         Instant deadline = Instant.now().plusSeconds(5);
 
         while (true) {
@@ -689,7 +702,8 @@ class TaskNotificationApiTests {
             }
 
             if (Instant.now().isAfter(deadline)) {
-                throw new AssertionError("No email \"" + subject + "\" received by " + recipient.getEmail());
+                throw new AssertionError(
+                        "No email \"" + subject + "\" received by " + recipient.getEmail());
             }
 
             Thread.sleep(100);
@@ -699,16 +713,16 @@ class TaskNotificationApiTests {
     private JsonNode searchBySubject(User recipient, String subject) {
         return readMailpit(
                 "/api/v1/search?query={query}",
-                "to:\"" + recipient.getEmail() + "\" subject:\"" + subject + "\""
-        );
+                "to:\"" + recipient.getEmail() + "\" subject:\"" + subject + "\"");
     }
 
     private JsonNode readMailpit(String uri, Object... variables) {
-        String body = RestClient.create(mailpitApiUrl)
-                .get()
-                .uri(uri, variables)
-                .retrieve()
-                .body(String.class);
+        String body =
+                RestClient.create(mailpitApiUrl)
+                        .get()
+                        .uri(uri, variables)
+                        .retrieve()
+                        .body(String.class);
 
         return jsonMapper.readTree(body);
     }

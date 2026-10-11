@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.realtime;
 
 import io.micrometer.observation.ObservationPredicate;
+import java.util.Map;
 import org.springframework.amqp.core.AnonymousQueue;
 import org.springframework.amqp.core.Base64UrlNamingStrategy;
 import org.springframework.amqp.core.Binding;
@@ -14,12 +15,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.server.observation.ServerRequestObservationContext;
 
-import java.util.Map;
-
 /**
- * Real-time events reach every instance: they are broadcast through the outbox to the fanout exchange
- * {@value #EXCHANGE}, which copies each one to a queue of every running instance. That queue is the instance's own,
- * deleted with its connection, so an instance only receives the events published while it listens.
+ * Real-time events reach every instance: they are broadcast through the outbox to the fanout
+ * exchange {@value #EXCHANGE}, which copies each one to a queue of every running instance. That
+ * queue is the instance's own, deleted with its connection, so an instance only receives the events
+ * published while it listens.
  */
 @Configuration
 @EnableConfigurationProperties(RealtimeProperties.class)
@@ -36,14 +36,13 @@ public class RealtimeConfiguration {
         return new FanoutExchange(EXCHANGE, true, false);
     }
 
-    // Exclusive and auto-delete, with a name only this instance knows; RabbitAdmin declares it again after a
-    // reconnection
+    // Exclusive and auto-delete, with a name only this instance knows; RabbitAdmin declares it
+    // again after a reconnection
     @Bean(QUEUE_BEAN)
     AnonymousQueue realtimeQueue(RealtimeProperties properties) {
         return new AnonymousQueue(
                 new Base64UrlNamingStrategy(EXCHANGE + "."),
-                Map.of("x-max-length", properties.queueMaxLength())
-        );
+                Map.of("x-max-length", properties.queueMaxLength()));
     }
 
     @Bean
@@ -52,14 +51,14 @@ public class RealtimeConfiguration {
     }
 
     /**
-     * One consumer, so the events of this instance are handed out in the order they arrive, and no retries: an event
-     * that fails is dropped, since a stale real-time event is worth less than the ones behind it.
+     * One consumer, so the events of this instance are handed out in the order they arrive, and no
+     * retries: an event that fails is dropped, since a stale real-time event is worth less than the
+     * ones behind it.
      */
     @Bean(LISTENER_FACTORY)
     SimpleRabbitListenerContainerFactory realtimeListenerContainerFactory(
             SimpleRabbitListenerContainerFactoryConfigurer configurer,
-            ConnectionFactory connectionFactory
-    ) {
+            ConnectionFactory connectionFactory) {
         SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
         configurer.configure(factory, connectionFactory);
         factory.setAdviceChain();
@@ -70,11 +69,12 @@ public class RealtimeConfiguration {
         return factory;
     }
 
-    // A stream lasts up to 15 minutes: recorded in http.server.requests, it would swamp the latency of every other
-    // request
+    // A stream lasts up to 15 minutes: recorded in http.server.requests, it would swamp the latency
+    // of every other request
     @Bean
     ObservationPredicate noObservationOfNotificationStreams() {
-        return (name, context) -> !(context instanceof ServerRequestObservationContext request
-                && request.getCarrier().getRequestURI().endsWith("/notifications/stream"));
+        return (name, context) ->
+                !(context instanceof ServerRequestObservationContext request
+                        && request.getCarrier().getRequestURI().endsWith("/notifications/stream"));
     }
 }

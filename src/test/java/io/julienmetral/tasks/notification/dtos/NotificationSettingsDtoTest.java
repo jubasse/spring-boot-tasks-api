@@ -1,9 +1,9 @@
 package io.julienmetral.tasks.notification.dtos;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.julienmetral.tasks.notification.entities.NotificationSettings;
 import org.junit.jupiter.api.Test;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 class NotificationSettingsDtoTest {
 
@@ -21,7 +21,10 @@ class NotificationSettingsDtoTest {
 
         NotificationSettingsDto dto = new NotificationSettingsDto(settings);
 
-        assertThat(dto).isEqualTo(new NotificationSettingsDto(true, false, true, false, true, false, true, false));
+        assertThat(dto)
+                .isEqualTo(
+                        new NotificationSettingsDto(
+                                true, false, true, false, true, false, true, false));
     }
 
     @Test
@@ -67,15 +70,22 @@ class NotificationSettingsDtoTest {
         overdueOff.setTaskOverdue(false);
 
         assertThat(new NotificationSettingsDto(dueSoonOff))
-                .isEqualTo(new NotificationSettingsDto(true, true, true, true, true, true, false, true));
+                .isEqualTo(
+                        new NotificationSettingsDto(
+                                true, true, true, true, true, true, false, true));
         assertThat(new NotificationSettingsDto(overdueOff))
-                .isEqualTo(new NotificationSettingsDto(true, true, true, true, true, true, true, false));
+                .isEqualTo(
+                        new NotificationSettingsDto(
+                                true, true, true, true, true, true, true, false));
     }
 
     @Test
     void mapsDefaultsAsEverythingEnabled() {
         NotificationSettingsDto dto = new NotificationSettingsDto(new NotificationSettings());
 
-        assertThat(dto).isEqualTo(new NotificationSettingsDto(true, true, true, true, true, true, true, true));
+        assertThat(dto)
+                .isEqualTo(
+                        new NotificationSettingsDto(
+                                true, true, true, true, true, true, true, true));
     }
 }

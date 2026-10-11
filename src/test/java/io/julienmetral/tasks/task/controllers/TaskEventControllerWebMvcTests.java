@@ -1,16 +1,5 @@
 package io.julienmetral.tasks.task.controllers;
 
-import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.support.WebLayerTest;
-import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
-import io.julienmetral.tasks.task.services.TaskEventService;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.test.web.servlet.MockMvc;
-
-import java.util.UUID;
-
 import static io.julienmetral.tasks.support.Problems.invalidParameter;
 import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static io.julienmetral.tasks.support.WebCallers.everyAccountIsActive;
@@ -23,19 +12,26 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.support.WebLayerTest;
+import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
+import io.julienmetral.tasks.task.services.TaskEventService;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.web.servlet.MockMvc;
+
 @WebLayerTest
 class TaskEventControllerWebMvcTests {
 
     private static final String EVENTS = "/api/v1/tasks/{taskId}/events";
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private TaskEventService taskEventService;
+    @Autowired private TaskEventService taskEventService;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
     @BeforeEach
     void callersAreActive() {
@@ -44,8 +40,7 @@ class TaskEventControllerWebMvcTests {
 
     @Test
     void withoutTokenReturns401() throws Exception {
-        mockMvc.perform(get(EVENTS, UUID.randomUUID()))
-                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get(EVENTS, UUID.randomUUID())).andExpect(status().isUnauthorized());
 
         verifyNoInteractions(taskEventService);
     }
@@ -61,7 +56,8 @@ class TaskEventControllerWebMvcTests {
     @Test
     void unknownTaskReturnsNotFoundProblem() throws Exception {
         UUID unknown = UUID.randomUUID();
-        when(taskEventService.findAllByTaskId(eq(unknown), any())).thenThrow(new TaskNotFoundException(unknown));
+        when(taskEventService.findAllByTaskId(eq(unknown), any()))
+                .thenThrow(new TaskNotFoundException(unknown));
 
         mockMvc.perform(get(EVENTS, unknown).with(user(UUID.randomUUID())))
                 .andExpect(untypedProblem(404, "Not Found"))

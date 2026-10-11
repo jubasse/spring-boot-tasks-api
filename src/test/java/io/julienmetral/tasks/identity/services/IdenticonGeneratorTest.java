@@ -1,11 +1,7 @@
 package io.julienmetral.tasks.identity.services;
 
-import org.junit.jupiter.api.Test;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.xml.sax.InputSource;
+import static org.assertj.core.api.Assertions.assertThat;
 
-import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.StringReader;
 import java.util.HashSet;
 import java.util.Set;
@@ -13,12 +9,16 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.IntStream;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import javax.xml.parsers.DocumentBuilderFactory;
+import org.junit.jupiter.api.Test;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.xml.sax.InputSource;
 
 class IdenticonGeneratorTest {
 
-    private static final Pattern BACKGROUND = Pattern.compile("<rect [^>]*fill=\"(hsl\\([^\"]+\\))\"");
+    private static final Pattern BACKGROUND =
+            Pattern.compile("<rect [^>]*fill=\"(hsl\\([^\"]+\\))\"");
 
     private final IdenticonGenerator generator = new IdenticonGenerator();
 
@@ -45,7 +45,8 @@ class IdenticonGeneratorTest {
         assertThat(root.getLocalName()).isEqualTo("svg");
         assertThat(root.getNamespaceURI()).isEqualTo("http://www.w3.org/2000/svg");
         assertThat(root.getAttribute("viewBox")).isEqualTo("0 0 128 128");
-        assertThat(root.getElementsByTagNameNS("http://www.w3.org/2000/svg", "rect").getLength()).isOne();
+        assertThat(root.getElementsByTagNameNS("http://www.w3.org/2000/svg", "rect").getLength())
+                .isOne();
     }
 
     @Test
@@ -62,7 +63,8 @@ class IdenticonGeneratorTest {
 
         IntStream.range(0, 100).forEach(i -> colours.add(backgroundOf(UUID.randomUUID())));
 
-        // 360 hues and 25 saturations: 100 random ids sharing a handful of colours would mean a broken derivation
+        // 360 hues and 25 saturations: 100 random ids sharing a handful of colours would mean a
+        // broken derivation
         assertThat(colours).hasSizeGreaterThan(80);
     }
 
@@ -90,12 +92,14 @@ class IdenticonGeneratorTest {
     void hueStaysInRangeAndSaturationStaysMuted() {
         Pattern hsl = Pattern.compile("hsl\\((\\d+),(\\d+)%,52%\\)");
 
-        IntStream.range(0, 200).forEach(i -> {
-            Matcher matcher = hsl.matcher(backgroundOf(UUID.randomUUID()));
+        IntStream.range(0, 200)
+                .forEach(
+                        i -> {
+                            Matcher matcher = hsl.matcher(backgroundOf(UUID.randomUUID()));
 
-            assertThat(matcher.matches()).isTrue();
-            assertThat(Integer.parseInt(matcher.group(1))).isBetween(0, 359);
-            assertThat(Integer.parseInt(matcher.group(2))).isBetween(45, 69);
-        });
+                            assertThat(matcher.matches()).isTrue();
+                            assertThat(Integer.parseInt(matcher.group(1))).isBetween(0, 359);
+                            assertThat(Integer.parseInt(matcher.group(2))).isBetween(45, 69);
+                        });
     }
 }

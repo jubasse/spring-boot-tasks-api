@@ -1,5 +1,11 @@
 package io.julienmetral.tasks.identity.security;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -7,21 +13,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.core.Authentication;
 
-import java.util.Optional;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
 @ExtendWith(MockitoExtension.class)
 class UserAuthorizationTest {
 
-    @Mock
-    private CurrentUser currentUser;
+    @Mock private CurrentUser currentUser;
 
-    @InjectMocks
-    private UserAuthorization userAuthorization;
+    @InjectMocks private UserAuthorization userAuthorization;
 
     private final Authentication authentication = mock(Authentication.class);
 
@@ -37,13 +34,15 @@ class UserAuthorizationTest {
     void falseWhenCurrentUserIsSomeoneElse() {
         when(currentUser.getId(authentication)).thenReturn(Optional.of(UUID.randomUUID()));
 
-        assertThat(userAuthorization.currentUserIsSelf(UUID.randomUUID(), authentication)).isFalse();
+        assertThat(userAuthorization.currentUserIsSelf(UUID.randomUUID(), authentication))
+                .isFalse();
     }
 
     @Test
     void falseWhenNoCurrentUser() {
         when(currentUser.getId(authentication)).thenReturn(Optional.empty());
 
-        assertThat(userAuthorization.currentUserIsSelf(UUID.randomUUID(), authentication)).isFalse();
+        assertThat(userAuthorization.currentUserIsSelf(UUID.randomUUID(), authentication))
+                .isFalse();
     }
 }

@@ -1,20 +1,19 @@
 package io.julienmetral.tasks.notification.webhook;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.julienmetral.tasks.support.TestClock;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Locale;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
-
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Locale;
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 class WebhookResilienceTest {
 
@@ -39,11 +38,12 @@ class WebhookResilienceTest {
     WebhookResilienceTest() {
         clock.set(START);
         // Bound from nothing, the properties take their defaults, which application.yaml repeats
-        resilience = new WebhookResilience(
-                new Binder(new MapConfigurationPropertySource()).bindOrCreate("webhooks", WebhookProperties.class),
-                clock,
-                meterRegistry
-        );
+        resilience =
+                new WebhookResilience(
+                        new Binder(new MapConfigurationPropertySource())
+                                .bindOrCreate("webhooks", WebhookProperties.class),
+                        clock,
+                        meterRegistry);
     }
 
     // Circuit breaker: when it opens
@@ -82,11 +82,15 @@ class WebhookResilienceTest {
     void otherStatusesAreSuccessesThatWeighAgainstTheFailures(int statusCode) {
         calls(HOST, statusCode, 3);
         failures(HOST, 2);
-        assertThat(letsACallThrough(HOST)).as("2 failures after 3 calls answered " + statusCode).isTrue();
+        assertThat(letsACallThrough(HOST))
+                .as("2 failures after 3 calls answered " + statusCode)
+                .isTrue();
 
         failures(HOST, 1);
 
-        assertThat(letsACallThrough(HOST)).as("3 failures after 3 calls answered " + statusCode).isFalse();
+        assertThat(letsACallThrough(HOST))
+                .as("3 failures after 3 calls answered " + statusCode)
+                .isFalse();
     }
 
     @Test
@@ -166,7 +170,9 @@ class WebhookResilienceTest {
         Optional<WebhookResilience.Permit> test = resilience.tryAcquire(HOST);
 
         assertThat(test).isPresent();
-        assertThat(resilience.tryAcquire(HOST)).as("second call while the test call runs").isEmpty();
+        assertThat(resilience.tryAcquire(HOST))
+                .as("second call while the test call runs")
+                .isEmpty();
         assertThat(openBreakers()).as("a breaker testing its host").isZero();
     }
 
@@ -304,7 +310,9 @@ class WebhookResilienceTest {
     }
 
     private WebhookResilience.Permit acquire(String host) {
-        return resilience.tryAcquire(host).orElseThrow(() -> new AssertionError("no permit for " + host));
+        return resilience
+                .tryAcquire(host)
+                .orElseThrow(() -> new AssertionError("no permit for " + host));
     }
 
     // Hands the permit back as a call the address filter refused, which the breaker does not record

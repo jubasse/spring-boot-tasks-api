@@ -1,7 +1,31 @@
 package io.julienmetral.tasks.media.services;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
 import io.julienmetral.tasks.media.model.MediaDownload;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,31 +59,6 @@ import software.amazon.awssdk.services.s3.model.S3Object;
 import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Iterable;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.URI;
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
-import java.util.stream.Collectors;
-
-import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 @ExtendWith(MockitoExtension.class)
 class S3ObjectStorageTest {
 
@@ -70,27 +69,22 @@ class S3ObjectStorageTest {
     private static final AwsCredentials STORAGE_CREDENTIALS =
             AwsBasicCredentials.create("test-access-key", "test-secret-key");
 
-    // Differs from the storage's credentials, so a URL signed with the presigner's own provider would show
+    // Differs from the storage's credentials, so a URL signed with the presigner's own provider
+    // would show
     private static final AwsCredentials PRESIGNER_CREDENTIALS =
             AwsBasicCredentials.create("presigner-access-key", "presigner-secret-key");
 
-    @Mock
-    private S3Client s3Client;
+    @Mock private S3Client s3Client;
 
-    @Captor
-    private ArgumentCaptor<Consumer<PutObjectRequest.Builder>> putRequest;
+    @Captor private ArgumentCaptor<Consumer<PutObjectRequest.Builder>> putRequest;
 
-    @Captor
-    private ArgumentCaptor<RequestBody> putBody;
+    @Captor private ArgumentCaptor<RequestBody> putBody;
 
-    @Captor
-    private ArgumentCaptor<Consumer<DeleteObjectRequest.Builder>> deleteRequest;
+    @Captor private ArgumentCaptor<Consumer<DeleteObjectRequest.Builder>> deleteRequest;
 
-    @Captor
-    private ArgumentCaptor<ListObjectsV2Request> listRequests;
+    @Captor private ArgumentCaptor<ListObjectsV2Request> listRequests;
 
-    @Captor
-    private ArgumentCaptor<Consumer<GetObjectRequest.Builder>> getRequest;
+    @Captor private ArgumentCaptor<Consumer<GetObjectRequest.Builder>> getRequest;
 
     private S3Presigner presigner;
 
@@ -98,13 +92,15 @@ class S3ObjectStorageTest {
 
     @BeforeEach
     void setUp() {
-        presigner = S3Presigner
-                .builder()
-                .region(Region.EU_WEST_3)
-                .endpointOverride(URI.create("http://storage.example:9000"))
-                .credentialsProvider(StaticCredentialsProvider.create(PRESIGNER_CREDENTIALS))
-                .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
-                .build();
+        presigner =
+                S3Presigner.builder()
+                        .region(Region.EU_WEST_3)
+                        .endpointOverride(URI.create("http://storage.example:9000"))
+                        .credentialsProvider(
+                                StaticCredentialsProvider.create(PRESIGNER_CREDENTIALS))
+                        .serviceConfiguration(
+                                S3Configuration.builder().pathStyleAccessEnabled(true).build())
+                        .build();
         storage = storageSigningWith(StaticCredentialsProvider.create(STORAGE_CREDENTIALS));
     }
 
@@ -121,7 +117,11 @@ class S3ObjectStorageTest {
     void putSendsTheObjectWithItsTypeAndLength() throws IOException {
         byte[] content = "hello".getBytes(UTF_8);
 
-        storage.put("task-attachment/key", new ByteArrayInputStream(content), content.length, "text/plain");
+        storage.put(
+                "task-attachment/key",
+                new ByteArrayInputStream(content),
+                content.length,
+                "text/plain");
 
         verify(s3Client).putObject(putRequest.capture(), putBody.capture());
         PutObjectRequest.Builder builder = PutObjectRequest.builder();
@@ -155,10 +155,11 @@ class S3ObjectStorageTest {
     @SuppressWarnings("unchecked")
     void openStreamsTheObjectFromTheBucket() throws IOException {
         byte[] content = "photo".getBytes(UTF_8);
-        when(s3Client.getObject(any(Consumer.class))).thenReturn(new ResponseInputStream<>(
-                GetObjectResponse.builder().build(),
-                AbortableInputStream.create(new ByteArrayInputStream(content))
-        ));
+        when(s3Client.getObject(any(Consumer.class)))
+                .thenReturn(
+                        new ResponseInputStream<>(
+                                GetObjectResponse.builder().build(),
+                                AbortableInputStream.create(new ByteArrayInputStream(content))));
 
         try (InputStream stream = storage.open("avatar-upload/key")) {
             assertThat(stream.readAllBytes()).isEqualTo(content);
@@ -187,7 +188,8 @@ class S3ObjectStorageTest {
     @Test
     @SuppressWarnings("unchecked")
     void openingAMissingObjectIsReportedAsStorageUnavailable() {
-        NoSuchKeyException failure = NoSuchKeyException.builder().statusCode(404).message("Not found").build();
+        NoSuchKeyException failure =
+                NoSuchKeyException.builder().statusCode(404).message("Not found").build();
         when(s3Client.getObject(any(Consumer.class))).thenThrow(failure);
 
         assertThatThrownBy(() -> storage.open("avatar-upload/gone"))
@@ -210,7 +212,8 @@ class S3ObjectStorageTest {
     @Test
     @SuppressWarnings("unchecked")
     void failingDeleteIsReportedAsStorageUnavailable() {
-        S3Exception failure = (S3Exception) S3Exception.builder().statusCode(500).message("Internal").build();
+        S3Exception failure =
+                (S3Exception) S3Exception.builder().statusCode(500).message("Internal").build();
         doThrow(failure).when(s3Client).deleteObject(any(Consumer.class));
 
         assertThatThrownBy(() -> storage.delete("key"))
@@ -222,7 +225,8 @@ class S3ObjectStorageTest {
     void presignedDownloadPointsToTheObjectAndExpiresAfterTheTtl() {
         Instant before = Instant.now();
 
-        MediaDownload download = storage.presignDownload("task-attachment/key", "report.pdf", "application/pdf");
+        MediaDownload download =
+                storage.presignDownload("task-attachment/key", "report.pdf", "application/pdf");
 
         URI url = URI.create(download.url().toString());
         assertThat(url.getScheme()).isEqualTo("http");
@@ -232,19 +236,24 @@ class S3ObjectStorageTest {
 
         Map<String, String> query = query(url);
         assertThat(query).containsEntry("X-Amz-Expires", String.valueOf(TTL.toSeconds()));
-        assertThat(query.get("X-Amz-Credential")).startsWith("test-access-key/").contains("/eu-west-3/s3/");
+        assertThat(query.get("X-Amz-Credential"))
+                .startsWith("test-access-key/")
+                .contains("/eu-west-3/s3/");
         assertThat(query).containsKey("X-Amz-Signature");
         assertThat(query.get("X-Amz-SignedHeaders")).isEqualTo("host");
-        assertThat(download.expiresAt()).isBetween(before.plus(TTL).minusSeconds(1), Instant.now().plus(TTL));
+        assertThat(download.expiresAt())
+                .isBetween(before.plus(TTL).minusSeconds(1), Instant.now().plus(TTL));
     }
 
     @Test
     void presignedDownloadSignsWithTheStorageCredentialsResolvedOnce() {
         AtomicInteger resolutions = new AtomicInteger();
-        S3ObjectStorage counting = storageSigningWith(() -> {
-            resolutions.incrementAndGet();
-            return STORAGE_CREDENTIALS;
-        });
+        S3ObjectStorage counting =
+                storageSigningWith(
+                        () -> {
+                            resolutions.incrementAndGet();
+                            return STORAGE_CREDENTIALS;
+                        });
 
         MediaDownload download = counting.presignDownload("key", "report.pdf", "application/pdf");
 
@@ -255,8 +264,10 @@ class S3ObjectStorageTest {
 
     @Test
     void presignedDownloadWithTemporaryCredentialsCarriesTheirSessionToken() {
-        S3ObjectStorage temporary = storageSigningWith(StaticCredentialsProvider.create(
-                temporaryCredentials(Instant.now().plus(Duration.ofHours(1)))));
+        S3ObjectStorage temporary =
+                storageSigningWith(
+                        StaticCredentialsProvider.create(
+                                temporaryCredentials(Instant.now().plus(Duration.ofHours(1)))));
 
         MediaDownload download = temporary.presignDownload("key", "report.pdf", "application/pdf");
 
@@ -268,8 +279,9 @@ class S3ObjectStorageTest {
     @Test
     void presignedDownloadExpiresWithCredentialsEndingBeforeTheTtl() {
         Instant credentialsExpiry = Instant.now().plus(Duration.ofMinutes(3));
-        S3ObjectStorage temporary = storageSigningWith(StaticCredentialsProvider.create(
-                temporaryCredentials(credentialsExpiry)));
+        S3ObjectStorage temporary =
+                storageSigningWith(
+                        StaticCredentialsProvider.create(temporaryCredentials(credentialsExpiry)));
 
         MediaDownload download = temporary.presignDownload("key", "report.pdf", "application/pdf");
 
@@ -281,12 +293,15 @@ class S3ObjectStorageTest {
     @Test
     void presignedDownloadExpiresAfterTheTtlWhenTheCredentialsOutliveIt() {
         Instant before = Instant.now();
-        S3ObjectStorage temporary = storageSigningWith(StaticCredentialsProvider.create(
-                temporaryCredentials(Instant.now().plus(Duration.ofHours(1)))));
+        S3ObjectStorage temporary =
+                storageSigningWith(
+                        StaticCredentialsProvider.create(
+                                temporaryCredentials(Instant.now().plus(Duration.ofHours(1)))));
 
         MediaDownload download = temporary.presignDownload("key", "report.pdf", "application/pdf");
 
-        assertThat(download.expiresAt()).isBetween(before.plus(TTL).minusSeconds(1), Instant.now().plus(TTL));
+        assertThat(download.expiresAt())
+                .isBetween(before.plus(TTL).minusSeconds(1), Instant.now().plus(TTL));
     }
 
     @Test
@@ -304,18 +319,23 @@ class S3ObjectStorageTest {
         Map<String, String> query = query(URI.create(download.url().toString()));
         assertThat(query).containsEntry("response-content-type", "application/pdf");
 
-        ContentDisposition disposition = ContentDisposition.parse(query.get("response-content-disposition"));
+        ContentDisposition disposition =
+                ContentDisposition.parse(query.get("response-content-disposition"));
         assertThat(disposition.isAttachment()).isTrue();
         assertThat(disposition.getFilename()).isEqualTo("report.pdf");
     }
 
     @Test
     void presignedDownloadEncodesNonAsciiNamesAsRfc6266ExtendedFilename() {
-        MediaDownload download = storage.presignDownload("key", "résumé été.pdf", "application/pdf");
+        MediaDownload download =
+                storage.presignDownload("key", "résumé été.pdf", "application/pdf");
 
-        String header = query(URI.create(download.url().toString())).get("response-content-disposition");
+        String header =
+                query(URI.create(download.url().toString())).get("response-content-disposition");
 
-        assertThat(header).startsWith("attachment;").contains("filename*=UTF-8''r%C3%A9sum%C3%A9%20%C3%A9t%C3%A9.pdf");
+        assertThat(header)
+                .startsWith("attachment;")
+                .contains("filename*=UTF-8''r%C3%A9sum%C3%A9%20%C3%A9t%C3%A9.pdf");
         assertThat(ContentDisposition.parse(header).getFilename()).isEqualTo("résumé été.pdf");
     }
 
@@ -325,7 +345,8 @@ class S3ObjectStorageTest {
 
         MediaDownload download = storage.presignDownload("key", hostile, "text/plain");
 
-        String header = query(URI.create(download.url().toString())).get("response-content-disposition");
+        String header =
+                query(URI.create(download.url().toString())).get("response-content-disposition");
         assertThat(header).startsWith("attachment;").doesNotContain("\r", "\n", "inline;");
         ContentDisposition disposition = ContentDisposition.parse(header);
         assertThat(disposition.isAttachment()).isTrue();
@@ -336,18 +357,17 @@ class S3ObjectStorageTest {
     void listingReturnsTheKeysModifiedBeforeTheCutoffAcrossAllPages() {
         Instant cutoff = Instant.parse("2026-09-25T03:30:00Z");
         paginateOver(
-                page("page-2",
+                page(
+                        "page-2",
                         object("avatar/old", cutoff.minusSeconds(3600)),
                         object("avatar/recent", cutoff.plusSeconds(1))),
-                page("page-3",
-                        object("task-attachment/old", cutoff.minus(Duration.ofDays(40)))),
-                page(null,
-                        object("task-attachment/older", cutoff.minusMillis(1)))
-        );
+                page("page-3", object("task-attachment/old", cutoff.minus(Duration.ofDays(40)))),
+                page(null, object("task-attachment/older", cutoff.minusMillis(1))));
 
         List<String> keys = storage.listKeysModifiedBefore(cutoff);
 
-        assertThat(keys).containsExactly("avatar/old", "task-attachment/old", "task-attachment/older");
+        assertThat(keys)
+                .containsExactly("avatar/old", "task-attachment/old", "task-attachment/older");
         verify(s3Client, times(3)).listObjectsV2(listRequests.capture());
         assertThat(listRequests.getAllValues())
                 .extracting(ListObjectsV2Request::bucket)
@@ -360,9 +380,11 @@ class S3ObjectStorageTest {
     @Test
     void listingExcludesAnObjectModifiedExactlyAtTheCutoff() {
         Instant cutoff = Instant.parse("2026-09-25T03:30:00Z");
-        paginateOver(page(null,
-                object("avatar/at-cutoff", cutoff),
-                object("avatar/just-before", cutoff.minusNanos(1))));
+        paginateOver(
+                page(
+                        null,
+                        object("avatar/at-cutoff", cutoff),
+                        object("avatar/just-before", cutoff.minusNanos(1))));
 
         assertThat(storage.listKeysModifiedBefore(cutoff)).containsExactly("avatar/just-before");
     }
@@ -387,7 +409,8 @@ class S3ObjectStorageTest {
 
     @Test
     void failureOnALaterPageIsReportedAsStorageUnavailable() {
-        S3Exception failure = (S3Exception) S3Exception.builder().statusCode(503).message("Slow down").build();
+        S3Exception failure =
+                (S3Exception) S3Exception.builder().statusCode(503).message("Slow down").build();
         paginateOver();
         when(s3Client.listObjectsV2(any(ListObjectsV2Request.class)))
                 .thenReturn(page("page-2", object("avatar/old", Instant.EPOCH)))
@@ -409,11 +432,15 @@ class S3ObjectStorageTest {
 
     @SuppressWarnings("unchecked")
     private void paginateOver(ListObjectsV2Response... pages) {
-        when(s3Client.listObjectsV2Paginator(any(Consumer.class))).thenAnswer(invocation -> {
-            ListObjectsV2Request.Builder builder = ListObjectsV2Request.builder();
-            invocation.<Consumer<ListObjectsV2Request.Builder>>getArgument(0).accept(builder);
-            return new ListObjectsV2Iterable(s3Client, builder.build());
-        });
+        when(s3Client.listObjectsV2Paginator(any(Consumer.class)))
+                .thenAnswer(
+                        invocation -> {
+                            ListObjectsV2Request.Builder builder = ListObjectsV2Request.builder();
+                            invocation
+                                    .<Consumer<ListObjectsV2Request.Builder>>getArgument(0)
+                                    .accept(builder);
+                            return new ListObjectsV2Iterable(s3Client, builder.build());
+                        });
         if (pages.length > 0) {
             List<ListObjectsV2Response> remaining = new ArrayList<>(List.of(pages));
             when(s3Client.listObjectsV2(any(ListObjectsV2Request.class)))
@@ -422,8 +449,7 @@ class S3ObjectStorageTest {
     }
 
     private static ListObjectsV2Response page(String nextContinuationToken, S3Object... objects) {
-        return ListObjectsV2Response
-                .builder()
+        return ListObjectsV2Response.builder()
                 .contents(objects)
                 .isTruncated(nextContinuationToken != null)
                 .nextContinuationToken(nextContinuationToken)
@@ -435,13 +461,12 @@ class S3ObjectStorageTest {
     }
 
     private static Map<String, String> query(URI url) {
-        return Arrays
-                .stream(url.getRawQuery().split("&"))
+        return Arrays.stream(url.getRawQuery().split("&"))
                 .map(parameter -> parameter.split("=", 2))
-                .collect(Collectors.toMap(
-                        pair -> decode(pair[0]),
-                        pair -> pair.length > 1 ? decode(pair[1]) : ""
-                ));
+                .collect(
+                        Collectors.toMap(
+                                pair -> decode(pair[0]),
+                                pair -> pair.length > 1 ? decode(pair[1]) : ""));
     }
 
     private static String decode(String value) {

@@ -1,16 +1,15 @@
 package io.julienmetral.tasks.media.services;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.model.MediaCleanupReport;
 import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.support.IntegrationTest;
-import org.junit.jupiter.api.Test;
-
 import java.sql.Timestamp;
 import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
 
 @IntegrationTest
 class MediaCleanupTests extends AbstractMediaCleanupTests {
@@ -29,7 +28,7 @@ class MediaCleanupTests extends AbstractMediaCleanupTests {
 
         assertThat(report.detachedAttachments()).isGreaterThanOrEqualTo(2);
         assertThat(report.deletedMedia()).isGreaterThanOrEqualTo(2);
-        for (Media media : new Media[]{first, second}) {
+        for (Media media : new Media[] {first, second}) {
             assertThat(isAttached(media)).isFalse();
             assertThat(mediaExists(media)).isFalse();
             assertThat(objectExists(media.getStorageKey())).isFalse();
@@ -50,7 +49,7 @@ class MediaCleanupTests extends AbstractMediaCleanupTests {
         MediaCleanupReport report = cleanupService.cleanUp();
 
         assertThat(report.detachedAttachments()).isGreaterThanOrEqualTo(2);
-        for (Media media : new Media[]{commentFile, taskFile}) {
+        for (Media media : new Media[] {commentFile, taskFile}) {
             assertThat(isAttached(media)).isFalse();
             assertThat(mediaExists(media)).isFalse();
             assertThat(objectExists(media.getStorageKey())).isFalse();
@@ -172,7 +171,7 @@ class MediaCleanupTests extends AbstractMediaCleanupTests {
         assertThat(report.deletedMedia()).isGreaterThanOrEqualTo(2);
         assertThat(avatarMediaIdOf(user)).isNull();
         assertThat(pendingAvatarMediaIdOf(user)).isNull();
-        for (Media media : new Media[]{avatar, upload}) {
+        for (Media media : new Media[] {avatar, upload}) {
             assertThat(mediaExists(media)).isFalse();
             assertThat(objectExists(media.getStorageKey())).isFalse();
         }
@@ -204,7 +203,7 @@ class MediaCleanupTests extends AbstractMediaCleanupTests {
         MediaCleanupReport report = cleanupService.cleanUp();
 
         assertThat(report.deletedMedia()).isGreaterThanOrEqualTo(2);
-        for (Media media : new Media[]{attachment, avatar}) {
+        for (Media media : new Media[] {attachment, avatar}) {
             assertThat(mediaExists(media)).isFalse();
             assertThat(objectExists(media.getStorageKey())).isFalse();
         }
@@ -223,25 +222,26 @@ class MediaCleanupTests extends AbstractMediaCleanupTests {
 
     @Test
     void unreferencedMediaWhoseObjectIsAlreadyGoneIsDeleted() {
-        UUID mediaId = jdbcTemplate.queryForObject(
-                """
+        UUID mediaId =
+                jdbcTemplate.queryForObject(
+                        """
                         insert into media (storage_key, usage, original_filename, content_type, size_bytes, sha256, created_at)
                         values (?, 'TASK_ATTACHMENT', 'lost.pdf', 'application/pdf', 1, ?, ?)
                         returning id
                         """,
-                UUID.class,
-                MediaUsage.TASK_ATTACHMENT.storagePrefix() + "/" + UUID.randomUUID(),
-                "0".repeat(64),
-                Timestamp.from(clock.instant().minus(BEYOND_GRACE_PERIOD))
-        );
+                        UUID.class,
+                        MediaUsage.TASK_ATTACHMENT.storagePrefix() + "/" + UUID.randomUUID(),
+                        "0".repeat(64),
+                        Timestamp.from(clock.instant().minus(BEYOND_GRACE_PERIOD)));
 
         cleanupService.cleanUp();
 
-        assertThat(jdbcTemplate.queryForObject(
-                "select exists (select 1 from media where id = ?)",
-                Boolean.class,
-                mediaId
-        )).isFalse();
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "select exists (select 1 from media where id = ?)",
+                                Boolean.class,
+                                mediaId))
+                .isFalse();
     }
 
     @Test
@@ -282,10 +282,11 @@ class MediaCleanupTests extends AbstractMediaCleanupTests {
         backdateMedia(avatar, BEYOND_RETENTION);
         softDeleteUser(user, BEYOND_RETENTION);
 
-        transactionTemplate.executeWithoutResult(status -> {
-            assertThat(cleanupService.cleanUp().deletedMedia()).isGreaterThanOrEqualTo(2);
-            status.setRollbackOnly();
-        });
+        transactionTemplate.executeWithoutResult(
+                status -> {
+                    assertThat(cleanupService.cleanUp().deletedMedia()).isGreaterThanOrEqualTo(2);
+                    status.setRollbackOnly();
+                });
 
         assertThat(mediaExists(orphan)).isTrue();
         assertThat(objectExists(orphan.getStorageKey())).isTrue();

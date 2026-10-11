@@ -1,9 +1,17 @@
 package io.julienmetral.tasks.realtime.messaging;
 
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+
 import io.julienmetral.tasks.identity.security.UserStatusCacheEviction;
 import io.julienmetral.tasks.realtime.sse.NotificationStreams;
 import io.julienmetral.tasks.realtime.stomp.StompSessions;
 import io.julienmetral.tasks.realtime.stomp.TaskRooms;
+import java.time.Instant;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,43 +21,33 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.amqp.rabbit.listener.AsyncConsumerRestartedEvent;
 import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
 
-import java.time.Instant;
-import java.util.Map;
-import java.util.UUID;
-
-import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
-
 @ExtendWith(MockitoExtension.class)
 class RealtimeListenerTest {
 
     private static final UUID USER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
-    @Mock
-    private NotificationStreams notificationStreams;
+    @Mock private NotificationStreams notificationStreams;
 
-    @Mock
-    private TaskRooms taskRooms;
+    @Mock private TaskRooms taskRooms;
 
-    @Mock
-    private StompSessions stompSessions;
+    @Mock private StompSessions stompSessions;
 
-    @Mock
-    private UserStatusCacheEviction userStatusCacheEviction;
+    @Mock private UserStatusCacheEviction userStatusCacheEviction;
 
     private RealtimeListener listener;
 
     @BeforeEach
     void createListener() {
-        listener = new RealtimeListener(notificationStreams, taskRooms, stompSessions, userStatusCacheEviction);
+        listener =
+                new RealtimeListener(
+                        notificationStreams, taskRooms, stompSessions, userStatusCacheEviction);
     }
 
     @Test
     void notificationGoesToTheStreamsUnderItsMessageId() {
         UUID messageId = UUID.fromString("00000000-0000-0000-0000-0000000000e1");
-        UserNotification notification = new UserNotification(USER_ID, "task.assigned", Instant.now(), Map.of());
+        UserNotification notification =
+                new UserNotification(USER_ID, "task.assigned", Instant.now(), Map.of());
 
         listener.onNotification(notification, messageId.toString());
 
@@ -60,8 +58,13 @@ class RealtimeListenerTest {
     @Test
     void taskRoomEventGoesToTheRoomsUnderItsMessageId() {
         UUID messageId = UUID.fromString("00000000-0000-0000-0000-0000000000e2");
-        TaskRoomEvent event = new TaskRoomEvent(UUID.randomUUID(), UUID.randomUUID(), "UPDATED", USER_ID,
-                Instant.parse("2026-03-04T05:06:07Z"));
+        TaskRoomEvent event =
+                new TaskRoomEvent(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "UPDATED",
+                        USER_ID,
+                        Instant.parse("2026-03-04T05:06:07Z"));
 
         listener.onTaskRoomEvent(event, messageId.toString());
 

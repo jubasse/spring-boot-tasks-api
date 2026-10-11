@@ -1,11 +1,23 @@
 package io.julienmetral.tasks.identity.services;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.identity.dtos.AuthResponseDto;
 import io.julienmetral.tasks.identity.dtos.LoginRequestDto;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.exceptions.InvalidCredentialsException;
 import io.julienmetral.tasks.identity.exceptions.InvalidRefreshTokenException;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,33 +31,16 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.AuthorityUtils;
 
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.Optional;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
-
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
 
-    @Mock
-    private AuthenticationManager authenticationManager;
+    @Mock private AuthenticationManager authenticationManager;
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
-    @Mock
-    private JwtService jwtService;
+    @Mock private JwtService jwtService;
 
-    @Mock
-    private RefreshTokenService refreshTokenService;
+    @Mock private RefreshTokenService refreshTokenService;
 
     private static final Instant NOW = Instant.parse("2026-09-26T10:00:00Z");
 
@@ -53,13 +48,13 @@ class AuthServiceTest {
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(
-                authenticationManager,
-                userRepository,
-                jwtService,
-                refreshTokenService,
-                Clock.fixed(NOW, ZoneOffset.UTC)
-        );
+        authService =
+                new AuthService(
+                        authenticationManager,
+                        userRepository,
+                        jwtService,
+                        refreshTokenService,
+                        Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @Test
@@ -69,16 +64,20 @@ class AuthServiceTest {
         user.setId(userId);
         user.setEmail("jane@example.com");
 
-        Authentication authenticated = UsernamePasswordAuthenticationToken.authenticated(
-                "jane@example.com", null, AuthorityUtils.createAuthorityList("ROLE_USER"));
+        Authentication authenticated =
+                UsernamePasswordAuthenticationToken.authenticated(
+                        "jane@example.com", null, AuthorityUtils.createAuthorityList("ROLE_USER"));
         when(authenticationManager.authenticate(any())).thenReturn(authenticated);
-        when(userRepository.findByEmailIgnoreCase("jane@example.com")).thenReturn(Optional.of(user));
+        when(userRepository.findByEmailIgnoreCase("jane@example.com"))
+                .thenReturn(Optional.of(user));
         Instant expiresAt = Instant.parse("2030-01-01T00:00:00Z");
         when(jwtService.generate(user))
                 .thenReturn(new JwtService.IssuedToken("token-value", expiresAt));
         Instant refreshExpiresAt = Instant.parse("2030-02-01T00:00:00Z");
         when(refreshTokenService.issue(user))
-                .thenReturn(new RefreshTokenService.IssuedRefreshToken("refresh-value", refreshExpiresAt));
+                .thenReturn(
+                        new RefreshTokenService.IssuedRefreshToken(
+                                "refresh-value", refreshExpiresAt));
 
         AuthResponseDto response = authService.login(new LoginRequestDto("jane@example.com", "pw"));
 
@@ -98,9 +97,11 @@ class AuthServiceTest {
 
     @Test
     void loginWithBadCredentialsThrowsInvalidCredentials() {
-        when(authenticationManager.authenticate(any())).thenThrow(new BadCredentialsException("bad"));
+        when(authenticationManager.authenticate(any()))
+                .thenThrow(new BadCredentialsException("bad"));
 
-        assertThatThrownBy(() -> authService.login(new LoginRequestDto("jane@example.com", "wrong")))
+        assertThatThrownBy(
+                        () -> authService.login(new LoginRequestDto("jane@example.com", "wrong")))
                 .isInstanceOf(InvalidCredentialsException.class)
                 .hasMessage("Invalid email or password");
 
@@ -109,7 +110,8 @@ class AuthServiceTest {
 
     @Test
     void loginWithDisabledAccountThrowsInvalidCredentials() {
-        when(authenticationManager.authenticate(any())).thenThrow(new DisabledException("disabled"));
+        when(authenticationManager.authenticate(any()))
+                .thenThrow(new DisabledException("disabled"));
 
         assertThatThrownBy(() -> authService.login(new LoginRequestDto("jane@example.com", "pw")))
                 .isInstanceOf(InvalidCredentialsException.class);
@@ -121,10 +123,15 @@ class AuthServiceTest {
         user.setId(UUID.randomUUID());
         user.setEmail("jane@example.com");
         Instant refreshExpiresAt = Instant.parse("2030-02-01T00:00:00Z");
-        when(refreshTokenService.rotate("old-refresh")).thenReturn(new RefreshTokenService.RotatedRefreshToken(
-                user, new RefreshTokenService.IssuedRefreshToken("new-refresh", refreshExpiresAt)));
+        when(refreshTokenService.rotate("old-refresh"))
+                .thenReturn(
+                        new RefreshTokenService.RotatedRefreshToken(
+                                user,
+                                new RefreshTokenService.IssuedRefreshToken(
+                                        "new-refresh", refreshExpiresAt)));
         Instant expiresAt = Instant.parse("2030-01-01T00:00:00Z");
-        when(jwtService.generate(user)).thenReturn(new JwtService.IssuedToken("access-value", expiresAt));
+        when(jwtService.generate(user))
+                .thenReturn(new JwtService.IssuedToken("access-value", expiresAt));
 
         AuthResponseDto response = authService.refresh("old-refresh");
 
@@ -146,13 +153,22 @@ class AuthServiceTest {
         user.setLastActiveAt(Instant.parse("2020-01-01T00:00:00Z"));
         user.setInactivityWarnedAt(Instant.parse("2021-01-01T00:00:00Z"));
 
-        when(authenticationManager.authenticate(any())).thenReturn(UsernamePasswordAuthenticationToken.authenticated(
-                "jane@example.com", null, AuthorityUtils.createAuthorityList("ROLE_USER")));
-        when(userRepository.findByEmailIgnoreCase("jane@example.com")).thenReturn(Optional.of(user));
+        when(authenticationManager.authenticate(any()))
+                .thenReturn(
+                        UsernamePasswordAuthenticationToken.authenticated(
+                                "jane@example.com",
+                                null,
+                                AuthorityUtils.createAuthorityList("ROLE_USER")));
+        when(userRepository.findByEmailIgnoreCase("jane@example.com"))
+                .thenReturn(Optional.of(user));
         when(jwtService.generate(user))
-                .thenReturn(new JwtService.IssuedToken("token-value", Instant.parse("2030-01-01T00:00:00Z")));
-        when(refreshTokenService.issue(user)).thenReturn(new RefreshTokenService.IssuedRefreshToken(
-                "refresh-value", Instant.parse("2030-02-01T00:00:00Z")));
+                .thenReturn(
+                        new JwtService.IssuedToken(
+                                "token-value", Instant.parse("2030-01-01T00:00:00Z")));
+        when(refreshTokenService.issue(user))
+                .thenReturn(
+                        new RefreshTokenService.IssuedRefreshToken(
+                                "refresh-value", Instant.parse("2030-02-01T00:00:00Z")));
 
         authService.login(new LoginRequestDto("jane@example.com", "pw"));
 
@@ -168,10 +184,16 @@ class AuthServiceTest {
         user.setLastActiveAt(Instant.parse("2020-01-01T00:00:00Z"));
         user.setInactivityWarnedAt(Instant.parse("2021-01-01T00:00:00Z"));
 
-        when(refreshTokenService.rotate("old-refresh")).thenReturn(new RefreshTokenService.RotatedRefreshToken(
-                user, new RefreshTokenService.IssuedRefreshToken("new-refresh", Instant.parse("2030-02-01T00:00:00Z"))));
+        when(refreshTokenService.rotate("old-refresh"))
+                .thenReturn(
+                        new RefreshTokenService.RotatedRefreshToken(
+                                user,
+                                new RefreshTokenService.IssuedRefreshToken(
+                                        "new-refresh", Instant.parse("2030-02-01T00:00:00Z"))));
         when(jwtService.generate(user))
-                .thenReturn(new JwtService.IssuedToken("access-value", Instant.parse("2030-01-01T00:00:00Z")));
+                .thenReturn(
+                        new JwtService.IssuedToken(
+                                "access-value", Instant.parse("2030-01-01T00:00:00Z")));
 
         authService.refresh("old-refresh");
 
@@ -184,7 +206,8 @@ class AuthServiceTest {
     void refreshWithInvalidTokenPropagatesAndIssuesNoAccessToken() {
         when(refreshTokenService.rotate("bad")).thenThrow(new InvalidRefreshTokenException());
 
-        assertThatThrownBy(() -> authService.refresh("bad")).isInstanceOf(InvalidRefreshTokenException.class);
+        assertThatThrownBy(() -> authService.refresh("bad"))
+                .isInstanceOf(InvalidRefreshTokenException.class);
 
         verifyNoInteractions(jwtService);
     }

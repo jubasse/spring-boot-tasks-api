@@ -1,7 +1,21 @@
 package io.julienmetral.tasks.export.batch;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
+
 import io.julienmetral.tasks.export.services.DataExportService;
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
+import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,21 +30,6 @@ import org.springframework.batch.core.step.StepContribution;
 import org.springframework.batch.core.step.StepExecution;
 import org.springframework.batch.infrastructure.repeat.RepeatStatus;
 
-import java.nio.file.Path;
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.verify;
-
 @ExtendWith(MockitoExtension.class)
 class PublishExportTest {
 
@@ -40,8 +39,7 @@ class PublishExportTest {
 
     private final UUID exportId = UUID.randomUUID();
 
-    @Mock
-    private DataExportService exportService;
+    @Mock private DataExportService exportService;
 
     private JobExecution job;
 
@@ -49,11 +47,13 @@ class PublishExportTest {
 
     @BeforeEach
     void setUp() {
-        job = new JobExecution(
-                1L,
-                new JobInstance(1L, CsvExportJobs.TASKS_JOB),
-                new JobParametersBuilder().addString(PublishExport.EXPORT_ID, exportId.toString()).toJobParameters()
-        );
+        job =
+                new JobExecution(
+                        1L,
+                        new JobInstance(1L, CsvExportJobs.TASKS_JOB),
+                        new JobParametersBuilder()
+                                .addString(PublishExport.EXPORT_ID, exportId.toString())
+                                .toJobParameters());
         publishStep = step(3L, "tasksCsvExportPublish", 0);
     }
 
@@ -70,7 +70,9 @@ class PublishExportTest {
 
     private RepeatStatus publish(Clock clock) {
         return new PublishExport(exportService, clock, WRITE_STEP, "tasks")
-                .execute(new StepContribution(publishStep), new ChunkContext(new StepContext(publishStep)));
+                .execute(
+                        new StepContribution(publishStep),
+                        new ChunkContext(new StepContext(publishStep)));
     }
 
     @Test
@@ -80,8 +82,8 @@ class PublishExportTest {
         RepeatStatus status = publish(Clock.fixed(NOW, ZoneOffset.UTC));
 
         assertThat(status).isEqualTo(RepeatStatus.FINISHED);
-        verify(exportService).complete(
-                exportId, csvFile(), "tasks-2030-03-04.csv", "text/csv", 1234L);
+        verify(exportService)
+                .complete(exportId, csvFile(), "tasks-2030-03-04.csv", "text/csv", 1234L);
     }
 
     @Test
@@ -91,8 +93,8 @@ class PublishExportTest {
 
         publish(Clock.fixed(NOW, ZoneOffset.UTC));
 
-        verify(exportService).complete(eq(exportId), eq(csvFile()), anyString(),
-                eq("text/csv"), eq(10L));
+        verify(exportService)
+                .complete(eq(exportId), eq(csvFile()), anyString(), eq("text/csv"), eq(10L));
     }
 
     @Test
@@ -101,8 +103,8 @@ class PublishExportTest {
 
         publish(Clock.fixed(NOW, ZoneOffset.UTC));
 
-        verify(exportService).complete(eq(exportId), eq(csvFile()), anyString(),
-                eq("text/csv"), eq(0L));
+        verify(exportService)
+                .complete(eq(exportId), eq(csvFile()), anyString(), eq("text/csv"), eq(0L));
     }
 
     @Test
@@ -111,16 +113,23 @@ class PublishExportTest {
 
         publish(Clock.fixed(NOW, ZoneId.of("Asia/Tokyo")));
 
-        verify(exportService).complete(eq(exportId), eq(csvFile()),
-                eq("tasks-2030-03-05.csv"), eq("text/csv"), anyLong());
+        verify(exportService)
+                .complete(
+                        eq(exportId),
+                        eq(csvFile()),
+                        eq("tasks-2030-03-05.csv"),
+                        eq("text/csv"),
+                        anyLong());
     }
 
     @Test
     void fileThatCannotBeStoredFailsTheStep() {
         step(2L, WRITE_STEP, 1);
-        StorageUnavailableException failure = new StorageUnavailableException(new RuntimeException("down"));
-        doThrow(failure).when(exportService).complete(eq(exportId), eq(csvFile()), anyString(),
-                anyString(), anyLong());
+        StorageUnavailableException failure =
+                new StorageUnavailableException(new RuntimeException("down"));
+        doThrow(failure)
+                .when(exportService)
+                .complete(eq(exportId), eq(csvFile()), anyString(), anyString(), anyLong());
 
         assertThatThrownBy(() -> publish(Clock.fixed(NOW, ZoneOffset.UTC))).isSameAs(failure);
     }

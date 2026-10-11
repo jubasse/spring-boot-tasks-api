@@ -2,6 +2,11 @@ package io.julienmetral.tasks.messaging.services;
 
 import io.julienmetral.tasks.messaging.entities.OutboxMessage;
 import io.julienmetral.tasks.messaging.repositories.OutboxMessageRepository;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -10,12 +15,6 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
-
-import java.time.Clock;
-import java.time.Instant;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -27,9 +26,9 @@ public class Outbox {
     private final Clock clock;
 
     /**
-     * Writes the message in the caller's transaction, so it exists only if the business change commits. It is
-     * published right after the commit; if the broker cannot take it then, {@link OutboxRelayJob} retries later.
-     * Delivery is at least once.
+     * Writes the message in the caller's transaction, so it exists only if the business change
+     * commits. It is published right after the commit; if the broker cannot take it then, {@link
+     * OutboxRelayJob} retries later. Delivery is at least once.
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void enqueue(String queue, Object message) {
@@ -40,8 +39,9 @@ public class Outbox {
     }
 
     /**
-     * Like {@link #enqueue}, for an exchange that copies the message to every instance's own queue. Nobody listening
-     * is not an error there: a broadcast that no queue receives is marked published.
+     * Like {@link #enqueue}, for an exchange that copies the message to every instance's own queue.
+     * Nobody listening is not an error there: a broadcast that no queue receives is marked
+     * published.
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void broadcast(String exchange, Object message) {
@@ -55,18 +55,19 @@ public class Outbox {
         Instant now = clock.instant();
 
         row.setType(message.getClass().getName());
-        row.setPayload(jsonMapper.convertValue(message, new TypeReference<Map<String, Object>>() {
-        }));
+        row.setPayload(
+                jsonMapper.convertValue(message, new TypeReference<Map<String, Object>>() {}));
         row.setCreatedAt(now);
         row.setNextAttemptAt(now);
 
         UUID id = repository.save(row).getId();
 
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                relay.publishNow(List.of(id));
-            }
-        });
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        relay.publishNow(List.of(id));
+                    }
+                });
     }
 }

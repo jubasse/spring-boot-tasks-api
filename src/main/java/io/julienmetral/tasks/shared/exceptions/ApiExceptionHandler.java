@@ -16,13 +16,13 @@ import io.julienmetral.tasks.media.exceptions.InvalidImageException;
 import io.julienmetral.tasks.media.exceptions.MediaTooLargeException;
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
 import io.julienmetral.tasks.media.exceptions.UnsupportedMediaTypeException;
-import io.julienmetral.tasks.ratelimit.exceptions.RateLimitExceededException;
-import io.julienmetral.tasks.realtime.exceptions.TooManyNotificationStreamsException;
 import io.julienmetral.tasks.notification.exceptions.WebhookDeliveryNotFoundException;
 import io.julienmetral.tasks.notification.exceptions.WebhookEndpointNotFoundException;
 import io.julienmetral.tasks.notification.exceptions.WebhookLimitReachedException;
 import io.julienmetral.tasks.notification.exceptions.WebhookNotSignedException;
 import io.julienmetral.tasks.notification.exceptions.WebhookUrlNotAllowedException;
+import io.julienmetral.tasks.ratelimit.exceptions.RateLimitExceededException;
+import io.julienmetral.tasks.realtime.exceptions.TooManyNotificationStreamsException;
 import io.julienmetral.tasks.task.exceptions.AssigneeNotActiveException;
 import io.julienmetral.tasks.task.exceptions.InvalidMentionException;
 import io.julienmetral.tasks.task.exceptions.TaskAttachmentNotFoundException;
@@ -30,6 +30,8 @@ import io.julienmetral.tasks.task.exceptions.TaskCommentNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException;
 import io.julienmetral.tasks.task.exceptions.TooManyCommentAttachmentsException;
+import java.util.List;
+import java.util.Locale;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.TypeMismatchException;
 import org.springframework.context.MessageSource;
@@ -57,29 +59,27 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 import org.springframework.web.util.DisconnectedClientHelper;
 import tools.jackson.databind.exc.MismatchedInputException;
 
-import java.util.List;
-import java.util.Locale;
-
 /**
- * Every error answered as an RFC 9457 problem. The Spring MVC exceptions come from
- * {@link ResponseEntityExceptionHandler}, with their details set in {@code messages.properties}; invalid input
- * becomes a {@link ProblemType#VALIDATION_ERROR} listing each invalid value. See {@link ProblemType} for when an error
- * gets a type of its own.
+ * Every error answered as an RFC 9457 problem. The Spring MVC exceptions come from {@link
+ * ResponseEntityExceptionHandler}, with their details set in {@code messages.properties}; invalid
+ * input becomes a {@link ProblemType#VALIDATION_ERROR} listing each invalid value. See {@link
+ * ProblemType} for when an error gets a type of its own.
  */
 @Slf4j
 @RestControllerAdvice
 public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
-    private static final String INVALID_REQUEST = "One or more values of the request are invalid: see errors.";
+    private static final String INVALID_REQUEST =
+            "One or more values of the request are invalid: see errors.";
 
     @ExceptionHandler({
-            TaskNotFoundException.class,
-            TaskAttachmentNotFoundException.class,
-            TaskCommentNotFoundException.class,
-            UserNotFoundException.class,
-            WebhookEndpointNotFoundException.class,
-            WebhookDeliveryNotFoundException.class,
-            DataExportNotFoundException.class
+        TaskNotFoundException.class,
+        TaskAttachmentNotFoundException.class,
+        TaskCommentNotFoundException.class,
+        UserNotFoundException.class,
+        WebhookEndpointNotFoundException.class,
+        WebhookDeliveryNotFoundException.class,
+        DataExportNotFoundException.class
     })
     public ProblemDetail handleNotFound(RuntimeException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
@@ -90,7 +90,10 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
     }
 
-    @ExceptionHandler({InvalidEmailVerificationTokenException.class, InvalidPasswordResetTokenException.class})
+    @ExceptionHandler({
+        InvalidEmailVerificationTokenException.class,
+        InvalidPasswordResetTokenException.class
+    })
     public ProblemDetail handleInvalidToken(RuntimeException ex) {
         return ProblemType.INVALID_TOKEN.problem(ex.getMessage());
     }
@@ -110,20 +113,20 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return ProblemType.EMAIL_ALREADY_VERIFIED.problem(ex.getMessage());
     }
 
-    // The client sends no version, so this catches two requests updating the same row at the same time, not a client
-    // writing over a change it never read
+    // The client sends no version, so this catches two requests updating the same row at the same
+    // time, not a client writing over a change it never read
     @ExceptionHandler(OptimisticLockingFailureException.class)
     public ProblemDetail handleVersionConflict(OptimisticLockingFailureException ex) {
         return ProblemType.VERSION_CONFLICT.problem(
-                "Another request changed this resource at the same time: reload it and try again."
-        );
+                "Another request changed this resource at the same time: reload it and try again.");
     }
 
-    // Safety net for races between an existence check and the insert (e.g. two concurrent sign-ups with one email).
-    // The detail stays generic so no SQL or constraint name leaks to the client.
+    // Safety net for races between an existence check and the insert (e.g. two concurrent sign-ups
+    // with one email). The detail stays generic so no SQL or constraint name leaks to the client.
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ProblemDetail handleDataIntegrityViolation(DataIntegrityViolationException ex) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "The request conflicts with existing data");
+        return ProblemDetail.forStatusAndDetail(
+                HttpStatus.CONFLICT, "The request conflicts with existing data");
     }
 
     @ExceptionHandler(AssigneeNotActiveException.class)
@@ -161,13 +164,14 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return invalidRequest(List.of(InvalidValue.inParameter(ex.getMessage(), "files")));
     }
 
-    // Spring Data raises it while building the query of a page whose sort names a property the entity does not have
+    // Spring Data raises it while building the query of a page whose sort names a property the
+    // entity does not have
     @ExceptionHandler(PropertyReferenceException.class)
     public ProblemDetail handleUnknownSortProperty(PropertyReferenceException ex) {
-        return invalidRequest(List.of(InvalidValue.inParameter(
-                "cannot sort by " + ex.getPropertyName(),
-                "sort"
-        )));
+        return invalidRequest(
+                List.of(
+                        InvalidValue.inParameter(
+                                "cannot sort by " + ex.getPropertyName(), "sort")));
     }
 
     @ExceptionHandler(EmptyMediaException.class)
@@ -200,8 +204,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     public ProblemDetail handleAntivirusUnavailable(AntivirusUnavailableException ex) {
         return ProblemDetail.forStatusAndDetail(
                 HttpStatus.SERVICE_UNAVAILABLE,
-                "The antivirus is temporarily unavailable, try again later"
-        );
+                "The antivirus is temporarily unavailable, try again later");
     }
 
     @ExceptionHandler(StorageUnavailableException.class)
@@ -216,30 +219,34 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(RateLimitExceededException.class)
     public ResponseEntity<ProblemDetail> handleRateLimitExceeded(RateLimitExceededException ex) {
-        return ResponseEntity
-                .status(HttpStatus.TOO_MANY_REQUESTS)
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .header(HttpHeaders.RETRY_AFTER, String.valueOf(ex.retryAfterSeconds()))
-                .body(ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage()));
+                .body(
+                        ProblemDetail.forStatusAndDetail(
+                                HttpStatus.TOO_MANY_REQUESTS, ex.getMessage()));
     }
 
     /**
-     * The last resort: an unexpected failure is logged with its stack trace and answered as a bare 500, whose detail
-     * never carries the exception's message.
-     * <p>
-     * Warning: method security throws {@link AccessDeniedException} from inside the controller call, so this handler
-     * sees it; it is rethrown, and Spring Security still answers 403 (or 401) instead of a 500. A client that went away
-     * is rethrown too, since there is no one left to answer.
+     * The last resort: an unexpected failure is logged with its stack trace and answered as a bare
+     * 500, whose detail never carries the exception's message.
+     *
+     * <p>Warning: method security throws {@link AccessDeniedException} from inside the controller
+     * call, so this handler sees it; it is rethrown, and Spring Security still answers 403 (or 401)
+     * instead of a 500. A client that went away is rethrown too, since there is no one left to
+     * answer.
      */
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleUnexpected(Exception ex) throws Exception {
-        if (ex instanceof AccessDeniedException || ex instanceof AuthenticationException
+        if (ex instanceof AccessDeniedException
+                || ex instanceof AuthenticationException
                 || DisconnectedClientHelper.isClientDisconnectedException(ex)) {
             throw ex;
         }
 
         log.error("Unexpected error while handling a request", ex);
 
-        return ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred");
+        return ProblemDetail.forStatusAndDetail(
+                HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred");
     }
 
     @Override
@@ -247,24 +254,28 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
             MethodArgumentNotValidException ex,
             HttpHeaders headers,
             HttpStatusCode status,
-            WebRequest request
-    ) {
-        // A JSON body is located with a pointer; a multipart or form object with the name of its field
+            WebRequest request) {
+        // A JSON body is located with a pointer; a multipart or form object with the name of its
+        // field
         boolean jsonBody = ex.getParameter().hasParameterAnnotation(RequestBody.class);
         Locale locale = request.getLocale();
 
-        List<InvalidValue> errors = ex.getBindingResult().getAllErrors().stream()
-                .map(error -> {
-                    String detail = message(error, locale);
+        List<InvalidValue> errors =
+                ex.getBindingResult().getAllErrors().stream()
+                        .map(
+                                error -> {
+                                    String detail = message(error, locale);
 
-                    if (!(error instanceof FieldError field)) {
-                        return InvalidValue.inBody(detail, List.of());
-                    }
-                    return jsonBody
-                            ? InvalidValue.inBody(detail, InvalidValue.propertyPath(field.getField()))
-                            : InvalidValue.inParameter(detail, field.getField());
-                })
-                .toList();
+                                    if (!(error instanceof FieldError field)) {
+                                        return InvalidValue.inBody(detail, List.of());
+                                    }
+                                    return jsonBody
+                                            ? InvalidValue.inBody(
+                                                    detail,
+                                                    InvalidValue.propertyPath(field.getField()))
+                                            : InvalidValue.inParameter(detail, field.getField());
+                                })
+                        .toList();
 
         return handleExceptionInternal(ex, invalidRequest(errors), headers, status, request);
     }
@@ -274,14 +285,13 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
             TypeMismatchException ex,
             HttpHeaders headers,
             HttpStatusCode status,
-            WebRequest request
-    ) {
-        InvalidValue error = InvalidValue.inParameter(
-                InvalidValue.expected(ex.getRequiredType()),
-                ex.getPropertyName()
-        );
+            WebRequest request) {
+        InvalidValue error =
+                InvalidValue.inParameter(
+                        InvalidValue.expected(ex.getRequiredType()), ex.getPropertyName());
 
-        return handleExceptionInternal(ex, invalidRequest(List.of(error)), headers, status, request);
+        return handleExceptionInternal(
+                ex, invalidRequest(List.of(error)), headers, status, request);
     }
 
     @Override
@@ -289,11 +299,11 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
             MissingServletRequestParameterException ex,
             HttpHeaders headers,
             HttpStatusCode status,
-            WebRequest request
-    ) {
+            WebRequest request) {
         InvalidValue error = InvalidValue.inParameter("is required", ex.getParameterName());
 
-        return handleExceptionInternal(ex, invalidRequest(List.of(error)), headers, status, request);
+        return handleExceptionInternal(
+                ex, invalidRequest(List.of(error)), headers, status, request);
     }
 
     @Override
@@ -301,34 +311,35 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
             MissingServletRequestPartException ex,
             HttpHeaders headers,
             HttpStatusCode status,
-            WebRequest request
-    ) {
+            WebRequest request) {
         InvalidValue error = InvalidValue.inParameter("is required", ex.getRequestPartName());
 
-        return handleExceptionInternal(ex, invalidRequest(List.of(error)), headers, status, request);
+        return handleExceptionInternal(
+                ex, invalidRequest(List.of(error)), headers, status, request);
     }
 
-    // A value of the wrong type in the JSON body is located with a pointer. The parser's own message names Java types
-    // and positions, so it is never passed on; malformed JSON keeps the generic "Failed to read request".
+    // A value of the wrong type in the JSON body is located with a pointer. The parser's own
+    // message names Java types and positions, so it is never passed on; malformed JSON keeps the
+    // generic "Failed to read request".
     @Override
     protected ResponseEntity<Object> handleHttpMessageNotReadable(
             HttpMessageNotReadableException ex,
             HttpHeaders headers,
             HttpStatusCode status,
-            WebRequest request
-    ) {
+            WebRequest request) {
         MismatchedInputException mismatch = mismatchedInput(ex);
 
         if (mismatch == null || mismatch.getPath().isEmpty()) {
             return super.handleHttpMessageNotReadable(ex, headers, status, request);
         }
 
-        InvalidValue error = InvalidValue.inBody(
-                InvalidValue.expectedInJson(mismatch.getTargetType()),
-                InvalidValue.jsonPath(mismatch)
-        );
+        InvalidValue error =
+                InvalidValue.inBody(
+                        InvalidValue.expectedInJson(mismatch.getTargetType()),
+                        InvalidValue.jsonPath(mismatch));
 
-        return handleExceptionInternal(ex, invalidRequest(List.of(error)), headers, status, request);
+        return handleExceptionInternal(
+                ex, invalidRequest(List.of(error)), headers, status, request);
     }
 
     private static ProblemDetail invalidRequest(List<InvalidValue> errors) {
@@ -341,7 +352,9 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     private String message(MessageSourceResolvable error, Locale locale) {
         MessageSource messageSource = getMessageSource();
 
-        return messageSource != null ? messageSource.getMessage(error, locale) : error.getDefaultMessage();
+        return messageSource != null
+                ? messageSource.getMessage(error, locale)
+                : error.getDefaultMessage();
     }
 
     private static MismatchedInputException mismatchedInput(Throwable exception) {

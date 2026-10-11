@@ -12,5 +12,4 @@ public enum UserRole implements ExpressionTemplateValueProvider {
     public String getExpressionTemplateValue() {
         return "'" + name() + "'";
     }
-
 }

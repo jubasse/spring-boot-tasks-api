@@ -1,18 +1,5 @@
 package io.julienmetral.tasks.task.controllers;
 
-import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserRole;
-import org.junit.jupiter.api.Test;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.ResultActions;
-import org.springframework.test.web.servlet.request.RequestPostProcessor;
-import tools.jackson.databind.JsonNode;
-
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-
 import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
@@ -24,9 +11,21 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserRole;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import tools.jackson.databind.JsonNode;
+
 /**
- * The task event log: which event each mutation records (type, actor, payload), and the
- * {@code GET /api/v1/tasks/{taskId}/events} endpoint.
+ * The task event log: which event each mutation records (type, actor, payload), and the {@code GET
+ * /api/v1/tasks/{taskId}/events} endpoint.
  */
 class TaskEventControllerTests extends AbstractTaskApiTests {
 
@@ -52,9 +51,11 @@ class TaskEventControllerTests extends AbstractTaskApiTests {
         User editor = createUser(UserRole.ADMIN);
         UUID taskId = createTask(admin, null);
 
-        mockMvc.perform(patch(TASKS + "/" + taskId).with(asAdmin(editor))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"title\": \"Renamed\"}"))
+        mockMvc.perform(
+                        patch(TASKS + "/" + taskId)
+                                .with(asAdmin(editor))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"title\": \"Renamed\"}"))
                 .andExpect(status().isOk());
 
         JsonNode latest = latestEvent(admin, taskId);
@@ -82,7 +83,8 @@ class TaskEventControllerTests extends AbstractTaskApiTests {
         assertThat(done.get("payload").get("to").asString()).isEqualTo("DONE");
 
         JsonNode inProgress = content.get(1);
-        assertThat(inProgress.get("actor").get("id").asString()).isEqualTo(otherAdmin.getId().toString());
+        assertThat(inProgress.get("actor").get("id").asString())
+                .isEqualTo(otherAdmin.getId().toString());
         assertThat(inProgress.get("payload").get("from").asString()).isEqualTo("TO_DO");
         assertThat(inProgress.get("payload").get("to").asString()).isEqualTo("IN_PROGRESS");
     }
@@ -93,22 +95,29 @@ class TaskEventControllerTests extends AbstractTaskApiTests {
         User assignee = createUser(UserRole.USER);
         UUID taskId = createTask(admin, assignee);
 
-        mockMvc.perform(patch(TASKS + "/" + taskId).with(asUser(assignee))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"title\": \"Renamed\"}"))
+        mockMvc.perform(
+                        patch(TASKS + "/" + taskId)
+                                .with(asUser(assignee))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"title\": \"Renamed\"}"))
                 .andExpect(status().isOk());
         changeStatus(asUser(assignee), taskId, "IN_PROGRESS");
-        mockMvc.perform(post(TASKS + "/" + taskId + "/cancel").with(asUser(assignee))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"reason\": \"Blocked upstream\"}"))
+        mockMvc.perform(
+                        post(TASKS + "/" + taskId + "/cancel")
+                                .with(asUser(assignee))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"reason\": \"Blocked upstream\"}"))
                 .andExpect(status().isOk());
 
         JsonNode content = eventsPage(admin, taskId, "").get("content");
-        assertThat(types(content)).containsExactly("CANCELLED", "STATUS_CHANGED", "UPDATED", "CREATED");
+        assertThat(types(content))
+                .containsExactly("CANCELLED", "STATUS_CHANGED", "UPDATED", "CREATED");
         for (int i = 0; i < 3; i++) {
-            assertThat(content.get(i).get("actor").get("id").asString()).isEqualTo(assignee.getId().toString());
+            assertThat(content.get(i).get("actor").get("id").asString())
+                    .isEqualTo(assignee.getId().toString());
         }
-        assertThat(content.get(3).get("actor").get("id").asString()).isEqualTo(admin.getId().toString());
+        assertThat(content.get(3).get("actor").get("id").asString())
+                .isEqualTo(admin.getId().toString());
     }
 
     @Test
@@ -127,7 +136,8 @@ class TaskEventControllerTests extends AbstractTaskApiTests {
         JsonNode reassigned = content.get(0).get("payload");
         assertThat(reassigned.get("fromUserId").asString()).isEqualTo(first.getId().toString());
         assertThat(reassigned.get("toUserId").asString()).isEqualTo(second.getId().toString());
-        assertThat(content.get(0).get("actor").get("id").asString()).isEqualTo(admin.getId().toString());
+        assertThat(content.get(0).get("actor").get("id").asString())
+                .isEqualTo(admin.getId().toString());
 
         JsonNode firstAssignment = content.get(1).get("payload");
         assertThat(firstAssignment.get("fromUserId").isNull()).isTrue();
@@ -153,15 +163,18 @@ class TaskEventControllerTests extends AbstractTaskApiTests {
         UUID taskId = createTask(admin, null);
 
         changeStatus(asAdmin(admin), taskId, "BLOCKED");
-        mockMvc.perform(post(TASKS + "/" + taskId + "/cancel").with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"reason\": \"Duplicate of another task\"}"))
+        mockMvc.perform(
+                        post(TASKS + "/" + taskId + "/cancel")
+                                .with(asAdmin(admin))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"reason\": \"Duplicate of another task\"}"))
                 .andExpect(status().isOk());
 
         JsonNode latest = latestEvent(admin, taskId);
         assertThat(latest.get("type").asString()).isEqualTo("CANCELLED");
         assertThat(latest.get("actor").get("id").asString()).isEqualTo(admin.getId().toString());
-        assertThat(latest.get("payload").get("reason").asString()).isEqualTo("Duplicate of another task");
+        assertThat(latest.get("payload").get("reason").asString())
+                .isEqualTo("Duplicate of another task");
         assertThat(latest.get("payload").get("from").asString()).isEqualTo("BLOCKED");
         assertThat(latest.get("payload").get("to").asString()).isEqualTo("CANCELLED");
     }
@@ -171,13 +184,17 @@ class TaskEventControllerTests extends AbstractTaskApiTests {
         User admin = createUser(UserRole.ADMIN);
         UUID taskId = createTask(admin, null);
 
-        mockMvc.perform(post(TASKS + "/" + taskId + "/archive").with(asAdmin(admin))).andExpect(status().isOk());
-        mockMvc.perform(post(TASKS + "/" + taskId + "/archive").with(asAdmin(admin))).andExpect(status().isOk());
-        mockMvc.perform(post(TASKS + "/" + taskId + "/unarchive").with(asAdmin(admin))).andExpect(status().isOk());
+        mockMvc.perform(post(TASKS + "/" + taskId + "/archive").with(asAdmin(admin)))
+                .andExpect(status().isOk());
+        mockMvc.perform(post(TASKS + "/" + taskId + "/archive").with(asAdmin(admin)))
+                .andExpect(status().isOk());
+        mockMvc.perform(post(TASKS + "/" + taskId + "/unarchive").with(asAdmin(admin)))
+                .andExpect(status().isOk());
 
         JsonNode content = eventsPage(admin, taskId, "").get("content");
         assertThat(types(content)).containsExactly("UNARCHIVED", "ARCHIVED", "CREATED");
-        assertThat(content.get(0).get("actor").get("id").asString()).isEqualTo(admin.getId().toString());
+        assertThat(content.get(0).get("actor").get("id").asString())
+                .isEqualTo(admin.getId().toString());
         assertThat(content.get(0).get("payload").isNull()).isTrue();
     }
 
@@ -197,9 +214,11 @@ class TaskEventControllerTests extends AbstractTaskApiTests {
         User stranger = createUser(UserRole.USER);
         UUID taskId = createTask(admin, null);
 
-        mockMvc.perform(patch(TASKS + "/" + taskId + "/status").with(asUser(stranger))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\": \"DONE\"}"))
+        mockMvc.perform(
+                        patch(TASKS + "/" + taskId + "/status")
+                                .with(asUser(stranger))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"status\": \"DONE\"}"))
                 .andExpect(status().isForbidden());
 
         assertThat(types(eventsPage(admin, taskId, "").get("content"))).containsExactly("CREATED");
@@ -230,8 +249,10 @@ class TaskEventControllerTests extends AbstractTaskApiTests {
         assertThat(page0.get("content")).hasSize(2);
         assertThat(page1.get("content")).hasSize(2);
         assertThat(page2.get("content")).hasSize(1);
-        assertThat(page0.get("content").get(0).get("id").asString()).isEqualTo(all.get(0).get("id").asString());
-        assertThat(page1.get("content").get(0).get("id").asString()).isEqualTo(all.get(2).get("id").asString());
+        assertThat(page0.get("content").get(0).get("id").asString())
+                .isEqualTo(all.get(0).get("id").asString());
+        assertThat(page1.get("content").get(0).get("id").asString())
+                .isEqualTo(all.get(2).get("id").asString());
         assertThat(page2.get("content").get(0).get("type").asString()).isEqualTo("CREATED");
 
         JsonNode meta = pageMetadata(page0);
@@ -285,9 +306,12 @@ class TaskEventControllerTests extends AbstractTaskApiTests {
     }
 
     private JsonNode eventsPage(User viewer, UUID taskId, String query) throws Exception {
-        return json(mockMvc.perform(get(eventsOf(taskId) + query).with(asAdmin(viewer)))
-                .andExpect(status().isOk())
-                .andReturn().getResponse().getContentAsString());
+        return json(
+                mockMvc.perform(get(eventsOf(taskId) + query).with(asAdmin(viewer)))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString());
     }
 
     private JsonNode latestEvent(User viewer, UUID taskId) throws Exception {
@@ -305,19 +329,22 @@ class TaskEventControllerTests extends AbstractTaskApiTests {
         return types;
     }
 
-    private void changeStatus(RequestPostProcessor auth, UUID taskId,
-                              String status) throws Exception {
-        mockMvc.perform(patch(TASKS + "/" + taskId + "/status").with(auth)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\": \"%s\"}".formatted(status)))
+    private void changeStatus(RequestPostProcessor auth, UUID taskId, String status)
+            throws Exception {
+        mockMvc.perform(
+                        patch(TASKS + "/" + taskId + "/status")
+                                .with(auth)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"status\": \"%s\"}".formatted(status)))
                 .andExpect(status().isOk());
     }
 
-    private ResultActions assign(User admin, UUID taskId, UUID userId)
-            throws Exception {
-        return mockMvc.perform(patch(TASKS + "/" + taskId + "/assign").with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\": \"%s\"}".formatted(userId)))
+    private ResultActions assign(User admin, UUID taskId, UUID userId) throws Exception {
+        return mockMvc.perform(
+                        patch(TASKS + "/" + taskId + "/assign")
+                                .with(asAdmin(admin))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"userId\": \"%s\"}".formatted(userId)))
                 .andExpect(status().isOk());
     }
 }

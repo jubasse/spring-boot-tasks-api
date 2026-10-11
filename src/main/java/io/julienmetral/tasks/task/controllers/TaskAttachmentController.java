@@ -9,6 +9,9 @@ import io.julienmetral.tasks.task.security.AllowedRolesOrUploaderOnly;
 import io.julienmetral.tasks.task.services.TaskAttachmentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.net.URI;
+import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -22,10 +25,6 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.net.URI;
-import java.util.List;
-import java.util.UUID;
 
 // The task path variable is named id: @AllowedRolesOrAssignedToOnly reads #id
 @RestController
@@ -42,34 +41,24 @@ public class TaskAttachmentController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @AllowedRolesOrAssignedToOnly(UserRole.ADMIN)
     public ResponseEntity<TaskAttachmentResponseDto> addAttachment(
-            @PathVariable UUID id,
-            @RequestPart("file") MultipartFile file
-    ) {
+            @PathVariable UUID id, @RequestPart("file") MultipartFile file) {
         TaskAttachment attachment = attachmentService.add(id, file);
 
-        return ResponseEntity
-                .created(URI.create("/api/v1/tasks/" + id + "/attachments/" + attachment.getId()))
+        return ResponseEntity.created(
+                        URI.create("/api/v1/tasks/" + id + "/attachments/" + attachment.getId()))
                 .body(response(attachment));
     }
 
     @Operation(summary = "List the files of a task")
     @GetMapping
-    public List<TaskAttachmentResponseDto> listAttachments(
-            @PathVariable UUID id
-    ) {
-        return attachmentService
-                .findAll(id)
-                .stream()
-                .map(this::response)
-                .toList();
+    public List<TaskAttachmentResponseDto> listAttachments(@PathVariable UUID id) {
+        return attachmentService.findAll(id).stream().map(this::response).toList();
     }
 
     @Operation(summary = "Get a file and its download URL")
     @GetMapping("/{attachmentId}")
     public TaskAttachmentResponseDto getAttachment(
-            @PathVariable UUID id,
-            @PathVariable UUID attachmentId
-    ) {
+            @PathVariable UUID id, @PathVariable UUID attachmentId) {
         return response(attachmentService.find(id, attachmentId));
     }
 
@@ -78,14 +67,10 @@ public class TaskAttachmentController {
     @DeleteMapping("/{attachmentId}")
     @AllowedRolesOrUploaderOnly(UserRole.ADMIN)
     public ResponseEntity<Void> removeAttachment(
-            @PathVariable UUID id,
-            @PathVariable UUID attachmentId
-    ) {
+            @PathVariable UUID id, @PathVariable UUID attachmentId) {
         attachmentService.remove(id, attachmentId);
 
-        return ResponseEntity
-                .noContent()
-                .build();
+        return ResponseEntity.noContent().build();
     }
 
     private TaskAttachmentResponseDto response(TaskAttachment attachment) {

@@ -1,5 +1,7 @@
 package io.julienmetral.tasks.export.repositories;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.julienmetral.tasks.export.entities.DataExport;
 import io.julienmetral.tasks.export.entities.DataExportStatus;
 import io.julienmetral.tasks.export.entities.DataExportType;
@@ -11,6 +13,13 @@ import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.support.RepositoryTest;
 import io.julienmetral.tasks.task.entities.TaskStatus;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.function.Consumer;
 import org.hibernate.Hibernate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -20,34 +29,22 @@ import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 
-import java.time.Duration;
-import java.time.Instant;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
-import java.util.function.Consumer;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
 @RepositoryTest
 class DataExportRepositoryTests {
 
-    // Every date sits in 2000, before anything the other test contexts write to the shared database: the cutoffs
-    // below reach only this class's exports
+    // Every date sits in 2000, before anything the other test contexts write to the shared
+    // database: the cutoffs below reach only this class's exports
     private static final Instant NOW = Instant.parse("2000-06-01T12:00:00Z");
 
     private static final Instant LEASE_UNTIL = NOW.plus(Duration.ofMinutes(15));
 
-    @Autowired
-    private DataExportRepository repository;
+    @Autowired private DataExportRepository repository;
 
-    @Autowired
-    private TestEntityManager entityManager;
+    @Autowired private TestEntityManager entityManager;
 
     @Test
     void claimTakesAQueuedExportForTheLease() {
-        DataExport queued = persistExport(persistOwner(), DataExportStatus.QUEUED, export -> { });
+        DataExport queued = persistExport(persistOwner(), DataExportStatus.QUEUED, export -> {});
 
         int claimed = claim(queued);
 
@@ -61,10 +58,14 @@ class DataExportRepositoryTests {
 
     @Test
     void claimLeavesAnExportRunningUnderALiveLease() {
-        DataExport running = persistExport(persistOwner(), DataExportStatus.RUNNING, export -> {
-            export.setAttempts(1);
-            export.setLeaseUntil(NOW.plusSeconds(1));
-        });
+        DataExport running =
+                persistExport(
+                        persistOwner(),
+                        DataExportStatus.RUNNING,
+                        export -> {
+                            export.setAttempts(1);
+                            export.setLeaseUntil(NOW.plusSeconds(1));
+                        });
 
         assertThat(claim(running)).isZero();
 
@@ -75,11 +76,15 @@ class DataExportRepositoryTests {
 
     @Test
     void claimTakesARunningExportOnceItsLeaseRanOutAndCountsTheAttempt() {
-        DataExport interrupted = persistExport(persistOwner(), DataExportStatus.RUNNING, export -> {
-            export.setAttempts(1);
-            export.setLeaseUntil(NOW.minusSeconds(1));
-            export.setFailure("Interrupted");
-        });
+        DataExport interrupted =
+                persistExport(
+                        persistOwner(),
+                        DataExportStatus.RUNNING,
+                        export -> {
+                            export.setAttempts(1);
+                            export.setLeaseUntil(NOW.minusSeconds(1));
+                            export.setFailure("Interrupted");
+                        });
 
         assertThat(claim(interrupted)).isOne();
 
@@ -91,7 +96,9 @@ class DataExportRepositoryTests {
     }
 
     @ParameterizedTest
-    @EnumSource(value = DataExportStatus.class, names = {"COMPLETED", "FAILED", "EXPIRED"})
+    @EnumSource(
+            value = DataExportStatus.class,
+            names = {"COMPLETED", "FAILED", "EXPIRED"})
     void claimLeavesAnExportThatEnded(DataExportStatus status) {
         DataExport ended = persistExport(persistOwner(), status, export -> export.setAttempts(1));
 
@@ -101,7 +108,7 @@ class DataExportRepositoryTests {
 
     @Test
     void secondClaimOfTheSameExportFindsItRunning() {
-        DataExport queued = persistExport(persistOwner(), DataExportStatus.QUEUED, export -> { });
+        DataExport queued = persistExport(persistOwner(), DataExportStatus.QUEUED, export -> {});
 
         assertThat(claim(queued)).isOne();
         assertThat(claim(queued)).isZero();
@@ -111,18 +118,34 @@ class DataExportRepositoryTests {
     @Test
     void exportsToQueueAgainAreTheQueuedAndRunningOnesWhoseLeaseRanOut() {
         UserProfile owner = persistOwner();
-        DataExport interrupted = persistExport(owner, DataExportStatus.RUNNING,
-                export -> export.setLeaseUntil(NOW.minusSeconds(1)));
-        DataExport lostMessage = persistExport(owner, DataExportStatus.QUEUED,
-                export -> export.setLeaseUntil(NOW.minusSeconds(1)));
-        DataExport stillRunning = persistExport(owner, DataExportStatus.RUNNING,
-                export -> export.setLeaseUntil(NOW.plusSeconds(1)));
-        DataExport stillQueued = persistExport(owner, DataExportStatus.QUEUED,
-                export -> export.setLeaseUntil(NOW.plusSeconds(1)));
-        DataExport failed = persistExport(owner, DataExportStatus.FAILED,
-                export -> export.setLeaseUntil(NOW.minusSeconds(1)));
+        DataExport interrupted =
+                persistExport(
+                        owner,
+                        DataExportStatus.RUNNING,
+                        export -> export.setLeaseUntil(NOW.minusSeconds(1)));
+        DataExport lostMessage =
+                persistExport(
+                        owner,
+                        DataExportStatus.QUEUED,
+                        export -> export.setLeaseUntil(NOW.minusSeconds(1)));
+        DataExport stillRunning =
+                persistExport(
+                        owner,
+                        DataExportStatus.RUNNING,
+                        export -> export.setLeaseUntil(NOW.plusSeconds(1)));
+        DataExport stillQueued =
+                persistExport(
+                        owner,
+                        DataExportStatus.QUEUED,
+                        export -> export.setLeaseUntil(NOW.plusSeconds(1)));
+        DataExport failed =
+                persistExport(
+                        owner,
+                        DataExportStatus.FAILED,
+                        export -> export.setLeaseUntil(NOW.minusSeconds(1)));
 
-        List<UUID> found = ids(repository.findByStatusInAndLeaseUntilBefore(DataExportStatus.ACTIVE, NOW));
+        List<UUID> found =
+                ids(repository.findByStatusInAndLeaseUntilBefore(DataExportStatus.ACTIVE, NOW));
 
         assertThat(found)
                 .contains(interrupted.getId(), lostMessage.getId())
@@ -131,12 +154,17 @@ class DataExportRepositoryTests {
 
     @Test
     void renewingTheLeaseOfARunningExportPushesItForward() {
-        DataExport running = persistExport(persistOwner(), DataExportStatus.RUNNING, export -> {
-            export.setAttempts(1);
-            export.setLeaseUntil(NOW.minusSeconds(1));
-        });
+        DataExport running =
+                persistExport(
+                        persistOwner(),
+                        DataExportStatus.RUNNING,
+                        export -> {
+                            export.setAttempts(1);
+                            export.setLeaseUntil(NOW.minusSeconds(1));
+                        });
 
-        assertThat(repository.renewLease(running.getId(), LEASE_UNTIL, DataExportStatus.RUNNING)).isOne();
+        assertThat(repository.renewLease(running.getId(), LEASE_UNTIL, DataExportStatus.RUNNING))
+                .isOne();
 
         DataExport renewed = reload(running);
         assertThat(renewed.getLeaseUntil()).isEqualTo(LEASE_UNTIL);
@@ -148,30 +176,45 @@ class DataExportRepositoryTests {
     @ParameterizedTest
     @EnumSource(value = DataExportStatus.class, names = "RUNNING", mode = EnumSource.Mode.EXCLUDE)
     void renewingTheLeaseOfAnExportThatIsNotRunningChangesNothing(DataExportStatus status) {
-        DataExport notRunning = persistExport(persistOwner(), status,
-                export -> export.setLeaseUntil(NOW.minusSeconds(1)));
+        DataExport notRunning =
+                persistExport(
+                        persistOwner(),
+                        status,
+                        export -> export.setLeaseUntil(NOW.minusSeconds(1)));
 
-        assertThat(repository.renewLease(notRunning.getId(), LEASE_UNTIL, DataExportStatus.RUNNING)).isZero();
+        assertThat(repository.renewLease(notRunning.getId(), LEASE_UNTIL, DataExportStatus.RUNNING))
+                .isZero();
         assertThat(reload(notRunning).getLeaseUntil()).isEqualTo(NOW.minusSeconds(1));
     }
 
     @Test
     void expiredFilesAreThoseOfCompletedExportsPastTheirExpiryLoadedWithTheirMedia() {
         UserProfile owner = persistOwner();
-        DataExport expired = persistExport(owner, DataExportStatus.COMPLETED, export -> {
-            export.setMedia(persistMedia());
-            export.setExpiresAt(NOW.minusSeconds(1));
-        });
-        DataExport stillAvailable = persistExport(owner, DataExportStatus.COMPLETED, export -> {
-            export.setMedia(persistMedia());
-            export.setExpiresAt(NOW.plusSeconds(1));
-        });
+        DataExport expired =
+                persistExport(
+                        owner,
+                        DataExportStatus.COMPLETED,
+                        export -> {
+                            export.setMedia(persistMedia());
+                            export.setExpiresAt(NOW.minusSeconds(1));
+                        });
+        DataExport stillAvailable =
+                persistExport(
+                        owner,
+                        DataExportStatus.COMPLETED,
+                        export -> {
+                            export.setMedia(persistMedia());
+                            export.setExpiresAt(NOW.plusSeconds(1));
+                        });
         entityManager.clear();
 
-        List<DataExport> found = repository.findByStatusAndExpiresAtBefore(DataExportStatus.COMPLETED, NOW);
+        List<DataExport> found =
+                repository.findByStatusAndExpiresAtBefore(DataExportStatus.COMPLETED, NOW);
 
         assertThat(ids(found)).contains(expired.getId()).doesNotContain(stillAvailable.getId());
-        assertThat(found).allSatisfy(export -> assertThat(Hibernate.isInitialized(export.getMedia())).isTrue());
+        assertThat(found)
+                .allSatisfy(
+                        export -> assertThat(Hibernate.isInitialized(export.getMedia())).isTrue());
     }
 
     @Test
@@ -179,11 +222,13 @@ class DataExportRepositoryTests {
         UserProfile owner = persistOwner();
         DataExport oldExpired = persistExport(owner, DataExportStatus.EXPIRED, NOW.minusSeconds(1));
         DataExport oldFailed = persistExport(owner, DataExportStatus.FAILED, NOW.minusSeconds(1));
-        DataExport oldCompleted = persistExport(owner, DataExportStatus.COMPLETED, NOW.minusSeconds(1));
+        DataExport oldCompleted =
+                persistExport(owner, DataExportStatus.COMPLETED, NOW.minusSeconds(1));
         DataExport recentExpired = persistExport(owner, DataExportStatus.EXPIRED, NOW);
 
-        int deleted = repository.deleteByStatusInAndCreatedAtBefore(
-                Set.of(DataExportStatus.EXPIRED, DataExportStatus.FAILED), NOW);
+        int deleted =
+                repository.deleteByStatusInAndCreatedAtBefore(
+                        Set.of(DataExportStatus.EXPIRED, DataExportStatus.FAILED), NOW);
         entityManager.clear();
 
         assertThat(deleted).isEqualTo(2);
@@ -196,24 +241,34 @@ class DataExportRepositoryTests {
     @Test
     void exportInProgressIsFoundForItsOwnerAndTypeOnly() {
         UserProfile owner = persistOwner();
-        persistExport(owner, DataExportStatus.RUNNING, export -> { });
+        persistExport(owner, DataExportStatus.RUNNING, export -> {});
 
-        assertThat(repository.existsByOwnerIdAndTypeAndStatusIn(
-                owner.getId(), DataExportType.TASKS_CSV, DataExportStatus.ACTIVE)).isTrue();
-        assertThat(repository.existsByOwnerIdAndTypeAndStatusIn(
-                owner.getId(), DataExportType.USERS_CSV, DataExportStatus.ACTIVE)).isFalse();
-        assertThat(repository.existsByOwnerIdAndTypeAndStatusIn(
-                persistOwner().getId(), DataExportType.TASKS_CSV, DataExportStatus.ACTIVE)).isFalse();
+        assertThat(
+                        repository.existsByOwnerIdAndTypeAndStatusIn(
+                                owner.getId(), DataExportType.TASKS_CSV, DataExportStatus.ACTIVE))
+                .isTrue();
+        assertThat(
+                        repository.existsByOwnerIdAndTypeAndStatusIn(
+                                owner.getId(), DataExportType.USERS_CSV, DataExportStatus.ACTIVE))
+                .isFalse();
+        assertThat(
+                        repository.existsByOwnerIdAndTypeAndStatusIn(
+                                persistOwner().getId(),
+                                DataExportType.TASKS_CSV,
+                                DataExportStatus.ACTIVE))
+                .isFalse();
     }
 
     @Test
     void endedExportIsNotInProgress() {
         UserProfile owner = persistOwner();
-        persistExport(owner, DataExportStatus.COMPLETED, export -> { });
-        persistExport(owner, DataExportStatus.FAILED, export -> { });
+        persistExport(owner, DataExportStatus.COMPLETED, export -> {});
+        persistExport(owner, DataExportStatus.FAILED, export -> {});
 
-        assertThat(repository.existsByOwnerIdAndTypeAndStatusIn(
-                owner.getId(), DataExportType.TASKS_CSV, DataExportStatus.ACTIVE)).isFalse();
+        assertThat(
+                        repository.existsByOwnerIdAndTypeAndStatusIn(
+                                owner.getId(), DataExportType.TASKS_CSV, DataExportStatus.ACTIVE))
+                .isFalse();
     }
 
     @Test
@@ -224,8 +279,12 @@ class DataExportRepositoryTests {
         DataExport newer = persistExport(owner, DataExportStatus.COMPLETED, NOW);
         DataExport ofSomeoneElse = persistExport(someoneElse, DataExportStatus.COMPLETED, NOW);
 
-        List<DataExport> page = repository.findByOwnerId(
-                owner.getId(), PageRequest.of(0, 10, Sort.by(Sort.Direction.DESC, "createdAt"))).getContent();
+        List<DataExport> page =
+                repository
+                        .findByOwnerId(
+                                owner.getId(),
+                                PageRequest.of(0, 10, Sort.by(Sort.Direction.DESC, "createdAt")))
+                        .getContent();
 
         assertThat(ids(page)).containsExactly(newer.getId(), older.getId());
         assertThat(repository.findByIdAndOwnerId(newer.getId(), owner.getId())).isPresent();
@@ -235,8 +294,13 @@ class DataExportRepositoryTests {
     @Test
     void filtersOfATasksExportAreKept() {
         UUID assignee = UUID.randomUUID();
-        DataExport export = persistExport(persistOwner(), DataExportStatus.QUEUED,
-                queued -> queued.setTaskFilters(new TaskExportFilters(TaskStatus.BLOCKED, assignee, true)));
+        DataExport export =
+                persistExport(
+                        persistOwner(),
+                        DataExportStatus.QUEUED,
+                        queued ->
+                                queued.setTaskFilters(
+                                        new TaskExportFilters(TaskStatus.BLOCKED, assignee, true)));
 
         assertThat(reload(export).getTaskFilters())
                 .isEqualTo(new TaskExportFilters(TaskStatus.BLOCKED, assignee, true));
@@ -244,7 +308,11 @@ class DataExportRepositoryTests {
 
     private int claim(DataExport export) {
         return repository.claim(
-                export.getId(), NOW, LEASE_UNTIL, DataExportStatus.QUEUED, DataExportStatus.RUNNING);
+                export.getId(),
+                NOW,
+                LEASE_UNTIL,
+                DataExportStatus.QUEUED,
+                DataExportStatus.RUNNING);
     }
 
     // The bulk updates bypass the persistence context: read the row again
@@ -274,12 +342,13 @@ class DataExportRepositoryTests {
         return entityManager.persistAndFlush(media);
     }
 
-    private DataExport persistExport(UserProfile owner, DataExportStatus status, Instant createdAt) {
+    private DataExport persistExport(
+            UserProfile owner, DataExportStatus status, Instant createdAt) {
         return persistExport(owner, status, export -> export.setCreatedAt(createdAt));
     }
 
-    private DataExport persistExport(UserProfile owner, DataExportStatus status,
-                                     Consumer<DataExport> details) {
+    private DataExport persistExport(
+            UserProfile owner, DataExportStatus status, Consumer<DataExport> details) {
         DataExport export = new DataExport();
         export.setOwner(owner);
         export.setType(DataExportType.TASKS_CSV);

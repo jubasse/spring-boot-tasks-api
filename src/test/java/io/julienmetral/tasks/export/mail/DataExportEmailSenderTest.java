@@ -1,5 +1,10 @@
 package io.julienmetral.tasks.export.mail;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.export.ExportProperties;
 import io.julienmetral.tasks.export.entities.DataExportType;
 import io.julienmetral.tasks.export.events.DataExportCompleted;
@@ -8,22 +13,16 @@ import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.mail.MailMessage;
 import io.julienmetral.tasks.mail.MailService;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Optional;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class DataExportEmailSenderTest {
@@ -36,29 +35,27 @@ class DataExportEmailSenderTest {
 
     private static final Instant EXPIRES_AT = Instant.parse("2030-01-08T10:00:00Z");
 
-    @Mock
-    private MailService mailService;
+    @Mock private MailService mailService;
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
     private DataExportEmailSender sender;
 
     @BeforeEach
     void setUp() {
-        ExportProperties properties = new ExportProperties(
-                DOWNLOAD_PAGE,
-                Duration.ofDays(7),
-                Duration.ofDays(30),
-                500,
-                Duration.ofMinutes(15),
-                3,
-                false,
-                "0 30 4 * * *",
-                false,
-                Duration.ofMinutes(5),
-                1000
-        );
+        ExportProperties properties =
+                new ExportProperties(
+                        DOWNLOAD_PAGE,
+                        Duration.ofDays(7),
+                        Duration.ofDays(30),
+                        500,
+                        Duration.ofMinutes(15),
+                        3,
+                        false,
+                        "0 30 4 * * *",
+                        false,
+                        Duration.ofMinutes(5),
+                        1000);
         sender = new DataExportEmailSender(mailService, userRepository, properties);
     }
 
@@ -79,7 +76,8 @@ class DataExportEmailSenderTest {
     void readyEmailLinksToTheDownloadPageOfTheExportAndGivesItsExpiry() {
         ownerExists();
 
-        sender.onCompleted(new DataExportCompleted(EXPORT_ID, OWNER_ID, DataExportType.TASKS_CSV, EXPIRES_AT));
+        sender.onCompleted(
+                new DataExportCompleted(EXPORT_ID, OWNER_ID, DataExportType.TASKS_CSV, EXPIRES_AT));
 
         MailMessage message = sentMessage();
         assertThat(message.to()).isEqualTo("jane@example.com");
@@ -95,8 +93,12 @@ class DataExportEmailSenderTest {
     void expiryIsShownToTheMinuteInUtcWhateverItsFractionOfASecond() {
         ownerExists();
 
-        sender.onCompleted(new DataExportCompleted(EXPORT_ID, OWNER_ID, DataExportType.TASKS_CSV,
-                Instant.parse("2030-01-08T23:59:59.999999999Z")));
+        sender.onCompleted(
+                new DataExportCompleted(
+                        EXPORT_ID,
+                        OWNER_ID,
+                        DataExportType.TASKS_CSV,
+                        Instant.parse("2030-01-08T23:59:59.999999999Z")));
 
         assertThat(sentMessage().text())
                 .contains("It stays available until 2030-01-08 23:59 UTC, then it is deleted.")
@@ -107,7 +109,8 @@ class DataExportEmailSenderTest {
     void readyEmailOfAUsersExportNamesTheUsers() {
         ownerExists();
 
-        sender.onCompleted(new DataExportCompleted(EXPORT_ID, OWNER_ID, DataExportType.USERS_CSV, EXPIRES_AT));
+        sender.onCompleted(
+                new DataExportCompleted(EXPORT_ID, OWNER_ID, DataExportType.USERS_CSV, EXPIRES_AT));
 
         assertThat(sentMessage().text()).contains("Your export of users is ready.");
     }
@@ -116,7 +119,9 @@ class DataExportEmailSenderTest {
     void readyEmailOfAPersonalDataExportNamesYourPersonalData() {
         ownerExists();
 
-        sender.onCompleted(new DataExportCompleted(EXPORT_ID, OWNER_ID, DataExportType.PERSONAL_DATA, EXPIRES_AT));
+        sender.onCompleted(
+                new DataExportCompleted(
+                        EXPORT_ID, OWNER_ID, DataExportType.PERSONAL_DATA, EXPIRES_AT));
 
         assertThat(sentMessage().text()).contains("Your export of your personal data is ready.");
     }
@@ -127,7 +132,8 @@ class DataExportEmailSenderTest {
 
         sender.onFailed(new DataExportFailed(EXPORT_ID, OWNER_ID, DataExportType.PERSONAL_DATA));
 
-        assertThat(sentMessage().text()).contains("Your export of your personal data could not be produced.");
+        assertThat(sentMessage().text())
+                .contains("Your export of your personal data could not be produced.");
     }
 
     @Test
@@ -147,7 +153,8 @@ class DataExportEmailSenderTest {
 
     @Test
     void ownerWhoseAccountIsGoneIsNotEmailed() {
-        sender.onCompleted(new DataExportCompleted(EXPORT_ID, OWNER_ID, DataExportType.TASKS_CSV, EXPIRES_AT));
+        sender.onCompleted(
+                new DataExportCompleted(EXPORT_ID, OWNER_ID, DataExportType.TASKS_CSV, EXPIRES_AT));
         sender.onFailed(new DataExportFailed(EXPORT_ID, OWNER_ID, DataExportType.TASKS_CSV));
 
         verifyNoInteractions(mailService);

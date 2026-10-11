@@ -1,25 +1,24 @@
 package io.julienmetral.tasks.identity.security;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
+
 import io.julienmetral.tasks.TestcontainersConfiguration;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.micrometer.metrics.test.autoconfigure.AutoConfigureMetrics;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
-
 /**
- * Over real HTTP: MockMvc never makes the container's error dispatch to {@code /error}, which is where a public
- * endpoint's 400 once became a 401. The configuration is the one of {@code MonitoringTests}, so both classes share
- * one cached context and its containers.
+ * Over real HTTP: MockMvc never makes the container's error dispatch to {@code /error}, which is
+ * where a public endpoint's 400 once became a 401. The configuration is the one of {@code
+ * MonitoringTests}, so both classes share one cached context and its containers.
  */
 @Import(TestcontainersConfiguration.class)
 @AutoConfigureMetrics
@@ -28,8 +27,7 @@ class PublicEndpointErrorTests {
 
     private static final String MALFORMED_JSON = "{\"email\": ";
 
-    @LocalServerPort
-    private int port;
+    @LocalServerPort private int port;
 
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
@@ -47,7 +45,8 @@ class PublicEndpointErrorTests {
 
         assertThat(response.statusCode()).isEqualTo(400);
         assertThat(response.headers().firstValue("WWW-Authenticate")).isEmpty();
-        assertThat(response.headers().firstValue("Content-Type")).hasValue("application/problem+json");
+        assertThat(response.headers().firstValue("Content-Type"))
+                .hasValue("application/problem+json");
     }
 
     @Test
@@ -55,7 +54,8 @@ class PublicEndpointErrorTests {
         HttpResponse<String> response = get("/api/v1/identicons/not-a-uuid", null);
 
         assertThat(response.statusCode()).isEqualTo(400);
-        assertThat(response.headers().firstValue("Content-Type")).hasValue("application/problem+json");
+        assertThat(response.headers().firstValue("Content-Type"))
+                .hasValue("application/problem+json");
         assertThat(response.body()).contains("\"parameter\":\"id\"");
     }
 
@@ -64,8 +64,9 @@ class PublicEndpointErrorTests {
         HttpResponse<String> response = get("/api/v1/identicons/" + UUID.randomUUID(), null);
 
         assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(response.headers().firstValue("Content-Type")).hasValueSatisfying(
-                contentType -> assertThat(contentType).startsWith("image/svg+xml"));
+        assertThat(response.headers().firstValue("Content-Type"))
+                .hasValueSatisfying(
+                        contentType -> assertThat(contentType).startsWith("image/svg+xml"));
     }
 
     @Test
@@ -96,14 +97,17 @@ class PublicEndpointErrorTests {
         return send(request(path, bearer).GET());
     }
 
-    private HttpResponse<String> postJson(String path, String body, String bearer) throws Exception {
-        return send(request(path, bearer)
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body)));
+    private HttpResponse<String> postJson(String path, String body, String bearer)
+            throws Exception {
+        return send(
+                request(path, bearer)
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(body)));
     }
 
     private HttpRequest.Builder request(String path, String bearer) {
-        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create("http://localhost:" + port + path));
+        HttpRequest.Builder builder =
+                HttpRequest.newBuilder(URI.create("http://localhost:" + port + path));
 
         return bearer == null ? builder : builder.header("Authorization", "Bearer " + bearer);
     }

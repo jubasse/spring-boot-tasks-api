@@ -1,6 +1,14 @@
 package io.julienmetral.tasks.identity.security;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.identity.entities.UserStatus;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -15,28 +23,16 @@ import org.springframework.security.authorization.AuthorizationResult;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
 
-import java.util.Optional;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
-
 @ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class ActiveUserAuthorizationManagerTest {
 
     private static final UUID USER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
-    @Mock
-    private CurrentUser currentUser;
+    @Mock private CurrentUser currentUser;
 
-    @Mock
-    private UserStatusLookup userStatusLookup;
+    @Mock private UserStatusLookup userStatusLookup;
 
-    @InjectMocks
-    private ActiveUserAuthorizationManager manager;
+    @InjectMocks private ActiveUserAuthorizationManager manager;
 
     private final Authentication authentication = mock(Authentication.class);
     private final RequestAuthorizationContext context = mock(RequestAuthorizationContext.class);
@@ -72,7 +68,8 @@ class ActiveUserAuthorizationManagerTest {
 
         authorize();
 
-        assertThat(output).contains("Task access denied to account " + USER_ID + ", which is DISABLED");
+        assertThat(output)
+                .contains("Task access denied to account " + USER_ID + ", which is DISABLED");
     }
 
     @Test
@@ -85,7 +82,8 @@ class ActiveUserAuthorizationManagerTest {
 
     @Test
     void failingStatusLookupPropagatesInsteadOfGranting() {
-        DataAccessResourceFailureException failure = new DataAccessResourceFailureException("Database down");
+        DataAccessResourceFailureException failure =
+                new DataAccessResourceFailureException("Database down");
         when(currentUser.getId(authentication)).thenReturn(Optional.of(USER_ID));
         when(userStatusLookup.statusOf(USER_ID)).thenThrow(failure);
 

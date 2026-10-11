@@ -1,29 +1,27 @@
 package io.julienmetral.tasks.task.controllers;
 
-import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserRole;
-import io.julienmetral.tasks.identity.events.AccountStateChanged;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.ResultActions;
-
-import java.util.UUID;
-
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserRole;
+import io.julienmetral.tasks.identity.events.AccountStateChanged;
+import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.ResultActions;
+
 /**
- * Fixtures to move users out of the ACTIVE state (unverified, disabled, soft-deleted) and to
- * read tasks and their history through the API.
+ * Fixtures to move users out of the ACTIVE state (unverified, disabled, soft-deleted) and to read
+ * tasks and their history through the API.
  */
 abstract class AbstractUserStateTaskApiTests extends AbstractTaskApiTests {
 
-    @Autowired
-    protected ApplicationEventPublisher eventPublisher;
+    @Autowired protected ApplicationEventPublisher eventPublisher;
 
     protected User createUnverifiedUser(UserRole role) {
         return updateUser(createUser(role), user -> user.setEmailVerifiedAt(null));
@@ -55,15 +53,17 @@ abstract class AbstractUserStateTaskApiTests extends AbstractTaskApiTests {
     }
 
     /**
-     * Clears the verification date of an existing user, as if it had never verified its email. Publishes
-     * {@code AccountStateChanged} like every change to an account: without it, a status cached by the user's earlier
-     * task requests would keep granting access.
+     * Clears the verification date of an existing user, as if it had never verified its email.
+     * Publishes {@code AccountStateChanged} like every change to an account: without it, a status
+     * cached by the user's earlier task requests would keep granting access.
      */
     protected void unverify(User user) {
-        updateUser(user, reloaded -> {
-            reloaded.setEmailVerifiedAt(null);
-            eventPublisher.publishEvent(new AccountStateChanged(reloaded.getId()));
-        });
+        updateUser(
+                user,
+                reloaded -> {
+                    reloaded.setEmailVerifiedAt(null);
+                    eventPublisher.publishEvent(new AccountStateChanged(reloaded.getId()));
+                });
     }
 
     protected ResultActions getTask(User reader, UUID taskId) throws Exception {
@@ -75,9 +75,10 @@ abstract class AbstractUserStateTaskApiTests extends AbstractTaskApiTests {
     }
 
     protected ResultActions assign(User admin, UUID taskId, UUID userId) throws Exception {
-        return mockMvc.perform(patch(TASKS + "/" + taskId + "/assign")
-                .with(asAdmin(admin))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"userId\": \"" + userId + "\"}"));
+        return mockMvc.perform(
+                patch(TASKS + "/" + taskId + "/assign")
+                        .with(asAdmin(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\": \"" + userId + "\"}"));
     }
 }

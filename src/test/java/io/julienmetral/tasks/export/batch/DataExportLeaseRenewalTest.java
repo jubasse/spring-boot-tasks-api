@@ -1,6 +1,11 @@
 package io.julienmetral.tasks.export.batch;
 
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+
 import io.julienmetral.tasks.export.services.DataExportService;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,22 +19,14 @@ import org.springframework.batch.core.scope.context.StepSynchronizationManager;
 import org.springframework.batch.core.step.StepExecution;
 import org.springframework.batch.infrastructure.item.Chunk;
 
-import java.util.UUID;
-
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-
 @ExtendWith(MockitoExtension.class)
 class DataExportLeaseRenewalTest {
 
     private final UUID exportId = UUID.randomUUID();
 
-    @Mock
-    private DataExportService exportService;
+    @Mock private DataExportService exportService;
 
-    @InjectMocks
-    private DataExportLeaseRenewal renewal;
+    @InjectMocks private DataExportLeaseRenewal renewal;
 
     @AfterEach
     void leaveTheStep() {
@@ -37,11 +34,13 @@ class DataExportLeaseRenewalTest {
     }
 
     private StepExecution step(String name) {
-        JobExecution job = new JobExecution(
-                1L,
-                new JobInstance(1L, CsvExportJobs.TASKS_JOB),
-                new JobParametersBuilder().addString(PublishExport.EXPORT_ID, exportId.toString()).toJobParameters()
-        );
+        JobExecution job =
+                new JobExecution(
+                        1L,
+                        new JobInstance(1L, CsvExportJobs.TASKS_JOB),
+                        new JobParametersBuilder()
+                                .addString(PublishExport.EXPORT_ID, exportId.toString())
+                                .toJobParameters());
         StepExecution step = new StepExecution(2L, name, job);
         job.addStepExecution(step);
         return step;

@@ -1,9 +1,15 @@
 package io.julienmetral.tasks.realtime.stomp;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.identity.security.UserStatusLookup;
 import io.julienmetral.tasks.task.repositories.TaskRepository;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,13 +29,6 @@ import org.springframework.security.messaging.access.intercept.MessageAuthorizat
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
-import java.util.Map;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
-
 @ExtendWith(MockitoExtension.class)
 class TaskRoomAuthorizationTest {
 
@@ -37,17 +36,16 @@ class TaskRoomAuthorizationTest {
 
     private static final UUID TASK_ID = UUID.fromString("00000000-0000-0000-0000-0000000000b1");
 
-    @Mock
-    private UserStatusLookup userStatusLookup;
+    @Mock private UserStatusLookup userStatusLookup;
 
-    @Mock
-    private TaskRepository taskRepository;
+    @Mock private TaskRepository taskRepository;
 
     private TaskRoomAuthorization authorization;
 
     @BeforeEach
     void createAuthorization() {
-        authorization = new TaskRoomAuthorization(new CurrentUser(), userStatusLookup, taskRepository);
+        authorization =
+                new TaskRoomAuthorization(new CurrentUser(), userStatusLookup, taskRepository);
     }
 
     @Test
@@ -84,7 +82,8 @@ class TaskRoomAuthorizationTest {
 
     @Test
     void roomWithoutATaskIdIsRefused() {
-        MessageAuthorizationContext<byte[]> context = new MessageAuthorizationContext<>(subscribe(), Map.of());
+        MessageAuthorizationContext<byte[]> context =
+                new MessageAuthorizationContext<>(subscribe(), Map.of());
 
         assertThat(authorization.authorize(() -> user(USER_ID), context).isGranted()).isFalse();
         verifyNoInteractions(userStatusLookup, taskRepository);
@@ -92,7 +91,8 @@ class TaskRoomAuthorizationTest {
 
     @Test
     void tokenWithoutAUserIdIsRefused() {
-        Jwt withoutUid = Jwt.withTokenValue("token").header("alg", "HS256").subject("someone").build();
+        Jwt withoutUid =
+                Jwt.withTokenValue("token").header("alg", "HS256").subject("someone").build();
 
         assertThat(isGranted(new JwtAuthenticationToken(withoutUid), TASK_ID.toString())).isFalse();
         verifyNoInteractions(userStatusLookup, taskRepository);
@@ -100,8 +100,9 @@ class TaskRoomAuthorizationTest {
 
     @Test
     void anonymousSubscriberIsRefused() {
-        Authentication anonymous = new AnonymousAuthenticationToken(
-                "key", "anonymous", AuthorityUtils.createAuthorityList("ROLE_ANONYMOUS"));
+        Authentication anonymous =
+                new AnonymousAuthenticationToken(
+                        "key", "anonymous", AuthorityUtils.createAuthorityList("ROLE_ANONYMOUS"));
 
         assertThat(isGranted(anonymous, TASK_ID.toString())).isFalse();
         verifyNoInteractions(userStatusLookup, taskRepository);
@@ -109,7 +110,8 @@ class TaskRoomAuthorizationTest {
 
     private boolean isGranted(Authentication authentication, String taskId) {
         MessageAuthorizationContext<byte[]> context =
-                new MessageAuthorizationContext<>(subscribe(), Map.of(TaskRoomAuthorization.TASK_ID, taskId));
+                new MessageAuthorizationContext<>(
+                        subscribe(), Map.of(TaskRoomAuthorization.TASK_ID, taskId));
 
         return authorization.authorize(() -> authentication, context).isGranted();
     }
@@ -122,7 +124,11 @@ class TaskRoomAuthorizationTest {
     }
 
     private static JwtAuthenticationToken user(UUID id) {
-        Jwt jwt = Jwt.withTokenValue("token").header("alg", "HS256").claim("uid", id.toString()).build();
+        Jwt jwt =
+                Jwt.withTokenValue("token")
+                        .header("alg", "HS256")
+                        .claim("uid", id.toString())
+                        .build();
 
         return new JwtAuthenticationToken(jwt, AuthorityUtils.createAuthorityList("ROLE_USER"));
     }

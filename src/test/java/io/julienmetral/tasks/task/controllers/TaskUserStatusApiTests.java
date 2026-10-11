@@ -1,13 +1,5 @@
 package io.julienmetral.tasks.task.controllers;
 
-import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserRole;
-import org.junit.jupiter.api.Test;
-import org.springframework.http.MediaType;
-import tools.jackson.databind.JsonNode;
-
-import java.util.UUID;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -15,10 +7,17 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserRole;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
+import tools.jackson.databind.JsonNode;
+
 /**
  * The {@code {id, displayName, status}} previews of {@code assignedTo}, {@code createdBy} and the
- * history {@code actor}, and how they follow the referenced user's account state, including
- * soft deletion.
+ * history {@code actor}, and how they follow the referenced user's account state, including soft
+ * deletion.
  */
 class TaskUserStatusApiTests extends AbstractUserStateTaskApiTests {
 
@@ -88,7 +87,8 @@ class TaskUserStatusApiTests extends AbstractUserStateTaskApiTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].type").value("CREATED"))
                 .andExpect(jsonPath("$.content[0].actor.id").value(creator.getId().toString()))
-                .andExpect(jsonPath("$.content[0].actor.displayName").value(creator.getDisplayName()))
+                .andExpect(
+                        jsonPath("$.content[0].actor.displayName").value(creator.getDisplayName()))
                 .andExpect(jsonPath("$.content[0].actor.status").value("DELETED"));
     }
 
@@ -124,9 +124,11 @@ class TaskUserStatusApiTests extends AbstractUserStateTaskApiTests {
         deleteThroughApi(creator);
         deleteThroughApi(assignee);
 
-        mockMvc.perform(patch(TASKS + "/" + taskId).with(asAdmin(reader))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"title\": \"Renamed\"}"))
+        mockMvc.perform(
+                        patch(TASKS + "/" + taskId)
+                                .with(asAdmin(reader))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"title\": \"Renamed\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("Renamed"));
 
@@ -146,9 +148,11 @@ class TaskUserStatusApiTests extends AbstractUserStateTaskApiTests {
 
         deleteThroughApi(assignee);
 
-        mockMvc.perform(patch(TASKS + "/" + taskId + "/status").with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\": \"IN_PROGRESS\"}"))
+        mockMvc.perform(
+                        patch(TASKS + "/" + taskId + "/status")
+                                .with(asAdmin(admin))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"status\": \"IN_PROGRESS\"}"))
                 .andExpect(status().isOk());
 
         getTask(admin, taskId)
@@ -165,9 +169,11 @@ class TaskUserStatusApiTests extends AbstractUserStateTaskApiTests {
 
         deleteThroughApi(creator);
 
-        mockMvc.perform(patch(TASKS + "/" + taskId).with(asAdmin(editor))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"title\": \"Renamed\"}"))
+        mockMvc.perform(
+                        patch(TASKS + "/" + taskId)
+                                .with(asAdmin(editor))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"title\": \"Renamed\"}"))
                 .andExpect(status().isOk());
 
         getTask(editor, taskId)
@@ -196,7 +202,8 @@ class TaskUserStatusApiTests extends AbstractUserStateTaskApiTests {
 
         getEvents(reader, taskId)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].actor.displayName").value(creator.getDisplayName()))
+                .andExpect(
+                        jsonPath("$.content[0].actor.displayName").value(creator.getDisplayName()))
                 .andExpect(jsonPath("$.content[0].actor.status").value("DISABLED"));
     }
 
@@ -266,8 +273,10 @@ class TaskUserStatusApiTests extends AbstractUserStateTaskApiTests {
         JsonNode latest = latestEvent(admin, taskId);
         assertThat(latest.get("type").asString()).isEqualTo("ASSIGNED");
         assertThat(latest.get("actor").get("id").asString()).isEqualTo(admin.getId().toString());
-        assertThat(latest.get("payload").get("fromUserId").asString()).isEqualTo(deletedAssignee.getId().toString());
-        assertThat(latest.get("payload").get("toUserId").asString()).isEqualTo(newAssignee.getId().toString());
+        assertThat(latest.get("payload").get("fromUserId").asString())
+                .isEqualTo(deletedAssignee.getId().toString());
+        assertThat(latest.get("payload").get("toUserId").asString())
+                .isEqualTo(newAssignee.getId().toString());
 
         getTask(admin, taskId)
                 .andExpect(status().isOk())
@@ -287,8 +296,10 @@ class TaskUserStatusApiTests extends AbstractUserStateTaskApiTests {
 
         JsonNode latest = latestEvent(admin, taskId);
         assertThat(latest.get("type").asString()).isEqualTo("ASSIGNED");
-        assertThat(latest.get("payload").get("fromUserId").asString()).isEqualTo(disabledAssignee.getId().toString());
-        assertThat(latest.get("payload").get("toUserId").asString()).isEqualTo(newAssignee.getId().toString());
+        assertThat(latest.get("payload").get("fromUserId").asString())
+                .isEqualTo(disabledAssignee.getId().toString());
+        assertThat(latest.get("payload").get("toUserId").asString())
+                .isEqualTo(newAssignee.getId().toString());
     }
 
     @Test
@@ -297,9 +308,11 @@ class TaskUserStatusApiTests extends AbstractUserStateTaskApiTests {
         User editor = createUser(UserRole.ADMIN);
         UUID taskId = createTask(creator, null);
 
-        mockMvc.perform(patch(TASKS + "/" + taskId).with(asAdmin(editor))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"title\": \"Renamed\"}"))
+        mockMvc.perform(
+                        patch(TASKS + "/" + taskId)
+                                .with(asAdmin(editor))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"title\": \"Renamed\"}"))
                 .andExpect(status().isOk());
 
         deleteThroughApi(editor);
@@ -308,18 +321,20 @@ class TaskUserStatusApiTests extends AbstractUserStateTaskApiTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].type").value("UPDATED"))
                 .andExpect(jsonPath("$.content[0].actor.id").value(editor.getId().toString()))
-                .andExpect(jsonPath("$.content[0].actor.displayName").value(editor.getDisplayName()))
+                .andExpect(
+                        jsonPath("$.content[0].actor.displayName").value(editor.getDisplayName()))
                 .andExpect(jsonPath("$.content[0].actor.status").value("DELETED"))
                 .andExpect(jsonPath("$.content[1].type").value("CREATED"))
                 .andExpect(jsonPath("$.content[1].actor.status").value("ACTIVE"));
     }
 
     private JsonNode latestEvent(User reader, UUID taskId) throws Exception {
-        String body = getEvents(reader, taskId)
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String body =
+                getEvents(reader, taskId)
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
         return json(body).get("content").get(0);
     }

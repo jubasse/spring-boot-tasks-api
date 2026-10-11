@@ -20,6 +20,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.net.URI;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
@@ -39,9 +41,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.net.URI;
-import java.util.UUID;
-
 @RestController
 @RequestMapping("/tasks")
 @RequiredArgsConstructor
@@ -54,18 +53,16 @@ public class TaskController {
     @Operation(summary = "Create a task")
     @ResponseStatus(HttpStatus.CREATED)
     @DocumentedProblems({ProblemType.REFERENCE_TAKEN, ProblemType.ASSIGNEE_NOT_ACTIVE})
-    // The assignee named in the body does not exist; the path names no resource, so no rule adds this 404
+    // The assignee named in the body does not exist; the path names no resource, so no rule adds
+    // this 404
     @ApiResponse(responseCode = "404", ref = "#/components/responses/NotFound")
     @PostMapping
     @AllowedRolesOrWithoutAssigneeOnly(UserRole.ADMIN)
-    public ResponseEntity<TaskResponseDto> createTask(
-            @Valid @RequestBody CreateTaskDto dto
-    ) {
+    public ResponseEntity<TaskResponseDto> createTask(@Valid @RequestBody CreateTaskDto dto) {
         Task task = taskService.create(dto);
 
-        return ResponseEntity
-            .created(URI.create("/api/v1/tasks/" + task.getId()))
-            .body(response(task));
+        return ResponseEntity.created(URI.create("/api/v1/tasks/" + task.getId()))
+                .body(response(task));
     }
 
     @Operation(summary = "List tasks, newest first by default")
@@ -74,21 +71,16 @@ public class TaskController {
             @RequestParam(required = false) TaskStatus status,
             @RequestParam(required = false) UUID assigneeId,
             @RequestParam(defaultValue = "false") boolean archived,
-            @ParameterObject @PageableDefault(sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
-    ) {
+            @ParameterObject @PageableDefault(sort = "createdAt", direction = Sort.Direction.DESC)
+                    Pageable pageable) {
         return new PagedModel<>(
-                taskService.findAll(status, assigneeId, archived, pageable).map(this::response)
-        );
+                taskService.findAll(status, assigneeId, archived, pageable).map(this::response));
     }
 
     @Operation(summary = "Get a task")
     @GetMapping("/{id}")
-    public ResponseEntity<TaskResponseDto> getTask(
-            @PathVariable UUID id
-    ) {
-        return ResponseEntity.ok(
-            response(taskService.findById(id))
-        );
+    public ResponseEntity<TaskResponseDto> getTask(@PathVariable UUID id) {
+        return ResponseEntity.ok(response(taskService.findById(id)));
     }
 
     @Operation(summary = "Update a task")
@@ -96,12 +88,8 @@ public class TaskController {
     @PatchMapping("/{id}")
     @AllowedRolesOrAssignedToOnly(UserRole.ADMIN)
     public ResponseEntity<TaskResponseDto> updateTask(
-            @PathVariable UUID id,
-            @Valid @RequestBody UpdateTaskDto dto
-    ) {
-        return ResponseEntity.ok(
-            response(taskService.update(id, dto))
-        );
+            @PathVariable UUID id, @Valid @RequestBody UpdateTaskDto dto) {
+        return ResponseEntity.ok(response(taskService.update(id, dto)));
     }
 
     @Operation(summary = "Change the status of a task")
@@ -109,14 +97,8 @@ public class TaskController {
     @PatchMapping("/{id}/status")
     @AllowedRolesOrAssignedToOnly(UserRole.ADMIN)
     public ResponseEntity<TaskResponseDto> changeTaskStatus(
-            @PathVariable UUID id,
-            @Valid @RequestBody ChangeTaskStatusDto dto
-    ) {
-        return ResponseEntity.ok(
-            response(
-                taskService.changeStatus(id, dto.status())
-            )
-        );
+            @PathVariable UUID id, @Valid @RequestBody ChangeTaskStatusDto dto) {
+        return ResponseEntity.ok(response(taskService.changeStatus(id, dto.status())));
     }
 
     @Operation(summary = "Assign a task")
@@ -124,38 +106,24 @@ public class TaskController {
     @PatchMapping("/{id}/assign")
     @AdminOnly
     public ResponseEntity<TaskResponseDto> assignTask(
-            @PathVariable UUID id,
-            @Valid @RequestBody AssignTaskDto dto
-    ) {
-        return ResponseEntity.ok(
-            response(
-                taskService.assign(id, dto.userId())
-            )
-        );
+            @PathVariable UUID id, @Valid @RequestBody AssignTaskDto dto) {
+        return ResponseEntity.ok(response(taskService.assign(id, dto.userId())));
     }
 
     @Operation(summary = "Archive a task")
     @DocumentedProblems(ProblemType.VERSION_CONFLICT)
     @PostMapping("/{id}/archive")
     @AdminOnly
-    public ResponseEntity<TaskResponseDto> archiveTask(
-            @PathVariable UUID id
-    ) {
-        return ResponseEntity.ok(
-            response(taskService.archive(id))
-        );
+    public ResponseEntity<TaskResponseDto> archiveTask(@PathVariable UUID id) {
+        return ResponseEntity.ok(response(taskService.archive(id)));
     }
 
     @Operation(summary = "Unarchive a task")
     @DocumentedProblems(ProblemType.VERSION_CONFLICT)
     @PostMapping("/{id}/unarchive")
     @AdminOnly
-    public ResponseEntity<TaskResponseDto> unarchiveTask(
-            @PathVariable UUID id
-    ) {
-        return ResponseEntity.ok(
-            response(taskService.unarchive(id))
-        );
+    public ResponseEntity<TaskResponseDto> unarchiveTask(@PathVariable UUID id) {
+        return ResponseEntity.ok(response(taskService.unarchive(id)));
     }
 
     @Operation(summary = "Cancel a task")
@@ -163,14 +131,8 @@ public class TaskController {
     @PostMapping("/{id}/cancel")
     @AllowedRolesOrAssignedToOnly(UserRole.ADMIN)
     public ResponseEntity<TaskResponseDto> cancelTask(
-            @PathVariable UUID id,
-            @Valid @RequestBody CancelTaskDto dto
-    ) {
-        return ResponseEntity.ok(
-            response(
-                taskService.cancel(id, dto.reason())
-            )
-        );
+            @PathVariable UUID id, @Valid @RequestBody CancelTaskDto dto) {
+        return ResponseEntity.ok(response(taskService.cancel(id, dto.reason())));
     }
 
     @Operation(summary = "Delete a task")
@@ -178,9 +140,7 @@ public class TaskController {
     @DocumentedProblems(ProblemType.VERSION_CONFLICT)
     @DeleteMapping("/{id}")
     @AdminOnly
-    public ResponseEntity<Void> deleteTask(
-            @PathVariable UUID id
-    ) {
+    public ResponseEntity<Void> deleteTask(@PathVariable UUID id) {
         taskService.delete(id);
 
         return ResponseEntity.noContent().build();

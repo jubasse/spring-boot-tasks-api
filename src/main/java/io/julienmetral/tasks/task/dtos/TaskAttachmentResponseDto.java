@@ -4,7 +4,6 @@ import io.julienmetral.tasks.identity.dtos.UserProfileResponseDto;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.services.MediaUrls;
 import io.julienmetral.tasks.task.entities.TaskAttachment;
-
 import java.time.Instant;
 import java.util.UUID;
 
@@ -16,8 +15,7 @@ public record TaskAttachmentResponseDto(
         UserProfileResponseDto uploadedBy,
         UUID commentId,
         Instant createdAt,
-        String downloadUrl
-) {
+        String downloadUrl) {
 
     public TaskAttachmentResponseDto(TaskAttachment attachment, MediaUrls mediaUrls) {
         this(attachment, attachment.getMedia(), mediaUrls);
@@ -32,7 +30,6 @@ public record TaskAttachmentResponseDto(
                 UserProfileResponseDto.of(media.getUploadedBy(), mediaUrls),
                 attachment.getComment() == null ? null : attachment.getComment().getId(),
                 attachment.getCreatedAt(),
-                mediaUrls.of(media)
-        );
+                mediaUrls.of(media));
     }
 }

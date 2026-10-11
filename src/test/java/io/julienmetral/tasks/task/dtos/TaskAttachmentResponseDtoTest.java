@@ -1,5 +1,10 @@
 package io.julienmetral.tasks.task.dtos;
 
+import static io.julienmetral.tasks.support.UserProfiles.active;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.identity.dtos.UserProfileResponseDto;
 import io.julienmetral.tasks.identity.entities.UserProfile;
 import io.julienmetral.tasks.identity.entities.UserStatus;
@@ -7,15 +12,9 @@ import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.services.MediaUrls;
 import io.julienmetral.tasks.task.entities.TaskAttachment;
 import io.julienmetral.tasks.task.entities.TaskComment;
-import org.junit.jupiter.api.Test;
-
 import java.time.Instant;
 import java.util.UUID;
-
-import static io.julienmetral.tasks.support.UserProfiles.active;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import org.junit.jupiter.api.Test;
 
 class TaskAttachmentResponseDtoTest {
 
@@ -57,8 +56,13 @@ class TaskAttachmentResponseDtoTest {
 
         TaskAttachmentResponseDto dto = new TaskAttachmentResponseDto(attachment, mediaUrls);
 
-        assertThat(dto.uploadedBy()).isEqualTo(
-                new UserProfileResponseDto(uploaderId, "Ada", UserStatus.ACTIVE, "/api/v1/identicons/" + uploaderId));
+        assertThat(dto.uploadedBy())
+                .isEqualTo(
+                        new UserProfileResponseDto(
+                                uploaderId,
+                                "Ada",
+                                UserStatus.ACTIVE,
+                                "/api/v1/identicons/" + uploaderId));
     }
 
     @Test

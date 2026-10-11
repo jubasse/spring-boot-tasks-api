@@ -1,5 +1,17 @@
 package io.julienmetral.tasks.export.services;
 
+import static io.julienmetral.tasks.support.UserProfiles.reference;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.AdditionalAnswers.returnsFirstArg;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.export.ExportProperties;
 import io.julienmetral.tasks.export.entities.DataExport;
 import io.julienmetral.tasks.export.entities.DataExportStatus;
@@ -21,6 +33,15 @@ import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.media.services.MediaService;
 import io.julienmetral.tasks.messaging.services.Outbox;
 import io.julienmetral.tasks.task.entities.TaskStatus;
+import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -35,28 +56,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-
-import java.nio.file.Path;
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
-
-import static io.julienmetral.tasks.support.UserProfiles.reference;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.AdditionalAnswers.returnsFirstArg;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class DataExportServiceTest {
@@ -75,51 +74,45 @@ class DataExportServiceTest {
 
     private static final UUID EXPORT_ID = UUID.fromString("00000000-0000-0000-0000-0000000000e1");
 
-    @Mock
-    private DataExportRepository repository;
+    @Mock private DataExportRepository repository;
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
-    @Mock
-    private UserProfileRepository userProfileRepository;
+    @Mock private UserProfileRepository userProfileRepository;
 
-    @Mock
-    private MediaService mediaService;
+    @Mock private MediaService mediaService;
 
-    @Mock
-    private Outbox outbox;
+    @Mock private Outbox outbox;
 
-    @Mock
-    private ApplicationEventPublisher eventPublisher;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     private DataExportService service;
 
     @BeforeEach
     void setUp() {
-        ExportProperties properties = new ExportProperties(
-                "https://app.example/exports",
-                RETENTION,
-                HISTORY_RETENTION,
-                500,
-                LEASE,
-                MAX_ATTEMPTS,
-                false,
-                "0 30 4 * * *",
-                false,
-                Duration.ofMinutes(5),
-                1000
-        );
-        service = new DataExportService(
-                repository,
-                userRepository,
-                userProfileRepository,
-                mediaService,
-                outbox,
-                properties,
-                eventPublisher,
-                Clock.fixed(NOW, ZoneOffset.UTC)
-        );
+        ExportProperties properties =
+                new ExportProperties(
+                        "https://app.example/exports",
+                        RETENTION,
+                        HISTORY_RETENTION,
+                        500,
+                        LEASE,
+                        MAX_ATTEMPTS,
+                        false,
+                        "0 30 4 * * *",
+                        false,
+                        Duration.ofMinutes(5),
+                        1000);
+        service =
+                new DataExportService(
+                        repository,
+                        userRepository,
+                        userProfileRepository,
+                        mediaService,
+                        outbox,
+                        properties,
+                        eventPublisher,
+                        Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     private static DataExport export(DataExportStatus status) {
@@ -141,24 +134,30 @@ class DataExportServiceTest {
     @Nested
     class Request {
 
-        private final TaskExportFilters filters = new TaskExportFilters(TaskStatus.DONE, UUID.randomUUID(), false);
+        private final TaskExportFilters filters =
+                new TaskExportFilters(TaskStatus.DONE, UUID.randomUUID(), false);
 
         @Test
         void locksTheOwnerThenSavesAQueuedExportWithALeaseAndQueuesItsRun() {
             UserProfile owner = reference(OWNER_ID);
             when(userProfileRepository.getReferenceById(OWNER_ID)).thenReturn(owner);
-            when(repository.save(any(DataExport.class))).then(invocation -> {
-                DataExport saved = invocation.getArgument(0);
-                saved.setId(EXPORT_ID);
-                return saved;
-            });
+            when(repository.save(any(DataExport.class)))
+                    .then(
+                            invocation -> {
+                                DataExport saved = invocation.getArgument(0);
+                                saved.setId(EXPORT_ID);
+                                return saved;
+                            });
 
             DataExport export = service.request(OWNER_ID, DataExportType.TASKS_CSV, filters);
 
             InOrder order = inOrder(userRepository, repository, outbox);
             order.verify(userRepository).findByIdForUpdate(OWNER_ID);
-            order.verify(repository).existsByOwnerIdAndTypeAndStatusIn(
-                    OWNER_ID, DataExportType.TASKS_CSV, Set.of(DataExportStatus.QUEUED, DataExportStatus.RUNNING));
+            order.verify(repository)
+                    .existsByOwnerIdAndTypeAndStatusIn(
+                            OWNER_ID,
+                            DataExportType.TASKS_CSV,
+                            Set.of(DataExportStatus.QUEUED, DataExportStatus.RUNNING));
             order.verify(repository).save(export);
             order.verify(outbox).enqueue(ExportQueues.RUN, new DataExportRequested(EXPORT_ID));
 
@@ -174,11 +173,13 @@ class DataExportServiceTest {
 
         @Test
         void exportOfTheSameTypeQueuedOrRunningIsAConflictAndNothingIsQueued() {
-            when(repository.existsByOwnerIdAndTypeAndStatusIn(any(), any(), any())).thenReturn(true);
+            when(repository.existsByOwnerIdAndTypeAndStatusIn(any(), any(), any()))
+                    .thenReturn(true);
 
             assertThatThrownBy(() -> service.request(OWNER_ID, DataExportType.USERS_CSV, null))
                     .isInstanceOf(DataExportInProgressException.class)
-                    .hasMessage("An export of the same kind is already queued or running: wait for it to finish");
+                    .hasMessage(
+                            "An export of the same kind is already queued or running: wait for it to finish");
 
             verify(userRepository).findByIdForUpdate(OWNER_ID);
             verify(repository, never()).save(any());
@@ -191,8 +192,9 @@ class DataExportServiceTest {
 
             service.request(OWNER_ID, DataExportType.USERS_CSV, null);
 
-            verify(repository).existsByOwnerIdAndTypeAndStatusIn(
-                    OWNER_ID, DataExportType.USERS_CSV, DataExportStatus.ACTIVE);
+            verify(repository)
+                    .existsByOwnerIdAndTypeAndStatusIn(
+                            OWNER_ID, DataExportType.USERS_CSV, DataExportStatus.ACTIVE);
         }
     }
 
@@ -202,7 +204,8 @@ class DataExportServiceTest {
         @Test
         void getOwnReturnsTheExportOfItsOwner() {
             DataExport export = export(DataExportStatus.QUEUED);
-            when(repository.findByIdAndOwnerId(EXPORT_ID, OWNER_ID)).thenReturn(Optional.of(export));
+            when(repository.findByIdAndOwnerId(EXPORT_ID, OWNER_ID))
+                    .thenReturn(Optional.of(export));
 
             assertThat(service.getOwn(OWNER_ID, EXPORT_ID)).isSameAs(export);
         }
@@ -232,7 +235,8 @@ class DataExportServiceTest {
             DataExport export = export(DataExportStatus.COMPLETED);
             Media media = media();
             export.setMedia(media);
-            when(repository.findByIdAndOwnerId(EXPORT_ID, OWNER_ID)).thenReturn(Optional.of(export));
+            when(repository.findByIdAndOwnerId(EXPORT_ID, OWNER_ID))
+                    .thenReturn(Optional.of(export));
 
             service.deleteOwn(OWNER_ID, EXPORT_ID);
 
@@ -242,10 +246,13 @@ class DataExportServiceTest {
         }
 
         @ParameterizedTest
-        @EnumSource(value = DataExportStatus.class, names = {"FAILED", "EXPIRED"})
+        @EnumSource(
+                value = DataExportStatus.class,
+                names = {"FAILED", "EXPIRED"})
         void deletingAnExportWithoutFileDeletesOnlyTheExport(DataExportStatus status) {
             DataExport export = export(status);
-            when(repository.findByIdAndOwnerId(EXPORT_ID, OWNER_ID)).thenReturn(Optional.of(export));
+            when(repository.findByIdAndOwnerId(EXPORT_ID, OWNER_ID))
+                    .thenReturn(Optional.of(export));
 
             service.deleteOwn(OWNER_ID, EXPORT_ID);
 
@@ -254,9 +261,12 @@ class DataExportServiceTest {
         }
 
         @ParameterizedTest
-        @EnumSource(value = DataExportStatus.class, names = {"QUEUED", "RUNNING"})
+        @EnumSource(
+                value = DataExportStatus.class,
+                names = {"QUEUED", "RUNNING"})
         void exportQueuedOrRunningCannotBeDeleted(DataExportStatus status) {
-            when(repository.findByIdAndOwnerId(EXPORT_ID, OWNER_ID)).thenReturn(Optional.of(export(status)));
+            when(repository.findByIdAndOwnerId(EXPORT_ID, OWNER_ID))
+                    .thenReturn(Optional.of(export(status)));
 
             assertThatThrownBy(() -> service.deleteOwn(OWNER_ID, EXPORT_ID))
                     .isInstanceOf(DataExportInProgressException.class);
@@ -281,7 +291,12 @@ class DataExportServiceTest {
         @Test
         void claimedExportIsReadAgainAndReturned() {
             DataExport running = export(DataExportStatus.RUNNING);
-            when(repository.claim(EXPORT_ID, NOW, NOW.plus(LEASE), DataExportStatus.QUEUED, DataExportStatus.RUNNING))
+            when(repository.claim(
+                            EXPORT_ID,
+                            NOW,
+                            NOW.plus(LEASE),
+                            DataExportStatus.QUEUED,
+                            DataExportStatus.RUNNING))
                     .thenReturn(1);
             when(repository.findById(EXPORT_ID)).thenReturn(Optional.of(running));
 
@@ -290,7 +305,12 @@ class DataExportServiceTest {
 
         @Test
         void exportNotWaitingToRunIsNotClaimed() {
-            when(repository.claim(EXPORT_ID, NOW, NOW.plus(LEASE), DataExportStatus.QUEUED, DataExportStatus.RUNNING))
+            when(repository.claim(
+                            EXPORT_ID,
+                            NOW,
+                            NOW.plus(LEASE),
+                            DataExportStatus.QUEUED,
+                            DataExportStatus.RUNNING))
                     .thenReturn(0);
 
             assertThat(service.claim(EXPORT_ID)).isEmpty();
@@ -309,7 +329,8 @@ class DataExportServiceTest {
             export.setLeaseUntil(NOW.plus(LEASE));
             Media media = media();
             when(repository.findById(EXPORT_ID)).thenReturn(Optional.of(export));
-            when(mediaService.storeGenerated(file, "tasks-2030-01-01.csv", "text/csv", MediaUsage.EXPORT, OWNER_ID))
+            when(mediaService.storeGenerated(
+                            file, "tasks-2030-01-01.csv", "text/csv", MediaUsage.EXPORT, OWNER_ID))
                     .thenReturn(media);
 
             service.complete(EXPORT_ID, file, "tasks-2030-01-01.csv", "text/csv", 42L);
@@ -320,8 +341,13 @@ class DataExportServiceTest {
             assertThat(export.getCompletedAt()).isEqualTo(NOW);
             assertThat(export.getExpiresAt()).isEqualTo(NOW.plus(RETENTION));
             assertThat(export.getLeaseUntil()).isNull();
-            verify(eventPublisher).publishEvent(
-                    new DataExportCompleted(EXPORT_ID, OWNER_ID, DataExportType.TASKS_CSV, NOW.plus(RETENTION)));
+            verify(eventPublisher)
+                    .publishEvent(
+                            new DataExportCompleted(
+                                    EXPORT_ID,
+                                    OWNER_ID,
+                                    DataExportType.TASKS_CSV,
+                                    NOW.plus(RETENTION)));
         }
 
         @Test
@@ -329,15 +355,25 @@ class DataExportServiceTest {
             DataExport export = export(DataExportStatus.RUNNING);
             export.setType(DataExportType.PERSONAL_DATA);
             when(repository.findById(EXPORT_ID)).thenReturn(Optional.of(export));
-            when(mediaService.storeGenerated(file, "my-data-2030-01-01.zip", "application/zip", MediaUsage.EXPORT,
-                    OWNER_ID)).thenReturn(media());
+            when(mediaService.storeGenerated(
+                            file,
+                            "my-data-2030-01-01.zip",
+                            "application/zip",
+                            MediaUsage.EXPORT,
+                            OWNER_ID))
+                    .thenReturn(media());
 
             service.complete(EXPORT_ID, file, "my-data-2030-01-01.zip", "application/zip", null);
 
             assertThat(export.getStatus()).isEqualTo(DataExportStatus.COMPLETED);
             assertThat(export.getRowCount()).isNull();
-            verify(eventPublisher).publishEvent(
-                    new DataExportCompleted(EXPORT_ID, OWNER_ID, DataExportType.PERSONAL_DATA, NOW.plus(RETENTION)));
+            verify(eventPublisher)
+                    .publishEvent(
+                            new DataExportCompleted(
+                                    EXPORT_ID,
+                                    OWNER_ID,
+                                    DataExportType.PERSONAL_DATA,
+                                    NOW.plus(RETENTION)));
         }
 
         @Test
@@ -351,12 +387,15 @@ class DataExportServiceTest {
         @Test
         void fileThatCannotBeStoredLeavesTheExportRunningAndTellsNobody() {
             DataExport export = export(DataExportStatus.RUNNING);
-            StorageUnavailableException failure = new StorageUnavailableException(new RuntimeException("down"));
+            StorageUnavailableException failure =
+                    new StorageUnavailableException(new RuntimeException("down"));
             when(repository.findById(EXPORT_ID)).thenReturn(Optional.of(export));
-            when(mediaService.storeGenerated(any(Path.class), anyString(), anyString(), any(), any()))
+            when(mediaService.storeGenerated(
+                            any(Path.class), anyString(), anyString(), any(), any()))
                     .thenThrow(failure);
 
-            assertThatThrownBy(() -> service.complete(EXPORT_ID, file, "tasks.csv", "text/csv", 1L)).isSameAs(failure);
+            assertThatThrownBy(() -> service.complete(EXPORT_ID, file, "tasks.csv", "text/csv", 1L))
+                    .isSameAs(failure);
 
             assertThat(export.getStatus()).isEqualTo(DataExportStatus.RUNNING);
             assertThat(export.getMedia()).isNull();
@@ -378,7 +417,9 @@ class DataExportServiceTest {
             assertThat(export.getStatus()).isEqualTo(DataExportStatus.FAILED);
             assertThat(export.getFailure()).isEqualTo("StorageUnavailableException");
             assertThat(export.getLeaseUntil()).isNull();
-            verify(eventPublisher).publishEvent(new DataExportFailed(EXPORT_ID, OWNER_ID, DataExportType.TASKS_CSV));
+            verify(eventPublisher)
+                    .publishEvent(
+                            new DataExportFailed(EXPORT_ID, OWNER_ID, DataExportType.TASKS_CSV));
         }
 
         @Test
@@ -392,7 +433,10 @@ class DataExportServiceTest {
         }
 
         @ParameterizedTest
-        @EnumSource(value = DataExportStatus.class, names = "RUNNING", mode = EnumSource.Mode.EXCLUDE)
+        @EnumSource(
+                value = DataExportStatus.class,
+                names = "RUNNING",
+                mode = EnumSource.Mode.EXCLUDE)
         void exportThatIsNotRunningIsLeftAsItIs(DataExportStatus status) {
             DataExport export = export(status);
             when(repository.findById(EXPORT_ID)).thenReturn(Optional.of(export));
@@ -482,8 +526,10 @@ class DataExportServiceTest {
             assertThat(exhausted.getFailure()).isEqualTo("Interrupted");
             assertThat(exhausted.getLeaseUntil()).isNull();
             verifyNoInteractions(outbox);
-            verify(eventPublisher).publishEvent(
-                    new DataExportFailed(exhausted.getId(), OWNER_ID, DataExportType.TASKS_CSV));
+            verify(eventPublisher)
+                    .publishEvent(
+                            new DataExportFailed(
+                                    exhausted.getId(), OWNER_ID, DataExportType.TASKS_CSV));
         }
 
         @Test
@@ -536,16 +582,20 @@ class DataExportServiceTest {
 
             InOrder order = inOrder(mediaService, repository);
             order.verify(mediaService).delete(media);
-            order.verify(repository).deleteByStatusInAndCreatedAtBefore(
-                    Set.of(DataExportStatus.EXPIRED, DataExportStatus.FAILED), NOW.minus(HISTORY_RETENTION));
+            order.verify(repository)
+                    .deleteByStatusInAndCreatedAtBefore(
+                            Set.of(DataExportStatus.EXPIRED, DataExportStatus.FAILED),
+                            NOW.minus(HISTORY_RETENTION));
         }
 
         @Test
         void withoutExpiredFileTheOldHistoryIsStillDeleted() {
             assertThat(service.purge()).isZero();
 
-            verify(repository).deleteByStatusInAndCreatedAtBefore(
-                    Set.of(DataExportStatus.EXPIRED, DataExportStatus.FAILED), NOW.minus(HISTORY_RETENTION));
+            verify(repository)
+                    .deleteByStatusInAndCreatedAtBefore(
+                            Set.of(DataExportStatus.EXPIRED, DataExportStatus.FAILED),
+                            NOW.minus(HISTORY_RETENTION));
             verifyNoInteractions(mediaService);
         }
     }

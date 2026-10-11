@@ -1,5 +1,9 @@
 package io.julienmetral.tasks;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
+import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
+
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.messaging.AvatarQueues;
@@ -13,6 +17,18 @@ import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.media.services.MediaService;
 import io.julienmetral.tasks.messaging.entities.OutboxMessage;
 import io.julienmetral.tasks.messaging.repositories.OutboxMessageRepository;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.OptionalDouble;
+import java.util.UUID;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -37,27 +53,11 @@ import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.OptionalDouble;
-import java.util.UUID;
-import java.util.function.Consumer;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.awaitility.Awaitility.await;
-import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
-
 /**
- * Actuator over real HTTP, on the management port Spring Boot starts next to the API port. Only a real server has
- * two ports: MockMvc would reach the endpoints whatever the port. {@code @AutoConfigureMetrics} is needed because
- * Spring Boot tests keep only an in-memory meter registry, without it {@code /actuator/prometheus} does not exist.
+ * Actuator over real HTTP, on the management port Spring Boot starts next to the API port. Only a
+ * real server has two ports: MockMvc would reach the endpoints whatever the port.
+ * {@code @AutoConfigureMetrics} is needed because Spring Boot tests keep only an in-memory meter
+ * registry, without it {@code /actuator/prometheus} does not exist.
  */
 @Import(TestcontainersConfiguration.class)
 @AutoConfigureMetrics
@@ -66,42 +66,29 @@ class MonitoringTests {
 
     private static final Duration SCRAPE_TIMEOUT = Duration.ofSeconds(10);
 
+    @LocalServerPort private int apiPort;
 
-    @LocalServerPort
-    private int apiPort;
+    @LocalManagementPort private int managementPort;
 
-    @LocalManagementPort
-    private int managementPort;
+    @Autowired private JsonMapper jsonMapper;
 
-    @Autowired
-    private JsonMapper jsonMapper;
+    @Autowired private HealthEndpointGroups healthGroups;
 
-    @Autowired
-    private HealthEndpointGroups healthGroups;
+    @Autowired private MailService mailService;
 
-    @Autowired
-    private MailService mailService;
+    @Autowired private RabbitTemplate rabbitTemplate;
 
-    @Autowired
-    private RabbitTemplate rabbitTemplate;
+    @Autowired private AmqpAdmin amqpAdmin;
 
-    @Autowired
-    private AmqpAdmin amqpAdmin;
+    @Autowired private OutboxMessageRepository outboxRepository;
 
-    @Autowired
-    private OutboxMessageRepository outboxRepository;
+    @Autowired private UserStatusLookup userStatusLookup;
 
-    @Autowired
-    private UserStatusLookup userStatusLookup;
+    @Autowired private MediaService mediaService;
 
-    @Autowired
-    private MediaService mediaService;
+    @Autowired private UserRepository userRepository;
 
-    @Autowired
-    private UserRepository userRepository;
-
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    @Autowired private PasswordEncoder passwordEncoder;
 
     private final List<UUID> insertedOutboxRows = new ArrayList<>();
 
@@ -157,8 +144,14 @@ class MonitoringTests {
         JsonNode sbom = managementJson("/actuator/sbom/application");
 
         assertThat(sbom.path("bomFormat").asString()).isEqualTo("CycloneDX");
-        assertThat(sbom.path("components").valueStream()
-                .map(component -> component.path("name").asString() + ":" + component.path("version").asString()))
+        assertThat(
+                        sbom.path("components")
+                                .valueStream()
+                                .map(
+                                        component ->
+                                                component.path("name").asString()
+                                                        + ":"
+                                                        + component.path("version").asString()))
                 .anyMatch(component -> component.startsWith("tomcat-embed-core:11."));
     }
 
@@ -176,7 +169,8 @@ class MonitoringTests {
         JsonNode metric = managementJson("/actuator/metrics/outbox.messages.pending");
 
         assertThat(metric.path("name").asString()).isEqualTo("outbox.messages.pending");
-        assertThat(metric.path("measurements").path(0).path("statistic").asString()).isEqualTo("VALUE");
+        assertThat(metric.path("measurements").path(0).path("statistic").asString())
+                .isEqualTo("VALUE");
     }
 
     @Test
@@ -193,8 +187,10 @@ class MonitoringTests {
     void deadLetterQueueGaugesAreMessageCountsWhileTheBrokerAnswers() {
         String scrape = scrape();
 
-        assertThat(sample(scrape, deadLetterSeries(MailQueues.DEAD_LETTER)).orElseThrow()).isNotNaN();
-        assertThat(sample(scrape, deadLetterSeries(AvatarQueues.DEAD_LETTER)).orElseThrow()).isNotNaN();
+        assertThat(sample(scrape, deadLetterSeries(MailQueues.DEAD_LETTER)).orElseThrow())
+                .isNotNaN();
+        assertThat(sample(scrape, deadLetterSeries(AvatarQueues.DEAD_LETTER)).orElseThrow())
+                .isNotNaN();
     }
 
     @Test
@@ -202,24 +198,38 @@ class MonitoringTests {
         double before = sample(scrape(), deadLetterSeries(MailQueues.DEAD_LETTER)).orElseThrow();
         deadLetterQueueUsed = true;
 
-        rabbitTemplate.send("", MailQueues.DEAD_LETTER, new Message("{}".getBytes(StandardCharsets.UTF_8)));
+        rabbitTemplate.send(
+                "", MailQueues.DEAD_LETTER, new Message("{}".getBytes(StandardCharsets.UTF_8)));
 
         // RabbitMQ updates the queue's message count asynchronously
-        await().atMost(SCRAPE_TIMEOUT).pollInterval(Duration.ofMillis(100)).untilAsserted(() ->
-                assertThat(sample(scrape(), deadLetterSeries(MailQueues.DEAD_LETTER)).orElseThrow())
-                        .isEqualTo(before + 1));
+        await().atMost(SCRAPE_TIMEOUT)
+                .pollInterval(Duration.ofMillis(100))
+                .untilAsserted(
+                        () ->
+                                assertThat(
+                                                sample(
+                                                                scrape(),
+                                                                deadLetterSeries(
+                                                                        MailQueues.DEAD_LETTER))
+                                                        .orElseThrow())
+                                        .isEqualTo(before + 1));
     }
 
     @Test
     void sentEmailIsCountedAsPublishedToTheMailQueue() {
-        String publishedToMail = "outbox_messages_published_total{queue=\"" + MailQueues.SEND + "\"}";
+        String publishedToMail =
+                "outbox_messages_published_total{queue=\"" + MailQueues.SEND + "\"}";
         double before = sample(scrape(), publishedToMail).orElse(0);
 
         mailService.send(new MailMessage(uniqueEmail(), "Monitoring", "Counted once published"));
 
         // The relay publishes on an async thread after commit
-        await().atMost(SCRAPE_TIMEOUT).pollInterval(Duration.ofMillis(100)).untilAsserted(() ->
-                assertThat(sample(scrape(), publishedToMail).orElse(0)).isGreaterThanOrEqualTo(before + 1));
+        await().atMost(SCRAPE_TIMEOUT)
+                .pollInterval(Duration.ofMillis(100))
+                .untilAsserted(
+                        () ->
+                                assertThat(sample(scrape(), publishedToMail).orElse(0))
+                                        .isGreaterThanOrEqualTo(before + 1));
     }
 
     @Test
@@ -228,7 +238,8 @@ class MonitoringTests {
 
         String scrape = scrape();
 
-        assertThat(sample(scrape, "outbox_messages_pending").orElseThrow()).isGreaterThanOrEqualTo(1);
+        assertThat(sample(scrape, "outbox_messages_pending").orElseThrow())
+                .isGreaterThanOrEqualTo(1);
         assertThat(sample(scrape, "outbox_messages_oldest_pending_age_seconds").orElseThrow())
                 .isGreaterThanOrEqualTo(Duration.ofHours(1).toSeconds());
     }
@@ -261,18 +272,25 @@ class MonitoringTests {
 
     @Test
     void managementPortServesHealthWithoutAuthentication() {
-        assertThat(get(managementPort, "/actuator/health").getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(get(managementPort, "/actuator/health").getStatusCode())
+                .isEqualTo(HttpStatus.OK);
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {
-            "/actuator/health", "/actuator/info", "/actuator/prometheus", "/actuator/metrics", "/actuator/sbom/application"
-    })
+    @ValueSource(
+            strings = {
+                "/actuator/health",
+                "/actuator/info",
+                "/actuator/prometheus",
+                "/actuator/metrics",
+                "/actuator/sbom/application"
+            })
     void apiPortDoesNotServeTheActuatorEndpoints(String path) {
         ResponseEntity<String> response = get(apiPort, path);
 
         assertThat(response.getStatusCode().value()).isIn(401, 404);
-        assertThat(Objects.toString(response.getBody(), "")).doesNotContain("UP", "outbox_messages_pending");
+        assertThat(Objects.toString(response.getBody(), ""))
+                .doesNotContain("UP", "outbox_messages_pending");
     }
 
     @ParameterizedTest
@@ -290,41 +308,59 @@ class MonitoringTests {
     @ParameterizedTest
     @ValueSource(strings = {"/livez", "/readyz"})
     void probeOnTheApiPortIgnoresAnInvalidBearerToken(String path) {
-        ResponseEntity<String> response = exchange(HttpMethod.GET, apiPort, path,
-                headers -> headers.setBearerAuth("not-a-valid-token"));
+        ResponseEntity<String> response =
+                exchange(
+                        HttpMethod.GET,
+                        apiPort,
+                        path,
+                        headers -> headers.setBearerAuth("not-a-valid-token"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
     }
 
     @Test
     void probesOnTheApiPortCheckTheSameComponentsAsTheManagementPortProbes() {
-        List<String> components = List.of("db", "rabbit", "mail", "diskSpace", "storage", "antivirus",
-                "livenessState", "readinessState", "ping", "ssl");
+        List<String> components =
+                List.of(
+                        "db",
+                        "rabbit",
+                        "mail",
+                        "diskSpace",
+                        "storage",
+                        "antivirus",
+                        "livenessState",
+                        "readinessState",
+                        "ping",
+                        "ssl");
 
-        assertThat(components).allSatisfy(component -> {
-            assertThat(healthGroups.get("livez").isMember(component))
-                    .isEqualTo(healthGroups.get("liveness").isMember(component));
-            assertThat(healthGroups.get("readyz").isMember(component))
-                    .isEqualTo(healthGroups.get("readiness").isMember(component));
-        });
+        assertThat(components)
+                .allSatisfy(
+                        component -> {
+                            assertThat(healthGroups.get("livez").isMember(component))
+                                    .isEqualTo(healthGroups.get("liveness").isMember(component));
+                            assertThat(healthGroups.get("readyz").isMember(component))
+                                    .isEqualTo(healthGroups.get("readiness").isMember(component));
+                        });
     }
 
     @Test
     void postToAProbeOnTheApiPortIsUnauthorized() {
-        ResponseEntity<String> response = exchange(HttpMethod.POST, apiPort, "/livez", headers -> {
-        });
+        ResponseEntity<String> response =
+                exchange(HttpMethod.POST, apiPort, "/livez", headers -> {});
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 
     @Test
     void unknownPathOnTheManagementPortIsNotFound() {
-        assertThat(get(managementPort, "/actuator/unknown").getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(get(managementPort, "/actuator/unknown").getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     @Test
     void prometheusScrapeAskedAsJsonIsNotAcceptable() {
-        ResponseEntity<String> response = get(managementPort, "/actuator/prometheus", MediaType.APPLICATION_JSON);
+        ResponseEntity<String> response =
+                get(managementPort, "/actuator/prometheus", MediaType.APPLICATION_JSON);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_ACCEPTABLE);
     }
@@ -337,7 +373,12 @@ class MonitoringTests {
     }
 
     private double cacheGets(String cache, String result) {
-        JsonNode metric = managementJson("/actuator/metrics/cache.gets?tag=cache:" + cache + "&tag=result:" + result);
+        JsonNode metric =
+                managementJson(
+                        "/actuator/metrics/cache.gets?tag=cache:"
+                                + cache
+                                + "&tag=result:"
+                                + result);
 
         return metric.path("measurements").path(0).path("value").asDouble();
     }
@@ -368,7 +409,8 @@ class MonitoringTests {
     }
 
     private String scrape() {
-        ResponseEntity<String> response = get(managementPort, "/actuator/prometheus", MediaType.TEXT_PLAIN);
+        ResponseEntity<String> response =
+                get(managementPort, "/actuator/prometheus", MediaType.TEXT_PLAIN);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         return response.getBody();
@@ -383,15 +425,13 @@ class MonitoringTests {
     }
 
     private static ResponseEntity<String> exchange(
-            HttpMethod method, int port, String path, Consumer<HttpHeaders> headers
-    ) {
+            HttpMethod method, int port, String path, Consumer<HttpHeaders> headers) {
         return RestClient.create("http://localhost:" + port)
                 .method(method)
                 .uri(path)
                 .headers(headers)
                 .retrieve()
-                .onStatus(status -> true, (request, response) -> {
-                })
+                .onStatus(status -> true, (request, response) -> {})
                 .toEntity(String.class);
     }
 
@@ -399,7 +439,10 @@ class MonitoringTests {
     private static OptionalDouble sample(String scrape, String series) {
         return scrape.lines()
                 .filter(line -> line.startsWith(series + " "))
-                .mapToDouble(line -> Double.parseDouble(line.substring(series.length() + 1).split(" ")[0]))
+                .mapToDouble(
+                        line ->
+                                Double.parseDouble(
+                                        line.substring(series.length() + 1).split(" ")[0]))
                 .findFirst();
     }
 
@@ -407,14 +450,21 @@ class MonitoringTests {
         return "rabbitmq_dead_letter_messages{queue=\"" + queue + "\"}";
     }
 
-    // The queue matches no binding and the next attempt is a day away, so neither the relay nor the broker ever
-    // publishes this row
+    // The queue matches no binding and the next attempt is a day away, so neither the relay nor the
+    // broker ever publishes this row
     private void insertUnpublishedOutboxRow(Instant createdAt) {
         OutboxMessage row = new OutboxMessage();
 
         row.setQueue("monitoring-tests." + UUID.randomUUID());
         row.setType(MailMessage.class.getName());
-        row.setPayload(Map.of("to", uniqueEmail(), "subject", "Never published", "text", "Inserted by the test"));
+        row.setPayload(
+                Map.of(
+                        "to",
+                        uniqueEmail(),
+                        "subject",
+                        "Never published",
+                        "text",
+                        "Inserted by the test"));
         row.setCreatedAt(createdAt.truncatedTo(ChronoUnit.MICROS));
         row.setNextAttemptAt(Instant.now().plus(Duration.ofDays(1)).truncatedTo(ChronoUnit.MICROS));
 

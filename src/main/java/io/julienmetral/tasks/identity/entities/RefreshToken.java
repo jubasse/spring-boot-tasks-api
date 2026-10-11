@@ -10,33 +10,29 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.time.Instant;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
 
-import java.time.Instant;
-import java.util.UUID;
-
 /**
- * An opaque refresh token, stored as a SHA-256 hash. Every refresh rotates the token: the used one is revoked and a
- * new one is issued in the same family. Replaying a revoked token revokes the whole family.
+ * An opaque refresh token, stored as a SHA-256 hash. Every refresh rotates the token: the used one
+ * is revoked and a new one is issued in the same family. Replaying a revoked token revokes the
+ * whole family.
  */
 @Entity
 @Table(
         name = "refresh_tokens",
         uniqueConstraints = {
-                @UniqueConstraint(
-                        name = "refresh_tokens_token_hashUQ",
-                        columnNames = "token_hash"
-                )
+            @UniqueConstraint(name = "refresh_tokens_token_hashUQ", columnNames = "token_hash")
         },
         indexes = {
-                @Index(name = "refresh_tokens_user_idIDX", columnList = "user_id"),
-                @Index(name = "refresh_tokens_family_idIDX", columnList = "family_id")
-        }
-)
+            @Index(name = "refresh_tokens_user_idIDX", columnList = "user_id"),
+            @Index(name = "refresh_tokens_family_idIDX", columnList = "family_id")
+        })
 @Getter
 @Setter
 @NoArgsConstructor
@@ -53,8 +49,7 @@ public class RefreshToken {
             name = "user_id",
             nullable = false,
             updatable = false,
-            foreignKey = @ForeignKey(name = "refresh_tokens_userFK")
-    )
+            foreignKey = @ForeignKey(name = "refresh_tokens_userFK"))
     private UserProfile user;
 
     @Column(name = "token_hash", nullable = false, updatable = false, length = 64)

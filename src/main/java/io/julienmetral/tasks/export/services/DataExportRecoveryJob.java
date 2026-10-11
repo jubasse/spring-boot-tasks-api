@@ -8,7 +8,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProp
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-/** Resumes the exports of an instance that stopped while running them, and those whose run message was lost. */
+/**
+ * Resumes the exports of an instance that stopped while running them, and those whose run message
+ * was lost.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -18,7 +21,10 @@ public class DataExportRecoveryJob {
     private final DataExportService exportService;
 
     @Scheduled(fixedDelayString = "${exports.recovery-interval}")
-    @SchedulerLock(name = ScheduledJobLocks.DATA_EXPORT_RECOVERY, lockAtMostFor = "PT4M", lockAtLeastFor = "PT30S")
+    @SchedulerLock(
+            name = ScheduledJobLocks.DATA_EXPORT_RECOVERY,
+            lockAtMostFor = "PT4M",
+            lockAtLeastFor = "PT30S")
     public void requeueInterrupted() {
         int requeued = exportService.requeueInterrupted();
 

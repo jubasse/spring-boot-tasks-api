@@ -16,36 +16,33 @@ import jakarta.persistence.MapsId;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.io.Serializable;
+import java.time.Instant;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.DynamicUpdate;
 
-import java.io.Serializable;
-import java.time.Instant;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.UUID;
-
 /**
  * The account: credentials, roles, verification and activity. What others see of the user lives in
  * {@link UserProfile}, which shares this entity's id and outlives it.
  */
-// Updates write only the changed columns. Otherwise every update rewrites the whole row from the loaded state, and
-// the profile photo worker re-enabled an account that an admin disabled while the photo was being processed.
+// Updates write only the changed columns. Otherwise every update rewrites the whole row from the
+// loaded state, and the profile photo worker re-enabled an account that an admin disabled while the
+// photo was being processed.
 @Entity
 @DynamicUpdate
 @Table(
         name = "users",
         uniqueConstraints = {
-                // Covers soft-deleted rows too: the email of a deleted user stays taken (see UserRepository)
-                @UniqueConstraint(
-                        name = "users_emailUQ",
-                        columnNames = "email"
-                )
-        }
-)
+            // Covers soft-deleted rows too: the email of a deleted user stays taken (see
+            // UserRepository)
+            @UniqueConstraint(name = "users_emailUQ", columnNames = "email")
+        })
 @Getter
 @Setter
 @NoArgsConstructor
@@ -55,8 +52,9 @@ public class User extends AuditableEntity implements Serializable {
     @Column(name = "id", nullable = false, updatable = false)
     private UUID id;
 
-    // Warning: the foreign key goes from users to user_profiles, never the other way, so deleting the account leaves
-    // the profile that tasks and history point to. @MapsId gives the user the id of its profile.
+    // Warning: the foreign key goes from users to user_profiles, never the other way, so deleting
+    // the account leaves the profile that tasks and history point to. @MapsId gives the user the id
+    // of its profile.
     @OneToOne(fetch = FetchType.LAZY, optional = false, cascade = CascadeType.PERSIST)
     @MapsId
     @JoinColumn(name = "id", foreignKey = @ForeignKey(name = "users_profileFK"))
@@ -91,8 +89,7 @@ public class User extends AuditableEntity implements Serializable {
     @CollectionTable(
             name = "user_roles",
             joinColumns = @JoinColumn(name = "user_id"),
-            foreignKey = @ForeignKey(name = "user_roles_userFK")
-    )
+            foreignKey = @ForeignKey(name = "user_roles_userFK"))
     @Column(name = "role", nullable = false, length = 50)
     @Enumerated(EnumType.STRING)
     private Set<UserRole> roles = new HashSet<>();
@@ -115,7 +112,10 @@ public class User extends AuditableEntity implements Serializable {
         syncProfileStatus();
     }
 
-    /** To call before a soft delete: Hibernate sets {@code deleted_at} without going through the entity. */
+    /**
+     * To call before a soft delete: Hibernate sets {@code deleted_at} without going through the
+     * entity.
+     */
     public void markDeleted() {
         profile.setStatus(UserStatus.DELETED);
     }
@@ -126,7 +126,8 @@ public class User extends AuditableEntity implements Serializable {
         inactivityWarnedAt = null;
     }
 
-    // The profile's status is the copy others see; every transition of the account goes through here
+    // The profile's status is the copy others see; every transition of the account goes through
+    // here
     private void syncProfileStatus() {
         profile.setStatus(UserStatus.of(this));
     }

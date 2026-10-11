@@ -1,13 +1,13 @@
 package io.julienmetral.tasks.task.services;
 
 import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.identity.entities.UserProfile;
+import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
-import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.identity.services.ProfilesForDisplay;
 import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
+import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
+import io.julienmetral.tasks.identity.services.ProfilesForDisplay;
 import io.julienmetral.tasks.task.dtos.CreateTaskDto;
 import io.julienmetral.tasks.task.dtos.UpdateTaskDto;
 import io.julienmetral.tasks.task.entities.Task;
@@ -21,6 +21,10 @@ import io.julienmetral.tasks.task.exceptions.AssigneeNotActiveException;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskReferenceAlreadyExistsException;
 import io.julienmetral.tasks.task.repositories.TaskRepository;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.Objects;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
@@ -28,11 +32,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.Clock;
-import java.time.Instant;
-import java.util.Objects;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -58,14 +57,11 @@ public class TaskService {
         task.setReference(dto.reference());
         task.setTitle(dto.title());
         task.setDescription(dto.description());
-        task.setPriority(
-            dto.priority() != null
-                ? dto.priority()
-                : TaskPriority.MEDIUM
-        );
+        task.setPriority(dto.priority() != null ? dto.priority() : TaskPriority.MEDIUM);
         task.setDueAt(dto.dueAt());
 
-        currentUser.getId()
+        currentUser
+                .getId()
                 .filter(userRepository::existsById)
                 .map(userProfileRepository::getReferenceById)
                 .ifPresent(task::setCreatedBy);
@@ -79,52 +75,54 @@ public class TaskService {
         taskEventService.created(savedTask);
 
         if (savedTask.currentAssigneeId() != null) {
-            eventPublisher.publishEvent(new TaskAssigned(
-                    savedTask.getId(), savedTask.getReference(), savedTask.getTitle(),
-                    savedTask.currentAssigneeId(), actorId()
-            ));
+            eventPublisher.publishEvent(
+                    new TaskAssigned(
+                            savedTask.getId(),
+                            savedTask.getReference(),
+                            savedTask.getTitle(),
+                            savedTask.currentAssigneeId(),
+                            actorId()));
         }
 
         return withUsersLoaded(savedTask);
     }
 
     /**
-     * @param status     only tasks in this status, or all statuses when null
+     * @param status only tasks in this status, or all statuses when null
      * @param assigneeId only tasks assigned to this user, or all tasks when null
-     * @param archived   archived tasks when true, active ones otherwise
+     * @param archived archived tasks when true, active ones otherwise
      */
     @Transactional(readOnly = true)
     public Page<Task> findAll(
-            TaskStatus status,
-            UUID assigneeId,
-            boolean archived,
-            Pageable pageable
-    ) {
-        Specification<Task> specification = (root, query, builder) -> builder.and(
-                archived
-                        ? builder.isNotNull(root.get("archivedAt"))
-                        : builder.isNull(root.get("archivedAt")),
-                status == null
-                        ? builder.conjunction()
-                        : builder.equal(root.get("status"), status),
-                assigneeId == null
-                        ? builder.conjunction()
-                        : builder.equal(root.get("assignedTo").get("id"), assigneeId)
-        );
+            TaskStatus status, UUID assigneeId, boolean archived, Pageable pageable) {
+        Specification<Task> specification =
+                (root, query, builder) ->
+                        builder.and(
+                                archived
+                                        ? builder.isNotNull(root.get("archivedAt"))
+                                        : builder.isNull(root.get("archivedAt")),
+                                status == null
+                                        ? builder.conjunction()
+                                        : builder.equal(root.get("status"), status),
+                                assigneeId == null
+                                        ? builder.conjunction()
+                                        : builder.equal(
+                                                root.get("assignedTo").get("id"), assigneeId));
 
         return taskRepository.findAll(specification, pageable);
     }
 
     @Transactional(readOnly = true)
     public Task findById(UUID id) {
-        return taskRepository.findById(id)
-            .orElseThrow(() -> new TaskNotFoundException(id));
+        return taskRepository.findById(id).orElseThrow(() -> new TaskNotFoundException(id));
     }
 
     @Transactional(readOnly = true)
     public Task findByReference(String reference) {
-        return withUsersLoaded(taskRepository.findByReference(reference)
-            .orElseThrow(() -> new TaskNotFoundException(reference)));
+        return withUsersLoaded(
+                taskRepository
+                        .findByReference(reference)
+                        .orElseThrow(() -> new TaskNotFoundException(reference)));
     }
 
     @Transactional
@@ -161,8 +159,7 @@ public class TaskService {
             return withUsersLoaded(task);
         }
 
-        TaskStatus previousStatus =
-                task.getStatus();
+        TaskStatus previousStatus = task.getStatus();
 
         task.setStatus(status);
 
@@ -185,17 +182,17 @@ public class TaskService {
             }
         }
 
-        taskEventService.statusChanged(
-                task,
-                previousStatus,
-                status
-        );
+        taskEventService.statusChanged(task, previousStatus, status);
 
         if (status == TaskStatus.CANCELLED) {
-            eventPublisher.publishEvent(new TaskCancelled(
-                    task.getId(), task.getReference(), task.getTitle(),
-                    task.currentAssigneeId(), null, actorId()
-            ));
+            eventPublisher.publishEvent(
+                    new TaskCancelled(
+                            task.getId(),
+                            task.getReference(),
+                            task.getTitle(),
+                            task.currentAssigneeId(),
+                            null,
+                            actorId()));
         }
 
         return withUsersLoaded(task);
@@ -213,20 +210,20 @@ public class TaskService {
 
         task.setAssignedTo(getAssignableUser(userId));
 
-        taskEventService.assignmentChanged(
-                task,
-                currentAssignedToId,
-                userId
-        );
+        taskEventService.assignmentChanged(task, currentAssignedToId, userId);
 
-        eventPublisher.publishEvent(new TaskAssigned(
-                task.getId(), task.getReference(), task.getTitle(), userId, actorId()
-        ));
+        eventPublisher.publishEvent(
+                new TaskAssigned(
+                        task.getId(), task.getReference(), task.getTitle(), userId, actorId()));
 
         if (currentAssignedToId != null) {
-            eventPublisher.publishEvent(new TaskUnassigned(
-                    task.getId(), task.getReference(), task.getTitle(), currentAssignedToId, actorId()
-            ));
+            eventPublisher.publishEvent(
+                    new TaskUnassigned(
+                            task.getId(),
+                            task.getReference(),
+                            task.getTitle(),
+                            currentAssignedToId,
+                            actorId()));
         }
 
         return withUsersLoaded(task);
@@ -266,8 +263,7 @@ public class TaskService {
     public Task cancel(UUID id, String reason) {
         Task task = getTask(id);
 
-        TaskStatus previousStatus =
-                task.getStatus();
+        TaskStatus previousStatus = task.getStatus();
 
         task.setStatus(TaskStatus.CANCELLED);
         task.setCancelledAt(clock.instant());
@@ -275,16 +271,16 @@ public class TaskService {
 
         task.setCompletedAt(null);
 
-        taskEventService.cancelled(
-                task,
-                previousStatus,
-                reason
-        );
+        taskEventService.cancelled(task, previousStatus, reason);
 
-        eventPublisher.publishEvent(new TaskCancelled(
-                task.getId(), task.getReference(), task.getTitle(),
-                task.currentAssigneeId(), reason, actorId()
-        ));
+        eventPublisher.publishEvent(
+                new TaskCancelled(
+                        task.getId(),
+                        task.getReference(),
+                        task.getTitle(),
+                        task.currentAssigneeId(),
+                        reason,
+                        actorId()));
 
         return withUsersLoaded(task);
     }
@@ -295,22 +291,25 @@ public class TaskService {
 
         taskRepository.delete(task);
 
-        eventPublisher.publishEvent(new TaskDeleted(
-                task.getId(), task.getReference(), task.getTitle(), task.currentAssigneeId(), actorId()
-        ));
+        eventPublisher.publishEvent(
+                new TaskDeleted(
+                        task.getId(),
+                        task.getReference(),
+                        task.getTitle(),
+                        task.currentAssigneeId(),
+                        actorId()));
     }
 
     private UUID actorId() {
-        return currentUser
-                .getId()
-                .orElse(null);
+        return currentUser.getId().orElse(null);
     }
 
     // Only enabled users with a verified email can work on tasks, so only they can be assigned
     private UserProfile getAssignableUser(UUID userId) {
-        User user = userRepository
-                .findById(userId)
-                .orElseThrow(() -> new UserNotFoundException(userId));
+        User user =
+                userRepository
+                        .findById(userId)
+                        .orElseThrow(() -> new UserNotFoundException(userId));
 
         UserStatus status = UserStatus.of(user);
 
@@ -322,11 +321,11 @@ public class TaskService {
     }
 
     private Task getTask(UUID id) {
-        return taskRepository.findById(id)
-            .orElseThrow(() -> new TaskNotFoundException(id));
+        return taskRepository.findById(id).orElseThrow(() -> new TaskNotFoundException(id));
     }
 
-    // The response shows the assignee and the creator, which may still be proxies set with getReferenceById
+    // The response shows the assignee and the creator, which may still be proxies set with
+    // getReferenceById
     private static Task withUsersLoaded(Task task) {
         ProfilesForDisplay.load(task.getAssignedTo());
         ProfilesForDisplay.load(task.getCreatedBy());

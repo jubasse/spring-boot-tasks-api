@@ -1,18 +1,5 @@
 package io.julienmetral.tasks.task.dtos;
 
-import io.julienmetral.tasks.identity.dtos.UserProfileResponseDto;
-import io.julienmetral.tasks.identity.entities.UserStatus;
-import io.julienmetral.tasks.identity.entities.UserProfile;
-import io.julienmetral.tasks.media.services.MediaUrls;
-import io.julienmetral.tasks.task.entities.Task;
-import io.julienmetral.tasks.task.entities.TaskEvent;
-import io.julienmetral.tasks.task.entities.TaskEventType;
-import org.junit.jupiter.api.Test;
-
-import java.time.Instant;
-import java.util.Map;
-import java.util.UUID;
-
 import static io.julienmetral.tasks.support.UserProfiles.active;
 import static io.julienmetral.tasks.support.UserProfiles.profile;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -20,6 +7,17 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+
+import io.julienmetral.tasks.identity.dtos.UserProfileResponseDto;
+import io.julienmetral.tasks.identity.entities.UserProfile;
+import io.julienmetral.tasks.identity.entities.UserStatus;
+import io.julienmetral.tasks.media.services.MediaUrls;
+import io.julienmetral.tasks.task.entities.Task;
+import io.julienmetral.tasks.task.entities.TaskEvent;
+import io.julienmetral.tasks.task.entities.TaskEventType;
+import java.util.Map;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
 
 class TaskResponseDtoTest {
 
@@ -32,7 +30,8 @@ class TaskResponseDtoTest {
 
     TaskResponseDtoTest() {
         when(mediaUrls.avatarOf(any(UserProfile.class)))
-                .thenAnswer(invocation -> identiconUrl(invocation.<UserProfile>getArgument(0).getId()));
+                .thenAnswer(
+                        invocation -> identiconUrl(invocation.<UserProfile>getArgument(0).getId()));
     }
 
     private static String identiconUrl(UUID id) {
@@ -53,10 +52,16 @@ class TaskResponseDtoTest {
         TaskResponseDto dto = new TaskResponseDto(task, mediaUrls);
 
         assertThat(dto.assignedTo())
-                .isEqualTo(new UserProfileResponseDto(
-                        ASSIGNEE_ID, "Alice", UserStatus.ACTIVE, identiconUrl(ASSIGNEE_ID)));
+                .isEqualTo(
+                        new UserProfileResponseDto(
+                                ASSIGNEE_ID,
+                                "Alice",
+                                UserStatus.ACTIVE,
+                                identiconUrl(ASSIGNEE_ID)));
         assertThat(dto.createdBy())
-                .isEqualTo(new UserProfileResponseDto(CREATOR_ID, "Bob", UserStatus.ACTIVE, identiconUrl(CREATOR_ID)));
+                .isEqualTo(
+                        new UserProfileResponseDto(
+                                CREATOR_ID, "Bob", UserStatus.ACTIVE, identiconUrl(CREATOR_ID)));
     }
 
     @Test
@@ -80,10 +85,16 @@ class TaskResponseDtoTest {
         TaskResponseDto dto = new TaskResponseDto(task, mediaUrls);
 
         assertThat(dto.assignedTo())
-                .isEqualTo(new UserProfileResponseDto(
-                        ASSIGNEE_ID, "Alice", UserStatus.DELETED, identiconUrl(ASSIGNEE_ID)));
+                .isEqualTo(
+                        new UserProfileResponseDto(
+                                ASSIGNEE_ID,
+                                "Alice",
+                                UserStatus.DELETED,
+                                identiconUrl(ASSIGNEE_ID)));
         assertThat(dto.createdBy())
-                .isEqualTo(new UserProfileResponseDto(CREATOR_ID, "Bob", UserStatus.DELETED, identiconUrl(CREATOR_ID)));
+                .isEqualTo(
+                        new UserProfileResponseDto(
+                                CREATOR_ID, "Bob", UserStatus.DELETED, identiconUrl(CREATOR_ID)));
     }
 
     @Test
@@ -105,7 +116,9 @@ class TaskResponseDtoTest {
         TaskEventResponseDto dto = new TaskEventResponseDto(event, mediaUrls);
 
         assertThat(dto.actor())
-                .isEqualTo(new UserProfileResponseDto(CREATOR_ID, "Bob", UserStatus.ACTIVE, identiconUrl(CREATOR_ID)));
+                .isEqualTo(
+                        new UserProfileResponseDto(
+                                CREATOR_ID, "Bob", UserStatus.ACTIVE, identiconUrl(CREATOR_ID)));
         assertThat(dto.type()).isEqualTo(TaskEventType.CREATED);
     }
 
@@ -127,7 +140,9 @@ class TaskResponseDtoTest {
         TaskEventResponseDto dto = new TaskEventResponseDto(event, mediaUrls);
 
         assertThat(dto.actor())
-                .isEqualTo(new UserProfileResponseDto(CREATOR_ID, "Bob", UserStatus.DELETED, identiconUrl(CREATOR_ID)));
+                .isEqualTo(
+                        new UserProfileResponseDto(
+                                CREATOR_ID, "Bob", UserStatus.DELETED, identiconUrl(CREATOR_ID)));
     }
 
     @Test

@@ -1,12 +1,37 @@
 package io.julienmetral.tasks.ratelimit;
 
-import io.julienmetral.tasks.ratelimit.services.RateLimitKeys;
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import io.julienmetral.tasks.ratelimit.exceptions.RateLimitExceededException;
 import io.julienmetral.tasks.ratelimit.repositories.RateLimitQueries;
+import io.julienmetral.tasks.ratelimit.services.RateLimitKeys;
 import io.julienmetral.tasks.ratelimit.services.RateLimiter;
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
 import io.julienmetral.tasks.support.TestClock;
+import java.io.IOException;
+import java.net.InetAddress;
+import java.sql.Timestamp;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 import mockwebserver3.Dispatcher;
 import mockwebserver3.MockResponse;
 import mockwebserver3.MockWebServer;
@@ -26,57 +51,34 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
-import java.io.IOException;
-import java.net.InetAddress;
-import java.sql.Timestamp;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.IntStream;
-
-import static io.julienmetral.tasks.support.Problems.untypedProblem;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.awaitility.Awaitility.await;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 /**
- * The limits are small, so that a few requests reach them, and the clock is pinned, so that every request of a test
- * falls in the same window and {@code Retry-After} is exact. Counters are shared by every test of this context: each
- * test uses its own client addresses and emails.
+ * The limits are small, so that a few requests reach them, and the clock is pinned, so that every
+ * request of a test falls in the same window and {@code Retry-After} is exact. Counters are shared
+ * by every test of this context: each test uses its own client addresses and emails.
  */
 @IntegrationTest
-@TestPropertySource(properties = {
-        "rate-limit.enabled=true",
-        // Never fires while the tests run, so no window disappears under an assertion
-        "rate-limit.purge-cron=0 0 0 1 1 *",
-        "rate-limit.login-per-ip.requests=" + RateLimitTests.LOGIN_PER_IP,
-        "rate-limit.login-per-ip.window=PT1M",
-        "rate-limit.login-per-email.requests=" + RateLimitTests.LOGIN_PER_EMAIL,
-        "rate-limit.login-per-email.window=PT15M",
-        "rate-limit.sign-up-per-ip.requests=" + RateLimitTests.SIGN_UP_PER_IP,
-        "rate-limit.sign-up-per-ip.window=PT1H",
-        "rate-limit.password-reset-per-ip.requests=" + RateLimitTests.PASSWORD_RESET_PER_IP,
-        "rate-limit.password-reset-per-ip.window=PT1H",
-        "rate-limit.password-reset-per-email.requests=" + RateLimitTests.PASSWORD_RESET_PER_EMAIL,
-        "rate-limit.password-reset-per-email.window=PT1H",
-        "rate-limit.verification-resend-per-user.requests=" + RateLimitTests.VERIFICATION_RESEND_PER_USER,
-        "rate-limit.verification-resend-per-user.window=PT1H",
-        "rate-limit.webhook-test-per-user.requests=" + RateLimitTests.WEBHOOK_TEST_PER_USER,
-        "rate-limit.webhook-test-per-user.window=PT1H"
-})
+@TestPropertySource(
+        properties = {
+            "rate-limit.enabled=true",
+            // Never fires while the tests run, so no window disappears under an assertion
+            "rate-limit.purge-cron=0 0 0 1 1 *",
+            "rate-limit.login-per-ip.requests=" + RateLimitTests.LOGIN_PER_IP,
+            "rate-limit.login-per-ip.window=PT1M",
+            "rate-limit.login-per-email.requests=" + RateLimitTests.LOGIN_PER_EMAIL,
+            "rate-limit.login-per-email.window=PT15M",
+            "rate-limit.sign-up-per-ip.requests=" + RateLimitTests.SIGN_UP_PER_IP,
+            "rate-limit.sign-up-per-ip.window=PT1H",
+            "rate-limit.password-reset-per-ip.requests=" + RateLimitTests.PASSWORD_RESET_PER_IP,
+            "rate-limit.password-reset-per-ip.window=PT1H",
+            "rate-limit.password-reset-per-email.requests="
+                    + RateLimitTests.PASSWORD_RESET_PER_EMAIL,
+            "rate-limit.password-reset-per-email.window=PT1H",
+            "rate-limit.verification-resend-per-user.requests="
+                    + RateLimitTests.VERIFICATION_RESEND_PER_USER,
+            "rate-limit.verification-resend-per-user.window=PT1H",
+            "rate-limit.webhook-test-per-user.requests=" + RateLimitTests.WEBHOOK_TEST_PER_USER,
+            "rate-limit.webhook-test-per-user.window=PT1H"
+        })
 class RateLimitTests {
 
     static final int LOGIN_PER_IP = 5;
@@ -87,7 +89,8 @@ class RateLimitTests {
     static final int VERIFICATION_RESEND_PER_USER = 2;
     static final int WEBHOOK_TEST_PER_USER = 3;
 
-    // 40 s before the next minute, 4 min 40 s before the next quarter hour and 49 min 40 s before the next hour
+    // 40 s before the next minute, 4 min 40 s before the next quarter hour and 49 min 40 s before
+    // the next hour
     static final Instant NOW = Instant.parse("2100-01-01T00:10:20Z");
 
     static final String UNTIL_NEXT_MINUTE = "40";
@@ -101,26 +104,21 @@ class RateLimitTests {
 
     private static final int PARALLEL_REQUESTS = 20;
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private Mailpit mailpit;
+    @Autowired private Mailpit mailpit;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
-    @Autowired
-    private RateLimiter rateLimiter;
+    @Autowired private RateLimiter rateLimiter;
 
-    @Autowired
-    private RateLimitQueries queries;
+    @Autowired private RateLimitQueries queries;
 
-    @Autowired
-    private TestClock clock;
+    @Autowired private TestClock clock;
 
-    // The reused test database keeps the counters of earlier runs, whose windows are the same since the clock is
-    // pinned: a test with a fixed email or address would start over its limit. Only this class turns the limits on.
+    // The reused test database keeps the counters of earlier runs, whose windows are the same since
+    // the clock is pinned: a test with a fixed email or address would start over its limit. Only
+    // this class turns the limits on.
     @BeforeEach
     void pinTheClockAndForgetEarlierCounters() {
         clock.set(NOW);
@@ -157,10 +155,12 @@ class RateLimitTests {
             String email = uniqueEmail();
 
             login(uniqueAddress(), email, PASSWORD).andExpect(status().isUnauthorized());
-            login(uniqueAddress(), email.toUpperCase(), PASSWORD).andExpect(status().isUnauthorized());
+            login(uniqueAddress(), email.toUpperCase(), PASSWORD)
+                    .andExpect(status().isUnauthorized());
 
             expectTooManyRequests(
-                    login(uniqueAddress(), email.replace("example.com", "Example.COM"), PASSWORD), UNTIL_NEXT_QUARTER);
+                    login(uniqueAddress(), email.replace("example.com", "Example.COM"), PASSWORD),
+                    UNTIL_NEXT_QUARTER);
         }
 
         @Test
@@ -169,7 +169,8 @@ class RateLimitTests {
             UUID userId = signUpUser(email);
 
             for (int attempt = 0; attempt < LOGIN_PER_EMAIL; attempt++) {
-                login(uniqueAddress(), email, "wrong-password").andExpect(status().isUnauthorized());
+                login(uniqueAddress(), email, "wrong-password")
+                        .andExpect(status().isUnauthorized());
             }
 
             expectTooManyRequests(login(uniqueAddress(), email, PASSWORD), UNTIL_NEXT_QUARTER);
@@ -199,8 +200,12 @@ class RateLimitTests {
             login(address, uniqueEmail(), PASSWORD)
                     .andExpect(untypedProblem(429, "Too Many Requests"))
                     .andExpect(header().string(HttpHeaders.RETRY_AFTER, UNTIL_NEXT_MINUTE))
-                    .andExpect(jsonPath("$.detail").value(
-                            "Too many requests, try again in " + UNTIL_NEXT_MINUTE + " seconds"));
+                    .andExpect(
+                            jsonPath("$.detail")
+                                    .value(
+                                            "Too many requests, try again in "
+                                                    + UNTIL_NEXT_MINUTE
+                                                    + " seconds"));
         }
 
         @Test
@@ -218,12 +223,16 @@ class RateLimitTests {
                 login(address, uniqueEmail(), PASSWORD).andExpect(status().isUnauthorized());
             }
         }
+
         @Test
-        void loginWithAnEmailLongerThanTheCounterKeyColumnIsAnsweredAsAnyUnknownEmail() throws Exception {
-            // Nameprep drops soft hyphens (JSON escapes here), so @Email accepts this 500-character domain
+        void loginWithAnEmailLongerThanTheCounterKeyColumnIsAnsweredAsAnyUnknownEmail()
+                throws Exception {
+            // Nameprep drops soft hyphens (JSON escapes here), so @Email accepts this 500-character
+            // domain
             String email = "a@b" + "\\u00AD".repeat(500) + ".com";
 
-            MockHttpServletResponse response = login(uniqueAddress(), email, PASSWORD).andReturn().getResponse();
+            MockHttpServletResponse response =
+                    login(uniqueAddress(), email, PASSWORD).andReturn().getResponse();
 
             assertThat(response.getStatus()).isIn(400, 401);
         }
@@ -266,8 +275,12 @@ class RateLimitTests {
 
             expectTooManyRequests(signUp(address, email), UNTIL_NEXT_HOUR);
 
-            assertThat(jdbcTemplate.queryForObject(
-                    "SELECT count(*) FROM users WHERE email = ?", Integer.class, email)).isZero();
+            assertThat(
+                            jdbcTemplate.queryForObject(
+                                    "SELECT count(*) FROM users WHERE email = ?",
+                                    Integer.class,
+                                    email))
+                    .isZero();
             Thread.sleep(NO_MAIL_GRACE_PERIOD);
             assertThat(mailpit.countTo(email)).isZero();
         }
@@ -282,19 +295,23 @@ class RateLimitTests {
             expectTooManyRequests(signUp(address, uniqueEmail()), UNTIL_NEXT_HOUR);
             expectTooManyRequests(signUp(address, uniqueEmail()), UNTIL_NEXT_HOUR);
 
-            assertThat(counter(RateLimitKeys.address("sign-up", address))).isEqualTo(SIGN_UP_PER_IP);
+            assertThat(counter(RateLimitKeys.address("sign-up", address)))
+                    .isEqualTo(SIGN_UP_PER_IP);
         }
 
         @Test
         void invalidSignUpIsNotCounted() throws Exception {
             String address = uniqueAddress();
 
-            mockMvc.perform(post("/api/v1/users")
-                            .with(from(address))
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("""
+            mockMvc.perform(
+                            post("/api/v1/users")
+                                    .with(from(address))
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content(
+                                            """
                                     {"email": "not-an-email", "password": "%s", "displayName": "Rate limit"}
-                                    """.formatted(PASSWORD)))
+                                    """
+                                                    .formatted(PASSWORD)))
                     .andExpect(status().isBadRequest());
 
             assertThat(counter(RateLimitKeys.address("sign-up", address))).isZero();
@@ -316,7 +333,8 @@ class RateLimitTests {
         }
 
         @Test
-        void passwordResetRequestIsRefusedPastTheLimitPerEmailAndSendsNoMoreEmails() throws Exception {
+        void passwordResetRequestIsRefusedPastTheLimitPerEmailAndSendsNoMoreEmails()
+                throws Exception {
             String email = uniqueEmail();
             signUpUser(email);
 
@@ -326,7 +344,8 @@ class RateLimitTests {
             // The verification email of the sign-up, then one reset email per accepted request
             awaitEmailCount(email, 1 + PASSWORD_RESET_PER_EMAIL);
 
-            expectTooManyRequests(requestReset(uniqueAddress(), email.toUpperCase()), UNTIL_NEXT_HOUR);
+            expectTooManyRequests(
+                    requestReset(uniqueAddress(), email.toUpperCase()), UNTIL_NEXT_HOUR);
 
             Thread.sleep(NO_MAIL_GRACE_PERIOD);
             assertThat(mailpit.countTo(email)).isEqualTo(1 + PASSWORD_RESET_PER_EMAIL);
@@ -343,12 +362,15 @@ class RateLimitTests {
                 requestReset(uniqueAddress(), unusedEmail).andExpect(status().isAccepted());
             }
 
-            MockHttpServletResponse forAccount = expectTooManyRequests(
-                    requestReset(uniqueAddress(), accountEmail), UNTIL_NEXT_HOUR);
-            MockHttpServletResponse forUnusedEmail = expectTooManyRequests(
-                    requestReset(uniqueAddress(), unusedEmail), UNTIL_NEXT_HOUR);
+            MockHttpServletResponse forAccount =
+                    expectTooManyRequests(
+                            requestReset(uniqueAddress(), accountEmail), UNTIL_NEXT_HOUR);
+            MockHttpServletResponse forUnusedEmail =
+                    expectTooManyRequests(
+                            requestReset(uniqueAddress(), unusedEmail), UNTIL_NEXT_HOUR);
 
-            assertThat(forUnusedEmail.getContentAsString()).isEqualTo(forAccount.getContentAsString());
+            assertThat(forUnusedEmail.getContentAsString())
+                    .isEqualTo(forAccount.getContentAsString());
             assertThat(forUnusedEmail.getHeader(HttpHeaders.RETRY_AFTER))
                     .isEqualTo(forAccount.getHeader(HttpHeaders.RETRY_AFTER));
             assertThat(forUnusedEmail.getContentType()).isEqualTo(forAccount.getContentType());
@@ -357,7 +379,8 @@ class RateLimitTests {
         }
 
         @Test
-        void passwordResetConfirmIsRefusedPastTheLimitPerAddressEvenWithAValidToken() throws Exception {
+        void passwordResetConfirmIsRefusedPastTheLimitPerAddressEvenWithAValidToken()
+                throws Exception {
             String email = uniqueEmail();
             UUID userId = signUpUser(email);
             requestReset(uniqueAddress(), email).andExpect(status().isAccepted());
@@ -366,20 +389,27 @@ class RateLimitTests {
             String address = uniqueAddress();
 
             for (int attempt = 0; attempt < PASSWORD_RESET_PER_IP; attempt++) {
-                confirmReset(address, "unknown-" + UUID.randomUUID()).andExpect(status().isBadRequest());
+                confirmReset(address, "unknown-" + UUID.randomUUID())
+                        .andExpect(status().isBadRequest());
             }
 
             expectTooManyRequests(confirmReset(address, token), UNTIL_NEXT_HOUR);
 
-            assertThat(jdbcTemplate.queryForObject(
-                    "SELECT used_at FROM password_reset_tokens WHERE user_id = ?", Timestamp.class, userId)).isNull();
+            assertThat(
+                            jdbcTemplate.queryForObject(
+                                    "SELECT used_at FROM password_reset_tokens WHERE user_id = ?",
+                                    Timestamp.class,
+                                    userId))
+                    .isNull();
             login(uniqueAddress(), email, PASSWORD).andExpect(status().isOk());
         }
+
         @Test
         void passwordResetRequestForAnEmailThatOutgrowsTheCounterKeyColumnWhenLowerCasedIsAccepted()
                 throws Exception {
-            // 320 characters, the @Size limit; lower-casing turns each capital dotted I into two characters, and
-            // nameprep drops the soft hyphens, so @Email accepts the domain (JSON escapes here)
+            // 320 characters, the @Size limit; lower-casing turns each capital dotted I into two
+            // characters, and nameprep drops the soft hyphens, so @Email accepts the domain (JSON
+            // escapes here)
             String email = "\\u0130".repeat(64) + "@b" + "\\u00AD".repeat(250) + ".com";
 
             requestReset(uniqueAddress(), email).andExpect(status().isAccepted());
@@ -390,10 +420,12 @@ class RateLimitTests {
             String address = uniqueAddress();
 
             requestReset(address, uniqueEmail()).andExpect(status().isAccepted());
-            confirmReset(address, "unknown-" + UUID.randomUUID()).andExpect(status().isBadRequest());
+            confirmReset(address, "unknown-" + UUID.randomUUID())
+                    .andExpect(status().isBadRequest());
             requestReset(address, uniqueEmail()).andExpect(status().isAccepted());
 
-            expectTooManyRequests(confirmReset(address, "unknown-" + UUID.randomUUID()), UNTIL_NEXT_HOUR);
+            expectTooManyRequests(
+                    confirmReset(address, "unknown-" + UUID.randomUUID()), UNTIL_NEXT_HOUR);
             expectTooManyRequests(requestReset(address, uniqueEmail()), UNTIL_NEXT_HOUR);
         }
     }
@@ -419,7 +451,8 @@ class RateLimitTests {
         }
 
         @Test
-        void verificationResendLimitOfOneUserLeavesOtherUsersOfTheSameAddressAlone() throws Exception {
+        void verificationResendLimitOfOneUserLeavesOtherUsersOfTheSameAddressAlone()
+                throws Exception {
             String address = uniqueAddress();
             UUID limitedUser = signUpUser(uniqueEmail());
             UUID otherUser = signUpUser(uniqueEmail());
@@ -440,12 +473,13 @@ class RateLimitTests {
 
         @BeforeEach
         void startReceiverThatAcceptsEveryEvent() throws IOException {
-            receiver.setDispatcher(new Dispatcher() {
-                @Override
-                public MockResponse dispatch(RecordedRequest request) {
-                    return new MockResponse.Builder().code(204).build();
-                }
-            });
+            receiver.setDispatcher(
+                    new Dispatcher() {
+                        @Override
+                        public MockResponse dispatch(RecordedRequest request) {
+                            return new MockResponse.Builder().code(204).build();
+                        }
+                    });
             receiver.start(InetAddress.getByName("127.0.0.1"), 0);
         }
 
@@ -465,7 +499,9 @@ class RateLimitTests {
                         .andExpect(jsonPath("$.delivered").value(true));
             }
 
-            expectTooManyRequests(sendWebhookTest(userId, webhookId, caller(userId, "ROLE_USER")), UNTIL_NEXT_HOUR);
+            expectTooManyRequests(
+                    sendWebhookTest(userId, webhookId, caller(userId, "ROLE_USER")),
+                    UNTIL_NEXT_HOUR);
             assertThat(receiver.getRequestCount()).isEqualTo(WEBHOOK_TEST_PER_USER);
         }
 
@@ -493,7 +529,9 @@ class RateLimitTests {
                         .andExpect(status().isOk());
             }
 
-            expectTooManyRequests(sendWebhookTest(userId, webhookId, caller(userId, "ROLE_USER")), UNTIL_NEXT_HOUR);
+            expectTooManyRequests(
+                    sendWebhookTest(userId, webhookId, caller(userId, "ROLE_USER")),
+                    UNTIL_NEXT_HOUR);
         }
 
         @Test
@@ -508,35 +546,41 @@ class RateLimitTests {
             }
 
             expectTooManyRequests(
-                    sendWebhookTest(limitedUser, limitedWebhook, caller(limitedUser, "ROLE_USER")), UNTIL_NEXT_HOUR);
+                    sendWebhookTest(limitedUser, limitedWebhook, caller(limitedUser, "ROLE_USER")),
+                    UNTIL_NEXT_HOUR);
 
-            sendWebhookTest(otherUser, otherWebhook, caller(otherUser, "ROLE_USER")).andExpect(status().isOk());
+            sendWebhookTest(otherUser, otherWebhook, caller(otherUser, "ROLE_USER"))
+                    .andExpect(status().isOk());
         }
 
         private UUID createWebhook(UUID userId) throws Exception {
-            String location = mockMvc.perform(post("/api/v1/users/{id}/webhooks", userId)
-                            .with(caller(userId, "ROLE_USER"))
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("""
+            String location =
+                    mockMvc.perform(
+                                    post("/api/v1/users/{id}/webhooks", userId)
+                                            .with(caller(userId, "ROLE_USER"))
+                                            .contentType(MediaType.APPLICATION_JSON)
+                                            .content(
+                                                    """
                                     {"url": "http://127.0.0.1:%d/hooks", "events": ["task.assigned"]}
-                                    """.formatted(receiver.getPort())))
-                    .andExpect(status().isCreated())
-                    .andReturn()
-                    .getResponse()
-                    .getHeader(HttpHeaders.LOCATION);
+                                    """
+                                                            .formatted(receiver.getPort())))
+                            .andExpect(status().isCreated())
+                            .andReturn()
+                            .getResponse()
+                            .getHeader(HttpHeaders.LOCATION);
 
             return UUID.fromString(location.substring(location.lastIndexOf('/') + 1));
         }
 
-        private ResultActions sendWebhookTest(UUID userId, UUID webhookId, RequestPostProcessor caller)
-                throws Exception {
-            return mockMvc.perform(post("/api/v1/users/{id}/webhooks/{webhookId}/test", userId, webhookId)
-                    .with(caller));
+        private ResultActions sendWebhookTest(
+                UUID userId, UUID webhookId, RequestPostProcessor caller) throws Exception {
+            return mockMvc.perform(
+                    post("/api/v1/users/{id}/webhooks/{webhookId}/test", userId, webhookId)
+                            .with(caller));
         }
 
         private static RequestPostProcessor caller(UUID userId, String role) {
-            return jwt()
-                    .jwt(jwt -> jwt.claim("uid", userId.toString()))
+            return jwt().jwt(jwt -> jwt.claim("uid", userId.toString()))
                     .authorities(new SimpleGrantedAuthority(role));
         }
     }
@@ -552,7 +596,8 @@ class RateLimitTests {
                 login(limitedAddress, uniqueEmail(), PASSWORD).andExpect(status().isUnauthorized());
             }
 
-            expectTooManyRequests(login(limitedAddress, uniqueEmail(), PASSWORD), UNTIL_NEXT_MINUTE);
+            expectTooManyRequests(
+                    login(limitedAddress, uniqueEmail(), PASSWORD), UNTIL_NEXT_MINUTE);
 
             login(otherAddress, uniqueEmail(), PASSWORD).andExpect(status().isUnauthorized());
         }
@@ -564,7 +609,8 @@ class RateLimitTests {
                 login(uniqueAddress(), limitedEmail, PASSWORD).andExpect(status().isUnauthorized());
             }
 
-            expectTooManyRequests(login(uniqueAddress(), limitedEmail, PASSWORD), UNTIL_NEXT_QUARTER);
+            expectTooManyRequests(
+                    login(uniqueAddress(), limitedEmail, PASSWORD), UNTIL_NEXT_QUARTER);
 
             login(uniqueAddress(), uniqueEmail(), PASSWORD).andExpect(status().isUnauthorized());
         }
@@ -590,7 +636,8 @@ class RateLimitTests {
         void parallelChecksOfOneAddressAcceptExactlyTheLimit() throws Exception {
             String address = uniqueAddress();
 
-            List<Boolean> accepted = inParallel(() -> accepts(() -> rateLimiter.login(address, uniqueEmail())));
+            List<Boolean> accepted =
+                    inParallel(() -> accepts(() -> rateLimiter.login(address, uniqueEmail())));
 
             assertThat(accepted).filteredOn(Boolean::booleanValue).hasSize(LOGIN_PER_IP);
             assertThat(counter(RateLimitKeys.address("login", address))).isEqualTo(LOGIN_PER_IP);
@@ -600,24 +647,37 @@ class RateLimitTests {
         void parallelChecksOfOneEmailAcceptExactlyTheLimit() throws Exception {
             String email = uniqueEmail();
 
-            List<Boolean> accepted = inParallel(
-                    () -> accepts(() -> rateLimiter.passwordResetRequest(uniqueAddress(), email)));
+            List<Boolean> accepted =
+                    inParallel(
+                            () ->
+                                    accepts(
+                                            () ->
+                                                    rateLimiter.passwordResetRequest(
+                                                            uniqueAddress(), email)));
 
-            assertThat(accepted).filteredOn(Boolean::booleanValue).hasSize(PASSWORD_RESET_PER_EMAIL);
-            assertThat(counter(RateLimitKeys.email("password-reset", email))).isEqualTo(PASSWORD_RESET_PER_EMAIL);
+            assertThat(accepted)
+                    .filteredOn(Boolean::booleanValue)
+                    .hasSize(PASSWORD_RESET_PER_EMAIL);
+            assertThat(counter(RateLimitKeys.email("password-reset", email)))
+                    .isEqualTo(PASSWORD_RESET_PER_EMAIL);
         }
 
         @Test
         void parallelLoginsFromOneAddressAreAnsweredUntilTheLimitThenRefused() throws Exception {
             String address = uniqueAddress();
 
-            List<Integer> statuses = inParallel(() -> login(address, uniqueEmail(), PASSWORD)
-                    .andReturn()
-                    .getResponse()
-                    .getStatus());
+            List<Integer> statuses =
+                    inParallel(
+                            () ->
+                                    login(address, uniqueEmail(), PASSWORD)
+                                            .andReturn()
+                                            .getResponse()
+                                            .getStatus());
 
             assertThat(statuses).filteredOn(status -> status == 401).hasSize(LOGIN_PER_IP);
-            assertThat(statuses).filteredOn(status -> status == 429).hasSize(PARALLEL_REQUESTS - LOGIN_PER_IP);
+            assertThat(statuses)
+                    .filteredOn(status -> status == 429)
+                    .hasSize(PARALLEL_REQUESTS - LOGIN_PER_IP);
         }
 
         @Test
@@ -627,8 +687,9 @@ class RateLimitTests {
 
             List<Integer> counts = inParallel(() -> queries.increment(key, windowStart));
 
-            assertThat(counts).containsExactlyInAnyOrderElementsOf(
-                    IntStream.rangeClosed(1, PARALLEL_REQUESTS).boxed().toList());
+            assertThat(counts)
+                    .containsExactlyInAnyOrderElementsOf(
+                            IntStream.rangeClosed(1, PARALLEL_REQUESTS).boxed().toList());
             assertThat(counter(key)).isEqualTo(PARALLEL_REQUESTS);
         }
 
@@ -647,10 +708,12 @@ class RateLimitTests {
 
             try (ExecutorService executor = Executors.newFixedThreadPool(PARALLEL_REQUESTS)) {
                 for (int thread = 0; thread < PARALLEL_REQUESTS; thread++) {
-                    futures.add(executor.submit(() -> {
-                        start.await();
-                        return request.call();
-                    }));
+                    futures.add(
+                            executor.submit(
+                                    () -> {
+                                        start.await();
+                                        return request.call();
+                                    }));
                 }
                 start.countDown();
 
@@ -684,7 +747,8 @@ class RateLimitTests {
             queries.increment(key, windowStart);
             queries.increment(key, windowStart);
 
-            assertThat(queries.increment(key, windowStart.plus(Duration.ofMinutes(1)))).isEqualTo(1);
+            assertThat(queries.increment(key, windowStart.plus(Duration.ofMinutes(1))))
+                    .isEqualTo(1);
             assertThat(queries.increment(otherKey, windowStart)).isEqualTo(1);
             assertThat(queries.increment(key, windowStart)).isEqualTo(3);
         }
@@ -711,11 +775,13 @@ class RateLimitTests {
             int deleted = queries.deleteWindowsStartedBefore(cutoff);
 
             assertThat(deleted).isGreaterThanOrEqualTo(2);
-            assertThat(windowStartsOf(key)).containsExactly(cutoff, cutoff.plus(Duration.ofHours(1)));
+            assertThat(windowStartsOf(key))
+                    .containsExactly(cutoff, cutoff.plus(Duration.ofHours(1)));
         }
 
         private List<Instant> windowStartsOf(String key) {
-            return jdbcTemplate.queryForList(
+            return jdbcTemplate
+                    .queryForList(
                             "SELECT window_start FROM rate_limit_counters WHERE bucket_key = ? ORDER BY window_start",
                             Timestamp.class,
                             key)
@@ -726,81 +792,101 @@ class RateLimitTests {
     }
 
     private ResultActions login(String address, String email, String password) throws Exception {
-        return mockMvc.perform(post("/api/v1/auth/login")
-                .with(from(address))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
+        return mockMvc.perform(
+                post("/api/v1/auth/login")
+                        .with(from(address))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                """
                         {"email": "%s", "password": "%s"}
-                        """.formatted(email, password)));
+                        """
+                                        .formatted(email, password)));
     }
 
     private ResultActions signUp(String address, String email) throws Exception {
-        return mockMvc.perform(post("/api/v1/users")
-                .with(from(address))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
+        return mockMvc.perform(
+                post("/api/v1/users")
+                        .with(from(address))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                """
                         {"email": "%s", "password": "%s", "displayName": "Rate limit test"}
-                        """.formatted(email, PASSWORD)));
+                        """
+                                        .formatted(email, PASSWORD)));
     }
 
-    /** Signs up from an address of its own, so the sign-up limit of the address under test is untouched. */
+    /**
+     * Signs up from an address of its own, so the sign-up limit of the address under test is
+     * untouched.
+     */
     private UUID signUpUser(String email) throws Exception {
-        String location = signUp(uniqueAddress(), email)
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getHeader(HttpHeaders.LOCATION);
+        String location =
+                signUp(uniqueAddress(), email)
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getHeader(HttpHeaders.LOCATION);
 
         return UUID.fromString(location.substring(location.lastIndexOf('/') + 1));
     }
 
     private ResultActions requestReset(String address, String email) throws Exception {
-        return mockMvc.perform(post("/api/v1/auth/password-reset/request")
-                .with(from(address))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
+        return mockMvc.perform(
+                post("/api/v1/auth/password-reset/request")
+                        .with(from(address))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                """
                         {"email": "%s"}
-                        """.formatted(email)));
+                        """
+                                        .formatted(email)));
     }
 
     private ResultActions confirmReset(String address, String token) throws Exception {
-        return mockMvc.perform(post("/api/v1/auth/password-reset/confirm")
-                .with(from(address))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
+        return mockMvc.perform(
+                post("/api/v1/auth/password-reset/confirm")
+                        .with(from(address))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                """
                         {"token": "%s", "newPassword": "brand-new-password"}
-                        """.formatted(token)));
+                        """
+                                        .formatted(token)));
     }
 
     private ResultActions resend(String address, UUID userId) throws Exception {
-        return mockMvc.perform(post("/api/v1/auth/verify-email/resend")
-                .with(from(address))
-                .with(jwt()
-                        .jwt(jwt -> jwt.claim("uid", userId.toString()))
-                        .authorities(new SimpleGrantedAuthority("ROLE_USER"))));
+        return mockMvc.perform(
+                post("/api/v1/auth/verify-email/resend")
+                        .with(from(address))
+                        .with(
+                                jwt().jwt(jwt -> jwt.claim("uid", userId.toString()))
+                                        .authorities(new SimpleGrantedAuthority("ROLE_USER"))));
     }
 
-    private static MockHttpServletResponse expectTooManyRequests(ResultActions result, String retryAfter)
-            throws Exception {
-        return result
-                .andExpect(untypedProblem(429, "Too Many Requests"))
+    private static MockHttpServletResponse expectTooManyRequests(
+            ResultActions result, String retryAfter) throws Exception {
+        return result.andExpect(untypedProblem(429, "Too Many Requests"))
                 .andExpect(header().string(HttpHeaders.RETRY_AFTER, retryAfter))
                 .andReturn()
                 .getResponse();
     }
 
     private int counter(String key) {
-        Integer count = jdbcTemplate.queryForObject(
-                "SELECT coalesce(sum(count), 0) FROM rate_limit_counters WHERE bucket_key = ?",
-                Integer.class,
-                key);
+        Integer count =
+                jdbcTemplate.queryForObject(
+                        "SELECT coalesce(sum(count), 0) FROM rate_limit_counters WHERE bucket_key = ?",
+                        Integer.class,
+                        key);
 
         return count == null ? 0 : count;
     }
 
     private int refreshTokenCount(UUID userId) {
-        Integer count = jdbcTemplate.queryForObject(
-                "SELECT count(*) FROM refresh_tokens WHERE user_id = ?", Integer.class, userId);
+        Integer count =
+                jdbcTemplate.queryForObject(
+                        "SELECT count(*) FROM refresh_tokens WHERE user_id = ?",
+                        Integer.class,
+                        userId);
 
         return count == null ? 0 : count;
     }

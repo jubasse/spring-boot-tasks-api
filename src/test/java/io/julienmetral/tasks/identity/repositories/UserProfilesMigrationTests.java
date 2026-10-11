@@ -1,7 +1,15 @@
 package io.julienmetral.tasks.identity.repositories;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.zaxxer.hikari.HikariDataSource;
 import io.julienmetral.tasks.support.JdbcSliceTest;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.util.Map;
+import java.util.UUID;
+import javax.sql.DataSource;
 import liquibase.Liquibase;
 import liquibase.database.Database;
 import liquibase.database.DatabaseFactory;
@@ -16,23 +24,14 @@ import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
-import java.util.Map;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
- * Runs migration 016 on rows written with the schema before it. The migrations run in a schema of their own, on a
- * connection outside the pool: Liquibase changes the connection's search path, which a pooled connection would keep
- * for the next test.
+ * Runs migration 016 on rows written with the schema before it. The migrations run in a schema of
+ * their own, on a connection outside the pool: Liquibase changes the connection's search path,
+ * which a pooled connection would keep for the next test.
  */
 @JdbcSliceTest
-// Outside the slice's rolled-back transaction: the migrations commit on their own connection, and only dropping the
-// schema undoes them
+// Outside the slice's rolled-back transaction: the migrations commit on their own connection, and
+// only dropping the schema undoes them
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class UserProfilesMigrationTests {
 
@@ -41,8 +40,7 @@ class UserProfilesMigrationTests {
     // Every changeset of 001 to 015: the next one is 016-create-user-profiles
     private static final int CHANGESETS_BEFORE_USER_PROFILES = 27;
 
-    @Autowired
-    private DataSource dataSource;
+    @Autowired private DataSource dataSource;
 
     private Connection connection;
 
@@ -56,13 +54,16 @@ class UserProfilesMigrationTests {
     void migrateAFreshSchemaUpToTheMigrationBeforeUserProfiles() throws Exception {
         HikariDataSource pool = dataSource.unwrap(HikariDataSource.class);
         schema = "migration_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
-        connection = DriverManager.getConnection(pool.getJdbcUrl(), pool.getUsername(), pool.getPassword());
+        connection =
+                DriverManager.getConnection(
+                        pool.getJdbcUrl(), pool.getUsername(), pool.getPassword());
         connection.createStatement().execute("CREATE SCHEMA " + schema);
         connection.setSchema(schema);
         jdbc = new JdbcTemplate(new SingleConnectionDataSource(connection, true));
 
-        Database database = DatabaseFactory.getInstance()
-                .findCorrectDatabaseImplementation(new JdbcConnection(connection));
+        Database database =
+                DatabaseFactory.getInstance()
+                        .findCorrectDatabaseImplementation(new JdbcConnection(connection));
         database.setDefaultSchemaName(schema);
         database.setLiquibaseSchemaName(schema);
         liquibase = new Liquibase(CHANGELOG, new ClassLoaderResourceAccessor(), database);
@@ -75,8 +76,8 @@ class UserProfilesMigrationTests {
     @AfterEach
     void dropTheSchema() throws SQLException {
         try {
-            // Liquibase turns auto-commit off: closing the connection rolled the drop back, and every run left its
-            // schemas in the shared database
+            // Liquibase turns auto-commit off: closing the connection rolled the drop back, and
+            // every run left its schemas in the shared database
             if (!connection.getAutoCommit()) {
                 connection.rollback();
                 connection.setAutoCommit(true);
@@ -106,7 +107,13 @@ class UserProfilesMigrationTests {
         assertThat(profile(deleted))
                 .containsEntry("display_name", "Deleted")
                 .containsEntry("status", "DELETED");
-        assertThat(count("SELECT count(*) FROM users WHERE id IN (?, ?, ?, ?)", active, unverified, disabled, deleted))
+        assertThat(
+                        count(
+                                "SELECT count(*) FROM users WHERE id IN (?, ?, ?, ?)",
+                                active,
+                                unverified,
+                                disabled,
+                                deleted))
                 .isEqualTo(4);
     }
 
@@ -117,14 +124,17 @@ class UserProfilesMigrationTests {
 
         liquibase.update("");
 
-        assertThat(jdbc.queryForObject("SELECT created_by_id FROM tasks WHERE id = ?", UUID.class, task))
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT created_by_id FROM tasks WHERE id = ?", UUID.class, task))
                 .isEqualTo(creator);
         assertThat(count("SELECT count(*) FROM user_profiles WHERE id = ?", creator)).isOne();
     }
 
     @Test
     void alreadyAnonymizedUserLosesItsAccountRowAndKeepsItsProfile() throws Exception {
-        UUID anonymized = insertUser("Deleted user", false, false, true, "now() - interval '10 days'", null);
+        UUID anonymized =
+                insertUser("Deleted user", false, false, true, "now() - interval '10 days'", null);
         jdbc.update("INSERT INTO user_roles (user_id, role) VALUES (?, 'USER')", anonymized);
         UUID task = insertTask(anonymized);
 
@@ -136,7 +146,9 @@ class UserProfilesMigrationTests {
                 .containsEntry("display_name", "Deleted user")
                 .containsEntry("status", "DELETED");
         assertThat(profile(anonymized).get("anonymized_at")).isNotNull();
-        assertThat(jdbc.queryForObject("SELECT created_by_id FROM tasks WHERE id = ?", UUID.class, task))
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT created_by_id FROM tasks WHERE id = ?", UUID.class, task))
                 .isEqualTo(anonymized);
     }
 
@@ -144,8 +156,13 @@ class UserProfilesMigrationTests {
     void alreadyAnonymizedUserKeepsNoPhotoReference() throws Exception {
         UUID avatar = insertMedia();
         UUID pendingAvatar = insertMedia();
-        UUID anonymized = insertUser("Deleted user", false, false, true, "now() - interval '10 days'", avatar);
-        jdbc.update("UPDATE users SET pending_avatar_media_id = ? WHERE id = ?", pendingAvatar, anonymized);
+        UUID anonymized =
+                insertUser(
+                        "Deleted user", false, false, true, "now() - interval '10 days'", avatar);
+        jdbc.update(
+                "UPDATE users SET pending_avatar_media_id = ? WHERE id = ?",
+                pendingAvatar,
+                anonymized);
 
         liquibase.update("");
 
@@ -159,25 +176,23 @@ class UserProfilesMigrationTests {
             boolean verified,
             boolean deleted,
             String anonymizedAt,
-            UUID avatar
-    ) {
+            UUID avatar) {
         return jdbc.queryForObject(
                 """
                         INSERT INTO users (created_at, updated_at, display_name, email, email_verified_at, enabled,
                                            password_hash, deleted_at, avatar_media_id, anonymized_at)
                         VALUES (now(), now(), ?, ?, %s, ?, '!', %s, ?, %s)
                         RETURNING id
-                        """.formatted(
-                        verified ? "now()" : "NULL",
-                        deleted ? "now() - interval '40 days'" : "NULL",
-                        anonymizedAt == null ? "NULL" : anonymizedAt
-                ),
+                        """
+                        .formatted(
+                                verified ? "now()" : "NULL",
+                                deleted ? "now() - interval '40 days'" : "NULL",
+                                anonymizedAt == null ? "NULL" : anonymizedAt),
                 UUID.class,
                 displayName,
                 "migration-" + UUID.randomUUID() + "@example.com",
                 enabled,
-                avatar
-        );
+                avatar);
     }
 
     private UUID insertMedia() {
@@ -189,8 +204,7 @@ class UserProfilesMigrationTests {
                         RETURNING id
                         """,
                 UUID.class,
-                "avatar/" + UUID.randomUUID()
-        );
+                "avatar/" + UUID.randomUUID());
     }
 
     private UUID insertTask(UUID creator) {
@@ -203,8 +217,7 @@ class UserProfilesMigrationTests {
                         """,
                 UUID.class,
                 "MIG-" + UUID.randomUUID().toString().substring(0, 8),
-                creator
-        );
+                creator);
     }
 
     private Map<String, Object> profile(UUID id) {
@@ -216,24 +229,24 @@ class UserProfilesMigrationTests {
     }
 
     private boolean tableExists(String table) {
-        return Boolean.TRUE.equals(jdbc.queryForObject(
-                "SELECT exists (SELECT 1 FROM information_schema.tables WHERE table_schema = ? AND table_name = ?)",
-                Boolean.class,
-                schema,
-                table
-        ));
+        return Boolean.TRUE.equals(
+                jdbc.queryForObject(
+                        "SELECT exists (SELECT 1 FROM information_schema.tables WHERE table_schema = ? AND table_name = ?)",
+                        Boolean.class,
+                        schema,
+                        table));
     }
 
     private boolean columnExists(String table, String column) {
-        return Boolean.TRUE.equals(jdbc.queryForObject(
-                """
+        return Boolean.TRUE.equals(
+                jdbc.queryForObject(
+                        """
                         SELECT exists (SELECT 1 FROM information_schema.columns
                                        WHERE table_schema = ? AND table_name = ? AND column_name = ?)
                         """,
-                Boolean.class,
-                schema,
-                table,
-                column
-        ));
+                        Boolean.class,
+                        schema,
+                        table,
+                        column));
     }
 }

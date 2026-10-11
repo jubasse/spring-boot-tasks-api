@@ -1,10 +1,24 @@
 package io.julienmetral.tasks.identity.controllers;
 
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.security.OpaqueTokens;
 import io.julienmetral.tasks.support.IntegrationTest;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -17,25 +31,10 @@ import org.springframework.test.web.servlet.ResultActions;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.time.Duration;
-import java.time.Instant;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-import static io.julienmetral.tasks.support.Problems.untypedProblem;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 /**
- * End-to-end tests of refresh tokens: {@code POST /api/v1/auth/login}, {@code /refresh} and {@code /logout}
- * run for real against PostgreSQL, and the database is inspected with {@link JdbcTemplate} to check hashing,
- * rotation, family revocation and to force expiry.
+ * End-to-end tests of refresh tokens: {@code POST /api/v1/auth/login}, {@code /refresh} and {@code
+ * /logout} run for real against PostgreSQL, and the database is inspected with {@link JdbcTemplate}
+ * to check hashing, rotation, family revocation and to force expiry.
  */
 @IntegrationTest
 class RefreshTokenApiTests {
@@ -45,23 +44,17 @@ class RefreshTokenApiTests {
     // application.yaml: security.refresh-token.ttl = 30d
     private static final Duration REFRESH_TTL = Duration.ofDays(30);
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    @Autowired private PasswordEncoder passwordEncoder;
 
-    @Autowired
-    private JsonMapper jsonMapper;
+    @Autowired private JsonMapper jsonMapper;
 
-    @Autowired
-    private JwtDecoder jwtDecoder;
+    @Autowired private JwtDecoder jwtDecoder;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     @Test
     void loginReturnsRefreshTokenExpiringInAboutThirtyDays() throws Exception {
@@ -79,10 +72,10 @@ class RefreshTokenApiTests {
 
         Instant refreshExpiresAt = Instant.parse(json.get("refreshTokenExpiresAt").asString());
 
-        assertThat(refreshExpiresAt).isBetween(
-                before.plus(REFRESH_TTL).minusSeconds(5),
-                after.plus(REFRESH_TTL).plusSeconds(5)
-        );
+        assertThat(refreshExpiresAt)
+                .isBetween(
+                        before.plus(REFRESH_TTL).minusSeconds(5),
+                        after.plus(REFRESH_TTL).plusSeconds(5));
     }
 
     @Test
@@ -102,11 +95,11 @@ class RefreshTokenApiTests {
                     .matches("[0-9a-f]{64}");
             assertThat(row.get("user_id")).isEqualTo(userId);
 
-            Integer rawMatches = jdbcTemplate.queryForObject(
-                    "SELECT count(*) FROM refresh_tokens t WHERE strpos(t::text, ?) > 0",
-                    Integer.class,
-                    raw
-            );
+            Integer rawMatches =
+                    jdbcTemplate.queryForObject(
+                            "SELECT count(*) FROM refresh_tokens t WHERE strpos(t::text, ?) > 0",
+                            Integer.class,
+                            raw);
 
             assertThat(rawMatches).isZero();
         }
@@ -122,26 +115,28 @@ class RefreshTokenApiTests {
 
         Instant before = Instant.now();
 
-        String body = refresh(original)
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").isNotEmpty())
-                .andExpect(jsonPath("$.tokenType").value("Bearer"))
-                .andExpect(jsonPath("$.expiresAt").isNotEmpty())
-                .andExpect(jsonPath("$.refreshToken").isNotEmpty())
-                .andExpect(jsonPath("$.refreshTokenExpiresAt").isNotEmpty())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String body =
+                refresh(original)
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.accessToken").isNotEmpty())
+                        .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                        .andExpect(jsonPath("$.expiresAt").isNotEmpty())
+                        .andExpect(jsonPath("$.refreshToken").isNotEmpty())
+                        .andExpect(jsonPath("$.refreshTokenExpiresAt").isNotEmpty())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
         JsonNode json = jsonMapper.readTree(body);
         String rotated = refreshTokenOf(json);
 
         assertThat(rotated).isNotEqualTo(original);
-        assertThat(json.get("accessToken").asString()).isNotEqualTo(login.get("accessToken").asString());
-        assertThat(Instant.parse(json.get("refreshTokenExpiresAt").asString())).isBetween(
-                before.plus(REFRESH_TTL).minusSeconds(5),
-                Instant.now().plus(REFRESH_TTL).plusSeconds(5)
-        );
+        assertThat(json.get("accessToken").asString())
+                .isNotEqualTo(login.get("accessToken").asString());
+        assertThat(Instant.parse(json.get("refreshTokenExpiresAt").asString()))
+                .isBetween(
+                        before.plus(REFRESH_TTL).minusSeconds(5),
+                        Instant.now().plus(REFRESH_TTL).plusSeconds(5));
 
         Map<String, Object> originalRow = tokenRow(original);
         Map<String, Object> rotatedRow = tokenRow(rotated);
@@ -157,18 +152,24 @@ class RefreshTokenApiTests {
         signUp(email);
         String refreshToken = refreshTokenOf(loginJson(email));
 
-        mockMvc.perform(post("/api/v1/auth/refresh")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer eyJhbGciOiJIUzI1NiJ9.expired.signature")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(tokenBody(refreshToken)))
+        mockMvc.perform(
+                        post("/api/v1/auth/refresh")
+                                .header(
+                                        HttpHeaders.AUTHORIZATION,
+                                        "Bearer eyJhbGciOiJIUzI1NiJ9.expired.signature")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(tokenBody(refreshToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isNotEmpty());
     }
 
     @Test
     void protectedEndpointStillRejectsAnInvalidAccessToken() throws Exception {
-        mockMvc.perform(get("/api/v1/tasks")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer eyJhbGciOiJIUzI1NiJ9.expired.signature"))
+        mockMvc.perform(
+                        get("/api/v1/tasks")
+                                .header(
+                                        HttpHeaders.AUTHORIZATION,
+                                        "Bearer eyJhbGciOiJIUzI1NiJ9.expired.signature"))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -210,8 +211,7 @@ class RefreshTokenApiTests {
 
         mockMvc.perform(
                         get("/api/v1/users/{id}", id)
-                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
-                )
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(id.toString()))
                 .andExpect(jsonPath("$.email").value(email));
@@ -225,7 +225,10 @@ class RefreshTokenApiTests {
 
         JsonNode login = loginJson(email);
 
-        assertThat(jwtDecoder.decode(login.get("accessToken").asString()).getClaimAsStringList("roles"))
+        assertThat(
+                        jwtDecoder
+                                .decode(login.get("accessToken").asString())
+                                .getClaimAsStringList("roles"))
                 .containsExactly("ROLE_USER");
 
         // Promoted behind the application's back, after the login
@@ -239,8 +242,7 @@ class RefreshTokenApiTests {
         // Reading another user requires ROLE_ADMIN
         mockMvc.perform(
                         get("/api/v1/users/{id}", otherId)
-                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
-                )
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
                 .andExpect(status().isOk());
     }
 
@@ -283,8 +285,7 @@ class RefreshTokenApiTests {
 
         jdbcTemplate.update(
                 "UPDATE refresh_tokens SET expires_at = now() - interval '1 second' WHERE token_hash = ?",
-                OpaqueTokens.hash(token)
-        );
+                OpaqueTokens.hash(token));
 
         expectInvalidRefreshToken(refresh(token));
     }
@@ -310,8 +311,7 @@ class RefreshTokenApiTests {
 
         mockMvc.perform(
                         post("/api/v1/users/{id}/disable", id)
-                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
-                )
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
                 .andExpect(status().isNoContent());
 
         assertThat(revokedAt(first)).isNotNull();
@@ -321,8 +321,7 @@ class RefreshTokenApiTests {
 
         mockMvc.perform(
                         post("/api/v1/users/{id}/enable", id)
-                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
-                )
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
                 .andExpect(status().isNoContent());
 
         // Old sessions do not come back, a fresh login does work
@@ -353,8 +352,7 @@ class RefreshTokenApiTests {
 
         mockMvc.perform(
                         delete("/api/v1/users/{id}", id)
-                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
-                )
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
                 .andExpect(status().isNoContent());
 
         assertThat(revokedAt(token)).isNotNull();
@@ -454,16 +452,16 @@ class RefreshTokenApiTests {
         return mockMvc.perform(
                 post("/api/v1/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(tokenBody(refreshToken))
-        );
+                        .content(tokenBody(refreshToken)));
     }
 
     private JsonNode refreshOk(String refreshToken) throws Exception {
-        String body = refresh(refreshToken)
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String body =
+                refresh(refreshToken)
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
         return jsonMapper.readTree(body);
     }
@@ -472,14 +470,14 @@ class RefreshTokenApiTests {
         return mockMvc.perform(
                 post("/api/v1/auth/logout")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(tokenBody(refreshToken))
-        );
+                        .content(tokenBody(refreshToken)));
     }
 
     private static void expectInvalidRefreshToken(ResultActions result) throws Exception {
-        result
-                .andExpect(untypedProblem(401, "Unauthorized"))
-                .andExpect(jsonPath("$.detail").value("The refresh token is invalid, expired or revoked"));
+        result.andExpect(untypedProblem(401, "Unauthorized"))
+                .andExpect(
+                        jsonPath("$.detail")
+                                .value("The refresh token is invalid, expired or revoked"));
     }
 
     private String tokenBody(String refreshToken) {
@@ -487,17 +485,19 @@ class RefreshTokenApiTests {
     }
 
     private UUID signUp(String email) throws Exception {
-        String location = mockMvc.perform(
-                        post("/api/v1/users")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
+        String location =
+                mockMvc.perform(
+                                post("/api/v1/users")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                """
                                         {"email": "%s", "password": "%s", "displayName": "Refresh test"}
-                                        """.formatted(email, PASSWORD))
-                )
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getHeader("Location");
+                                        """
+                                                        .formatted(email, PASSWORD)))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getHeader("Location");
 
         return UUID.fromString(location.substring(location.lastIndexOf('/') + 1));
     }
@@ -507,15 +507,21 @@ class RefreshTokenApiTests {
     }
 
     private JsonNode loginJson(String email, String password) throws Exception {
-        String body = mockMvc.perform(
-                        post("/api/v1/auth/login")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(jsonMapper.writeValueAsString(Map.of("email", email, "password", password)))
-                )
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String body =
+                mockMvc.perform(
+                                post("/api/v1/auth/login")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                jsonMapper.writeValueAsString(
+                                                        Map.of(
+                                                                "email",
+                                                                email,
+                                                                "password",
+                                                                password))))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
         return jsonMapper.readTree(body);
     }
@@ -540,9 +546,7 @@ class RefreshTokenApiTests {
 
     private Map<String, Object> tokenRow(String rawToken) {
         return jdbcTemplate.queryForMap(
-                "SELECT * FROM refresh_tokens WHERE token_hash = ?",
-                OpaqueTokens.hash(rawToken)
-        );
+                "SELECT * FROM refresh_tokens WHERE token_hash = ?", OpaqueTokens.hash(rawToken));
     }
 
     private UUID familyOf(String rawToken) {

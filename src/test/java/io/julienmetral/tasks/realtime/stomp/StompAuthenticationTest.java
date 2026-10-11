@@ -1,8 +1,26 @@
 package io.julienmetral.tasks.realtime.stomp;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.identity.repositories.AccountState;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,25 +52,6 @@ import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.WebSocketSession;
 
-import java.time.Instant;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.atomic.AtomicBoolean;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
-
 @ExtendWith(MockitoExtension.class)
 class StompAuthenticationTest {
 
@@ -77,24 +76,25 @@ class StompAuthenticationTest {
         }
     }
 
-    @Mock
-    private JwtDecoder jwtDecoder;
+    @Mock private JwtDecoder jwtDecoder;
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
-    @Mock
-    private StompSessions stompSessions;
+    @Mock private StompSessions stompSessions;
 
-    @Mock
-    private MessageChannel channel;
+    @Mock private MessageChannel channel;
 
     private StompAuthentication authentication;
 
     @BeforeEach
     void createAuthentication() {
-        authentication = new StompAuthentication(
-                jwtDecoder, jwtAuthenticationConverter(), new CurrentUser(), userRepository, stompSessions);
+        authentication =
+                new StompAuthentication(
+                        jwtDecoder,
+                        jwtAuthenticationConverter(),
+                        new CurrentUser(),
+                        userRepository,
+                        stompSessions);
     }
 
     @Test
@@ -105,11 +105,15 @@ class StompAuthenticationTest {
 
         Message<?> connected = authentication.preSend(connect("Bearer " + TOKEN), channel);
 
-        assertThat(accessorOf(connected).getUser()).isInstanceOfSatisfying(JwtAuthenticationToken.class, user -> {
-            assertThat(user.getToken().getTokenValue()).isEqualTo(TOKEN);
-            assertThat(user.getAuthorities()).extracting(GrantedAuthority::getAuthority)
-                    .contains("ROLE_USER", "ROLE_ADMIN");
-        });
+        assertThat(accessorOf(connected).getUser())
+                .isInstanceOfSatisfying(
+                        JwtAuthenticationToken.class,
+                        user -> {
+                            assertThat(user.getToken().getTokenValue()).isEqualTo(TOKEN);
+                            assertThat(user.getAuthorities())
+                                    .extracting(GrantedAuthority::getAuthority)
+                                    .contains("ROLE_USER", "ROLE_ADMIN");
+                        });
     }
 
     @Test
@@ -181,8 +185,16 @@ class StompAuthenticationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"Basic dXNlcjpwYXNzd29yZA==", TOKEN, "Bearer" + TOKEN, "Bearer", "Bear " + TOKEN})
-    void connectWithAnotherAuthorizationThanABearerTokenIsRefusedAsBadCredentials(String authorization) {
+    @ValueSource(
+            strings = {
+                "Basic dXNlcjpwYXNzd29yZA==",
+                TOKEN,
+                "Bearer" + TOKEN,
+                "Bearer",
+                "Bear " + TOKEN
+            })
+    void connectWithAnotherAuthorizationThanABearerTokenIsRefusedAsBadCredentials(
+            String authorization) {
         assertThatThrownBy(() -> authentication.preSend(connect(authorization), channel))
                 .isInstanceOf(BadCredentialsException.class)
                 .hasMessage("A bearer access token is required");
@@ -242,7 +254,8 @@ class StompAuthenticationTest {
 
     @Test
     void failedAccountReadForgetsTheSessionAndPropagates() {
-        DataAccessResourceFailureException databaseDown = new DataAccessResourceFailureException("Connection refused");
+        DataAccessResourceFailureException databaseDown =
+                new DataAccessResourceFailureException("Connection refused");
         when(jwtDecoder.decode(TOKEN)).thenReturn(jwt(USER_ID.toString()));
         when(userRepository.findAccountStateById(USER_ID)).thenThrow(databaseDown);
         Message<byte[]> connect = connect("Bearer " + TOKEN);
@@ -253,17 +266,21 @@ class StompAuthenticationTest {
     }
 
     @Test
-    void disablingWhoseBroadcastArrivesJustAfterTheAccountReadClosesTheNewSession() throws Exception {
+    void disablingWhoseBroadcastArrivesJustAfterTheAccountReadClosesTheNewSession()
+            throws Exception {
         TrackedSession tracked = trackedSession();
         AtomicBoolean broadcastDelivered = new AtomicBoolean();
-        // The CONNECT reads ACTIVE; the disabling commits and its broadcast arrives before the CONNECT completes
-        when(userRepository.findAccountStateById(USER_ID)).thenAnswer(invocation -> {
-            if (broadcastDelivered.compareAndSet(false, true)) {
-                tracked.sessions().closeIfNoLongerActive(USER_ID);
-                return Optional.of(new AccountState(true, ISSUED_AT));
-            }
-            return Optional.of(new AccountState(false, ISSUED_AT));
-        });
+        // The CONNECT reads ACTIVE; the disabling commits and its broadcast arrives before the
+        // CONNECT completes
+        when(userRepository.findAccountStateById(USER_ID))
+                .thenAnswer(
+                        invocation -> {
+                            if (broadcastDelivered.compareAndSet(false, true)) {
+                                tracked.sessions().closeIfNoLongerActive(USER_ID);
+                                return Optional.of(new AccountState(true, ISSUED_AT));
+                            }
+                            return Optional.of(new AccountState(false, ISSUED_AT));
+                        });
 
         tracked.authentication().preSend(connect("Bearer " + TOKEN), channel);
 
@@ -273,9 +290,11 @@ class StompAuthenticationTest {
     @Test
     void refusedConnectLeavesNoSessionToExpireOrToClose() throws Exception {
         TrackedSession tracked = trackedSession();
-        when(userRepository.findAccountStateById(USER_ID)).thenReturn(Optional.of(new AccountState(false, ISSUED_AT)));
+        when(userRepository.findAccountStateById(USER_ID))
+                .thenReturn(Optional.of(new AccountState(false, ISSUED_AT)));
 
-        assertThatThrownBy(() -> tracked.authentication().preSend(connect("Bearer " + TOKEN), channel))
+        assertThatThrownBy(
+                        () -> tracked.authentication().preSend(connect("Bearer " + TOKEN), channel))
                 .isInstanceOf(AccessDeniedException.class);
         tracked.sessions().closeIfNoLongerActive(USER_ID);
 
@@ -290,7 +309,8 @@ class StompAuthenticationTest {
         when(userRepository.findAccountStateById(USER_ID))
                 .thenThrow(new DataAccessResourceFailureException("Connection refused"));
 
-        assertThatThrownBy(() -> tracked.authentication().preSend(connect("Bearer " + TOKEN), channel))
+        assertThatThrownBy(
+                        () -> tracked.authentication().preSend(connect("Bearer " + TOKEN), channel))
                 .isInstanceOf(DataAccessResourceFailureException.class);
         tracked.sessions().closeIfNoLongerActive(USER_ID);
 
@@ -300,12 +320,15 @@ class StompAuthenticationTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = StompCommand.class, names = {"SUBSCRIBE", "SEND", "UNSUBSCRIBE", "DISCONNECT"})
+    @EnumSource(
+            value = StompCommand.class,
+            names = {"SUBSCRIBE", "SEND", "UNSUBSCRIBE", "DISCONNECT"})
     void framesOtherThanConnectPassWithoutAToken(StompCommand command) {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(command);
         accessor.setSessionId(SESSION_ID);
         accessor.setLeaveMutable(true);
-        Message<byte[]> frame = MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+        Message<byte[]> frame =
+                MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
 
         assertThat(authentication.preSend(frame, channel)).isSameAs(frame);
         verifyNoInteractions(jwtDecoder, userRepository, stompSessions);
@@ -315,11 +338,10 @@ class StompAuthenticationTest {
             StompAuthentication authentication,
             StompSessions sessions,
             WebSocketSession socket,
-            ScheduledFuture<?> expiry
-    ) {
-    }
+            ScheduledFuture<?> expiry) {}
 
-    // The instance's real sessions, with the connection SESSION_ID open and a valid token of USER_ID
+    // The instance's real sessions, with the connection SESSION_ID open and a valid token of
+    // USER_ID
     private TrackedSession trackedSession() throws Exception {
         TaskScheduler scheduler = mock(TaskScheduler.class);
         ScheduledFuture<?> expiry = mock(ScheduledFuture.class);
@@ -331,9 +353,15 @@ class StompAuthenticationTest {
         when(jwtDecoder.decode(TOKEN)).thenReturn(jwt(USER_ID.toString()));
 
         return new TrackedSession(
-                new StompAuthentication(jwtDecoder, jwtAuthenticationConverter(), new CurrentUser(), userRepository,
+                new StompAuthentication(
+                        jwtDecoder,
+                        jwtAuthenticationConverter(),
+                        new CurrentUser(),
+                        userRepository,
                         sessions),
-                sessions, socket, expiry);
+                sessions,
+                socket,
+                expiry);
     }
 
     private static Message<byte[]> connect(String authorization) {
@@ -353,12 +381,13 @@ class StompAuthenticationTest {
     }
 
     private static Jwt jwt(String uid) {
-        Jwt.Builder jwt = Jwt.withTokenValue(TOKEN)
-                .header("alg", "HS256")
-                .issuer("tasks-api")
-                .issuedAt(ISSUED_AT)
-                .expiresAt(EXPIRES_AT)
-                .claim("roles", List.of("ROLE_ADMIN", "ROLE_USER"));
+        Jwt.Builder jwt =
+                Jwt.withTokenValue(TOKEN)
+                        .header("alg", "HS256")
+                        .issuer("tasks-api")
+                        .issuedAt(ISSUED_AT)
+                        .expiresAt(EXPIRES_AT)
+                        .claim("roles", List.of("ROLE_ADMIN", "ROLE_USER"));
 
         return uid == null ? jwt.build() : jwt.claim("uid", uid).build();
     }

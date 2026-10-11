@@ -7,12 +7,11 @@ import io.julienmetral.tasks.notification.dtos.NotificationSettingsDto;
 import io.julienmetral.tasks.notification.entities.NotificationSettings;
 import io.julienmetral.tasks.notification.entities.TaskNotificationType;
 import io.julienmetral.tasks.notification.repositories.NotificationSettingsRepository;
+import java.time.Clock;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.Clock;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -45,9 +44,10 @@ public class NotificationSettingsService {
     public NotificationSettings update(UUID userId, NotificationSettingsDto dto) {
         User user = getUser(userId);
 
-        NotificationSettings settings = settingsRepository
-                .findById(userId)
-                .orElseGet(() -> NotificationSettings.defaults(user));
+        NotificationSettings settings =
+                settingsRepository
+                        .findById(userId)
+                        .orElseGet(() -> NotificationSettings.defaults(user));
 
         settings.setTaskAssigned(dto.taskAssigned());
         settings.setTaskUnassigned(dto.taskUnassigned());
@@ -63,8 +63,6 @@ public class NotificationSettingsService {
     }
 
     private User getUser(UUID userId) {
-        return userRepository
-                .findById(userId)
-                .orElseThrow(() -> new UserNotFoundException(userId));
+        return userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
     }
 }

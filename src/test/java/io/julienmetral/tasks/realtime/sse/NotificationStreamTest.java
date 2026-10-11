@@ -1,25 +1,5 @@
 package io.julienmetral.tasks.realtime.sse;
 
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter.SseEventBuilder;
-
-import java.io.IOException;
-import java.time.Duration;
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
-
 import static io.julienmetral.tasks.realtime.sse.StreamEventTest.text;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
@@ -33,6 +13,25 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
+
+import java.io.IOException;
+import java.time.Duration;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter.SseEventBuilder;
 
 @ExtendWith(MockitoExtension.class)
 class NotificationStreamTest {
@@ -49,17 +48,13 @@ class NotificationStreamTest {
     // "Nothing written" can only be checked over a grace period, here several short heartbeats
     private static final Duration NOTHING_WRITTEN_GRACE_PERIOD = Duration.ofMillis(300);
 
-    @Mock
-    private SseEmitter emitter;
+    @Mock private SseEmitter emitter;
 
-    @Captor
-    private ArgumentCaptor<Runnable> completionCallback;
+    @Captor private ArgumentCaptor<Runnable> completionCallback;
 
-    @Captor
-    private ArgumentCaptor<Consumer<Throwable>> errorCallback;
+    @Captor private ArgumentCaptor<Consumer<Throwable>> errorCallback;
 
-    @Captor
-    private ArgumentCaptor<Runnable> timeoutCallback;
+    @Captor private ArgumentCaptor<Runnable> timeoutCallback;
 
     private final BlockingQueue<String> written = new LinkedBlockingQueue<>();
 
@@ -73,10 +68,15 @@ class NotificationStreamTest {
         NotificationStream stream = stream(10, NO_HEARTBEAT);
         stream.start();
 
-        stream.send(StreamEvent.notification(UUID.fromString("00000000-0000-0000-0000-0000000000e1"),
-                "task.assigned", "{}"));
+        stream.send(
+                StreamEvent.notification(
+                        UUID.fromString("00000000-0000-0000-0000-0000000000e1"),
+                        "task.assigned",
+                        "{}"));
 
-        assertThat(nextWrite()).isEqualTo("id:00000000-0000-0000-0000-0000000000e1\nevent:task.assigned\ndata:{}\n\n");
+        assertThat(nextWrite())
+                .isEqualTo(
+                        "id:00000000-0000-0000-0000-0000000000e1\nevent:task.assigned\ndata:{}\n\n");
     }
 
     @Test
@@ -133,10 +133,13 @@ class NotificationStreamTest {
     @Test
     void responseIsCompletedOffTheThreadThatClosesTheStream() {
         AtomicReference<Thread> completing = new AtomicReference<>();
-        doAnswer(invocation -> {
-            completing.set(Thread.currentThread());
-            return null;
-        }).when(emitter).complete();
+        doAnswer(
+                        invocation -> {
+                            completing.set(Thread.currentThread());
+                            return null;
+                        })
+                .when(emitter)
+                .complete();
         NotificationStream stream = stream(10, NO_HEARTBEAT);
 
         stream.close();
@@ -150,13 +153,16 @@ class NotificationStreamTest {
     @Test
     void closeReturnsWhileTheWriterIsBlockedInAWriteToAClientThatStoppedReading() throws Exception {
         SseEmitter realEmitter = new SseEmitter();
-        NotificationStream stream = new NotificationStream(USER_ID, realEmitter, 10, NO_HEARTBEAT, released::add);
+        NotificationStream stream =
+                new NotificationStream(USER_ID, realEmitter, 10, NO_HEARTBEAT, released::add);
         SseClient.StallingResponse response = new SseClient.StallingResponse();
         SseClient client = SseClient.connect(realEmitter, response);
         stream.start();
         response.stall();
         stream.send(notification());
-        assertThat(response.awaitBlockedWrite(WRITE_TIMEOUT)).as("the writer blocked in a write").isTrue();
+        assertThat(response.awaitBlockedWrite(WRITE_TIMEOUT))
+                .as("the writer blocked in a write")
+                .isTrue();
 
         try {
             // Completing the response waits for the blocked write; closing must not
@@ -182,7 +188,8 @@ class NotificationStreamTest {
         written.clear();
         stream.send(notification());
 
-        assertThat(written.poll(NOTHING_WRITTEN_GRACE_PERIOD.toMillis(), TimeUnit.MILLISECONDS)).isNull();
+        assertThat(written.poll(NOTHING_WRITTEN_GRACE_PERIOD.toMillis(), TimeUnit.MILLISECONDS))
+                .isNull();
     }
 
     @Test
@@ -213,7 +220,8 @@ class NotificationStreamTest {
     @Test
     void writeToAResponseAlreadyCompletedReleasesTheStream() throws Exception {
         doThrow(new IllegalStateException("ResponseBodyEmitter has already completed"))
-                .when(emitter).send(any(SseEventBuilder.class));
+                .when(emitter)
+                .send(any(SseEventBuilder.class));
         NotificationStream stream = stream(10, NO_HEARTBEAT);
         stream.start();
 
@@ -273,7 +281,8 @@ class NotificationStreamTest {
 
             assertThat(released).containsExactly(stream);
             verify(emitter, timeout(WRITE_TIMEOUT.toMillis())).complete();
-            await().during(NOTHING_WRITTEN_GRACE_PERIOD).atMost(NOTHING_WRITTEN_GRACE_PERIOD.multipliedBy(2))
+            await().during(NOTHING_WRITTEN_GRACE_PERIOD)
+                    .atMost(NOTHING_WRITTEN_GRACE_PERIOD.multipliedBy(2))
                     .until(uncaught::isEmpty);
         } finally {
             Thread.setDefaultUncaughtExceptionHandler(previous);
@@ -289,10 +298,13 @@ class NotificationStreamTest {
     }
 
     private void emitterRecordsWrites() throws IOException {
-        doAnswer(invocation -> {
-            written.add(text(invocation.getArgument(0)));
-            return null;
-        }).when(emitter).send(any(SseEventBuilder.class));
+        doAnswer(
+                        invocation -> {
+                            written.add(text(invocation.getArgument(0)));
+                            return null;
+                        })
+                .when(emitter)
+                .send(any(SseEventBuilder.class));
     }
 
     private String nextWrite() throws InterruptedException {

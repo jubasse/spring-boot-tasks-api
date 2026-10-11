@@ -1,7 +1,25 @@
 package io.julienmetral.tasks.identity.controllers;
 
+import static io.julienmetral.tasks.support.Problems.typedProblem;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.sql.Timestamp;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,28 +33,9 @@ import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.sql.Timestamp;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.HexFormat;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-import static io.julienmetral.tasks.support.Problems.typedProblem;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 /**
- * End-to-end tests of email verification: sign-up sends a real email to the Mailpit container,
- * the token is read from that email and sent back to {@code POST /api/v1/auth/verify-email}.
+ * End-to-end tests of email verification: sign-up sends a real email to the Mailpit container, the
+ * token is read from that email and sent back to {@code POST /api/v1/auth/verify-email}.
  */
 @IntegrationTest
 class EmailVerificationApiTests {
@@ -48,17 +47,13 @@ class EmailVerificationApiTests {
     private static final String INVALID_TOKEN_DETAIL =
             "The email verification token is invalid, expired or already used";
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private Mailpit mailpit;
+    @Autowired private Mailpit mailpit;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
-    @Autowired
-    private JsonMapper jsonMapper;
+    @Autowired private JsonMapper jsonMapper;
 
     @Value("${mailpit.api-url}")
     private String mailpitApiUrl;
@@ -78,7 +73,9 @@ class EmailVerificationApiTests {
         assertThat(message.path("To")).hasSize(1);
         assertThat(message.path("To").get(0).path("Address").asString()).isEqualTo(email);
         assertThat(text).contains("Hello Alice Liddell,");
-        assertThat(text).containsPattern("http://localhost:3000/verify-email\\?token=[A-Za-z0-9_-]{43}(\\s|$)");
+        assertThat(text)
+                .containsPattern(
+                        "http://localhost:3000/verify-email\\?token=[A-Za-z0-9_-]{43}(\\s|$)");
         assertThat(mailpit.countTo(email)).isEqualTo(1);
     }
 
@@ -88,10 +85,9 @@ class EmailVerificationApiTests {
         UUID userId = signUp(email);
         String token = mailpit.latestVerificationTokenFor(email);
 
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                "SELECT * FROM email_verification_tokens WHERE user_id = ?",
-                userId
-        );
+        List<Map<String, Object>> rows =
+                jdbcTemplate.queryForList(
+                        "SELECT * FROM email_verification_tokens WHERE user_id = ?", userId);
 
         assertThat(rows).hasSize(1);
 
@@ -99,13 +95,14 @@ class EmailVerificationApiTests {
 
         assertThat(row.get("token_hash")).isEqualTo(sha256Hex(token));
         assertThat(row.get("used_at")).isNull();
-        assertThat(row.values()).noneMatch(value -> value != null && value.toString().contains(token));
+        assertThat(row.values())
+                .noneMatch(value -> value != null && value.toString().contains(token));
 
-        Integer rawMatches = jdbcTemplate.queryForObject(
-                "SELECT count(*) FROM email_verification_tokens WHERE token_hash = ?",
-                Integer.class,
-                token
-        );
+        Integer rawMatches =
+                jdbcTemplate.queryForObject(
+                        "SELECT count(*) FROM email_verification_tokens WHERE token_hash = ?",
+                        Integer.class,
+                        token);
         assertThat(rawMatches).isZero();
 
         Instant createdAt = ((Timestamp) row.get("created_at")).toInstant();
@@ -122,8 +119,7 @@ class EmailVerificationApiTests {
         mockMvc.perform(
                         post("/api/v1/users")
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content(signUpBody(email.toUpperCase(), "Duplicate"))
-                )
+                                .content(signUpBody(email.toUpperCase(), "Duplicate")))
                 .andExpect(status().isConflict());
 
         // Give a wrongly sent email the time to arrive before asserting it never did
@@ -139,23 +135,22 @@ class EmailVerificationApiTests {
         UUID userId = signUp(email);
         String accessToken = login(email);
 
-        getUser(userId, accessToken)
-                .andExpect(jsonPath("$.emailVerifiedAt").doesNotExist());
+        getUser(userId, accessToken).andExpect(jsonPath("$.emailVerifiedAt").doesNotExist());
 
         Instant before = Instant.now();
 
-        verify(mailpit.latestVerificationTokenFor(email))
-                .andExpect(status().isNoContent());
+        verify(mailpit.latestVerificationTokenFor(email)).andExpect(status().isNoContent());
 
         String verifiedAt = verifiedAt(userId, accessToken);
         assertThat(verifiedAt).isNotNull();
-        assertThat(Instant.parse(verifiedAt)).isBetween(before.minusSeconds(1), Instant.now().plusSeconds(1));
+        assertThat(Instant.parse(verifiedAt))
+                .isBetween(before.minusSeconds(1), Instant.now().plusSeconds(1));
 
-        Timestamp usedAt = jdbcTemplate.queryForObject(
-                "SELECT used_at FROM email_verification_tokens WHERE user_id = ?",
-                Timestamp.class,
-                userId
-        );
+        Timestamp usedAt =
+                jdbcTemplate.queryForObject(
+                        "SELECT used_at FROM email_verification_tokens WHERE user_id = ?",
+                        Timestamp.class,
+                        userId);
         assertThat(usedAt).isNotNull();
     }
 
@@ -167,8 +162,7 @@ class EmailVerificationApiTests {
         mockMvc.perform(
                         post("/api/v1/auth/verify-email")
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content(verifyBody(mailpit.latestVerificationTokenFor(email)))
-                )
+                                .content(verifyBody(mailpit.latestVerificationTokenFor(email))))
                 .andExpect(status().isNoContent());
     }
 
@@ -200,8 +194,7 @@ class EmailVerificationApiTests {
 
         jdbcTemplate.update(
                 "UPDATE email_verification_tokens SET expires_at = now() - interval '1 second' WHERE user_id = ?",
-                userId
-        );
+                userId);
 
         expectInvalidToken(verify(token));
 
@@ -216,18 +209,22 @@ class EmailVerificationApiTests {
 
         mockMvc.perform(
                         delete("/api/v1/users/{id}", userId)
-                                .with(jwt()
-                                        .jwt(jwt -> jwt.claim("uid", UUID.randomUUID().toString()))
-                                        .authorities(new SimpleGrantedAuthority("ROLE_ADMIN")))
-                )
+                                .with(
+                                        jwt().jwt(
+                                                        jwt ->
+                                                                jwt.claim(
+                                                                        "uid",
+                                                                        UUID.randomUUID()
+                                                                                .toString()))
+                                                .authorities(
+                                                        new SimpleGrantedAuthority("ROLE_ADMIN"))))
                 .andExpect(status().isNoContent());
 
         expectInvalidToken(verify(token));
 
-        Map<String, Object> user = jdbcTemplate.queryForMap(
-                "SELECT email_verified_at, deleted_at FROM users WHERE id = ?",
-                userId
-        );
+        Map<String, Object> user =
+                jdbcTemplate.queryForMap(
+                        "SELECT email_verified_at, deleted_at FROM users WHERE id = ?", userId);
         assertThat(user.get("deleted_at")).isNotNull();
         assertThat(user.get("email_verified_at")).isNull();
     }
@@ -255,13 +252,14 @@ class EmailVerificationApiTests {
         String secondToken = mailpit.latestVerificationTokenFor(email);
 
         assertThat(secondToken).isNotEqualTo(firstToken);
-        assertThat(latestMessageTo(email).path("Subject").asString()).isEqualTo("Verify your email address");
+        assertThat(latestMessageTo(email).path("Subject").asString())
+                .isEqualTo("Verify your email address");
 
-        List<String> hashes = jdbcTemplate.queryForList(
-                "SELECT token_hash FROM email_verification_tokens WHERE user_id = ?",
-                String.class,
-                userId
-        );
+        List<String> hashes =
+                jdbcTemplate.queryForList(
+                        "SELECT token_hash FROM email_verification_tokens WHERE user_id = ?",
+                        String.class,
+                        userId);
         assertThat(hashes).containsExactly(sha256Hex(secondToken));
 
         expectInvalidToken(verify(firstToken));
@@ -280,8 +278,7 @@ class EmailVerificationApiTests {
 
         jdbcTemplate.update(
                 "UPDATE email_verification_tokens SET expires_at = now() - interval '1 hour' WHERE user_id = ?",
-                userId
-        );
+                userId);
 
         resend(accessToken).andExpect(status().isNoContent());
         awaitEmailCount(email, 2);
@@ -313,10 +310,10 @@ class EmailVerificationApiTests {
 
         mockMvc.perform(
                         post("/api/v1/auth/verify-email/resend")
-                                .with(jwt()
-                                        .jwt(jwt -> jwt.claim("uid", userId.toString()))
-                                        .authorities(new SimpleGrantedAuthority("ROLE_USER")))
-                )
+                                .with(
+                                        jwt().jwt(jwt -> jwt.claim("uid", userId.toString()))
+                                                .authorities(
+                                                        new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isNoContent());
 
         awaitEmailCount(email, 2);
@@ -327,31 +324,33 @@ class EmailVerificationApiTests {
     }
 
     private UUID signUp(String email, String displayName) throws Exception {
-        String location = mockMvc.perform(
-                        post("/api/v1/users")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(signUpBody(email, displayName))
-                )
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getHeader("Location");
+        String location =
+                mockMvc.perform(
+                                post("/api/v1/users")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(signUpBody(email, displayName)))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getHeader("Location");
 
         return UUID.fromString(location.substring(location.lastIndexOf('/') + 1));
     }
 
     private String login(String email) throws Exception {
-        String body = mockMvc.perform(
-                        post("/api/v1/auth/login")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
+        String body =
+                mockMvc.perform(
+                                post("/api/v1/auth/login")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                """
                                         {"email": "%s", "password": "%s"}
-                                        """.formatted(email, PASSWORD))
-                )
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+                                        """
+                                                        .formatted(email, PASSWORD)))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
         return jsonMapper.readTree(body).get("accessToken").asString();
     }
@@ -360,31 +359,27 @@ class EmailVerificationApiTests {
         return mockMvc.perform(
                 post("/api/v1/auth/verify-email")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(verifyBody(token))
-        );
+                        .content(verifyBody(token)));
     }
 
     private ResultActions resend(String accessToken) throws Exception {
         return mockMvc.perform(
                 post("/api/v1/auth/verify-email/resend")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
-        );
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken));
     }
 
     private ResultActions getUser(UUID id, String accessToken) throws Exception {
         return mockMvc.perform(
                         get("/api/v1/users/{id}", id)
-                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
-                )
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
                 .andExpect(status().isOk());
     }
 
-    /** {@code emailVerifiedAt} as returned by {@code GET /api/v1/users/{id}}, or null when absent. */
+    /**
+     * {@code emailVerifiedAt} as returned by {@code GET /api/v1/users/{id}}, or null when absent.
+     */
     private String verifiedAt(UUID id, String accessToken) throws Exception {
-        String body = getUser(id, accessToken)
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String body = getUser(id, accessToken).andReturn().getResponse().getContentAsString();
 
         JsonNode value = jsonMapper.readTree(body).path("emailVerifiedAt");
 
@@ -392,8 +387,7 @@ class EmailVerificationApiTests {
     }
 
     private static void expectInvalidToken(ResultActions result) throws Exception {
-        result
-                .andExpect(typedProblem(400, "invalid-token", "Invalid or expired token"))
+        result.andExpect(typedProblem(400, "invalid-token", "Invalid or expired token"))
                 .andExpect(jsonPath("$.detail").value(INVALID_TOKEN_DETAIL));
     }
 
@@ -407,43 +401,42 @@ class EmailVerificationApiTests {
         assertThat(mailpit.countTo(email)).isEqualTo(expected);
     }
 
-    /** Full Mailpit message (headers, subject, recipients) of the latest email sent to this address. */
+    /**
+     * Full Mailpit message (headers, subject, recipients) of the latest email sent to this address.
+     */
     private JsonNode latestMessageTo(String email) {
         RestClient client = RestClient.create(mailpitApiUrl);
 
-        JsonNode search = jsonMapper.readTree(
-                client.get()
-                        .uri("/api/v1/search?query={query}", "to:\"" + email + "\"")
-                        .retrieve()
-                        .body(String.class)
-        );
+        JsonNode search =
+                jsonMapper.readTree(
+                        client.get()
+                                .uri("/api/v1/search?query={query}", "to:\"" + email + "\"")
+                                .retrieve()
+                                .body(String.class));
 
         String id = search.path("messages").get(0).path("ID").asString();
 
         return jsonMapper.readTree(
-                client.get()
-                        .uri("/api/v1/message/{id}", id)
-                        .retrieve()
-                        .body(String.class)
-        );
+                client.get().uri("/api/v1/message/{id}", id).retrieve().body(String.class));
     }
 
     private static String signUpBody(String email, String displayName) {
         return """
                 {"email": "%s", "password": "%s", "displayName": "%s"}
-                """.formatted(email, PASSWORD, displayName);
+                """
+                .formatted(email, PASSWORD, displayName);
     }
 
     private static String verifyBody(String token) {
         return """
                 {"token": "%s"}
-                """.formatted(token);
+                """
+                .formatted(token);
     }
 
     private static String sha256Hex(String value) throws Exception {
-        byte[] digest = MessageDigest
-                .getInstance("SHA-256")
-                .digest(value.getBytes(StandardCharsets.UTF_8));
+        byte[] digest =
+                MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
 
         return HexFormat.of().formatHex(digest);
     }

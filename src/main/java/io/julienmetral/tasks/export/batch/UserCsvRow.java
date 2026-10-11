@@ -13,14 +13,21 @@ record UserCsvRow(
         String roles,
         Instant emailVerifiedAt,
         Instant createdAt,
-        Instant lastActiveAt
-) {
+        Instant lastActiveAt) {
 
-    static final List<String> HEADER = List.of(
-            "id", "email", "display_name", "status", "roles", "email_verified_at", "created_at", "last_active_at"
-    );
+    static final List<String> HEADER =
+            List.of(
+                    "id",
+                    "email",
+                    "display_name",
+                    "status",
+                    "roles",
+                    "email_verified_at",
+                    "created_at",
+                    "last_active_at");
 
     List<Object> values() {
-        return Arrays.asList(id, email, displayName, status, roles, emailVerifiedAt, createdAt, lastActiveAt);
+        return Arrays.asList(
+                id, email, displayName, status, roles, emailVerifiedAt, createdAt, lastActiveAt);
     }
 }

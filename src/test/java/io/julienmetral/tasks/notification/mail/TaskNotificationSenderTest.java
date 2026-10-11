@@ -1,8 +1,19 @@
 package io.julienmetral.tasks.notification.mail;
 
+import static io.julienmetral.tasks.support.UserProfiles.active;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.params.provider.EnumSource.Mode.EXCLUDE;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
+import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.mail.MailMessage;
 import io.julienmetral.tasks.mail.MailService;
 import io.julienmetral.tasks.notification.entities.TaskNotificationType;
@@ -17,6 +28,12 @@ import io.julienmetral.tasks.task.events.TaskOverdue;
 import io.julienmetral.tasks.task.events.TaskUnassigned;
 import io.julienmetral.tasks.task.events.UsersMentionedInComment;
 import io.julienmetral.tasks.task.services.CommentMentions;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.TimeZone;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -28,53 +45,37 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.Instant;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-import java.util.TimeZone;
-import java.util.UUID;
-
-import static io.julienmetral.tasks.support.UserProfiles.active;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.params.provider.EnumSource.Mode.EXCLUDE;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
-import static org.mockito.Mockito.when;
-
 @ExtendWith(MockitoExtension.class)
 class TaskNotificationSenderTest {
 
     private static final UUID TASK_ID = UUID.fromString("00000000-0000-0000-0000-00000000000a");
-    private static final UUID RECIPIENT_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
+    private static final UUID RECIPIENT_ID =
+            UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID ACTOR_ID = UUID.fromString("00000000-0000-0000-0000-000000000002");
     private static final UUID OTHER_ID = UUID.fromString("00000000-0000-0000-0000-000000000003");
     private static final UUID COMMENT_ID = UUID.fromString("00000000-0000-0000-0000-0000000000c1");
     private static final Instant DUE_AT = Instant.parse("2026-10-01T09:05:00Z");
-    private static final String FOOTER = "\n\nYou can turn these emails off in your notification settings.\n";
+    private static final String FOOTER =
+            "\n\nYou can turn these emails off in your notification settings.\n";
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
-    @Mock
-    private UserProfileRepository userProfileRepository;
+    @Mock private UserProfileRepository userProfileRepository;
 
-    @Mock
-    private NotificationSettingsService settingsService;
+    @Mock private NotificationSettingsService settingsService;
 
-    @Mock
-    private MailService mailService;
+    @Mock private MailService mailService;
 
     private TaskNotificationSender sender;
 
     @BeforeEach
     void createSender() {
-        sender = new TaskNotificationSender(
-                userRepository, new CommentExcerpts(userProfileRepository), settingsService, mailService);
+        sender =
+                new TaskNotificationSender(
+                        userRepository,
+                        new CommentExcerpts(userProfileRepository),
+                        settingsService,
+                        mailService);
     }
 
     private static User activeUser(UUID id, String displayName, String email) {
@@ -105,28 +106,56 @@ class TaskNotificationSenderTest {
 
     private void dispatch(TaskNotificationType type, UUID recipientId, UUID actorId) {
         switch (type) {
-            case ASSIGNED -> sender.onAssigned(new TaskAssigned(TASK_ID, "TASK-1", "Title", recipientId, actorId));
-            case UNASSIGNED -> sender.onUnassigned(new TaskUnassigned(TASK_ID, "TASK-1", "Title", recipientId, actorId));
-            case CANCELLED -> sender.onCancelled(new TaskCancelled(TASK_ID, "TASK-1", "Title", recipientId, "r", actorId));
-            case DELETED -> sender.onDeleted(new TaskDeleted(TASK_ID, "TASK-1", "Title", recipientId, actorId));
+            case ASSIGNED ->
+                    sender.onAssigned(
+                            new TaskAssigned(TASK_ID, "TASK-1", "Title", recipientId, actorId));
+            case UNASSIGNED ->
+                    sender.onUnassigned(
+                            new TaskUnassigned(TASK_ID, "TASK-1", "Title", recipientId, actorId));
+            case CANCELLED ->
+                    sender.onCancelled(
+                            new TaskCancelled(
+                                    TASK_ID, "TASK-1", "Title", recipientId, "r", actorId));
+            case DELETED ->
+                    sender.onDeleted(
+                            new TaskDeleted(TASK_ID, "TASK-1", "Title", recipientId, actorId));
             case COMMENTED -> sender.onCommentAdded(commentAdded("Body", recipientId, actorId));
-            case MENTIONED -> sender.onMentioned(new UsersMentionedInComment(TASK_ID, "TASK-1", "Title", COMMENT_ID,
-                    "Body", actorId, recipientId == null ? Set.of() : Set.of(recipientId)));
+            case MENTIONED ->
+                    sender.onMentioned(
+                            new UsersMentionedInComment(
+                                    TASK_ID,
+                                    "TASK-1",
+                                    "Title",
+                                    COMMENT_ID,
+                                    "Body",
+                                    actorId,
+                                    recipientId == null ? Set.of() : Set.of(recipientId)));
             // Reminders come from the job and have no actor
-            case DUE_SOON -> sender.onDueSoon(new TaskDueSoon(TASK_ID, "TASK-1", "Title", DUE_AT, recipientId));
-            case OVERDUE -> sender.onOverdue(new TaskOverdue(TASK_ID, "TASK-1", "Title", DUE_AT, recipientId));
+            case DUE_SOON ->
+                    sender.onDueSoon(
+                            new TaskDueSoon(TASK_ID, "TASK-1", "Title", DUE_AT, recipientId));
+            case OVERDUE ->
+                    sender.onOverdue(
+                            new TaskOverdue(TASK_ID, "TASK-1", "Title", DUE_AT, recipientId));
         }
     }
 
     // Mirrors TaskCommentService: the mentioned ids come from CommentMentions.parse of the body
     private static TaskCommentAdded commentAdded(String body, UUID assigneeId, UUID authorId) {
-        return new TaskCommentAdded(TASK_ID, "TASK-1", "Write tests", COMMENT_ID, body, assigneeId, authorId,
+        return new TaskCommentAdded(
+                TASK_ID,
+                "TASK-1",
+                "Write tests",
+                COMMENT_ID,
+                body,
+                assigneeId,
+                authorId,
                 CommentMentions.parse(body));
     }
 
     private static UsersMentionedInComment mentioned(String body, UUID authorId, UUID... userIds) {
-        return new UsersMentionedInComment(TASK_ID, "TASK-1", "Write tests", COMMENT_ID, body, authorId,
-                Set.of(userIds));
+        return new UsersMentionedInComment(
+                TASK_ID, "TASK-1", "Write tests", COMMENT_ID, body, authorId, Set.of(userIds));
     }
 
     @Test
@@ -134,13 +163,16 @@ class TaskNotificationSenderTest {
         stubActiveRecipient(TaskNotificationType.ASSIGNED);
         stubActor();
 
-        sender.onAssigned(new TaskAssigned(TASK_ID, "TASK-1", "Write tests", RECIPIENT_ID, ACTOR_ID));
+        sender.onAssigned(
+                new TaskAssigned(TASK_ID, "TASK-1", "Write tests", RECIPIENT_ID, ACTOR_ID));
 
-        assertThat(sentMessage()).isEqualTo(new MailMessage(
-                "alice@example.com",
-                "Task TASK-1 was assigned to you",
-                "Hello Alice,\n\nBob assigned you the task TASK-1: \"Write tests\"." + FOOTER
-        ));
+        assertThat(sentMessage())
+                .isEqualTo(
+                        new MailMessage(
+                                "alice@example.com",
+                                "Task TASK-1 was assigned to you",
+                                "Hello Alice,\n\nBob assigned you the task TASK-1: \"Write tests\"."
+                                        + FOOTER));
     }
 
     @Test
@@ -148,13 +180,16 @@ class TaskNotificationSenderTest {
         stubActiveRecipient(TaskNotificationType.UNASSIGNED);
         stubActor();
 
-        sender.onUnassigned(new TaskUnassigned(TASK_ID, "TASK-1", "Write tests", RECIPIENT_ID, ACTOR_ID));
+        sender.onUnassigned(
+                new TaskUnassigned(TASK_ID, "TASK-1", "Write tests", RECIPIENT_ID, ACTOR_ID));
 
-        assertThat(sentMessage()).isEqualTo(new MailMessage(
-                "alice@example.com",
-                "Task TASK-1 is no longer assigned to you",
-                "Hello Alice,\n\nBob assigned the task TASK-1: \"Write tests\" to someone else." + FOOTER
-        ));
+        assertThat(sentMessage())
+                .isEqualTo(
+                        new MailMessage(
+                                "alice@example.com",
+                                "Task TASK-1 is no longer assigned to you",
+                                "Hello Alice,\n\nBob assigned the task TASK-1: \"Write tests\" to someone else."
+                                        + FOOTER));
     }
 
     @Test
@@ -162,13 +197,17 @@ class TaskNotificationSenderTest {
         stubActiveRecipient(TaskNotificationType.CANCELLED);
         stubActor();
 
-        sender.onCancelled(new TaskCancelled(TASK_ID, "TASK-1", "Write tests", RECIPIENT_ID, "Out of scope", ACTOR_ID));
+        sender.onCancelled(
+                new TaskCancelled(
+                        TASK_ID, "TASK-1", "Write tests", RECIPIENT_ID, "Out of scope", ACTOR_ID));
 
-        assertThat(sentMessage()).isEqualTo(new MailMessage(
-                "alice@example.com",
-                "Task TASK-1 was cancelled",
-                "Hello Alice,\n\nBob cancelled the task TASK-1: \"Write tests\".\n\nReason: Out of scope" + FOOTER
-        ));
+        assertThat(sentMessage())
+                .isEqualTo(
+                        new MailMessage(
+                                "alice@example.com",
+                                "Task TASK-1 was cancelled",
+                                "Hello Alice,\n\nBob cancelled the task TASK-1: \"Write tests\".\n\nReason: Out of scope"
+                                        + FOOTER));
     }
 
     @Test
@@ -176,12 +215,14 @@ class TaskNotificationSenderTest {
         stubActiveRecipient(TaskNotificationType.CANCELLED);
         stubActor();
 
-        sender.onCancelled(new TaskCancelled(TASK_ID, "TASK-1", "Write tests", RECIPIENT_ID, null, ACTOR_ID));
+        sender.onCancelled(
+                new TaskCancelled(TASK_ID, "TASK-1", "Write tests", RECIPIENT_ID, null, ACTOR_ID));
 
         MailMessage message = sentMessage();
         assertThat(message.subject()).isEqualTo("Task TASK-1 was cancelled");
         assertThat(message.text())
-                .isEqualTo("Hello Alice,\n\nBob cancelled the task TASK-1: \"Write tests\"." + FOOTER)
+                .isEqualTo(
+                        "Hello Alice,\n\nBob cancelled the task TASK-1: \"Write tests\"." + FOOTER)
                 .doesNotContain("Reason");
     }
 
@@ -192,15 +233,20 @@ class TaskNotificationSenderTest {
 
         sender.onDeleted(new TaskDeleted(TASK_ID, "TASK-1", "Write tests", RECIPIENT_ID, ACTOR_ID));
 
-        assertThat(sentMessage()).isEqualTo(new MailMessage(
-                "alice@example.com",
-                "Task TASK-1 was deleted",
-                "Hello Alice,\n\nBob deleted the task TASK-1: \"Write tests\"." + FOOTER
-        ));
+        assertThat(sentMessage())
+                .isEqualTo(
+                        new MailMessage(
+                                "alice@example.com",
+                                "Task TASK-1 was deleted",
+                                "Hello Alice,\n\nBob deleted the task TASK-1: \"Write tests\"."
+                                        + FOOTER));
     }
 
     @ParameterizedTest
-    @EnumSource(value = TaskNotificationType.class, mode = EXCLUDE, names = {"DUE_SOON", "OVERDUE"})
+    @EnumSource(
+            value = TaskNotificationType.class,
+            mode = EXCLUDE,
+            names = {"DUE_SOON", "OVERDUE"})
     void unknownActorIsNamedSomeone(TaskNotificationType type) {
         stubActiveRecipient(type);
 
@@ -211,7 +257,10 @@ class TaskNotificationSenderTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = TaskNotificationType.class, mode = EXCLUDE, names = {"DUE_SOON", "OVERDUE"})
+    @EnumSource(
+            value = TaskNotificationType.class,
+            mode = EXCLUDE,
+            names = {"DUE_SOON", "OVERDUE"})
     void actorWhoCannotBeLoadedIsNamedSomeone(TaskNotificationType type) {
         stubActiveRecipient(type);
         when(userRepository.findById(ACTOR_ID)).thenReturn(Optional.empty());
@@ -230,7 +279,10 @@ class TaskNotificationSenderTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = TaskNotificationType.class, mode = EXCLUDE, names = {"DUE_SOON", "OVERDUE"})
+    @EnumSource(
+            value = TaskNotificationType.class,
+            mode = EXCLUDE,
+            names = {"DUE_SOON", "OVERDUE"})
     void nobodyIsEmailedAboutTheirOwnAction(TaskNotificationType type) {
         stubActor();
 
@@ -302,8 +354,10 @@ class TaskNotificationSenderTest {
         assertThat(sentMessage().to()).isEqualTo("alice@example.com");
     }
 
-    private void stubActiveUser(UUID id, String displayName, String email, TaskNotificationType type) {
-        when(userRepository.findById(id)).thenReturn(Optional.of(activeUser(id, displayName, email)));
+    private void stubActiveUser(
+            UUID id, String displayName, String email, TaskNotificationType type) {
+        when(userRepository.findById(id))
+                .thenReturn(Optional.of(activeUser(id, displayName, email)));
         when(settingsService.isEnabled(id, type)).thenReturn(true);
     }
 
@@ -323,29 +377,35 @@ class TaskNotificationSenderTest {
 
             sender.onCommentAdded(commentAdded("Looks good to me", RECIPIENT_ID, ACTOR_ID));
 
-            assertThat(sentMessage()).isEqualTo(new MailMessage(
-                    "alice@example.com",
-                    "New comment on task TASK-1",
-                    "Hello Alice,\n\nBob commented on the task TASK-1: \"Write tests\".\n\nLooks good to me" + FOOTER
-            ));
+            assertThat(sentMessage())
+                    .isEqualTo(
+                            new MailMessage(
+                                    "alice@example.com",
+                                    "New comment on task TASK-1",
+                                    "Hello Alice,\n\nBob commented on the task TASK-1: \"Write tests\".\n\nLooks good to me"
+                                            + FOOTER));
         }
 
         @Test
         void isNotEmailedToAnAssigneeWhoIsMentioned() {
-            when(settingsService.isEnabled(RECIPIENT_ID, TaskNotificationType.MENTIONED)).thenReturn(true);
+            when(settingsService.isEnabled(RECIPIENT_ID, TaskNotificationType.MENTIONED))
+                    .thenReturn(true);
 
-            sender.onCommentAdded(commentAdded("Over to you <@" + RECIPIENT_ID + ">", RECIPIENT_ID, ACTOR_ID));
+            sender.onCommentAdded(
+                    commentAdded("Over to you <@" + RECIPIENT_ID + ">", RECIPIENT_ID, ACTOR_ID));
 
             verifyNoInteractions(userRepository, userProfileRepository, mailService);
         }
 
         @Test
         void isEmailedToAMentionedAssigneeWhoTurnedMentionsOff() {
-            when(settingsService.isEnabled(RECIPIENT_ID, TaskNotificationType.MENTIONED)).thenReturn(false);
+            when(settingsService.isEnabled(RECIPIENT_ID, TaskNotificationType.MENTIONED))
+                    .thenReturn(false);
             stubActiveRecipient(TaskNotificationType.COMMENTED);
             stubActor();
 
-            sender.onCommentAdded(commentAdded("Over to you <@" + RECIPIENT_ID + ">", RECIPIENT_ID, ACTOR_ID));
+            sender.onCommentAdded(
+                    commentAdded("Over to you <@" + RECIPIENT_ID + ">", RECIPIENT_ID, ACTOR_ID));
 
             assertThat(sentMessage().subject()).isEqualTo("New comment on task TASK-1");
         }
@@ -378,8 +438,16 @@ class TaskNotificationSenderTest {
 
         @Test
         void unassignedTaskWithAnImmutableMentionSetDoesNotThrow() {
-            TaskCommentAdded event = new TaskCommentAdded(TASK_ID, "TASK-1", "Write tests", COMMENT_ID, "Anyone?",
-                    null, ACTOR_ID, Set.of());
+            TaskCommentAdded event =
+                    new TaskCommentAdded(
+                            TASK_ID,
+                            "TASK-1",
+                            "Write tests",
+                            COMMENT_ID,
+                            "Anyone?",
+                            null,
+                            ACTOR_ID,
+                            Set.of());
 
             sender.onCommentAdded(event);
 
@@ -401,13 +469,16 @@ class TaskNotificationSenderTest {
         @Test
         void isNotEmailedWhenTheAssigneeTurnedCommentsOff() {
             when(userRepository.findById(RECIPIENT_ID))
-                    .thenReturn(Optional.of(activeUser(RECIPIENT_ID, "Alice", "alice@example.com")));
-            when(settingsService.isEnabled(RECIPIENT_ID, TaskNotificationType.COMMENTED)).thenReturn(false);
+                    .thenReturn(
+                            Optional.of(activeUser(RECIPIENT_ID, "Alice", "alice@example.com")));
+            when(settingsService.isEnabled(RECIPIENT_ID, TaskNotificationType.COMMENTED))
+                    .thenReturn(false);
             stubActor();
 
             sender.onCommentAdded(commentAdded("Hello", RECIPIENT_ID, ACTOR_ID));
 
-            verify(settingsService, never()).isEnabled(RECIPIENT_ID, TaskNotificationType.MENTIONED);
+            verify(settingsService, never())
+                    .isEnabled(RECIPIENT_ID, TaskNotificationType.MENTIONED);
             verifyNoInteractions(mailService);
         }
     }
@@ -422,14 +493,17 @@ class TaskNotificationSenderTest {
             when(userProfileRepository.findAllById(Set.of(RECIPIENT_ID)))
                     .thenReturn(List.of(active(RECIPIENT_ID, "Alice")));
 
-            sender.onMentioned(mentioned("Can you check, <@" + RECIPIENT_ID + ">?", ACTOR_ID, RECIPIENT_ID));
+            sender.onMentioned(
+                    mentioned("Can you check, <@" + RECIPIENT_ID + ">?", ACTOR_ID, RECIPIENT_ID));
 
-            assertThat(sentMessage()).isEqualTo(new MailMessage(
-                    "alice@example.com",
-                    "Bob mentioned you on task TASK-1",
-                    "Hello Alice,\n\nBob mentioned you in a comment on the task TASK-1: \"Write tests\".\n\n"
-                            + "Can you check, @Alice?" + FOOTER
-            ));
+            assertThat(sentMessage())
+                    .isEqualTo(
+                            new MailMessage(
+                                    "alice@example.com",
+                                    "Bob mentioned you on task TASK-1",
+                                    "Hello Alice,\n\nBob mentioned you in a comment on the task TASK-1: \"Write tests\".\n\n"
+                                            + "Can you check, @Alice?"
+                                            + FOOTER));
         }
 
         @Test
@@ -449,8 +523,10 @@ class TaskNotificationSenderTest {
         @Test
         void skipsUsersWhoTurnedMentionsOff() {
             when(userRepository.findById(RECIPIENT_ID))
-                    .thenReturn(Optional.of(activeUser(RECIPIENT_ID, "Alice", "alice@example.com")));
-            when(settingsService.isEnabled(RECIPIENT_ID, TaskNotificationType.MENTIONED)).thenReturn(false);
+                    .thenReturn(
+                            Optional.of(activeUser(RECIPIENT_ID, "Alice", "alice@example.com")));
+            when(settingsService.isEnabled(RECIPIENT_ID, TaskNotificationType.MENTIONED))
+                    .thenReturn(false);
             stubActiveUser(OTHER_ID, "Carol", "carol@example.com", TaskNotificationType.MENTIONED);
             stubActor();
 
@@ -480,7 +556,8 @@ class TaskNotificationSenderTest {
 
             sender.onMentioned(mentioned("Hi", ACTOR_ID, RECIPIENT_ID));
 
-            verify(settingsService, never()).isEnabled(RECIPIENT_ID, TaskNotificationType.COMMENTED);
+            verify(settingsService, never())
+                    .isEnabled(RECIPIENT_ID, TaskNotificationType.COMMENTED);
             assertThat(sentMessage().to()).isEqualTo("alice@example.com");
         }
 
@@ -497,7 +574,8 @@ class TaskNotificationSenderTest {
     @Nested
     class Excerpt {
 
-        private static final String PREFIX = "Hello Alice,\n\nSomeone commented on the task TASK-1: \"Write tests\".\n\n";
+        private static final String PREFIX =
+                "Hello Alice,\n\nSomeone commented on the task TASK-1: \"Write tests\".\n\n";
 
         private String commentExcerpt(String body) {
             stubActiveRecipient(TaskNotificationType.COMMENTED);
@@ -515,7 +593,9 @@ class TaskNotificationSenderTest {
             when(userProfileRepository.findAllById(Set.of(OTHER_ID, ACTOR_ID)))
                     .thenReturn(List.of(active(OTHER_ID, "Carol"), active(ACTOR_ID, "Bob")));
 
-            String excerpt = commentExcerpt("<@" + OTHER_ID + "> and <@" + ACTOR_ID + ">, see <@" + OTHER_ID + ">");
+            String excerpt =
+                    commentExcerpt(
+                            "<@" + OTHER_ID + "> and <@" + ACTOR_ID + ">, see <@" + OTHER_ID + ">");
 
             assertThat(excerpt).isEqualTo("@Carol and @Bob, see @Carol");
         }
@@ -545,7 +625,8 @@ class TaskNotificationSenderTest {
 
         @Test
         void theLimitAppliesToTheRenderedText() {
-            when(userProfileRepository.findAllById(Set.of(OTHER_ID))).thenReturn(List.of(active(OTHER_ID, "Carol")));
+            when(userProfileRepository.findAllById(Set.of(OTHER_ID)))
+                    .thenReturn(List.of(active(OTHER_ID, "Carol")));
             // 1029 characters as written, 996 once the token becomes @Carol
             String body = "x".repeat(990) + "<@" + OTHER_ID + ">";
 
@@ -558,7 +639,8 @@ class TaskNotificationSenderTest {
                     .thenReturn(List.of(active(OTHER_ID, "C".repeat(100))));
             String body = "x".repeat(950) + "<@" + OTHER_ID + ">";
 
-            assertThat(commentExcerpt(body)).isEqualTo("x".repeat(950) + "@" + "C".repeat(49) + "...");
+            assertThat(commentExcerpt(body))
+                    .isEqualTo("x".repeat(950) + "@" + "C".repeat(49) + "...");
         }
 
         @Test
@@ -578,7 +660,8 @@ class TaskNotificationSenderTest {
     @Nested
     class DueReminders {
 
-        // In Pacific/Kiritimati (UTC+14), 23:30 UTC is already the next day: a formatter using the JVM zone would show it
+        // In Pacific/Kiritimati (UTC+14), 23:30 UTC is already the next day: a formatter using the
+        // JVM zone would show it
         private static final Instant LATE_EVENING_UTC = Instant.parse("2026-10-01T23:30:00Z");
 
         private TimeZone originalTimeZone;
@@ -598,41 +681,55 @@ class TaskNotificationSenderTest {
         void dueSoonEmailsTheAssigneeWithTheDueDateInUtc() {
             stubActiveRecipient(TaskNotificationType.DUE_SOON);
 
-            sender.onDueSoon(new TaskDueSoon(TASK_ID, "TASK-1", "Write tests", LATE_EVENING_UTC, RECIPIENT_ID));
+            sender.onDueSoon(
+                    new TaskDueSoon(
+                            TASK_ID, "TASK-1", "Write tests", LATE_EVENING_UTC, RECIPIENT_ID));
 
-            assertThat(sentMessage()).isEqualTo(new MailMessage(
-                    "alice@example.com",
-                    "Task TASK-1 is due soon",
-                    "Hello Alice,\n\nThe task TASK-1: \"Write tests\" is due on 2026-10-01 23:30 UTC." + FOOTER
-            ));
+            assertThat(sentMessage())
+                    .isEqualTo(
+                            new MailMessage(
+                                    "alice@example.com",
+                                    "Task TASK-1 is due soon",
+                                    "Hello Alice,\n\nThe task TASK-1: \"Write tests\" is due on 2026-10-01 23:30 UTC."
+                                            + FOOTER));
         }
 
         @Test
         void overdueEmailsTheAssigneeWithTheDueDateInUtc() {
             stubActiveRecipient(TaskNotificationType.OVERDUE);
 
-            sender.onOverdue(new TaskOverdue(TASK_ID, "TASK-1", "Write tests", LATE_EVENING_UTC, RECIPIENT_ID));
+            sender.onOverdue(
+                    new TaskOverdue(
+                            TASK_ID, "TASK-1", "Write tests", LATE_EVENING_UTC, RECIPIENT_ID));
 
-            assertThat(sentMessage()).isEqualTo(new MailMessage(
-                    "alice@example.com",
-                    "Task TASK-1 is overdue",
-                    "Hello Alice,\n\nThe task TASK-1: \"Write tests\" was due on 2026-10-01 23:30 UTC and is not done yet."
-                            + FOOTER
-            ));
+            assertThat(sentMessage())
+                    .isEqualTo(
+                            new MailMessage(
+                                    "alice@example.com",
+                                    "Task TASK-1 is overdue",
+                                    "Hello Alice,\n\nThe task TASK-1: \"Write tests\" was due on 2026-10-01 23:30 UTC and is not done yet."
+                                            + FOOTER));
         }
 
         @Test
         void dueDatePadsSingleDigitFieldsAndDropsSeconds() {
             stubActiveRecipient(TaskNotificationType.DUE_SOON);
 
-            sender.onDueSoon(new TaskDueSoon(TASK_ID, "TASK-1", "Write tests",
-                    Instant.parse("2026-03-04T05:06:59.999Z"), RECIPIENT_ID));
+            sender.onDueSoon(
+                    new TaskDueSoon(
+                            TASK_ID,
+                            "TASK-1",
+                            "Write tests",
+                            Instant.parse("2026-03-04T05:06:59.999Z"),
+                            RECIPIENT_ID));
 
             assertThat(sentMessage().text()).contains("is due on 2026-03-04 05:06 UTC.");
         }
 
         @ParameterizedTest
-        @EnumSource(value = TaskNotificationType.class, names = {"DUE_SOON", "OVERDUE"})
+        @EnumSource(
+                value = TaskNotificationType.class,
+                names = {"DUE_SOON", "OVERDUE"})
         void looksUpOnlyTheAssignee(TaskNotificationType type) {
             stubActiveRecipient(type);
 
@@ -653,10 +750,13 @@ class TaskNotificationSenderTest {
         @Test
         void overdueIsNotEmailedToAnAssigneeWhoTurnedOnlyOverdueOff() {
             when(userRepository.findById(RECIPIENT_ID))
-                    .thenReturn(Optional.of(activeUser(RECIPIENT_ID, "Alice", "alice@example.com")));
-            when(settingsService.isEnabled(RECIPIENT_ID, TaskNotificationType.OVERDUE)).thenReturn(false);
+                    .thenReturn(
+                            Optional.of(activeUser(RECIPIENT_ID, "Alice", "alice@example.com")));
+            when(settingsService.isEnabled(RECIPIENT_ID, TaskNotificationType.OVERDUE))
+                    .thenReturn(false);
 
-            sender.onOverdue(new TaskOverdue(TASK_ID, "TASK-1", "Write tests", DUE_AT, RECIPIENT_ID));
+            sender.onOverdue(
+                    new TaskOverdue(TASK_ID, "TASK-1", "Write tests", DUE_AT, RECIPIENT_ID));
 
             verify(settingsService, never()).isEnabled(RECIPIENT_ID, TaskNotificationType.DUE_SOON);
             verifyNoInteractions(mailService);
@@ -667,7 +767,8 @@ class TaskNotificationSenderTest {
             // UserRepository skips soft-deleted users
             when(userRepository.findById(RECIPIENT_ID)).thenReturn(Optional.empty());
 
-            sender.onDueSoon(new TaskDueSoon(TASK_ID, "TASK-1", "Write tests", DUE_AT, RECIPIENT_ID));
+            sender.onDueSoon(
+                    new TaskDueSoon(TASK_ID, "TASK-1", "Write tests", DUE_AT, RECIPIENT_ID));
 
             verifyNoInteractions(settingsService, mailService);
         }

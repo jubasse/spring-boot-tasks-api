@@ -6,7 +6,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
-/** Writes the password reset email; {@link MailService} sends it once the request transaction commits. */
+/**
+ * Writes the password reset email; {@link MailService} sends it once the request transaction
+ * commits.
+ */
 @Component
 @RequiredArgsConstructor
 public class PasswordResetEmailSender {
@@ -16,10 +19,11 @@ public class PasswordResetEmailSender {
 
     @EventListener
     public void send(PasswordResetRequested event) {
-        mailService.send(new MailMessage(
-                event.email(),
-                "Reset your password",
-                """
+        mailService.send(
+                new MailMessage(
+                        event.email(),
+                        "Reset your password",
+                        """
                         Hello %s,
 
                         Someone asked to reset the password of your account. To choose a new password, open this link:
@@ -28,12 +32,11 @@ public class PasswordResetEmailSender {
                         The link expires at %s and can be used once. Resetting your password signs you out everywhere.
 
                         If you did not ask for this, ignore this email: your password stays unchanged.
-                        """.formatted(
-                        event.displayName(),
-                        properties.resetUrl(),
-                        event.token(),
-                        event.expiresAt()
-                )
-        ));
+                        """
+                                .formatted(
+                                        event.displayName(),
+                                        properties.resetUrl(),
+                                        event.token(),
+                                        event.expiresAt())));
     }
 }

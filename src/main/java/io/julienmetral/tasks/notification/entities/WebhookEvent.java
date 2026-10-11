@@ -3,8 +3,9 @@ package io.julienmetral.tasks.notification.entities;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
- * The events a webhook endpoint can subscribe to, one per {@link TaskNotificationType}. {@link #type()} is the name
- * clients see, in the API and as the {@code type} of a delivered payload (Standard Webhooks convention).
+ * The events a webhook endpoint can subscribe to, one per {@link TaskNotificationType}. {@link
+ * #type()} is the name clients see, in the API and as the {@code type} of a delivered payload
+ * (Standard Webhooks convention).
  */
 public enum WebhookEvent {
     TASK_ASSIGNED("task.assigned", TaskNotificationType.ASSIGNED),

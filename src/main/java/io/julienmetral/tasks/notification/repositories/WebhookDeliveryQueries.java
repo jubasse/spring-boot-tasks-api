@@ -1,14 +1,13 @@
 package io.julienmetral.tasks.notification.repositories;
 
-import lombok.RequiredArgsConstructor;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.stereotype.Repository;
-
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.stereotype.Repository;
 
 @Repository
 @RequiredArgsConstructor
@@ -17,9 +16,9 @@ public class WebhookDeliveryQueries {
     private final NamedParameterJdbcTemplate jdbc;
 
     /**
-     * Takes up to {@code limit} pending deliveries due at {@code now} and moves them to {@code leaseEnd}, so another
-     * instance or the next poll does not take them again while their attempt runs. {@code SKIP LOCKED} lets
-     * several instances poll at once without waiting for each other.
+     * Takes up to {@code limit} pending deliveries due at {@code now} and moves them to {@code
+     * leaseEnd}, so another instance or the next poll does not take them again while their attempt
+     * runs. {@code SKIP LOCKED} lets several instances poll at once without waiting for each other.
      *
      * @return the ids of the deliveries taken
      */
@@ -41,14 +40,12 @@ public class WebhookDeliveryQueries {
                         .addValue("now", Timestamp.from(now))
                         .addValue("leaseEnd", Timestamp.from(leaseEnd))
                         .addValue("limit", limit),
-                UUID.class
-        );
+                UUID.class);
     }
 
     public int deleteCreatedBefore(Instant cutoff) {
         return jdbc.update(
                 "DELETE FROM webhook_deliveries WHERE created_at < :cutoff",
-                new MapSqlParameterSource("cutoff", Timestamp.from(cutoff))
-        );
+                new MapSqlParameterSource("cutoff", Timestamp.from(cutoff)));
     }
 }

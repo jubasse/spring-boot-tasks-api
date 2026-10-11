@@ -1,17 +1,19 @@
 package io.julienmetral.tasks.task.repositories;
 
 import io.julienmetral.tasks.task.entities.TaskReminderKind;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-import java.sql.Timestamp;
-import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
-
-/** Native SQL: recording a reminder and learning whether it was new is one {@code INSERT ... ON CONFLICT}. */
+/**
+ * Native SQL: recording a reminder and learning whether it was new is one {@code INSERT ... ON
+ * CONFLICT}.
+ */
 @Repository
 @RequiredArgsConstructor
 public class TaskReminderQueries {
@@ -19,21 +21,16 @@ public class TaskReminderQueries {
     private final NamedParameterJdbcTemplate jdbc;
 
     public record Reminder(
-            UUID taskId,
-            String reference,
-            String title,
-            Instant dueAt,
-            UUID recipientId
-    ) {
-    }
+            UUID taskId, String reference, String title, Instant dueAt, UUID recipientId) {}
 
     /**
-     * Records a reminder for every open, assigned task due in {@code (from, to]} whose assignee was not yet reminded
-     * of this kind for this due date.
+     * Records a reminder for every open, assigned task due in {@code (from, to]} whose assignee was
+     * not yet reminded of this kind for this due date.
      *
      * @return only the reminders recorded by this call
      */
-    public List<Reminder> recordReminders(TaskReminderKind kind, Instant from, Instant to, Instant now) {
+    public List<Reminder> recordReminders(
+            TaskReminderKind kind, Instant from, Instant to, Instant now) {
         return jdbc.query(
                 """
                         WITH due AS (
@@ -60,13 +57,12 @@ public class TaskReminderQueries {
                         .addValue("from", Timestamp.from(from))
                         .addValue("to", Timestamp.from(to))
                         .addValue("now", Timestamp.from(now)),
-                (row, index) -> new Reminder(
-                        row.getObject("id", UUID.class),
-                        row.getString("reference"),
-                        row.getString("title"),
-                        row.getTimestamp("due_at").toInstant(),
-                        row.getObject("recipient_id", UUID.class)
-                )
-        );
+                (row, index) ->
+                        new Reminder(
+                                row.getObject("id", UUID.class),
+                                row.getString("reference"),
+                                row.getString("title"),
+                                row.getTimestamp("due_at").toInstant(),
+                                row.getObject("recipient_id", UUID.class)));
     }
 }

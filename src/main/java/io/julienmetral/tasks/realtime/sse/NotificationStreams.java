@@ -8,13 +8,6 @@ import io.julienmetral.tasks.realtime.exceptions.TooManyNotificationStreamsExcep
 import io.julienmetral.tasks.realtime.messaging.UserNotification;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
-import org.springframework.context.event.ContextClosedEvent;
-import org.springframework.context.event.EventListener;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.stereotype.Component;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import tools.jackson.databind.json.JsonMapper;
-
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -26,12 +19,19 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ThreadLocalRandom;
+import org.springframework.context.event.ContextClosedEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Component;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import tools.jackson.databind.json.JsonMapper;
 
 /** The notification streams open on this instance, by user. */
 @Component
 public class NotificationStreams {
 
-    private final ConcurrentMap<UUID, Set<NotificationStream>> streamsByUser = new ConcurrentHashMap<>();
+    private final ConcurrentMap<UUID, Set<NotificationStream>> streamsByUser =
+            new ConcurrentHashMap<>();
     private final RealtimeProperties.Streams properties;
     private final NotificationReplayBuffer replayBuffer;
     private final UserRepository userRepository;
@@ -43,8 +43,7 @@ public class NotificationStreams {
             UserRepository userRepository,
             JsonMapper jsonMapper,
             Clock clock,
-            MeterRegistry meterRegistry
-    ) {
+            MeterRegistry meterRegistry) {
         this.properties = properties.streams();
         this.replayBuffer = new NotificationReplayBuffer(properties.streams(), clock);
         this.userRepository = userRepository;
@@ -57,27 +56,39 @@ public class NotificationStreams {
     }
 
     /**
-     * Opens a stream of the user's task notifications. It ends when the access token expires, or after
-     * {@code max-duration}: the client reconnects with a fresh token and the id of the last event it received, then
-     * gets the events it missed, or a {@code resync} event when this instance no longer has them.
+     * Opens a stream of the user's task notifications. It ends when the access token expires, or
+     * after {@code max-duration}: the client reconnects with a fresh token and the id of the last
+     * event it received, then gets the events it missed, or a {@code resync} event when this
+     * instance no longer has them.
      *
-     * @throws TooManyNotificationStreamsException when the user already has {@code max-per-user} streams here
-     * @throws AccessDeniedException               when the account is no longer active
+     * @throws TooManyNotificationStreamsException when the user already has {@code max-per-user}
+     *     streams here
+     * @throws AccessDeniedException when the account is no longer active
      */
     public SseEmitter open(UUID userId, Instant tokenExpiresAt, String lastEventId) {
-        Duration untilExpiry = tokenExpiresAt == null
-                ? properties.maxDuration()
-                : Duration.between(clock.instant(), tokenExpiresAt);
-        Duration lifetime = untilExpiry.compareTo(properties.maxDuration()) < 0 ? untilExpiry : properties.maxDuration();
+        Duration untilExpiry =
+                tokenExpiresAt == null
+                        ? properties.maxDuration()
+                        : Duration.between(clock.instant(), tokenExpiresAt);
+        Duration lifetime =
+                untilExpiry.compareTo(properties.maxDuration()) < 0
+                        ? untilExpiry
+                        : properties.maxDuration();
         SseEmitter emitter = new SseEmitter(Math.max(1, lifetime.toMillis()));
-        NotificationStream stream = new NotificationStream(
-                userId, emitter, properties.bufferSize(), properties.heartbeat(), this::forget);
+        NotificationStream stream =
+                new NotificationStream(
+                        userId,
+                        emitter,
+                        properties.bufferSize(),
+                        properties.heartbeat(),
+                        this::forget);
 
         register(stream);
 
-        // Read after registering, from the account rather than the status cache: a change committed after this read
-        // is broadcast, and closes the stream once it arrives. A failed read must unregister it: the emitter never
-        // reaches Spring, so no callback would, and the stream counted towards the user's limit until a restart.
+        // Read after registering, from the account rather than the status cache: a change committed
+        // after this read is broadcast, and closes the stream once it arrives. A failed read must
+        // unregister it: the emitter never reaches Spring, so no callback would, and the stream
+        // counted towards the user's limit until a restart.
         boolean active;
 
         try {
@@ -109,17 +120,23 @@ public class NotificationStreams {
         return emitter;
     }
 
-    /** Hands a notification to the recipient's streams on this instance, and keeps it for replay. */
+    /**
+     * Hands a notification to the recipient's streams on this instance, and keeps it for replay.
+     */
     public void deliver(UUID eventId, UserNotification notification) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("type", notification.type());
         payload.put("timestamp", notification.timestamp());
         payload.put("data", notification.data());
 
-        StreamEvent event = StreamEvent.notification(eventId, notification.type(), jsonMapper.writeValueAsString(payload));
+        StreamEvent event =
+                StreamEvent.notification(
+                        eventId, notification.type(), jsonMapper.writeValueAsString(payload));
 
         replayBuffer.add(notification.recipientId(), event);
-        streamsByUser.getOrDefault(notification.recipientId(), Set.of()).forEach(stream -> stream.send(event));
+        streamsByUser
+                .getOrDefault(notification.recipientId(), Set.of())
+                .forEach(stream -> stream.send(event));
     }
 
     public void closeIfNoLongerActive(UUID userId) {
@@ -131,15 +148,18 @@ public class NotificationStreams {
     }
 
     /**
-     * After a gap in the events this instance received (its queue is deleted with a lost connection): every client
-     * reloads what it shows, and no replay may skip the gap.
+     * After a gap in the events this instance received (its queue is deleted with a lost
+     * connection): every client reloads what it shows, and no replay may skip the gap.
      */
     public void resyncAll() {
         replayBuffer.clear();
-        streamsByUser.values().forEach(streams -> streams.forEach(stream -> stream.send(StreamEvent.resync())));
+        streamsByUser
+                .values()
+                .forEach(streams -> streams.forEach(stream -> stream.send(StreamEvent.resync())));
     }
 
-    // Before the web server's graceful shutdown, which would otherwise wait for every open stream until its timeout
+    // Before the web server's graceful shutdown, which would otherwise wait for every open stream
+    // until its timeout
     @EventListener(ContextClosedEvent.class)
     public void closeAll() {
         streamsByUser.values().forEach(streams -> streams.forEach(NotificationStream::close));
@@ -150,29 +170,36 @@ public class NotificationStreams {
     }
 
     private void register(NotificationStream stream) {
-        streamsByUser.compute(stream.getUserId(), (userId, streams) -> {
-            Set<NotificationStream> open = streams != null ? streams : ConcurrentHashMap.newKeySet();
+        streamsByUser.compute(
+                stream.getUserId(),
+                (userId, streams) -> {
+                    Set<NotificationStream> open =
+                            streams != null ? streams : ConcurrentHashMap.newKeySet();
 
-            if (open.size() >= properties.maxPerUser()) {
-                throw new TooManyNotificationStreamsException(properties.maxPerUser());
-            }
+                    if (open.size() >= properties.maxPerUser()) {
+                        throw new TooManyNotificationStreamsException(properties.maxPerUser());
+                    }
 
-            open.add(stream);
-            return open;
-        });
+                    open.add(stream);
+                    return open;
+                });
     }
 
     private void forget(NotificationStream stream) {
-        streamsByUser.computeIfPresent(stream.getUserId(), (userId, streams) -> {
-            streams.remove(stream);
-            return streams.isEmpty() ? null : streams;
-        });
+        streamsByUser.computeIfPresent(
+                stream.getUserId(),
+                (userId, streams) -> {
+                    streams.remove(stream);
+                    return streams.isEmpty() ? null : streams;
+                });
     }
 
     private boolean isActive(UUID userId) {
-        return userRepository.findAccountStateById(userId)
-                .map(AccountState::status)
-                .orElse(UserStatus.DELETED) == UserStatus.ACTIVE;
+        return userRepository
+                        .findAccountStateById(userId)
+                        .map(AccountState::status)
+                        .orElse(UserStatus.DELETED)
+                == UserStatus.ACTIVE;
     }
 
     // A random extra, so that a restart does not bring every client back in the same second

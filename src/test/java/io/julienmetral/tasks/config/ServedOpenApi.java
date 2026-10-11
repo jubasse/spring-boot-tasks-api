@@ -1,11 +1,7 @@
 package io.julienmetral.tasks.config;
 
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.mock.web.MockHttpServletRequest;
-import org.springframework.test.web.servlet.MockMvc;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -14,11 +10,16 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.test.web.servlet.MockMvc;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
-/** The OpenAPI document the application serves at {@code /v3/api-docs}, with its operations listed. */
+/**
+ * The OpenAPI document the application serves at {@code /v3/api-docs}, with its operations listed.
+ */
 record ServedOpenApi(JsonNode document, List<Operation> operations) {
 
     private static final Set<String> HTTP_METHODS =
@@ -27,21 +28,23 @@ record ServedOpenApi(JsonNode document, List<Operation> operations) {
     private static final String RESPONSE_REFERENCE = OpenApiConfiguration.responseReference("");
 
     static ServedOpenApi fetch(MockMvc mockMvc, JsonMapper jsonMapper) throws Exception {
-        String body = mockMvc.perform(get("/v3/api-docs").header(HttpHeaders.ACCEPT_LANGUAGE, "en"))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString(StandardCharsets.UTF_8);
+        String body =
+                mockMvc.perform(get("/v3/api-docs").header(HttpHeaders.ACCEPT_LANGUAGE, "en"))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString(StandardCharsets.UTF_8);
         JsonNode document = jsonMapper.readTree(body);
 
         List<Operation> operations = new ArrayList<>();
         for (Map.Entry<String, JsonNode> path : document.required("paths").properties()) {
             for (Map.Entry<String, JsonNode> operation : path.getValue().properties()) {
                 if (HTTP_METHODS.contains(operation.getKey())) {
-                    operations.add(new Operation(
-                            path.getKey(),
-                            HttpMethod.valueOf(operation.getKey().toUpperCase(Locale.ROOT)),
-                            operation.getValue()));
+                    operations.add(
+                            new Operation(
+                                    path.getKey(),
+                                    HttpMethod.valueOf(operation.getKey().toUpperCase(Locale.ROOT)),
+                                    operation.getValue()));
                 }
             }
         }

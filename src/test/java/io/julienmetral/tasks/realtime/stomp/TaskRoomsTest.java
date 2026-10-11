@@ -1,6 +1,12 @@
 package io.julienmetral.tasks.realtime.stomp;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.julienmetral.tasks.realtime.messaging.TaskRoomEvent;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.messaging.Message;
@@ -9,13 +15,6 @@ import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
-
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 class TaskRoomsTest {
 
@@ -31,21 +30,34 @@ class TaskRoomsTest {
 
     @BeforeEach
     void createRooms() {
-        SimpMessagingTemplate template = new SimpMessagingTemplate((message, timeout) -> sent.add(message));
+        SimpMessagingTemplate template =
+                new SimpMessagingTemplate((message, timeout) -> sent.add(message));
         template.setMessageConverter(new JacksonJsonMessageConverter(jsonMapper));
         taskRooms = new TaskRooms(template);
     }
 
     @Test
     void eventGoesToTheRoomOfItsTaskWithTheBroadcastIdAsAStompHeader() {
-        taskRooms.publish(EVENT_ID, new TaskRoomEvent(TASK_ID, UUID.randomUUID(), "UPDATED", UUID.randomUUID(),
-                Instant.parse("2026-03-04T05:06:07Z")));
+        taskRooms.publish(
+                EVENT_ID,
+                new TaskRoomEvent(
+                        TASK_ID,
+                        UUID.randomUUID(),
+                        "UPDATED",
+                        UUID.randomUUID(),
+                        Instant.parse("2026-03-04T05:06:07Z")));
 
-        assertThat(sent).singleElement().satisfies(message -> {
-            SimpMessageHeaderAccessor headers = SimpMessageHeaderAccessor.wrap(message);
-            assertThat(headers.getDestination()).isEqualTo("/topic/tasks/" + TASK_ID);
-            assertThat(headers.getFirstNativeHeader("event-id")).isEqualTo(EVENT_ID.toString());
-        });
+        assertThat(sent)
+                .singleElement()
+                .satisfies(
+                        message -> {
+                            SimpMessageHeaderAccessor headers =
+                                    SimpMessageHeaderAccessor.wrap(message);
+                            assertThat(headers.getDestination())
+                                    .isEqualTo("/topic/tasks/" + TASK_ID);
+                            assertThat(headers.getFirstNativeHeader("event-id"))
+                                    .isEqualTo(EVENT_ID.toString());
+                        });
     }
 
     @Test
@@ -53,8 +65,14 @@ class TaskRoomsTest {
         UUID historyRowId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
 
-        taskRooms.publish(EVENT_ID, new TaskRoomEvent(TASK_ID, historyRowId, "COMMENT_ADDED", actorId,
-                Instant.parse("2026-03-04T05:06:07Z")));
+        taskRooms.publish(
+                EVENT_ID,
+                new TaskRoomEvent(
+                        TASK_ID,
+                        historyRowId,
+                        "COMMENT_ADDED",
+                        actorId,
+                        Instant.parse("2026-03-04T05:06:07Z")));
 
         JsonNode json = jsonMapper.readTree((byte[]) sent.getFirst().getPayload());
         assertThat(json.propertyNames())
@@ -68,8 +86,14 @@ class TaskRoomsTest {
 
     @Test
     void deletionIsSentWithANullEventId() {
-        taskRooms.publish(EVENT_ID, new TaskRoomEvent(TASK_ID, null, TaskRoomEvent.DELETED, UUID.randomUUID(),
-                Instant.parse("2026-03-04T05:06:07Z")));
+        taskRooms.publish(
+                EVENT_ID,
+                new TaskRoomEvent(
+                        TASK_ID,
+                        null,
+                        TaskRoomEvent.DELETED,
+                        UUID.randomUUID(),
+                        Instant.parse("2026-03-04T05:06:07Z")));
 
         JsonNode json = jsonMapper.readTree((byte[]) sent.getFirst().getPayload());
         assertThat(json.path("type").asString()).isEqualTo("DELETED");

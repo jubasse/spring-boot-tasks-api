@@ -14,6 +14,10 @@ import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.time.Instant;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -21,23 +25,18 @@ import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.Generated;
 
-import java.time.Instant;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.UUID;
-
 /**
- * An HTTPS endpoint of a user, which receives the task events it subscribes to, signed with its secret.
- * <p>
- * {@code @DynamicUpdate}: a delivery records its outcome here while the owner may change the endpoint through the
- * API, and writing every column would let each overwrite the other's change.
+ * An HTTPS endpoint of a user, which receives the task events it subscribes to, signed with its
+ * secret.
+ *
+ * <p>{@code @DynamicUpdate}: a delivery records its outcome here while the owner may change the
+ * endpoint through the API, and writing every column would let each overwrite the other's change.
  */
 @Entity
 @DynamicUpdate
 @Table(
         name = "webhook_endpoints",
-        indexes = @Index(name = "webhook_endpoints_user_idIDX", columnList = "user_id")
-)
+        indexes = @Index(name = "webhook_endpoints_user_idIDX", columnList = "user_id"))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -54,8 +53,7 @@ public class WebhookEndpoint {
             name = "user_id",
             nullable = false,
             updatable = false,
-            foreignKey = @ForeignKey(name = "webhook_endpoints_userFK")
-    )
+            foreignKey = @ForeignKey(name = "webhook_endpoints_userFK"))
     private UserProfile user;
 
     @Enumerated(EnumType.STRING)
@@ -67,11 +65,13 @@ public class WebhookEndpoint {
     @Column(name = "url", nullable = false, length = 2048)
     private String url;
 
-    // Encrypted by WebhookSecrets: a signing secret must be recoverable, so it cannot be hashed like a token
+    // Encrypted by WebhookSecrets: a signing secret must be recoverable, so it cannot be hashed
+    // like a token
     @Column(name = "secret", nullable = false, length = 512)
     private String secret;
 
-    // The secret before the last rotation, still used to sign until previousSecretExpiresAt so receivers can switch
+    // The secret before the last rotation, still used to sign until previousSecretExpiresAt so
+    // receivers can switch
     @Column(name = "previous_secret", length = 512)
     private String previousSecret;
 
@@ -82,8 +82,7 @@ public class WebhookEndpoint {
     @CollectionTable(
             name = "webhook_endpoint_events",
             joinColumns = @JoinColumn(name = "endpoint_id"),
-            foreignKey = @ForeignKey(name = "webhook_endpoint_events_endpointFK")
-    )
+            foreignKey = @ForeignKey(name = "webhook_endpoint_events_endpointFK"))
     @Column(name = "event", nullable = false, length = 50)
     @Enumerated(EnumType.STRING)
     private Set<WebhookEvent> events = new HashSet<>();

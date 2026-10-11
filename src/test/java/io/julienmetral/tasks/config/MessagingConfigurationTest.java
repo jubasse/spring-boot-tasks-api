@@ -1,10 +1,17 @@
 package io.julienmetral.tasks.config;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import io.julienmetral.tasks.export.messaging.DataExportRequested;
 import io.julienmetral.tasks.identity.messaging.AvatarUploaded;
 import io.julienmetral.tasks.mail.MailMessage;
 import io.julienmetral.tasks.realtime.messaging.AccountStatusChanged;
 import io.julienmetral.tasks.realtime.messaging.UserNotification;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -15,34 +22,29 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.nio.charset.StandardCharsets;
-import java.time.Instant;
-import java.util.Map;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 class MessagingConfigurationTest {
 
     private static final String TYPE_ID_HEADER = "__TypeId__";
 
-    private static final MailMessage MESSAGE = new MailMessage("jane@example.com", "Subject", "Body");
+    private static final MailMessage MESSAGE =
+            new MailMessage("jane@example.com", "Subject", "Body");
 
-    private static final AvatarUploaded AVATAR_UPLOADED = new AvatarUploaded(
-            UUID.fromString("00000000-0000-0000-0000-000000000001"),
-            UUID.fromString("00000000-0000-0000-0000-00000000000a")
-    );
+    private static final AvatarUploaded AVATAR_UPLOADED =
+            new AvatarUploaded(
+                    UUID.fromString("00000000-0000-0000-0000-000000000001"),
+                    UUID.fromString("00000000-0000-0000-0000-00000000000a"));
 
     private final JsonMapper jsonMapper = JsonMapper.builder().build();
 
-    private final MessageConverter converter = new MessagingConfiguration().messageConverter(jsonMapper);
+    private final MessageConverter converter =
+            new MessagingConfiguration().messageConverter(jsonMapper);
 
     @Test
     void mailMessageIsWrittenAsJsonWithItsTypeHeader() {
         Message message = converter.toMessage(MESSAGE, new MessageProperties());
 
-        assertThat(message.getMessageProperties().getContentType()).isEqualTo(MessageProperties.CONTENT_TYPE_JSON);
+        assertThat(message.getMessageProperties().getContentType())
+                .isEqualTo(MessageProperties.CONTENT_TYPE_JSON);
         assertThat(message.getMessageProperties().<String>getHeader(TYPE_ID_HEADER))
                 .isEqualTo(MailMessage.class.getName());
 
@@ -62,7 +64,10 @@ class MessagingConfigurationTest {
 
     @Test
     void listenerParameterTypeTakesPrecedenceOverTheTypeHeader() {
-        Message message = jsonMessage("java.net.URL", """
+        Message message =
+                jsonMessage(
+                        "java.net.URL",
+                        """
                 {"to":"jane@example.com","subject":"Subject","text":"Body"}""");
         receivedByListenerOf(MailMessage.class, message);
 
@@ -70,11 +75,12 @@ class MessagingConfigurationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {
-            "java.net.URL",
-            "java.io.File",
-            "org.springframework.context.support.FileSystemXmlApplicationContext"
-    })
+    @ValueSource(
+            strings = {
+                "java.net.URL",
+                "java.io.File",
+                "org.springframework.context.support.FileSystemXmlApplicationContext"
+            })
     void typeHeaderNamingAClassOutsideTheApplicationIsRefused(String className) {
         Message message = jsonMessage(className, "\"https://example.com/payload.xml\"");
 
@@ -99,7 +105,8 @@ class MessagingConfigurationTest {
 
         JsonNode body = jsonMapper.readTree(message.getBody());
         assertThat(body.path("userId").asString()).isEqualTo(AVATAR_UPLOADED.userId().toString());
-        assertThat(body.path("uploadId").asString()).isEqualTo(AVATAR_UPLOADED.uploadId().toString());
+        assertThat(body.path("uploadId").asString())
+                .isEqualTo(AVATAR_UPLOADED.uploadId().toString());
     }
 
     @Test
@@ -119,7 +126,8 @@ class MessagingConfigurationTest {
 
     @Test
     void dataExportRequestedRoundTripsThroughItsTypeHeader() {
-        DataExportRequested request = new DataExportRequested(UUID.fromString("00000000-0000-0000-0000-0000000000e1"));
+        DataExportRequested request =
+                new DataExportRequested(UUID.fromString("00000000-0000-0000-0000-0000000000e1"));
         Message message = converter.toMessage(request, new MessageProperties());
 
         assertThat(message.getMessageProperties().<String>getHeader(TYPE_ID_HEADER))
@@ -138,29 +146,38 @@ class MessagingConfigurationTest {
 
     @Test
     void userNotificationStoredByTheOutboxRoundTripsThroughItsTypeHeader() {
-        UserNotification notification = new UserNotification(
-                UUID.fromString("00000000-0000-0000-0000-000000000001"),
-                "task.assigned",
-                Instant.parse("2026-03-04T05:06:07Z"),
-                Map.of("task", Map.of("id", "00000000-0000-0000-0000-00000000000a", "reference", "OPS-12"),
-                        "actor", Map.of("displayName", "Ada"))
-        );
+        UserNotification notification =
+                new UserNotification(
+                        UUID.fromString("00000000-0000-0000-0000-000000000001"),
+                        "task.assigned",
+                        Instant.parse("2026-03-04T05:06:07Z"),
+                        Map.of(
+                                "task",
+                                Map.of(
+                                        "id",
+                                        "00000000-0000-0000-0000-00000000000a",
+                                        "reference",
+                                        "OPS-12"),
+                                "actor",
+                                Map.of("displayName", "Ada")));
 
         assertThat(converter.fromMessage(asRelayed(notification))).isEqualTo(notification);
     }
 
     @Test
     void accountStatusChangedStoredByTheOutboxRoundTripsThroughItsTypeHeader() {
-        AccountStatusChanged change = new AccountStatusChanged(UUID.fromString("00000000-0000-0000-0000-000000000001"));
+        AccountStatusChanged change =
+                new AccountStatusChanged(UUID.fromString("00000000-0000-0000-0000-000000000001"));
 
         assertThat(converter.fromMessage(asRelayed(change))).isEqualTo(change);
     }
 
-    // The real-time listener is declared on its class, so no parameter type guides the conversion: the type header
-    // alone does, and the body is what OutboxRelay sends, the payload map the outbox stored
+    // The real-time listener is declared on its class, so no parameter type guides the conversion:
+    // the type header alone does, and the body is what OutboxRelay sends, the payload map the
+    // outbox stored
     private Message asRelayed(Object message) {
-        Map<String, Object> payload = jsonMapper.convertValue(message, new TypeReference<Map<String, Object>>() {
-        });
+        Map<String, Object> payload =
+                jsonMapper.convertValue(message, new TypeReference<Map<String, Object>>() {});
 
         return jsonMessage(message.getClass().getName(), jsonMapper.writeValueAsString(payload));
     }

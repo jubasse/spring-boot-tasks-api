@@ -1,20 +1,19 @@
 package io.julienmetral.tasks.support;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.TestComponent;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Optional;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
 /**
- * Reads the emails caught by the Mailpit test container through its HTTP API.
- * Inject it in integration tests with {@code @Import(Mailpit.class)} or {@code @Autowired} after importing it.
+ * Reads the emails caught by the Mailpit test container through its HTTP API. Inject it in
+ * integration tests with {@code @Import(Mailpit.class)} or {@code @Autowired} after importing it.
  */
 @TestComponent
 public class Mailpit {
@@ -47,15 +46,19 @@ public class Mailpit {
         return count;
     }
 
-    /** Plain-text body of the most recent email sent to this address, waiting up to 5 seconds for it. */
+    /**
+     * Plain-text body of the most recent email sent to this address, waiting up to 5 seconds for
+     * it.
+     */
     public String latestTextTo(String email) {
         return latestTextTo(email, "");
     }
 
     /**
-     * Plain-text body of the most recent email sent to this address that contains the given text, waiting up to 5
-     * seconds for it. Emails leave through the outbox and RabbitMQ, so two sent in a row can arrive in either order:
-     * the most recent email of all is not always the one the test triggered last.
+     * Plain-text body of the most recent email sent to this address that contains the given text,
+     * waiting up to 5 seconds for it. Emails leave through the outbox and RabbitMQ, so two sent in
+     * a row can arrive in either order: the most recent email of all is not always the one the test
+     * triggered last.
      */
     public String latestTextTo(String email, String containing) {
         Instant deadline = Instant.now().plus(Duration.ofSeconds(5));
@@ -68,8 +71,12 @@ public class Mailpit {
             }
 
             if (Instant.now().isAfter(deadline)) {
-                throw new AssertionError("No email received by " + email
-                        + (containing.isEmpty() ? "" : " containing \"" + containing + "\""));
+                throw new AssertionError(
+                        "No email received by "
+                                + email
+                                + (containing.isEmpty()
+                                        ? ""
+                                        : " containing \"" + containing + "\""));
             }
 
             sleep();
@@ -117,11 +124,7 @@ public class Mailpit {
     }
 
     private JsonNode read(String uri, Object... variables) {
-        String body = client
-                .get()
-                .uri(uri, variables)
-                .retrieve()
-                .body(String.class);
+        String body = client.get().uri(uri, variables).retrieve().body(String.class);
 
         return jsonMapper.readTree(body);
     }

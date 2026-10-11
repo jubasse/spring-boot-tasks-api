@@ -1,16 +1,5 @@
 package io.julienmetral.tasks.task.controllers;
 
-import io.julienmetral.tasks.TestcontainersConfiguration;
-import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserRole;
-import org.junit.jupiter.api.Test;
-import org.springframework.test.web.servlet.ResultActions;
-
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
-
 import static io.julienmetral.tasks.support.Problems.typedProblem;
 import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -18,6 +7,16 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import io.julienmetral.tasks.TestcontainersConfiguration;
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserRole;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
+import org.junit.jupiter.api.Test;
+import org.springframework.test.web.servlet.ResultActions;
 
 /** Uploads the media service rejects: nothing is attached, stored or recorded in the history. */
 class TaskAttachmentValidationApiTests extends AbstractTaskAttachmentApiTests {
@@ -41,9 +40,14 @@ class TaskAttachmentValidationApiTests extends AbstractTaskAttachmentApiTests {
         User admin = createUser(UserRole.ADMIN);
         UUID taskId = createTask(admin, null);
 
-        assertRejected(admin, taskId, upload(asAdmin(admin), taskId, "large.pdf", pdfOfSize(MAX_BYTES + 1)))
+        assertRejected(
+                        admin,
+                        taskId,
+                        upload(asAdmin(admin), taskId, "large.pdf", pdfOfSize(MAX_BYTES + 1)))
                 .andExpect(untypedProblem(413, "Content Too Large"))
-                .andExpect(jsonPath("$.detail").value(startsWith("The file exceeds the maximum size")));
+                .andExpect(
+                        jsonPath("$.detail")
+                                .value(startsWith("The file exceeds the maximum size")));
     }
 
     @Test
@@ -62,7 +66,15 @@ class TaskAttachmentValidationApiTests extends AbstractTaskAttachmentApiTests {
         User admin = createUser(UserRole.ADMIN);
         UUID taskId = createTask(admin, null);
 
-        assertRejected(admin, taskId, upload(asAdmin(admin), taskId, "invoice.pdf", "application/pdf", executable()))
+        assertRejected(
+                        admin,
+                        taskId,
+                        upload(
+                                asAdmin(admin),
+                                taskId,
+                                "invoice.pdf",
+                                "application/pdf",
+                                executable()))
                 .andExpect(untypedProblem(415, "Unsupported Media Type"))
                 .andExpect(jsonPath("$.detail").value(containsString("are not accepted")));
     }
@@ -71,10 +83,16 @@ class TaskAttachmentValidationApiTests extends AbstractTaskAttachmentApiTests {
     void htmlIsRejected() throws Exception {
         User admin = createUser(UserRole.ADMIN);
         UUID taskId = createTask(admin, null);
-        byte[] html = ("<!DOCTYPE html><html><head><title>" + UUID.randomUUID()
-                + "</title></head><body><script>alert(1)</script></body></html>").getBytes(StandardCharsets.UTF_8);
+        byte[] html =
+                ("<!DOCTYPE html><html><head><title>"
+                                + UUID.randomUUID()
+                                + "</title></head><body><script>alert(1)</script></body></html>")
+                        .getBytes(StandardCharsets.UTF_8);
 
-        assertRejected(admin, taskId, upload(asAdmin(admin), taskId, "page.html", "text/plain", html))
+        assertRejected(
+                        admin,
+                        taskId,
+                        upload(asAdmin(admin), taskId, "page.html", "text/plain", html))
                 .andExpect(status().isUnsupportedMediaType());
     }
 
@@ -83,9 +101,16 @@ class TaskAttachmentValidationApiTests extends AbstractTaskAttachmentApiTests {
         User admin = createUser(UserRole.ADMIN);
         UUID taskId = createTask(admin, null);
 
-        assertRejected(admin, taskId, upload(asAdmin(admin), taskId, "notes.txt", "text/plain", EICAR))
+        assertRejected(
+                        admin,
+                        taskId,
+                        upload(asAdmin(admin), taskId, "notes.txt", "text/plain", EICAR))
                 .andExpect(typedProblem(422, "infected-file", "File rejected by the antivirus"))
-                .andExpect(jsonPath("$.detail").value("The file was rejected by the antivirus: " + TestcontainersConfiguration.EICAR_THREAT));
+                .andExpect(
+                        jsonPath("$.detail")
+                                .value(
+                                        "The file was rejected by the antivirus: "
+                                                + TestcontainersConfiguration.EICAR_THREAT));
     }
 
     @Test
@@ -100,11 +125,11 @@ class TaskAttachmentValidationApiTests extends AbstractTaskAttachmentApiTests {
 
         assertThat(attachmentCount(taskId)).isOne();
         assertThat(mediaCountUploadedBy(assignee)).isOne();
-        find(asUser(assignee), taskId, existing)
-                .andExpect(status().isOk());
+        find(asUser(assignee), taskId, existing).andExpect(status().isOk());
     }
 
-    private ResultActions assertRejected(User uploader, UUID taskId, ResultActions result) throws Exception {
+    private ResultActions assertRejected(User uploader, UUID taskId, ResultActions result)
+            throws Exception {
         assertThat(attachmentCount(taskId)).isZero();
         assertThat(mediaCountUploadedBy(uploader)).isZero();
         assertThat(eventsThroughApi(uploader, taskId))
@@ -113,7 +138,8 @@ class TaskAttachmentValidationApiTests extends AbstractTaskAttachmentApiTests {
         return result;
     }
 
-    // Detection reads only the leading bytes, so a PDF signature followed by padding is typed as a PDF
+    // Detection reads only the leading bytes, so a PDF signature followed by padding is typed as a
+    // PDF
     private static byte[] pdfOfSize(int size) {
         byte[] content = new byte[size];
         Arrays.fill(content, (byte) ' ');

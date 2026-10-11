@@ -6,7 +6,6 @@ import io.julienmetral.tasks.notification.entities.WebhookEvent;
 import io.julienmetral.tasks.notification.entities.WebhookKind;
 import io.julienmetral.tasks.notification.webhook.WebhookUrls;
 import io.swagger.v3.oas.annotations.media.Schema;
-
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -14,17 +13,14 @@ import java.util.UUID;
 public record WebhookEndpointResponseDto(
         UUID id,
         WebhookKind kind,
-
-        @Schema(description = "Masked for a Slack webhook, whose URL is its credential")
-        String url,
+        @Schema(description = "Masked for a Slack webhook, whose URL is its credential") String url,
         List<WebhookEvent> events,
         boolean enabled,
         WebhookDisabledReason disabledReason,
         Instant disabledAt,
         Instant previousSecretExpiresAt,
         Instant createdAt,
-        Instant updatedAt
-) {
+        Instant updatedAt) {
 
     public WebhookEndpointResponseDto(WebhookEndpoint endpoint) {
         this(
@@ -37,7 +33,6 @@ public record WebhookEndpointResponseDto(
                 endpoint.getDisabledAt(),
                 endpoint.getPreviousSecretExpiresAt(),
                 endpoint.getCreatedAt(),
-                endpoint.getUpdatedAt()
-        );
+                endpoint.getUpdatedAt());
     }
 }

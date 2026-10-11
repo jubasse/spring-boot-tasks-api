@@ -4,6 +4,18 @@ import io.julienmetral.tasks.export.ExportProperties;
 import io.julienmetral.tasks.export.entities.DataExport;
 import io.julienmetral.tasks.export.entities.TaskExportFilters;
 import io.julienmetral.tasks.export.services.DataExportService;
+import java.nio.charset.StandardCharsets;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.function.Function;
+import javax.sql.DataSource;
 import lombok.RequiredArgsConstructor;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.Job;
@@ -24,26 +36,14 @@ import org.springframework.core.io.FileSystemResource;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.transaction.PlatformTransactionManager;
 
-import javax.sql.DataSource;
-import java.nio.charset.StandardCharsets;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Timestamp;
-import java.time.Clock;
-import java.time.Instant;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.function.Function;
-
 /**
- * The CSV exports, one Spring Batch job each: a chunk step pages through the rows and writes them to a local file,
- * then a tasklet stores the file ({@link PublishExport}). The only job parameter is the export's id; the filters are
- * read from the export, so no personal data lands in Batch's tables.
- * <p>
- * Both steps run again when a job restarts after an interruption ({@code allowStartIfComplete}): the file of the
- * first attempt stayed on the instance that stopped.
+ * The CSV exports, one Spring Batch job each: a chunk step pages through the rows and writes them
+ * to a local file, then a tasklet stores the file ({@link PublishExport}). The only job parameter
+ * is the export's id; the filters are read from the export, so no personal data lands in Batch's
+ * tables.
+ *
+ * <p>Both steps run again when a job restarts after an interruption ({@code allowStartIfComplete}):
+ * the file of the first attempt stayed on the instance that stopped.
  */
 @Configuration
 @RequiredArgsConstructor
@@ -55,10 +55,13 @@ public class CsvExportJobs {
     private static final String TASKS_WRITE = "tasksCsvWrite";
     private static final String USERS_WRITE = "usersCsvWrite";
 
-    private static final String EXPORT_ID_PARAMETER = "#{jobParameters['" + PublishExport.EXPORT_ID + "']}";
+    private static final String EXPORT_ID_PARAMETER =
+            "#{jobParameters['" + PublishExport.EXPORT_ID + "']}";
 
-    // Native SQL sees soft-deleted rows, which @SoftDelete hides from JPA: each query leaves them out itself
-    private static final String TASKS = """
+    // Native SQL sees soft-deleted rows, which @SoftDelete hides from JPA: each query leaves them
+    // out itself
+    private static final String TASKS =
+            """
             SELECT t.id, t.reference, t.title, t.description, t.status, t.priority,
                    a.display_name AS assignee, c.display_name AS created_by,
                    t.due_at, t.completed_at, t.archived_at, t.created_at, t.updated_at
@@ -68,7 +71,8 @@ public class CsvExportJobs {
             WHERE t.deleted_at IS NULL
             """;
 
-    private static final String USERS = """
+    private static final String USERS =
+            """
             SELECT u.id, u.email, p.display_name, p.status,
                    (SELECT string_agg(r.role, ' ' ORDER BY r.role) FROM user_roles r WHERE r.user_id = u.id) AS roles,
                    u.email_verified_at, u.created_at, u.last_active_at
@@ -96,7 +100,9 @@ public class CsvExportJobs {
     }
 
     @Bean
-    Step tasksCsvWrite(JdbcPagingItemReader<TaskCsvRow> tasksCsvReader, FlatFileItemWriter<TaskCsvRow> tasksCsvWriter) {
+    Step tasksCsvWrite(
+            JdbcPagingItemReader<TaskCsvRow> tasksCsvReader,
+            FlatFileItemWriter<TaskCsvRow> tasksCsvWriter) {
         return new StepBuilder(TASKS_WRITE, jobRepository)
                 .allowStartIfComplete(true)
                 .<TaskCsvRow, TaskCsvRow>chunk(properties.chunkSize())
@@ -108,7 +114,9 @@ public class CsvExportJobs {
     }
 
     @Bean
-    Step usersCsvWrite(JdbcPagingItemReader<UserCsvRow> usersCsvReader, FlatFileItemWriter<UserCsvRow> usersCsvWriter) {
+    Step usersCsvWrite(
+            JdbcPagingItemReader<UserCsvRow> usersCsvReader,
+            FlatFileItemWriter<UserCsvRow> usersCsvWriter) {
         return new StepBuilder(USERS_WRITE, jobRepository)
                 .allowStartIfComplete(true)
                 .<UserCsvRow, UserCsvRow>chunk(properties.chunkSize())
@@ -122,18 +130,19 @@ public class CsvExportJobs {
     @Bean
     @StepScope
     JdbcPagingItemReader<TaskCsvRow> tasksCsvReader(
-            DataSource dataSource,
-            @Value(EXPORT_ID_PARAMETER) String exportId
-    ) throws Exception {
-        TaskExportFilters filters = exportService.find(UUID.fromString(exportId))
-                .map(DataExport::getTaskFilters)
-                .orElse(null);
+            DataSource dataSource, @Value(EXPORT_ID_PARAMETER) String exportId) throws Exception {
+        TaskExportFilters filters =
+                exportService
+                        .find(UUID.fromString(exportId))
+                        .map(DataExport::getTaskFilters)
+                        .orElse(null);
         StringBuilder where = new StringBuilder();
         Map<String, Object> parameters = new HashMap<>();
 
-        where.append(filters != null && Boolean.TRUE.equals(filters.archived())
-                ? " AND t.archived_at IS NOT NULL"
-                : " AND t.archived_at IS NULL");
+        where.append(
+                filters != null && Boolean.TRUE.equals(filters.archived())
+                        ? " AND t.archived_at IS NOT NULL"
+                        : " AND t.archived_at IS NULL");
 
         if (filters != null && filters.status() != null) {
             where.append(" AND t.status = :status");
@@ -145,56 +154,72 @@ public class CsvExportJobs {
             parameters.put("assigneeId", filters.assigneeId());
         }
 
-        return pagingReader("tasksCsvReader", dataSource, TASKS + where, parameters, (rows, number) -> new TaskCsvRow(
-                rows.getObject("id", UUID.class),
-                rows.getString("reference"),
-                rows.getString("title"),
-                rows.getString("description"),
-                rows.getString("status"),
-                rows.getString("priority"),
-                rows.getString("assignee"),
-                rows.getString("created_by"),
-                instant(rows, "due_at"),
-                instant(rows, "completed_at"),
-                instant(rows, "archived_at"),
-                instant(rows, "created_at"),
-                instant(rows, "updated_at")
-        ));
+        return pagingReader(
+                "tasksCsvReader",
+                dataSource,
+                TASKS + where,
+                parameters,
+                (rows, number) ->
+                        new TaskCsvRow(
+                                rows.getObject("id", UUID.class),
+                                rows.getString("reference"),
+                                rows.getString("title"),
+                                rows.getString("description"),
+                                rows.getString("status"),
+                                rows.getString("priority"),
+                                rows.getString("assignee"),
+                                rows.getString("created_by"),
+                                instant(rows, "due_at"),
+                                instant(rows, "completed_at"),
+                                instant(rows, "archived_at"),
+                                instant(rows, "created_at"),
+                                instant(rows, "updated_at")));
     }
 
     @Bean
     @StepScope
     JdbcPagingItemReader<UserCsvRow> usersCsvReader(DataSource dataSource) throws Exception {
-        return pagingReader("usersCsvReader", dataSource, USERS, Map.of(), (rows, number) -> new UserCsvRow(
-                rows.getObject("id", UUID.class),
-                rows.getString("email"),
-                rows.getString("display_name"),
-                rows.getString("status"),
-                rows.getString("roles"),
-                instant(rows, "email_verified_at"),
-                instant(rows, "created_at"),
-                instant(rows, "last_active_at")
-        ));
+        return pagingReader(
+                "usersCsvReader",
+                dataSource,
+                USERS,
+                Map.of(),
+                (rows, number) ->
+                        new UserCsvRow(
+                                rows.getObject("id", UUID.class),
+                                rows.getString("email"),
+                                rows.getString("display_name"),
+                                rows.getString("status"),
+                                rows.getString("roles"),
+                                instant(rows, "email_verified_at"),
+                                instant(rows, "created_at"),
+                                instant(rows, "last_active_at")));
     }
 
     @Bean
     @StepScope
     FlatFileItemWriter<TaskCsvRow> tasksCsvWriter(@Value(EXPORT_ID_PARAMETER) String exportId) {
-        return csvWriter("tasksCsvWriter", UUID.fromString(exportId), TaskCsvRow.HEADER, TaskCsvRow::values);
+        return csvWriter(
+                "tasksCsvWriter", UUID.fromString(exportId), TaskCsvRow.HEADER, TaskCsvRow::values);
     }
 
     @Bean
     @StepScope
     FlatFileItemWriter<UserCsvRow> usersCsvWriter(@Value(EXPORT_ID_PARAMETER) String exportId) {
-        return csvWriter("usersCsvWriter", UUID.fromString(exportId), UserCsvRow.HEADER, UserCsvRow::values);
+        return csvWriter(
+                "usersCsvWriter", UUID.fromString(exportId), UserCsvRow.HEADER, UserCsvRow::values);
     }
 
     private Job csvJob(String name, Step write, String writeStepName, String filenamePrefix) {
-        Step publish = new StepBuilder(name + "Publish", jobRepository)
-                .allowStartIfComplete(true)
-                .listener(leaseRenewal)
-                .tasklet(new PublishExport(exportService, clock, writeStepName, filenamePrefix), transactionManager)
-                .build();
+        Step publish =
+                new StepBuilder(name + "Publish", jobRepository)
+                        .allowStartIfComplete(true)
+                        .listener(leaseRenewal)
+                        .tasklet(
+                                new PublishExport(
+                                        exportService, clock, writeStepName, filenamePrefix),
+                                transactionManager)
+                        .build();
 
         return new JobBuilder(name, jobRepository)
                 .listener(jobListener)
@@ -204,17 +229,18 @@ public class CsvExportJobs {
     }
 
     /**
-     * Pages by id, a UUIDv7, so each page starts after the last id of the previous one instead of skipping rows
-     * with an offset. The query becomes a subquery, so that its joins cannot make the sort key ambiguous; the query
-     * provider is given, since detecting it would read the database's metadata.
+     * Pages by id, a UUIDv7, so each page starts after the last id of the previous one instead of
+     * skipping rows with an offset. The query becomes a subquery, so that its joins cannot make the
+     * sort key ambiguous; the query provider is given, since detecting it would read the database's
+     * metadata.
      */
     private <T> JdbcPagingItemReader<T> pagingReader(
             String name,
             DataSource dataSource,
             String query,
             Map<String, Object> parameters,
-            RowMapper<T> rowMapper
-    ) throws Exception {
+            RowMapper<T> rowMapper)
+            throws Exception {
         PostgresPagingQueryProvider queryProvider = new PostgresPagingQueryProvider();
         queryProvider.setSelectClause("*");
         queryProvider.setFromClause("(" + query + ") AS rows");
@@ -232,11 +258,7 @@ public class CsvExportJobs {
     }
 
     private static <T> FlatFileItemWriter<T> csvWriter(
-            String name,
-            UUID exportId,
-            List<String> header,
-            Function<T, List<Object>> values
-    ) {
+            String name, UUID exportId, List<String> header, Function<T, List<Object>> values) {
         return new FlatFileItemWriterBuilder<T>()
                 .name(name)
                 .resource(new FileSystemResource(ExportFiles.of(exportId, PublishExport.CSV_FILE)))

@@ -17,6 +17,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.net.URI;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
@@ -35,20 +37,18 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.net.URI;
-import java.util.UUID;
-
 @Tag(
         name = "Exports",
-        description = "Files of tasks, users or your personal data, produced in the background and downloadable "
-                + "for a while."
-)
+        description =
+                "Files of tasks, users or your personal data, produced in the background and downloadable "
+                        + "for a while.")
 @RestController
 @RequestMapping("/exports")
 @RequiredArgsConstructor
 public class DataExportController {
 
-    private static final String QUEUED = """
+    private static final String QUEUED =
+            """
             Queued: follow it at the Location URL. The owner is emailed once the file is ready, or if it could not be \
             produced.""";
 
@@ -58,32 +58,42 @@ public class DataExportController {
 
     @Operation(
             summary = "Export tasks as CSV",
-            description = "Every task matching the filters of the task list, as a CSV file in UTF-8."
-    )
+            description =
+                    "Every task matching the filters of the task list, as a CSV file in UTF-8.")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    @ApiResponse(responseCode = "202", description = QUEUED, headers = @Header(
-            name = "Location",
-            description = "URL of the export.",
-            schema = @Schema(type = "string", format = "uri-reference")
-    ), content = @Content(schema = @Schema(implementation = DataExportResponseDto.class)))
+    @ApiResponse(
+            responseCode = "202",
+            description = QUEUED,
+            headers =
+                    @Header(
+                            name = "Location",
+                            description = "URL of the export.",
+                            schema = @Schema(type = "string", format = "uri-reference")),
+            content = @Content(schema = @Schema(implementation = DataExportResponseDto.class)))
     @DocumentedProblems(ProblemType.EXPORT_IN_PROGRESS)
     @PostMapping("/tasks")
-    public ResponseEntity<DataExportResponseDto> exportTasks(@Valid @RequestBody(required = false) ExportTasksDto dto) {
+    public ResponseEntity<DataExportResponseDto> exportTasks(
+            @Valid @RequestBody(required = false) ExportTasksDto dto) {
         ExportTasksDto filters = dto != null ? dto : new ExportTasksDto(null, null, false);
 
-        return accepted(exportService.request(callerId(), DataExportType.TASKS_CSV, filters.filters()));
+        return accepted(
+                exportService.request(callerId(), DataExportType.TASKS_CSV, filters.filters()));
     }
 
     @Operation(
             summary = "Export users as CSV",
-            description = "Every account that is not deleted, with its email and roles, as a CSV file in UTF-8."
-    )
+            description =
+                    "Every account that is not deleted, with its email and roles, as a CSV file in UTF-8.")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    @ApiResponse(responseCode = "202", description = QUEUED, headers = @Header(
-            name = "Location",
-            description = "URL of the export.",
-            schema = @Schema(type = "string", format = "uri-reference")
-    ), content = @Content(schema = @Schema(implementation = DataExportResponseDto.class)))
+    @ApiResponse(
+            responseCode = "202",
+            description = QUEUED,
+            headers =
+                    @Header(
+                            name = "Location",
+                            description = "URL of the export.",
+                            schema = @Schema(type = "string", format = "uri-reference")),
+            content = @Content(schema = @Schema(implementation = DataExportResponseDto.class)))
     @DocumentedProblems(ProblemType.EXPORT_IN_PROGRESS)
     @AdminOnly
     @PostMapping("/users")
@@ -93,17 +103,21 @@ public class DataExportController {
 
     @Operation(
             summary = "Export your personal data",
-            description = """
+            description =
+                    """
                     Everything the API holds about your account, as a ZIP archive: my-data.json, complete and meant \
                     for software, my-data.pdf, for a person to read, and your profile photo. Tasks, comments and \
-                    history of other accounts appear only where you took part, and other people by display name."""
-    )
+                    history of other accounts appear only where you took part, and other people by display name.""")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    @ApiResponse(responseCode = "202", description = QUEUED, headers = @Header(
-            name = "Location",
-            description = "URL of the export.",
-            schema = @Schema(type = "string", format = "uri-reference")
-    ), content = @Content(schema = @Schema(implementation = DataExportResponseDto.class)))
+    @ApiResponse(
+            responseCode = "202",
+            description = QUEUED,
+            headers =
+                    @Header(
+                            name = "Location",
+                            description = "URL of the export.",
+                            schema = @Schema(type = "string", format = "uri-reference")),
+            content = @Content(schema = @Schema(implementation = DataExportResponseDto.class)))
     @DocumentedProblems(ProblemType.EXPORT_IN_PROGRESS)
     @PostMapping("/my-data")
     public ResponseEntity<DataExportResponseDto> exportMyData() {
@@ -113,8 +127,8 @@ public class DataExportController {
     @Operation(summary = "List your exports, newest first")
     @GetMapping
     public PagedModel<DataExportResponseDto> listExports(
-            @ParameterObject @PageableDefault(sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
-    ) {
+            @ParameterObject @PageableDefault(sort = "createdAt", direction = Sort.Direction.DESC)
+                    Pageable pageable) {
         return new PagedModel<>(exportService.findOwn(callerId(), pageable).map(this::response));
     }
 
@@ -135,8 +149,7 @@ public class DataExportController {
     }
 
     private ResponseEntity<DataExportResponseDto> accepted(DataExport export) {
-        return ResponseEntity
-                .accepted()
+        return ResponseEntity.accepted()
                 .location(URI.create("/api/v1/exports/" + export.getId()))
                 .body(response(export));
     }
@@ -146,6 +159,8 @@ public class DataExportController {
     }
 
     private UUID callerId() {
-        return currentUser.getId().orElseThrow(() -> new AccessDeniedException("No user id in the access token"));
+        return currentUser
+                .getId()
+                .orElseThrow(() -> new AccessDeniedException("No user id in the access token"));
     }
 }

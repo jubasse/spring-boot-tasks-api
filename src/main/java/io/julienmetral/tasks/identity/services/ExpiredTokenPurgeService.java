@@ -2,12 +2,11 @@ package io.julienmetral.tasks.identity.services;
 
 import io.julienmetral.tasks.config.ExpiredTokenPurgeProperties;
 import io.julienmetral.tasks.identity.repositories.ExpiredTokenQueries;
+import java.time.Clock;
+import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.Clock;
-import java.time.Instant;
 
 @Service
 @RequiredArgsConstructor
@@ -17,11 +16,7 @@ public class ExpiredTokenPurgeService {
     private final ExpiredTokenPurgeProperties properties;
     private final Clock clock;
 
-    public record PurgedTokens(
-            int refreshTokens,
-            int verificationTokens,
-            int resetTokens
-    ) {
+    public record PurgedTokens(int refreshTokens, int verificationTokens, int resetTokens) {
 
         public boolean isEmpty() {
             return refreshTokens == 0 && verificationTokens == 0 && resetTokens == 0;
@@ -36,7 +31,6 @@ public class ExpiredTokenPurgeService {
         return new PurgedTokens(
                 queries.deleteRefreshFamiliesExpiredBefore(cutoff),
                 queries.deleteVerificationTokensExpiredBefore(cutoff),
-                queries.deleteResetTokensExpiredBefore(cutoff)
-        );
+                queries.deleteResetTokensExpiredBefore(cutoff));
     }
 }

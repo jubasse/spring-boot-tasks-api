@@ -1,20 +1,20 @@
 package io.julienmetral.tasks.support;
 
-import org.hibernate.resource.jdbc.spi.StatementInspector;
-
 import java.util.ArrayList;
 import java.util.List;
+import org.hibernate.resource.jdbc.spi.StatementInspector;
 
 /**
- * Records the SQL that Hibernate prepares on the calling thread while {@link #statementsDuring} runs. Hibernate
- * creates the instance itself: {@code hibernate.session_factory.statement_inspector} in the test
- * {@code application.yaml} registers it for every test context, so using it creates no new context. JDBC that
- * bypasses Hibernate ({@code JdbcTemplate}) is not recorded.
+ * Records the SQL that Hibernate prepares on the calling thread while {@link #statementsDuring}
+ * runs. Hibernate creates the instance itself: {@code
+ * hibernate.session_factory.statement_inspector} in the test {@code application.yaml} registers it
+ * for every test context, so using it creates no new context. JDBC that bypasses Hibernate ({@code
+ * JdbcTemplate}) is not recorded.
  */
 public class SqlStatementCounter implements StatementInspector {
 
-    // Per thread: MockMvc handles a request on the test's thread, while the outbox relay, the RabbitMQ listeners and
-    // the scheduled jobs query the database on their own threads at any time
+    // Per thread: MockMvc handles a request on the test's thread, while the outbox relay, the
+    // RabbitMQ listeners and the scheduled jobs query the database on their own threads at any time
     private static final ThreadLocal<List<String>> RECORDING = new ThreadLocal<>();
 
     @Override

@@ -10,7 +10,9 @@ class WebhookDeliveryListener {
 
     private final WebhookDeliveryService deliveryService;
 
-    @RabbitListener(queues = WebhookQueues.DELIVER, containerFactory = WebhookQueues.LISTENER_FACTORY)
+    @RabbitListener(
+            queues = WebhookQueues.DELIVER,
+            containerFactory = WebhookQueues.LISTENER_FACTORY)
     void deliver(WebhookDeliveryRequested request) {
         deliveryService.deliver(request.deliveryId());
     }

@@ -18,7 +18,10 @@ public class MediaCleanupJob {
     private final MediaCleanupService cleanupService;
 
     @Scheduled(cron = "${media.cleanup.cron}")
-    @SchedulerLock(name = ScheduledJobLocks.MEDIA_CLEANUP, lockAtMostFor = "PT2H", lockAtLeastFor = "PT5M")
+    @SchedulerLock(
+            name = ScheduledJobLocks.MEDIA_CLEANUP,
+            lockAtMostFor = "PT2H",
+            lockAtLeastFor = "PT5M")
     public void run() {
         MediaCleanupReport report = cleanupService.cleanUp();
 
@@ -27,7 +30,6 @@ public class MediaCleanupJob {
                 report.detachedAttachments(),
                 report.detachedAvatars(),
                 report.deletedMedia(),
-                report.deletedOrphanObjects()
-        );
+                report.deletedOrphanObjects());
     }
 }

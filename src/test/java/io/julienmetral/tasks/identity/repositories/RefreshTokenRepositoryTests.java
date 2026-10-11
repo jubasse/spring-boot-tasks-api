@@ -1,20 +1,19 @@
 package io.julienmetral.tasks.identity.repositories;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.julienmetral.tasks.identity.entities.RefreshToken;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.support.RepositoryTest;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
-
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 
 @RepositoryTest
 class RefreshTokenRepositoryTests {
@@ -23,14 +22,11 @@ class RefreshTokenRepositoryTests {
 
     private static final Instant EARLIER = NOW.minus(Duration.ofHours(1));
 
-    @Autowired
-    private RefreshTokenRepository refreshTokenRepository;
+    @Autowired private RefreshTokenRepository refreshTokenRepository;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
-    @Autowired
-    private TestEntityManager entityManager;
+    @Autowired private TestEntityManager entityManager;
 
     @Test
     void revokeAllForUserRevokesTheActiveTokensOfASoftDeletedUser() {

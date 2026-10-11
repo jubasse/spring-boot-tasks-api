@@ -1,8 +1,15 @@
 package io.julienmetral.tasks.identity.services;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import java.util.HashSet;
+import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -12,22 +19,12 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 
-import java.util.HashSet;
-import java.util.Optional;
-import java.util.Set;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.when;
-
 @ExtendWith(MockitoExtension.class)
 class DatabaseUserDetailsServiceTest {
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
-    @InjectMocks
-    private DatabaseUserDetailsService service;
+    @InjectMocks private DatabaseUserDetailsService service;
 
     private User user(boolean enabled, UserRole... roles) {
         User user = new User();
@@ -65,7 +62,8 @@ class DatabaseUserDetailsServiceTest {
 
     @Test
     void unknownEmailThrowsUsernameNotFound() {
-        when(userRepository.findByEmailIgnoreCase("nobody@example.com")).thenReturn(Optional.empty());
+        when(userRepository.findByEmailIgnoreCase("nobody@example.com"))
+                .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.loadUserByUsername("nobody@example.com"))
                 .isInstanceOf(UsernameNotFoundException.class)
@@ -75,7 +73,8 @@ class DatabaseUserDetailsServiceTest {
     @Test
     void updatePasswordStoresNewHashAndReturnsUpdatedDetails() {
         User entity = user(true, UserRole.USER);
-        when(userRepository.findByEmailIgnoreCase("jane@example.com")).thenReturn(Optional.of(entity));
+        when(userRepository.findByEmailIgnoreCase("jane@example.com"))
+                .thenReturn(Optional.of(entity));
         UserDetails current = service.loadUserByUsername("jane@example.com");
 
         UserDetails updated = service.updatePassword(current, "{argon2id}new-hash");
@@ -88,10 +87,10 @@ class DatabaseUserDetailsServiceTest {
 
     @Test
     void updatePasswordThrowsWhenUserNoLongerExists() {
-        UserDetails details = org.springframework.security.core.userdetails.User
-                .withUsername("gone@example.com")
-                .password("hash")
-                .build();
+        UserDetails details =
+                org.springframework.security.core.userdetails.User.withUsername("gone@example.com")
+                        .password("hash")
+                        .build();
         when(userRepository.findByEmailIgnoreCase("gone@example.com")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.updatePassword(details, "{argon2id}new-hash"))

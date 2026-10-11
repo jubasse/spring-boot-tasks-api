@@ -1,18 +1,5 @@
 package io.julienmetral.tasks.task.controllers;
 
-import com.jayway.jsonpath.JsonPath;
-import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserRole;
-import io.julienmetral.tasks.identity.security.UserStatusLookup;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.MediaType;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicReference;
-
 import static io.julienmetral.tasks.support.ProfilePhotos.givePhoto;
 import static io.julienmetral.tasks.support.SqlStatementCounter.statementsDuring;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -20,26 +7,38 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.jayway.jsonpath.JsonPath;
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserRole;
+import io.julienmetral.tasks.identity.security.UserStatusLookup;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+
 class TaskQueryCountTests extends AbstractTaskCommentApiTests {
 
-    // Measured with open-in-view off, the same for the short and the long list, with the caller's status already
-    // cached (one statement more on a caller's first request, see callerStatusIsReadOnceWhileItIsCached). Comments
-    // take 6: the photos of the mentioned users and the media of the files are two batch queries of their own.
+    // Measured with open-in-view off, the same for the short and the long list, with the caller's
+    // status already cached (one statement more on a caller's first request, see
+    // callerStatusIsReadOnceWhileItIsCached). Comments take 6: the photos of the mentioned users
+    // and the media of the files are two batch queries of their own.
     private static final int TASK_PAGE_STATEMENTS = 2;
     private static final int TASK_STATEMENTS = 1;
     private static final int EVENT_PAGE_STATEMENTS = 3;
     private static final int COMMENT_PAGE_STATEMENTS = 6;
     private static final int ATTACHMENT_LIST_STATEMENTS = 2;
 
-    // Longer than every list below: Spring Data skips the count query for a first page that is not full, so a size
-    // between the short and the long list would add a statement to the long one only
+    // Longer than every list below: Spring Data skips the count query for a first page that is not
+    // full, so a size between the short and the long list would add a statement to the long one
+    // only
     private static final String PAGE_SIZE = "50";
 
-    @Autowired
-    private UserStatusLookup userStatusLookup;
+    @Autowired private UserStatusLookup userStatusLookup;
 
-    private record Response(String body, List<String> statements) {
-    }
+    private record Response(String body, List<String> statements) {}
 
     @Test
     void listingTasksRunsTheSameNumberOfQueriesWhateverTheNumberOfTasksAndUsers() throws Exception {
@@ -81,8 +80,10 @@ class TaskQueryCountTests extends AbstractTaskCommentApiTests {
         UUID fewEventsTask = taskUpdatedByDistinctAdmins(1);
         UUID manyEventsTask = taskUpdatedByDistinctAdmins(14);
 
-        Response fewEvents = read(reader, TASKS + "/" + fewEventsTask + "/events?size=" + PAGE_SIZE);
-        Response manyEvents = read(reader, TASKS + "/" + manyEventsTask + "/events?size=" + PAGE_SIZE);
+        Response fewEvents =
+                read(reader, TASKS + "/" + fewEventsTask + "/events?size=" + PAGE_SIZE);
+        Response manyEvents =
+                read(reader, TASKS + "/" + manyEventsTask + "/events?size=" + PAGE_SIZE);
 
         assertThat(values(fewEvents, "$.content[*].actor.id")).hasSize(2);
         assertThat(values(manyEvents, "$.content[*].actor.id")).hasSize(15).doesNotHaveDuplicates();
@@ -93,7 +94,8 @@ class TaskQueryCountTests extends AbstractTaskCommentApiTests {
     }
 
     @Test
-    void listingCommentsRunsTheSameNumberOfQueriesWhateverTheNumberOfAuthorsMentionsAndFiles() throws Exception {
+    void listingCommentsRunsTheSameNumberOfQueriesWhateverTheNumberOfAuthorsMentionsAndFiles()
+            throws Exception {
         User reader = createUser(UserRole.USER);
 
         UUID fewCommentsTask = taskWithCommentsByDistinctAuthors(2);
@@ -102,19 +104,25 @@ class TaskQueryCountTests extends AbstractTaskCommentApiTests {
         Response fewComments = read(reader, commentsOf(fewCommentsTask) + "?size=" + PAGE_SIZE);
         Response manyComments = read(reader, commentsOf(manyCommentsTask) + "?size=" + PAGE_SIZE);
 
-        assertThat(values(manyComments, "$.content[*].author.id")).hasSize(10).doesNotHaveDuplicates();
-        assertThat(values(manyComments, "$.content[*].mentions[*].id")).hasSize(10).doesNotHaveDuplicates();
+        assertThat(values(manyComments, "$.content[*].author.id"))
+                .hasSize(10)
+                .doesNotHaveDuplicates();
+        assertThat(values(manyComments, "$.content[*].mentions[*].id"))
+                .hasSize(10)
+                .doesNotHaveDuplicates();
         assertThat(values(manyComments, "$.content[*].attachments[*].id")).hasSize(10);
         assertThat(photoUrls(manyComments, "$.content[*].author.avatarUrl")).hasSize(5);
         assertThat(photoUrls(manyComments, "$.content[*].mentions[*].avatarUrl")).hasSize(5);
-        assertThat(photoUrls(manyComments, "$.content[*].attachments[*].uploadedBy.avatarUrl")).hasSize(5);
+        assertThat(photoUrls(manyComments, "$.content[*].attachments[*].uploadedBy.avatarUrl"))
+                .hasSize(5);
         assertThat(manyComments.statements())
                 .hasSameSizeAs(fewComments.statements())
                 .hasSizeLessThanOrEqualTo(COMMENT_PAGE_STATEMENTS);
     }
 
     @Test
-    void listingAttachmentsRunsTheSameNumberOfQueriesWhateverTheNumberOfUploaders() throws Exception {
+    void listingAttachmentsRunsTheSameNumberOfQueriesWhateverTheNumberOfUploaders()
+            throws Exception {
         User reader = createUser(UserRole.USER);
 
         Response fewFiles = read(reader, attachmentsOf(taskWithFilesByDistinctUploaders(2)));
@@ -140,8 +148,8 @@ class TaskQueryCountTests extends AbstractTaskCommentApiTests {
         assertThat(second.statements()).noneMatch(TaskQueryCountTests::readsAccounts);
     }
 
-    // Warms the caller's status first: otherwise only the reader's first request would read it, and the short and
-    // the long list would differ by that statement
+    // Warms the caller's status first: otherwise only the reader's first request would read it, and
+    // the short and the long list would differ by that statement
     private Response read(User reader, String uri) throws Exception {
         userStatusLookup.statusOf(reader.getId());
 
@@ -151,17 +159,21 @@ class TaskQueryCountTests extends AbstractTaskCommentApiTests {
     private Response measure(User reader, String uri) throws Exception {
         AtomicReference<String> body = new AtomicReference<>();
 
-        List<String> statements = statementsDuring(() -> body.set(mockMvc.perform(get(uri).with(asUser(reader)))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString()));
+        List<String> statements =
+                statementsDuring(
+                        () ->
+                                body.set(
+                                        mockMvc.perform(get(uri).with(asUser(reader)))
+                                                .andExpect(status().isOk())
+                                                .andReturn()
+                                                .getResponse()
+                                                .getContentAsString()));
 
         return new Response(body.get(), statements);
     }
 
-    // The list is shared with every other test class: the page is sized to the tasks just created, which are the
-    // newest, and the test checks it holds exactly them before trusting the count
+    // The list is shared with every other test class: the page is sized to the tasks just created,
+    // which are the newest, and the test checks it holds exactly them before trusting the count
     private Response listNewestTasks(User reader, List<UUID> newestFirst) throws Exception {
         Response page = read(reader, TASKS + "?size=" + newestFirst.size());
 
@@ -202,10 +214,11 @@ class TaskQueryCountTests extends AbstractTaskCommentApiTests {
                 givePhoto(jdbcTemplate, editor.getId());
             }
 
-            mockMvc.perform(patch(TASKS + "/" + taskId)
-                            .with(asAdmin(editor))
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"description\": \"Revision " + i + "\"}"))
+            mockMvc.perform(
+                            patch(TASKS + "/" + taskId)
+                                    .with(asAdmin(editor))
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content("{\"description\": \"Revision " + i + "\"}"))
                     .andExpect(status().isOk());
         }
 
@@ -225,7 +238,11 @@ class TaskQueryCountTests extends AbstractTaskCommentApiTests {
                 givePhoto(jdbcTemplate, mentioned.getId());
             }
 
-            addComment(asUser(author), taskId, "Please check " + mention(mentioned), pdfFile("notes-" + i + ".pdf"));
+            addComment(
+                    asUser(author),
+                    taskId,
+                    "Please check " + mention(mentioned),
+                    pdfFile("notes-" + i + ".pdf"));
         }
 
         return taskId;
@@ -256,8 +273,7 @@ class TaskQueryCountTests extends AbstractTaskCommentApiTests {
     }
 
     private static List<String> photoUrls(Response response, String avatarUrls) {
-        return values(response, avatarUrls)
-                .stream()
+        return values(response, avatarUrls).stream()
                 .filter(url -> !url.contains("/identicons/"))
                 .toList();
     }

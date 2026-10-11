@@ -1,11 +1,25 @@
 package io.julienmetral.tasks.task.services;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.config.TaskReminderProperties;
 import io.julienmetral.tasks.task.entities.TaskReminderKind;
 import io.julienmetral.tasks.task.events.TaskDueSoon;
 import io.julienmetral.tasks.task.events.TaskOverdue;
 import io.julienmetral.tasks.task.repositories.TaskReminderQueries;
 import io.julienmetral.tasks.task.repositories.TaskReminderQueries.Reminder;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,21 +28,6 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
-
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.List;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class TaskReminderServiceTest {
@@ -45,11 +44,9 @@ class TaskReminderServiceTest {
     private static final UUID ALICE = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID BOB = UUID.fromString("00000000-0000-0000-0000-000000000002");
 
-    @Mock
-    private TaskReminderQueries queries;
+    @Mock private TaskReminderQueries queries;
 
-    @Mock
-    private ApplicationEventPublisher eventPublisher;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     private TaskReminderService service;
 
@@ -60,13 +57,17 @@ class TaskReminderServiceTest {
 
     private TaskReminderService serviceWith(Duration dueSoonLeadTime, Duration overdueLookback) {
         TaskReminderProperties properties =
-                new TaskReminderProperties(true, "0 */15 * * * *", dueSoonLeadTime, overdueLookback);
-        return new TaskReminderService(queries, properties, eventPublisher, Clock.fixed(NOW, ZoneOffset.UTC));
+                new TaskReminderProperties(
+                        true, "0 */15 * * * *", dueSoonLeadTime, overdueLookback);
+        return new TaskReminderService(
+                queries, properties, eventPublisher, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     private void stubReminders(List<Reminder> dueSoon, List<Reminder> overdue) {
-        when(queries.recordReminders(TaskReminderKind.DUE_SOON, NOW, DUE_SOON_END, NOW)).thenReturn(dueSoon);
-        when(queries.recordReminders(TaskReminderKind.OVERDUE, OVERDUE_START, NOW, NOW)).thenReturn(overdue);
+        when(queries.recordReminders(TaskReminderKind.DUE_SOON, NOW, DUE_SOON_END, NOW))
+                .thenReturn(dueSoon);
+        when(queries.recordReminders(TaskReminderKind.OVERDUE, OVERDUE_START, NOW, NOW))
+                .thenReturn(overdue);
     }
 
     private List<Object> publishedEvents(int expected) {
@@ -77,8 +78,10 @@ class TaskReminderServiceTest {
 
     @Test
     void recordsDueSoonAheadOfNowAndOverdueBehindNow() {
-        when(queries.recordReminders(TaskReminderKind.DUE_SOON, NOW, DUE_SOON_END, NOW)).thenReturn(List.of());
-        when(queries.recordReminders(TaskReminderKind.OVERDUE, OVERDUE_START, NOW, NOW)).thenReturn(List.of());
+        when(queries.recordReminders(TaskReminderKind.DUE_SOON, NOW, DUE_SOON_END, NOW))
+                .thenReturn(List.of());
+        when(queries.recordReminders(TaskReminderKind.OVERDUE, OVERDUE_START, NOW, NOW))
+                .thenReturn(List.of());
 
         service.sendDueReminders();
 
@@ -91,9 +94,11 @@ class TaskReminderServiceTest {
     @Test
     void windowsFollowTheConfiguredLeadTimeAndLookback() {
         TaskReminderService custom = serviceWith(Duration.ofMinutes(90), Duration.ofDays(2));
-        when(queries.recordReminders(TaskReminderKind.DUE_SOON, NOW, Instant.parse("2026-09-26T11:45:00Z"), NOW))
+        when(queries.recordReminders(
+                        TaskReminderKind.DUE_SOON, NOW, Instant.parse("2026-09-26T11:45:00Z"), NOW))
                 .thenReturn(List.of());
-        when(queries.recordReminders(TaskReminderKind.OVERDUE, Instant.parse("2026-09-24T10:15:00Z"), NOW, NOW))
+        when(queries.recordReminders(
+                        TaskReminderKind.OVERDUE, Instant.parse("2026-09-24T10:15:00Z"), NOW, NOW))
                 .thenReturn(List.of());
 
         TaskReminderReport report = custom.sendDueReminders();
@@ -108,17 +113,15 @@ class TaskReminderServiceTest {
         stubReminders(
                 List.of(
                         new Reminder(TASK_1, "TASK-1", "Write tests", firstDue, ALICE),
-                        new Reminder(TASK_2, "TASK-2", "Ship it", secondDue, BOB)
-                ),
-                List.of()
-        );
+                        new Reminder(TASK_2, "TASK-2", "Ship it", secondDue, BOB)),
+                List.of());
 
         service.sendDueReminders();
 
-        assertThat(publishedEvents(2)).containsExactly(
-                new TaskDueSoon(TASK_1, "TASK-1", "Write tests", firstDue, ALICE),
-                new TaskDueSoon(TASK_2, "TASK-2", "Ship it", secondDue, BOB)
-        );
+        assertThat(publishedEvents(2))
+                .containsExactly(
+                        new TaskDueSoon(TASK_1, "TASK-1", "Write tests", firstDue, ALICE),
+                        new TaskDueSoon(TASK_2, "TASK-2", "Ship it", secondDue, BOB));
     }
 
     @Test
@@ -129,16 +132,14 @@ class TaskReminderServiceTest {
                 List.of(),
                 List.of(
                         new Reminder(TASK_1, "TASK-1", "Write tests", firstDue, ALICE),
-                        new Reminder(TASK_3, "TASK-3", "Review", secondDue, BOB)
-                )
-        );
+                        new Reminder(TASK_3, "TASK-3", "Review", secondDue, BOB)));
 
         service.sendDueReminders();
 
-        assertThat(publishedEvents(2)).containsExactly(
-                new TaskOverdue(TASK_1, "TASK-1", "Write tests", firstDue, ALICE),
-                new TaskOverdue(TASK_3, "TASK-3", "Review", secondDue, BOB)
-        );
+        assertThat(publishedEvents(2))
+                .containsExactly(
+                        new TaskOverdue(TASK_1, "TASK-1", "Write tests", firstDue, ALICE),
+                        new TaskOverdue(TASK_3, "TASK-3", "Review", secondDue, BOB));
     }
 
     @Test
@@ -149,18 +150,16 @@ class TaskReminderServiceTest {
                 List.of(new Reminder(TASK_1, "TASK-1", "Write tests", soon, ALICE)),
                 List.of(
                         new Reminder(TASK_2, "TASK-2", "Ship it", past, ALICE),
-                        new Reminder(TASK_3, "TASK-3", "Review", past, BOB)
-                )
-        );
+                        new Reminder(TASK_3, "TASK-3", "Review", past, BOB)));
 
         TaskReminderReport report = service.sendDueReminders();
 
         assertThat(report).isEqualTo(new TaskReminderReport(1, 2));
-        assertThat(publishedEvents(3)).containsExactlyInAnyOrder(
-                new TaskDueSoon(TASK_1, "TASK-1", "Write tests", soon, ALICE),
-                new TaskOverdue(TASK_2, "TASK-2", "Ship it", past, ALICE),
-                new TaskOverdue(TASK_3, "TASK-3", "Review", past, BOB)
-        );
+        assertThat(publishedEvents(3))
+                .containsExactlyInAnyOrder(
+                        new TaskDueSoon(TASK_1, "TASK-1", "Write tests", soon, ALICE),
+                        new TaskOverdue(TASK_2, "TASK-2", "Ship it", past, ALICE),
+                        new TaskOverdue(TASK_3, "TASK-3", "Review", past, BOB));
     }
 
     @Test

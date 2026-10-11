@@ -1,7 +1,5 @@
 package io.julienmetral.tasks.notification.webhook;
 
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.time.Instant;
@@ -10,26 +8,36 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 /**
  * The headers of the Standard Webhooks scheme: {@code webhook-id}, {@code webhook-timestamp} and
- * {@code webhook-signature}, an HMAC-SHA256 of {@code id.timestamp.body} per secret, so a receiver in the middle of a
- * rotation accepts either.
+ * {@code webhook-signature}, an HMAC-SHA256 of {@code id.timestamp.body} per secret, so a receiver
+ * in the middle of a rotation accepts either.
  */
 public class WebhookSigner {
 
     private static final String SECRET_PREFIX = "whsec_";
 
-    public Map<String, String> headers(String messageId, Instant timestamp, byte[] body, List<String> secrets) {
+    public Map<String, String> headers(
+            String messageId, Instant timestamp, byte[] body, List<String> secrets) {
         String seconds = String.valueOf(timestamp.getEpochSecond());
-        byte[] signed = concat((messageId + "." + seconds + ".").getBytes(StandardCharsets.UTF_8), body);
+        byte[] signed =
+                concat((messageId + "." + seconds + ".").getBytes(StandardCharsets.UTF_8), body);
 
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("webhook-id", messageId);
         headers.put("webhook-timestamp", seconds);
-        headers.put("webhook-signature", secrets.stream()
-                .map(secret -> "v1," + Base64.getEncoder().encodeToString(hmac(secret, signed)))
-                .collect(Collectors.joining(" ")));
+        headers.put(
+                "webhook-signature",
+                secrets.stream()
+                        .map(
+                                secret ->
+                                        "v1,"
+                                                + Base64.getEncoder()
+                                                        .encodeToString(hmac(secret, signed)))
+                        .collect(Collectors.joining(" ")));
 
         return headers;
     }

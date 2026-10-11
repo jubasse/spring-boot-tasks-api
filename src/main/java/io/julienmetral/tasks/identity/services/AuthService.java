@@ -7,15 +7,14 @@ import io.julienmetral.tasks.identity.exceptions.InvalidCredentialsException;
 import io.julienmetral.tasks.identity.exceptions.InvalidRefreshTokenException;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.services.RefreshTokenService.IssuedRefreshToken;
+import java.time.Clock;
+import java.time.Instant;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.Clock;
-import java.time.Instant;
 
 @Service
 public class AuthService {
@@ -31,105 +30,70 @@ public class AuthService {
             UserRepository userRepository,
             JwtService jwtService,
             RefreshTokenService refreshTokenService,
-            Clock clock
-    ) {
-        this.authenticationManager =
-                authenticationManager;
+            Clock clock) {
+        this.authenticationManager = authenticationManager;
 
-        this.userRepository =
-                userRepository;
+        this.userRepository = userRepository;
 
-        this.jwtService =
-                jwtService;
+        this.jwtService = jwtService;
 
-        this.refreshTokenService =
-                refreshTokenService;
+        this.refreshTokenService = refreshTokenService;
 
-        this.clock =
-                clock;
+        this.clock = clock;
     }
 
     @Transactional
-    public AuthResponseDto login(
-            LoginRequestDto dto
-    ) {
+    public AuthResponseDto login(LoginRequestDto dto) {
         Authentication authentication;
 
         try {
             authentication =
                     authenticationManager.authenticate(
-                            UsernamePasswordAuthenticationToken
-                                    .unauthenticated(
-                                            dto.email(),
-                                            dto.password()
-                                    )
-                    );
+                            UsernamePasswordAuthenticationToken.unauthenticated(
+                                    dto.email(), dto.password()));
         } catch (AuthenticationException exception) {
             throw new InvalidCredentialsException();
         }
 
-        var user = userRepository
-                .findByEmailIgnoreCase(
-                        authentication.getName()
-                )
-                .orElseThrow();
+        var user = userRepository.findByEmailIgnoreCase(authentication.getName()).orElseThrow();
 
         Instant now = clock.instant();
 
         user.setLastLoginAt(now);
         user.markActive(now);
 
-        return tokens(
-                user,
-                refreshTokenService.issue(user)
-        );
+        return tokens(user, refreshTokenService.issue(user));
     }
 
     /**
      * Exchanges a refresh token for a new access token and a rotated refresh token.
-     * <p>
-     * An invalid token must not roll back the family revocation done by {@link RefreshTokenService#rotate}.
+     *
+     * <p>An invalid token must not roll back the family revocation done by {@link
+     * RefreshTokenService#rotate}.
      */
     @Transactional(noRollbackFor = InvalidRefreshTokenException.class)
-    public AuthResponseDto refresh(
-            String refreshToken
-    ) {
-        var rotated = refreshTokenService.rotate(
-                refreshToken
-        );
+    public AuthResponseDto refresh(String refreshToken) {
+        var rotated = refreshTokenService.rotate(refreshToken);
 
         // A client that keeps refreshing is in use even if its user never types the password again
         rotated.user().markActive(clock.instant());
 
-        return tokens(
-                rotated.user(),
-                rotated.refreshToken()
-        );
+        return tokens(rotated.user(), rotated.refreshToken());
     }
 
     @Transactional
-    public void logout(
-            String refreshToken
-    ) {
-        refreshTokenService.revoke(
-                refreshToken
-        );
+    public void logout(String refreshToken) {
+        refreshTokenService.revoke(refreshToken);
     }
 
-    private AuthResponseDto tokens(
-            User user,
-            IssuedRefreshToken refreshToken
-    ) {
-        var accessToken = jwtService.generate(
-                user
-        );
+    private AuthResponseDto tokens(User user, IssuedRefreshToken refreshToken) {
+        var accessToken = jwtService.generate(user);
 
         return new AuthResponseDto(
                 accessToken.value(),
                 "Bearer",
                 accessToken.expiresAt(),
                 refreshToken.value(),
-                refreshToken.expiresAt()
-        );
+                refreshToken.expiresAt());
     }
 }

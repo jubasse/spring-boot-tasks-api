@@ -1,34 +1,5 @@
 package io.julienmetral.tasks.identity.services;
 
-import io.julienmetral.tasks.identity.entities.EmailVerificationToken;
-import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserProfile;
-import io.julienmetral.tasks.identity.events.AccountStateChanged;
-import io.julienmetral.tasks.identity.exceptions.EmailAlreadyVerifiedException;
-import io.julienmetral.tasks.identity.exceptions.InvalidEmailVerificationTokenException;
-import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
-import io.julienmetral.tasks.identity.mail.EmailVerificationProperties;
-import io.julienmetral.tasks.identity.mail.EmailVerificationRequested;
-import io.julienmetral.tasks.identity.repositories.EmailVerificationTokenRepository;
-import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
-import io.julienmetral.tasks.identity.security.OpaqueTokens;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.InOrder;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
-
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.Optional;
-import java.util.UUID;
-
 import static io.julienmetral.tasks.support.UserProfiles.reference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -39,6 +10,34 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+
+import io.julienmetral.tasks.identity.entities.EmailVerificationToken;
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserProfile;
+import io.julienmetral.tasks.identity.events.AccountStateChanged;
+import io.julienmetral.tasks.identity.exceptions.EmailAlreadyVerifiedException;
+import io.julienmetral.tasks.identity.exceptions.InvalidEmailVerificationTokenException;
+import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
+import io.julienmetral.tasks.identity.mail.EmailVerificationProperties;
+import io.julienmetral.tasks.identity.mail.EmailVerificationRequested;
+import io.julienmetral.tasks.identity.repositories.EmailVerificationTokenRepository;
+import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
+import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.identity.security.OpaqueTokens;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class EmailVerificationServiceTest {
@@ -51,30 +50,27 @@ class EmailVerificationServiceTest {
 
     private static final UUID USER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
-    @Mock
-    private EmailVerificationTokenRepository tokenRepository;
+    @Mock private EmailVerificationTokenRepository tokenRepository;
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
-    @Mock
-    private UserProfileRepository userProfileRepository;
+    @Mock private UserProfileRepository userProfileRepository;
 
-    @Mock
-    private ApplicationEventPublisher eventPublisher;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     private EmailVerificationService service;
 
     @BeforeEach
     void setUp() {
-        service = new EmailVerificationService(
-                tokenRepository,
-                userRepository,
-                userProfileRepository,
-                new EmailVerificationProperties(TTL, "https://app.example.com/verify-email"),
-                eventPublisher,
-                Clock.fixed(NOW, ZoneOffset.UTC)
-        );
+        service =
+                new EmailVerificationService(
+                        tokenRepository,
+                        userRepository,
+                        userProfileRepository,
+                        new EmailVerificationProperties(
+                                TTL, "https://app.example.com/verify-email"),
+                        eventPublisher,
+                        Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     private static User user() {
@@ -85,7 +81,8 @@ class EmailVerificationServiceTest {
         return user;
     }
 
-    private static EmailVerificationToken storedToken(UserProfile owner, Instant expiresAt, Instant usedAt) {
+    private static EmailVerificationToken storedToken(
+            UserProfile owner, Instant expiresAt, Instant usedAt) {
         EmailVerificationToken token = new EmailVerificationToken();
         token.setUser(owner);
         token.setTokenHash(OpaqueTokens.hash(RAW_TOKEN));
@@ -95,9 +92,11 @@ class EmailVerificationServiceTest {
         return token;
     }
 
-    private EmailVerificationToken stubStored(UserProfile owner, Instant expiresAt, Instant usedAt) {
+    private EmailVerificationToken stubStored(
+            UserProfile owner, Instant expiresAt, Instant usedAt) {
         EmailVerificationToken token = storedToken(owner, expiresAt, usedAt);
-        when(tokenRepository.findByTokenHash(OpaqueTokens.hash(RAW_TOKEN))).thenReturn(Optional.of(token));
+        when(tokenRepository.findByTokenHash(OpaqueTokens.hash(RAW_TOKEN)))
+                .thenReturn(Optional.of(token));
         return token;
     }
 
@@ -111,10 +110,12 @@ class EmailVerificationServiceTest {
         InOrder order = inOrder(tokenRepository, eventPublisher);
         order.verify(tokenRepository).deleteUnusedForUser(USER_ID);
 
-        ArgumentCaptor<EmailVerificationToken> saved = ArgumentCaptor.forClass(EmailVerificationToken.class);
+        ArgumentCaptor<EmailVerificationToken> saved =
+                ArgumentCaptor.forClass(EmailVerificationToken.class);
         order.verify(tokenRepository).save(saved.capture());
 
-        ArgumentCaptor<EmailVerificationRequested> event = ArgumentCaptor.forClass(EmailVerificationRequested.class);
+        ArgumentCaptor<EmailVerificationRequested> event =
+                ArgumentCaptor.forClass(EmailVerificationRequested.class);
         order.verify(eventPublisher).publishEvent(event.capture());
 
         EmailVerificationToken token = saved.getValue();

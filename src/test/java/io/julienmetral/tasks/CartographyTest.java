@@ -1,6 +1,6 @@
 package io.julienmetral.tasks;
 
-import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -12,22 +12,24 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
 
 class CartographyTest {
 
     private static final Path MAP = Path.of("docs", "cartography.md");
 
-    private static final Path MAIN_SOURCES = Path.of("src", "main", "java", "io", "julienmetral", "tasks");
+    private static final Path MAIN_SOURCES =
+            Path.of("src", "main", "java", "io", "julienmetral", "tasks");
 
-    private static final Path TEST_SUPPORT = Path.of("src", "test", "java", "io", "julienmetral", "tasks", "support");
+    private static final Path TEST_SUPPORT =
+            Path.of("src", "test", "java", "io", "julienmetral", "tasks", "support");
 
     private static final String HOW_TO_UPDATE = "Missing from docs/cartography.md; update the map";
 
     private static final String PACKAGES_HEADING = "## Packages";
 
-    // Anchored at the start of the line: a nested annotation type is indented, a top-level one is not
+    // Anchored at the start of the line: a nested annotation type is indented, a top-level one is
+    // not
     private static final Pattern TOP_LEVEL_ANNOTATION =
             Pattern.compile("^(?:public\\s+)?@interface\\s+(\\w+)", Pattern.MULTILINE);
 
@@ -35,9 +37,11 @@ class CartographyTest {
 
     @Test
     void scanFindsThePackagesAnnotationsAndTestHelpers() {
-        assertThat(packagesWithClasses(MAIN_SOURCES)).contains("config", "notification/webhook", "identity/security")
+        assertThat(packagesWithClasses(MAIN_SOURCES))
+                .contains("config", "notification/webhook", "identity/security")
                 .doesNotContain("", "identity");
-        assertThat(annotations(MAIN_SOURCES, TEST_SUPPORT)).contains("@AdminOnly", "@IntegrationTest");
+        assertThat(annotations(MAIN_SOURCES, TEST_SUPPORT))
+                .contains("@AdminOnly", "@IntegrationTest");
         assertThat(testHelpers(TEST_SUPPORT)).contains("TestClock", "@IntegrationTest");
     }
 
@@ -49,13 +53,16 @@ class CartographyTest {
     @Test
     void everyMappedPackageExists() {
         assertThat(stalePackages(map(), MAIN_SOURCES))
-                .as("Packages section rows of docs/cartography.md naming no directory with classes; update the map")
+                .as(
+                        "Packages section rows of docs/cartography.md naming no directory with classes; update the map")
                 .isEmpty();
     }
 
     @Test
     void everyAnnotationOfTheProjectIsMapped() {
-        assertThat(unmapped(annotations(MAIN_SOURCES, TEST_SUPPORT), map())).as(HOW_TO_UPDATE).isEmpty();
+        assertThat(unmapped(annotations(MAIN_SOURCES, TEST_SUPPORT), map()))
+                .as(HOW_TO_UPDATE)
+                .isEmpty();
     }
 
     @Test
@@ -73,7 +80,8 @@ class CartographyTest {
 
     @Test
     void packagesRowWithoutClassesIsReportedAndOtherSectionsAreIgnored() {
-        String map = """
+        String map =
+                """
                 ## Packages
 
                 | Package | Role |
@@ -92,18 +100,24 @@ class CartographyTest {
 
     @Test
     void mapWithoutPackagesSectionIsReported() {
-        assertThat(stalePackages("# Map\n", MAIN_SOURCES)).singleElement().asString().contains(PACKAGES_HEADING);
+        assertThat(stalePackages("# Map\n", MAIN_SOURCES))
+                .singleElement()
+                .asString()
+                .contains(PACKAGES_HEADING);
     }
 
     @Test
     void annotationNestedInAClassIsIgnored() {
-        Path fixtures = Path.of("src", "test", "java", "io", "julienmetral", "tasks", "shared", "security");
+        Path fixtures =
+                Path.of("src", "test", "java", "io", "julienmetral", "tasks", "shared", "security");
 
         assertThat(annotations(fixtures)).doesNotContain("@Undescribed", "@MisspelledPlaceholder");
     }
 
     private static String map() {
-        assertThat(MAP).as("docs/cartography.md, the map of the project for coding agents").isRegularFile();
+        assertThat(MAP)
+                .as("docs/cartography.md, the map of the project for coding agents")
+                .isRegularFile();
         return read(MAP);
     }
 
@@ -117,8 +131,11 @@ class CartographyTest {
                     .filter(Files::isDirectory)
                     .filter(directory -> !directory.equals(base))
                     .filter(CartographyTest::containsJavaFile)
-                    .map(directory -> base.relativize(directory).toString()
-                            .replace(directory.getFileSystem().getSeparator(), "/"))
+                    .map(
+                            directory ->
+                                    base.relativize(directory)
+                                            .toString()
+                                            .replace(directory.getFileSystem().getSeparator(), "/"))
                     .sorted()
                     .toList();
         } catch (IOException e) {
@@ -128,9 +145,11 @@ class CartographyTest {
 
     private static List<String> stalePackages(String map, Path base) {
         List<String> lines = map.lines().toList();
-        int heading = IntStream.range(0, lines.size())
-                .filter(index -> lines.get(index).startsWith(PACKAGES_HEADING))
-                .findFirst().orElse(-1);
+        int heading =
+                IntStream.range(0, lines.size())
+                        .filter(index -> lines.get(index).startsWith(PACKAGES_HEADING))
+                        .findFirst()
+                        .orElse(-1);
         if (heading < 0) {
             return List.of("the map has no '" + PACKAGES_HEADING + "' section");
         }

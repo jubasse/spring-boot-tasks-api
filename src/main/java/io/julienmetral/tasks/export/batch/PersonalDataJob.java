@@ -7,6 +7,18 @@ import io.julienmetral.tasks.export.personaldata.PersonalDataQueries;
 import io.julienmetral.tasks.export.services.DataExportService;
 import io.julienmetral.tasks.identity.entities.UserProfile;
 import io.julienmetral.tasks.media.services.ObjectStorage;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Clock;
+import java.time.LocalDate;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import lombok.RequiredArgsConstructor;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.builder.JobBuilder;
@@ -23,23 +35,11 @@ import org.springframework.transaction.PlatformTransactionManager;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Clock;
-import java.time.LocalDate;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.UUID;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
-
 /**
- * The personal data export (GDPR articles 15 and 20): three tasklet steps, each reading what the step before wrote.
- * The first writes {@code my-data.json}, complete and meant for software; the second renders it to
- * {@code my-data.pdf}, for a person; the third zips both with the profile photo, and stores the archive.
+ * The personal data export (GDPR articles 15 and 20): three tasklet steps, each reading what the
+ * step before wrote. The first writes {@code my-data.json}, complete and meant for software; the
+ * second renders it to {@code my-data.pdf}, for a person; the third zips both with the profile
+ * photo, and stores the archive.
  */
 @Configuration
 @RequiredArgsConstructor
@@ -47,7 +47,8 @@ public class PersonalDataJob {
 
     public static final String JOB = "personalDataExport";
 
-    // Raised when the JSON changes shape, so that software reading older exports can tell them apart
+    // Raised when the JSON changes shape, so that software reading older exports can tell them
+    // apart
     static final int FORMAT_VERSION = 1;
 
     private static final String JSON_FILE = "my-data.json";
@@ -75,7 +76,8 @@ public class PersonalDataJob {
                 .build();
     }
 
-    // Every step runs again on a restart: the files of an interrupted run stayed on the instance that stopped
+    // Every step runs again on a restart: the files of an interrupted run stayed on the instance
+    // that stopped
     private Step step(String name, Tasklet tasklet) {
         return new StepBuilder(name, jobRepository)
                 .allowStartIfComplete(true)
@@ -119,8 +121,7 @@ public class PersonalDataJob {
         Map<String, Object> data;
 
         try (InputStream in = Files.newInputStream(ExportFiles.of(exportId, JSON_FILE))) {
-            data = jsonMapper.readValue(in, new TypeReference<Map<String, Object>>() {
-            });
+            data = jsonMapper.readValue(in, new TypeReference<Map<String, Object>>() {});
         }
 
         pdf.render(data, ExportFiles.of(exportId, PDF_FILE));
@@ -140,7 +141,11 @@ public class PersonalDataJob {
         }
 
         exportService.complete(
-                exportId, archive, "my-data-" + LocalDate.now(clock) + ".zip", "application/zip", null);
+                exportId,
+                archive,
+                "my-data-" + LocalDate.now(clock) + ".zip",
+                "application/zip",
+                null);
 
         return RepeatStatus.FINISHED;
     }
@@ -152,11 +157,12 @@ public class PersonalDataJob {
             return;
         }
 
-        String extension = switch (String.valueOf(photo.get("content_type"))) {
-            case "image/png" -> "png";
-            case "image/webp" -> "webp";
-            default -> "jpg";
-        };
+        String extension =
+                switch (String.valueOf(photo.get("content_type"))) {
+                    case "image/png" -> "png";
+                    case "image/webp" -> "webp";
+                    default -> "jpg";
+                };
 
         zip.putNextEntry(new ZipEntry("profile-photo." + extension));
 
@@ -174,14 +180,19 @@ public class PersonalDataJob {
     }
 
     private UUID ownerOf(UUID exportId) {
-        return exportService.find(exportId)
+        return exportService
+                .find(exportId)
                 .map(DataExport::getOwner)
                 .map(UserProfile::getId)
                 .orElseThrow(() -> new DataExportNotFoundException(exportId));
     }
 
     private static UUID exportId(ChunkContext context) {
-        return UUID.fromString(context.getStepContext().getStepExecution().getJobExecution().getJobParameters()
-                .getString(PublishExport.EXPORT_ID));
+        return UUID.fromString(
+                context.getStepContext()
+                        .getStepExecution()
+                        .getJobExecution()
+                        .getJobParameters()
+                        .getString(PublishExport.EXPORT_ID));
     }
 }

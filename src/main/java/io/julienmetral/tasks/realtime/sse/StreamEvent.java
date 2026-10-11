@@ -1,13 +1,12 @@
 package io.julienmetral.tasks.realtime.sse;
 
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-
 import java.time.Duration;
 import java.util.UUID;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
- * An event waiting to be written to a stream. Immutable, unlike Spring's event builder, whose {@code build()} appends
- * to it: one event can go to several streams of the same user.
+ * An event waiting to be written to a stream. Immutable, unlike Spring's event builder, whose
+ * {@code build()} appends to it: one event can go to several streams of the same user.
  */
 record StreamEvent(String id, String name, String data, Duration reconnectDelay) {
 

@@ -1,20 +1,17 @@
 package io.julienmetral.tasks.media.services;
 
+import static java.nio.charset.StandardCharsets.US_ASCII;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mockStatic;
+
 import com.drew.imaging.ImageMetadataReader;
 import com.drew.metadata.Metadata;
 import com.drew.metadata.exif.ExifIFD0Directory;
 import com.drew.metadata.exif.GpsDirectory;
 import io.julienmetral.tasks.media.exceptions.InvalidImageException;
 import io.julienmetral.tasks.media.model.ProcessedImage;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.ValueSource;
-import org.mockito.MockedStatic;
-import org.mockito.Mockito;
-
-import javax.imageio.ImageIO;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
@@ -27,18 +24,22 @@ import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.util.Base64;
 import java.util.zip.CRC32;
-
-import static java.nio.charset.StandardCharsets.US_ASCII;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mockStatic;
+import javax.imageio.ImageIO;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 
 class AvatarImageProcessorTest {
 
     private static final int SIDE = AvatarImageProcessor.SIZE;
 
-    private static final byte[] PNG_SIGNATURE = {(byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+    private static final byte[] PNG_SIGNATURE = {
+        (byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'
+    };
 
     private static final short TIFF_SHORT = 3;
     private static final short TIFF_LONG = 4;
@@ -46,7 +47,10 @@ class AvatarImageProcessorTest {
 
     private final AvatarImageProcessor processor = new AvatarImageProcessor();
 
-    /** Top-left red, top-right green, bottom half blue: two adjacent corners tell all 8 orientations apart. */
+    /**
+     * Top-left red, top-right green, bottom half blue: two adjacent corners tell all 8 orientations
+     * apart.
+     */
     private static BufferedImage corners(int width, int height) {
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         Graphics2D graphics = image.createGraphics();
@@ -87,14 +91,18 @@ class AvatarImageProcessorTest {
         }
     }
 
-    /** Inserts an APP1 segment carrying the TIFF structure right after the JPEG start-of-image marker. */
+    /**
+     * Inserts an APP1 segment carrying the TIFF structure right after the JPEG start-of-image
+     * marker.
+     */
     private static byte[] withExif(byte[] jpeg, byte[] tiff) {
         byte[] exifHeader = "Exif\0\0".getBytes(US_ASCII);
         int segmentLength = 2 + exifHeader.length + tiff.length;
 
         return ByteBuffer.allocate(jpeg.length + 2 + segmentLength)
                 .put(jpeg, 0, 2)
-                .put((byte) 0xFF).put((byte) 0xE1)
+                .put((byte) 0xFF)
+                .put((byte) 0xE1)
                 .putShort((short) segmentLength)
                 .put(exifHeader)
                 .put(tiff)
@@ -105,15 +113,23 @@ class AvatarImageProcessorTest {
     /** Big-endian TIFF structure whose first IFD holds a single entry with an inline value. */
     private static byte[] singleEntryTiff(int tag, short type, int count, byte[] inlineValue) {
         return ByteBuffer.allocate(8 + 2 + 12 + 4)
-                .put("MM".getBytes(US_ASCII)).putShort((short) 42).putInt(8)
+                .put("MM".getBytes(US_ASCII))
+                .putShort((short) 42)
+                .putInt(8)
                 .putShort((short) 1)
-                .putShort((short) tag).putShort(type).putInt(count).put(inlineValue)
+                .putShort((short) tag)
+                .putShort(type)
+                .putInt(count)
+                .put(inlineValue)
                 .putInt(0)
                 .array();
     }
 
     private static byte[] orientationTiff(int orientation) {
-        return singleEntryTiff(ExifIFD0Directory.TAG_ORIENTATION, TIFF_SHORT, 1,
+        return singleEntryTiff(
+                ExifIFD0Directory.TAG_ORIENTATION,
+                TIFF_SHORT,
+                1,
                 ByteBuffer.allocate(4).putShort((short) orientation).array());
     }
 
@@ -122,15 +138,24 @@ class AvatarImageProcessorTest {
         int gpsIfdOffset = 8 + 2 + 2 * 12 + 4;
 
         return ByteBuffer.allocate(gpsIfdOffset + 2 + 12 + 4)
-                .put("MM".getBytes(US_ASCII)).putShort((short) 42).putInt(8)
+                .put("MM".getBytes(US_ASCII))
+                .putShort((short) 42)
+                .putInt(8)
                 .putShort((short) 2)
-                .putShort((short) ExifIFD0Directory.TAG_ORIENTATION).putShort(TIFF_SHORT).putInt(1)
-                .putShort((short) 6).putShort((short) 0)
-                .putShort((short) ExifIFD0Directory.TAG_GPS_INFO_OFFSET).putShort(TIFF_LONG).putInt(1)
+                .putShort((short) ExifIFD0Directory.TAG_ORIENTATION)
+                .putShort(TIFF_SHORT)
+                .putInt(1)
+                .putShort((short) 6)
+                .putShort((short) 0)
+                .putShort((short) ExifIFD0Directory.TAG_GPS_INFO_OFFSET)
+                .putShort(TIFF_LONG)
+                .putInt(1)
                 .putInt(gpsIfdOffset)
                 .putInt(0)
                 .putShort((short) 1)
-                .putShort((short) GpsDirectory.TAG_LATITUDE_REF).putShort(TIFF_ASCII).putInt(2)
+                .putShort((short) GpsDirectory.TAG_LATITUDE_REF)
+                .putShort(TIFF_ASCII)
+                .putInt(2)
                 .put("N\0\0\0".getBytes(US_ASCII))
                 .putInt(0)
                 .array();
@@ -140,16 +165,28 @@ class AvatarImageProcessorTest {
         return withExif(encode(image, "jpg"), orientationTiff(orientation));
     }
 
-    /** A PNG made of its signature, an IHDR chunk and IEND only: its header is valid, its pixels are missing. */
+    /**
+     * A PNG made of its signature, an IHDR chunk and IEND only: its header is valid, its pixels are
+     * missing.
+     */
     private static byte[] pngHeaderOnly(int width, int height) {
-        byte[] ihdr = ByteBuffer.allocate(13).putInt(width).putInt(height)
-                .put((byte) 8).put((byte) 2).put((byte) 0).put((byte) 0).put((byte) 0)
-                .array();
+        byte[] ihdr =
+                ByteBuffer.allocate(13)
+                        .putInt(width)
+                        .putInt(height)
+                        .put((byte) 8)
+                        .put((byte) 2)
+                        .put((byte) 0)
+                        .put((byte) 0)
+                        .put((byte) 0)
+                        .array();
         byte[] ihdrChunk = chunk("IHDR", ihdr);
         byte[] iendChunk = chunk("IEND", new byte[0]);
 
         return ByteBuffer.allocate(PNG_SIGNATURE.length + ihdrChunk.length + iendChunk.length)
-                .put(PNG_SIGNATURE).put(ihdrChunk).put(iendChunk)
+                .put(PNG_SIGNATURE)
+                .put(ihdrChunk)
+                .put(iendChunk)
                 .array();
     }
 
@@ -160,7 +197,10 @@ class AvatarImageProcessorTest {
         crc.update(data);
 
         return ByteBuffer.allocate(4 + 4 + data.length + 4)
-                .putInt(data.length).put(typeBytes).put(data).putInt((int) crc.getValue())
+                .putInt(data.length)
+                .put(typeBytes)
+                .put(data)
+                .putInt((int) crc.getValue())
                 .array();
     }
 
@@ -182,8 +222,11 @@ class AvatarImageProcessorTest {
         int quarter = image.getWidth() / 4;
         int threeQuarters = image.getWidth() - quarter;
 
-        return "" + colourAt(image, quarter, quarter) + colourAt(image, threeQuarters, quarter)
-                + colourAt(image, quarter, threeQuarters) + colourAt(image, threeQuarters, threeQuarters);
+        return ""
+                + colourAt(image, quarter, quarter)
+                + colourAt(image, threeQuarters, quarter)
+                + colourAt(image, quarter, threeQuarters)
+                + colourAt(image, threeQuarters, threeQuarters);
     }
 
     private static Metadata metadata(byte[] image) throws Exception {
@@ -195,14 +238,7 @@ class AvatarImageProcessorTest {
 
         @ParameterizedTest(name = "orientation {0} displays as {1}")
         @CsvSource({
-                "1, RGBB",
-                "2, GRBB",
-                "3, BBGR",
-                "4, BBRG",
-                "5, RBGB",
-                "6, BRBG",
-                "7, BGBR",
-                "8, GBRB"
+            "1, RGBB", "2, GRBB", "3, BBGR", "4, BBRG", "5, RBGB", "6, BRBG", "7, BGBR", "8, GBRB"
         })
         void exifOrientationIsApplied(int orientation, String expectedQuadrants) {
             byte[] original = jpegWithOrientation(corners(64, 64), orientation);
@@ -215,7 +251,9 @@ class AvatarImageProcessorTest {
         @ParameterizedTest
         @ValueSource(ints = {1, 2, 3, 4, 5, 6, 7, 8})
         void exifOrientationIsRead(int orientation) {
-            assertThat(AvatarImageProcessor.exifOrientation(jpegWithOrientation(corners(8, 8), orientation)))
+            assertThat(
+                            AvatarImageProcessor.exifOrientation(
+                                    jpegWithOrientation(corners(8, 8), orientation)))
                     .isEqualTo(orientation);
         }
 
@@ -229,27 +267,39 @@ class AvatarImageProcessorTest {
 
         @Test
         void pngIsTakenAsStored() {
-            assertThat(AvatarImageProcessor.exifOrientation(encode(corners(8, 8), "png"))).isEqualTo(1);
+            assertThat(AvatarImageProcessor.exifOrientation(encode(corners(8, 8), "png")))
+                    .isEqualTo(1);
         }
 
         @Test
         void exifWithoutOrientationIsTakenAsStored() {
-            byte[] original = withExif(encode(corners(8, 8), "jpg"),
-                    singleEntryTiff(ExifIFD0Directory.TAG_MAKE, TIFF_ASCII, 4, "Cam\0".getBytes(US_ASCII)));
+            byte[] original =
+                    withExif(
+                            encode(corners(8, 8), "jpg"),
+                            singleEntryTiff(
+                                    ExifIFD0Directory.TAG_MAKE,
+                                    TIFF_ASCII,
+                                    4,
+                                    "Cam\0".getBytes(US_ASCII)));
 
             assertThat(AvatarImageProcessor.exifOrientation(original)).isEqualTo(1);
         }
 
         @Test
         void unreadableMetadataIsTakenAsStored() {
-            assertThat(AvatarImageProcessor.exifOrientation("not an image".getBytes(US_ASCII))).isEqualTo(1);
+            assertThat(AvatarImageProcessor.exifOrientation("not an image".getBytes(US_ASCII)))
+                    .isEqualTo(1);
         }
 
         @Test
         void orientationThatIsNotASingleNumberIsTakenAsStored() {
-            byte[] twoValues = ByteBuffer.allocate(4).putShort((short) 6).putShort((short) 6).array();
-            byte[] original = withExif(encode(corners(8, 8), "jpg"),
-                    singleEntryTiff(ExifIFD0Directory.TAG_ORIENTATION, TIFF_SHORT, 2, twoValues));
+            byte[] twoValues =
+                    ByteBuffer.allocate(4).putShort((short) 6).putShort((short) 6).array();
+            byte[] original =
+                    withExif(
+                            encode(corners(8, 8), "jpg"),
+                            singleEntryTiff(
+                                    ExifIFD0Directory.TAG_ORIENTATION, TIFF_SHORT, 2, twoValues));
 
             assertThat(AvatarImageProcessor.exifOrientation(original)).isEqualTo(1);
         }
@@ -260,8 +310,15 @@ class AvatarImageProcessorTest {
             BufferedImage image = corners(40, 20);
 
             assertThat(AvatarImageProcessor.orient(image, orientation)).isSameAs(image);
-            assertThat(quadrants(decode(processor.process(jpegWithOrientation(corners(64, 64), orientation))
-                    .content()))).isEqualTo("RGBB");
+            assertThat(
+                            quadrants(
+                                    decode(
+                                            processor
+                                                    .process(
+                                                            jpegWithOrientation(
+                                                                    corners(64, 64), orientation))
+                                                    .content())))
+                    .isEqualTo("RGBB");
         }
 
         @ParameterizedTest
@@ -284,12 +341,15 @@ class AvatarImageProcessorTest {
 
         @Test
         void quarterTurnOfARectangleLeavesNoUnpaintedPixel() {
-            BufferedImage oriented = AvatarImageProcessor.orient(filled(41, 20, BufferedImage.TYPE_INT_RGB,
-                    Color.RED), 6);
+            BufferedImage oriented =
+                    AvatarImageProcessor.orient(
+                            filled(41, 20, BufferedImage.TYPE_INT_RGB, Color.RED), 6);
 
             for (int x = 0; x < oriented.getWidth(); x++) {
                 for (int y = 0; y < oriented.getHeight(); y++) {
-                    assertThat(oriented.getRGB(x, y) >>> 24).as("alpha at %d,%d", x, y).isEqualTo(0xFF);
+                    assertThat(oriented.getRGB(x, y) >>> 24)
+                            .as("alpha at %d,%d", x, y)
+                            .isEqualTo(0xFF);
                 }
             }
         }
@@ -359,7 +419,8 @@ class AvatarImageProcessorTest {
 
         @Test
         void largePhotoIsScaledDownTo256() {
-            BufferedImage result = decode(processor.process(encode(corners(1100, 1100), "jpg")).content());
+            BufferedImage result =
+                    decode(processor.process(encode(corners(1100, 1100), "jpg")).content());
 
             assertThat(result.getWidth()).isEqualTo(SIDE);
             assertThat(result.getHeight()).isEqualTo(SIDE);
@@ -368,7 +429,8 @@ class AvatarImageProcessorTest {
 
         @Test
         void smallPhotoIsScaledUpTo256() {
-            BufferedImage result = decode(processor.process(encode(corners(16, 16), "png")).content());
+            BufferedImage result =
+                    decode(processor.process(encode(corners(16, 16), "png")).content());
 
             assertThat(result.getWidth()).isEqualTo(SIDE);
             assertThat(result.getHeight()).isEqualTo(SIDE);
@@ -462,9 +524,18 @@ class AvatarImageProcessorTest {
 
         @Test
         void palettePngWithATransparentEntryGivesAPng() {
-            BufferedImage indexed = new BufferedImage(SIDE, SIDE, BufferedImage.TYPE_BYTE_INDEXED,
-                    new IndexColorModel(8, 2,
-                            new byte[]{0, (byte) 0xFF}, new byte[]{0, 0}, new byte[]{0, 0}, 0));
+            BufferedImage indexed =
+                    new BufferedImage(
+                            SIDE,
+                            SIDE,
+                            BufferedImage.TYPE_BYTE_INDEXED,
+                            new IndexColorModel(
+                                    8,
+                                    2,
+                                    new byte[] {0, (byte) 0xFF},
+                                    new byte[] {0, 0},
+                                    new byte[] {0, 0},
+                                    0));
 
             ProcessedImage processed = processor.process(encode(indexed, "png"));
 
@@ -491,8 +562,11 @@ class AvatarImageProcessorTest {
 
         @Test
         void webpIsDecoded() {
-            // 1x1 lossy WebP, the smallest valid file; no WebP encoder is available to build a larger one
-            byte[] webp = Base64.getDecoder().decode("UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA");
+            // 1x1 lossy WebP, the smallest valid file; no WebP encoder is available to build a
+            // larger one
+            byte[] webp =
+                    Base64.getDecoder()
+                            .decode("UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA");
 
             ProcessedImage processed = processor.process(webp);
 
@@ -521,19 +595,28 @@ class AvatarImageProcessorTest {
         void imageAboveTheSideOrPixelLimitIsRejected(int width, int height) {
             assertThatThrownBy(() -> processor.process(pngHeaderOnly(width, height)))
                     .isInstanceOf(InvalidImageException.class)
-                    .hasMessage("The image cannot be used: dimensions " + width + "x" + height + " are too large");
+                    .hasMessage(
+                            "The image cannot be used: dimensions "
+                                    + width
+                                    + "x"
+                                    + height
+                                    + " are too large");
         }
 
         @Test
         void imageAtTheSideLimitPassesTheDimensionCheck() {
-            assertThatThrownBy(() -> processor.process(pngHeaderOnly(AvatarImageProcessor.MAX_SIDE, 1)))
+            assertThatThrownBy(
+                            () ->
+                                    processor.process(
+                                            pngHeaderOnly(AvatarImageProcessor.MAX_SIDE, 1)))
                     .isInstanceOf(InvalidImageException.class)
                     .hasMessage("The image cannot be used: unreadable image");
         }
 
         @Test
         void bytesOfNoKnownFormatAreRejected() {
-            assertThatThrownBy(() -> processor.process("definitely not an image".getBytes(US_ASCII)))
+            assertThatThrownBy(
+                            () -> processor.process("definitely not an image".getBytes(US_ASCII)))
                     .isInstanceOf(InvalidImageException.class)
                     .hasMessage("The image cannot be used: unreadable image");
         }
@@ -547,9 +630,13 @@ class AvatarImageProcessorTest {
 
         @Test
         void truncatedHeaderIsRejected() {
-            byte[] truncated = ByteBuffer.allocate(PNG_SIGNATURE.length + 11)
-                    .put(PNG_SIGNATURE).putInt(13).put("IHDR".getBytes(US_ASCII)).put(new byte[3])
-                    .array();
+            byte[] truncated =
+                    ByteBuffer.allocate(PNG_SIGNATURE.length + 11)
+                            .put(PNG_SIGNATURE)
+                            .putInt(13)
+                            .put("IHDR".getBytes(US_ASCII))
+                            .put(new byte[3])
+                            .array();
 
             assertThatThrownBy(() -> processor.process(truncated))
                     .isInstanceOf(InvalidImageException.class)
@@ -567,7 +654,8 @@ class AvatarImageProcessorTest {
         void imageNoDecoderCanReadIsRejected() {
             byte[] png = encode(corners(8, 8), "png");
 
-            try (MockedStatic<ImageIO> imageIo = mockStatic(ImageIO.class, Mockito.CALLS_REAL_METHODS)) {
+            try (MockedStatic<ImageIO> imageIo =
+                    mockStatic(ImageIO.class, Mockito.CALLS_REAL_METHODS)) {
                 imageIo.when(() -> ImageIO.read(any(InputStream.class))).thenReturn(null);
 
                 assertThatThrownBy(() -> processor.process(png))
@@ -581,7 +669,8 @@ class AvatarImageProcessorTest {
             byte[] png = encode(corners(8, 8), "png");
             IOException failure = new IOException("no output stream");
 
-            try (MockedStatic<ImageIO> imageIo = mockStatic(ImageIO.class, Mockito.CALLS_REAL_METHODS)) {
+            try (MockedStatic<ImageIO> imageIo =
+                    mockStatic(ImageIO.class, Mockito.CALLS_REAL_METHODS)) {
                 imageIo.when(() -> ImageIO.createImageOutputStream(any())).thenThrow(failure);
 
                 assertThatThrownBy(() -> processor.process(png))

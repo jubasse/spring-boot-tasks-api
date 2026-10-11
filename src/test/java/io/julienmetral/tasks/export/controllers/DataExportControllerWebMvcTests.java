@@ -1,37 +1,5 @@
 package io.julienmetral.tasks.export.controllers;
 
-import io.julienmetral.tasks.export.entities.DataExport;
-import io.julienmetral.tasks.export.entities.DataExportStatus;
-import io.julienmetral.tasks.export.entities.DataExportType;
-import io.julienmetral.tasks.export.entities.TaskExportFilters;
-import io.julienmetral.tasks.export.exceptions.DataExportInProgressException;
-import io.julienmetral.tasks.export.exceptions.DataExportNotFoundException;
-import io.julienmetral.tasks.export.services.DataExportService;
-import io.julienmetral.tasks.identity.repositories.AccountState;
-import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.media.model.Media;
-import io.julienmetral.tasks.media.services.MediaUrls;
-import io.julienmetral.tasks.support.WebLayerTest;
-import io.julienmetral.tasks.task.entities.TaskStatus;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.ResultActions;
-import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-
-import java.time.Instant;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-
 import static io.julienmetral.tasks.support.Problems.invalidBodyValue;
 import static io.julienmetral.tasks.support.Problems.invalidParameter;
 import static io.julienmetral.tasks.support.Problems.typedProblem;
@@ -57,6 +25,37 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.julienmetral.tasks.export.entities.DataExport;
+import io.julienmetral.tasks.export.entities.DataExportStatus;
+import io.julienmetral.tasks.export.entities.DataExportType;
+import io.julienmetral.tasks.export.entities.TaskExportFilters;
+import io.julienmetral.tasks.export.exceptions.DataExportInProgressException;
+import io.julienmetral.tasks.export.exceptions.DataExportNotFoundException;
+import io.julienmetral.tasks.export.services.DataExportService;
+import io.julienmetral.tasks.identity.repositories.AccountState;
+import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.media.model.Media;
+import io.julienmetral.tasks.media.services.MediaUrls;
+import io.julienmetral.tasks.support.WebLayerTest;
+import io.julienmetral.tasks.task.entities.TaskStatus;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+
 @WebLayerTest
 class DataExportControllerWebMvcTests {
 
@@ -76,17 +75,13 @@ class DataExportControllerWebMvcTests {
 
     private static final Instant EXPIRES_AT = Instant.parse("2030-01-08T08:01:00Z");
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private DataExportService exportService;
+    @Autowired private DataExportService exportService;
 
-    @Autowired
-    private MediaUrls mediaUrls;
+    @Autowired private MediaUrls mediaUrls;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
     private final UUID caller = UUID.randomUUID();
 
@@ -99,11 +94,11 @@ class DataExportControllerWebMvcTests {
                 post(MY_DATA_EXPORT),
                 get(EXPORTS),
                 get(EXPORT, exportId),
-                delete(EXPORT, exportId)
-        );
+                delete(EXPORT, exportId));
     }
 
-    private DataExport export(DataExportType type, DataExportStatus status, TaskExportFilters filters) {
+    private DataExport export(
+            DataExportType type, DataExportStatus status, TaskExportFilters filters) {
         DataExport export = new DataExport();
         export.setId(exportId);
         export.setType(type);
@@ -114,8 +109,11 @@ class DataExportControllerWebMvcTests {
     }
 
     private DataExport completedTasksExport(Media media) {
-        DataExport export = export(DataExportType.TASKS_CSV, DataExportStatus.COMPLETED,
-                new TaskExportFilters(null, null, false));
+        DataExport export =
+                export(
+                        DataExportType.TASKS_CSV,
+                        DataExportStatus.COMPLETED,
+                        new TaskExportFilters(null, null, false));
         export.setMedia(media);
         export.setRowCount(3L);
         export.setCompletedAt(COMPLETED_AT);
@@ -123,7 +121,8 @@ class DataExportControllerWebMvcTests {
         return export;
     }
 
-    private static MockHttpServletRequestBuilder json(MockHttpServletRequestBuilder request, String body) {
+    private static MockHttpServletRequestBuilder json(
+            MockHttpServletRequestBuilder request, String body) {
         return request.contentType(MediaType.APPLICATION_JSON).content(body);
     }
 
@@ -142,7 +141,10 @@ class DataExportControllerWebMvcTests {
         @Test
         void disabledAccountIsForbiddenOnEveryEndpointEvenForAnAdmin() throws Exception {
             when(userRepository.findAccountStateById(caller))
-                    .thenReturn(Optional.of(new AccountState(false, Instant.parse("2026-01-01T00:00:00Z"))));
+                    .thenReturn(
+                            Optional.of(
+                                    new AccountState(
+                                            false, Instant.parse("2026-01-01T00:00:00Z"))));
 
             for (MockHttpServletRequestBuilder request : everyEndpoint(exportId)) {
                 mockMvc.perform(request.with(admin(caller))).andExpect(status().isForbidden());
@@ -153,7 +155,8 @@ class DataExportControllerWebMvcTests {
 
         @Test
         void accountWithoutVerifiedEmailIsForbiddenOnEveryEndpoint() throws Exception {
-            when(userRepository.findAccountStateById(caller)).thenReturn(Optional.of(new AccountState(true, null)));
+            when(userRepository.findAccountStateById(caller))
+                    .thenReturn(Optional.of(new AccountState(true, null)));
 
             for (MockHttpServletRequestBuilder request : everyEndpoint(exportId)) {
                 mockMvc.perform(request.with(user(caller))).andExpect(status().isForbidden());
@@ -204,13 +207,18 @@ class DataExportControllerWebMvcTests {
         @Test
         void requestIsAcceptedWithTheQueuedExportAndItsLocation() throws Exception {
             UUID assignee = UUID.randomUUID();
-            TaskExportFilters filters = new TaskExportFilters(TaskStatus.IN_PROGRESS, assignee, true);
+            TaskExportFilters filters =
+                    new TaskExportFilters(TaskStatus.IN_PROGRESS, assignee, true);
             when(exportService.request(caller, DataExportType.TASKS_CSV, filters))
                     .thenReturn(export(DataExportType.TASKS_CSV, DataExportStatus.QUEUED, filters));
 
-            mockMvc.perform(json(post(TASKS_EXPORT).with(user(caller)), """
+            mockMvc.perform(
+                            json(
+                                    post(TASKS_EXPORT).with(user(caller)),
+                                    """
                             {"status": "IN_PROGRESS", "assigneeId": "%s", "archived": true}
-                            """.formatted(assignee)))
+                            """
+                                            .formatted(assignee)))
                     .andExpect(status().isAccepted())
                     .andExpect(header().string(HttpHeaders.LOCATION, "/api/v1/exports/" + exportId))
                     .andExpect(jsonPath("$.id").value(exportId.toString()))
@@ -231,7 +239,11 @@ class DataExportControllerWebMvcTests {
         void requestWithoutBodyExportsEveryTaskThatIsNotArchived() throws Exception {
             TaskExportFilters everyActiveTask = new TaskExportFilters(null, null, false);
             when(exportService.request(caller, DataExportType.TASKS_CSV, everyActiveTask))
-                    .thenReturn(export(DataExportType.TASKS_CSV, DataExportStatus.QUEUED, everyActiveTask));
+                    .thenReturn(
+                            export(
+                                    DataExportType.TASKS_CSV,
+                                    DataExportStatus.QUEUED,
+                                    everyActiveTask));
 
             mockMvc.perform(post(TASKS_EXPORT).with(user(caller)))
                     .andExpect(status().isAccepted())
@@ -244,7 +256,11 @@ class DataExportControllerWebMvcTests {
         void emptyBodyExportsEveryTaskThatIsNotArchived() throws Exception {
             TaskExportFilters everyActiveTask = new TaskExportFilters(null, null, false);
             when(exportService.request(caller, DataExportType.TASKS_CSV, everyActiveTask))
-                    .thenReturn(export(DataExportType.TASKS_CSV, DataExportStatus.QUEUED, everyActiveTask));
+                    .thenReturn(
+                            export(
+                                    DataExportType.TASKS_CSV,
+                                    DataExportStatus.QUEUED,
+                                    everyActiveTask));
 
             mockMvc.perform(json(post(TASKS_EXPORT).with(user(caller)), "{}"))
                     .andExpect(status().isAccepted());
@@ -255,8 +271,10 @@ class DataExportControllerWebMvcTests {
         @Test
         void unknownStatusPointsToItAndListsTheStatuses() throws Exception {
             expectRejected("{\"status\": \"FINISHED\"}")
-                    .andExpect(invalidBodyValue("#/status",
-                            "must be one of TO_DO, IN_PROGRESS, IN_REVIEW, BLOCKED, DONE, ARCHIVED, CANCELLED"))
+                    .andExpect(
+                            invalidBodyValue(
+                                    "#/status",
+                                    "must be one of TO_DO, IN_PROGRESS, IN_REVIEW, BLOCKED, DONE, ARCHIVED, CANCELLED"))
                     .andExpect(withoutJavaTypeNames());
         }
 
@@ -280,15 +298,19 @@ class DataExportControllerWebMvcTests {
                     .thenThrow(new DataExportInProgressException());
 
             mockMvc.perform(post(TASKS_EXPORT).with(user(caller)))
-                    .andExpect(typedProblem(409, "export-in-progress", "Export already in progress"))
-                    .andExpect(jsonPath("$.detail")
-                            .value("An export of the same kind is already queued or running: wait for it to finish"))
+                    .andExpect(
+                            typedProblem(409, "export-in-progress", "Export already in progress"))
+                    .andExpect(
+                            jsonPath("$.detail")
+                                    .value(
+                                            "An export of the same kind is already queued or running: wait for it to finish"))
                     .andExpect(header().doesNotExist(HttpHeaders.LOCATION));
         }
 
         private ResultActions expectRejected(String body) throws Exception {
-            ResultActions result = mockMvc.perform(json(post(TASKS_EXPORT).with(user(caller)), body))
-                    .andExpect(status().isBadRequest());
+            ResultActions result =
+                    mockMvc.perform(json(post(TASKS_EXPORT).with(user(caller)), body))
+                            .andExpect(status().isBadRequest());
 
             verifyNoInteractions(exportService);
             return result;
@@ -304,9 +326,11 @@ class DataExportControllerWebMvcTests {
         }
 
         @Test
-        void requestOfAMemberIsAcceptedForTheCallerWithTheQueuedExportAndItsLocation() throws Exception {
+        void requestOfAMemberIsAcceptedForTheCallerWithTheQueuedExportAndItsLocation()
+                throws Exception {
             when(exportService.request(caller, DataExportType.PERSONAL_DATA, null))
-                    .thenReturn(export(DataExportType.PERSONAL_DATA, DataExportStatus.QUEUED, null));
+                    .thenReturn(
+                            export(DataExportType.PERSONAL_DATA, DataExportStatus.QUEUED, null));
 
             mockMvc.perform(post(MY_DATA_EXPORT).with(user(caller)))
                     .andExpect(status().isAccepted())
@@ -324,7 +348,8 @@ class DataExportControllerWebMvcTests {
         @Test
         void requestOfAnAdminIsForTheAdminOnly() throws Exception {
             when(exportService.request(caller, DataExportType.PERSONAL_DATA, null))
-                    .thenReturn(export(DataExportType.PERSONAL_DATA, DataExportStatus.QUEUED, null));
+                    .thenReturn(
+                            export(DataExportType.PERSONAL_DATA, DataExportStatus.QUEUED, null));
 
             mockMvc.perform(post(MY_DATA_EXPORT).with(admin(caller)))
                     .andExpect(status().isAccepted());
@@ -338,7 +363,8 @@ class DataExportControllerWebMvcTests {
                     .thenThrow(new DataExportInProgressException());
 
             mockMvc.perform(post(MY_DATA_EXPORT).with(user(caller)))
-                    .andExpect(typedProblem(409, "export-in-progress", "Export already in progress"))
+                    .andExpect(
+                            typedProblem(409, "export-in-progress", "Export already in progress"))
                     .andExpect(header().doesNotExist(HttpHeaders.LOCATION));
         }
     }
@@ -370,7 +396,8 @@ class DataExportControllerWebMvcTests {
                     .thenThrow(new DataExportInProgressException());
 
             mockMvc.perform(post(USERS_EXPORT).with(admin(caller)))
-                    .andExpect(typedProblem(409, "export-in-progress", "Export already in progress"));
+                    .andExpect(
+                            typedProblem(409, "export-in-progress", "Export already in progress"));
         }
     }
 
@@ -384,10 +411,17 @@ class DataExportControllerWebMvcTests {
 
         @Test
         void listIsThePageOfTheCallerNewestFirstByDefault() throws Exception {
-            when(exportService.findOwn(eq(caller), any())).thenAnswer(invocation -> new PageImpl<>(
-                    List.of(export(DataExportType.USERS_CSV, DataExportStatus.FAILED, null)),
-                    invocation.getArgument(1),
-                    1));
+            when(exportService.findOwn(eq(caller), any()))
+                    .thenAnswer(
+                            invocation ->
+                                    new PageImpl<>(
+                                            List.of(
+                                                    export(
+                                                            DataExportType.USERS_CSV,
+                                                            DataExportStatus.FAILED,
+                                                            null)),
+                                            invocation.getArgument(1),
+                                            1));
 
             mockMvc.perform(get(EXPORTS).with(user(caller)))
                     .andExpect(status().isOk())
@@ -398,7 +432,8 @@ class DataExportControllerWebMvcTests {
 
             ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
             verify(exportService).findOwn(eq(caller), pageable.capture());
-            assertThat(pageable.getValue().getSort()).isEqualTo(Sort.by(Sort.Direction.DESC, "createdAt"));
+            assertThat(pageable.getValue().getSort())
+                    .isEqualTo(Sort.by(Sort.Direction.DESC, "createdAt"));
         }
 
         @Test
@@ -418,7 +453,8 @@ class DataExportControllerWebMvcTests {
         void completedExportCarriesItsDownloadLink() throws Exception {
             Media media = new Media();
             when(exportService.getOwn(caller, exportId)).thenReturn(completedTasksExport(media));
-            when(mediaUrls.of(media)).thenReturn("https://storage.example/export/key?X-Amz-Signature=abc");
+            when(mediaUrls.of(media))
+                    .thenReturn("https://storage.example/export/key?X-Amz-Signature=abc");
 
             mockMvc.perform(get(EXPORT, exportId).with(user(caller)))
                     .andExpect(status().isOk())
@@ -426,8 +462,10 @@ class DataExportControllerWebMvcTests {
                     .andExpect(jsonPath("$.rowCount").value(3))
                     .andExpect(jsonPath("$.completedAt").value(COMPLETED_AT.toString()))
                     .andExpect(jsonPath("$.expiresAt").value(EXPIRES_AT.toString()))
-                    .andExpect(jsonPath("$.downloadUrl")
-                            .value("https://storage.example/export/key?X-Amz-Signature=abc"));
+                    .andExpect(
+                            jsonPath("$.downloadUrl")
+                                    .value(
+                                            "https://storage.example/export/key?X-Amz-Signature=abc"));
         }
 
         @Test
@@ -444,7 +482,8 @@ class DataExportControllerWebMvcTests {
 
         @Test
         void exportOfSomeoneElseIsAnUntypedNotFound() throws Exception {
-            when(exportService.getOwn(caller, exportId)).thenThrow(new DataExportNotFoundException(exportId));
+            when(exportService.getOwn(caller, exportId))
+                    .thenThrow(new DataExportNotFoundException(exportId));
 
             mockMvc.perform(get(EXPORT, exportId).with(user(caller)))
                     .andExpect(untypedProblem(404, "Not Found"))
@@ -472,16 +511,19 @@ class DataExportControllerWebMvcTests {
         @Test
         void deletingAnExportInProgressIsATypedConflict() throws Exception {
             doThrow(new DataExportInProgressException())
-                    .when(exportService).deleteOwn(caller, exportId);
+                    .when(exportService)
+                    .deleteOwn(caller, exportId);
 
             mockMvc.perform(delete(EXPORT, exportId).with(user(caller)))
-                    .andExpect(typedProblem(409, "export-in-progress", "Export already in progress"));
+                    .andExpect(
+                            typedProblem(409, "export-in-progress", "Export already in progress"));
         }
 
         @Test
         void deletingTheExportOfSomeoneElseIsAnUntypedNotFound() throws Exception {
             doThrow(new DataExportNotFoundException(exportId))
-                    .when(exportService).deleteOwn(caller, exportId);
+                    .when(exportService)
+                    .deleteOwn(caller, exportId);
 
             mockMvc.perform(delete(EXPORT, exportId).with(user(caller)))
                     .andExpect(untypedProblem(404, "Not Found"));

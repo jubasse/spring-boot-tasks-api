@@ -1,9 +1,8 @@
 package io.julienmetral.tasks.identity.dtos;
 
 import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.media.services.MediaUrls;
 import io.julienmetral.tasks.identity.entities.UserRole;
-
+import io.julienmetral.tasks.media.services.MediaUrls;
 import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
@@ -19,8 +18,7 @@ public record UserResponseDto(
         Instant createdAt,
         Instant updatedAt,
         String avatarUrl,
-        boolean avatarPending
-) {
+        boolean avatarPending) {
 
     public UserResponseDto(User user, MediaUrls mediaUrls) {
         this(
@@ -34,7 +32,6 @@ public record UserResponseDto(
                 user.getCreatedAt(),
                 user.getUpdatedAt(),
                 mediaUrls.avatarOf(user.getProfile()),
-                user.getProfile().getPendingAvatar() != null
-        );
+                user.getProfile().getPendingAvatar() != null);
     }
 }

@@ -1,9 +1,9 @@
 package io.julienmetral.tasks.task.dtos;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.julienmetral.tasks.task.entities.TaskPriority;
 import org.junit.jupiter.api.Test;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 class TaskDtosTest {
 

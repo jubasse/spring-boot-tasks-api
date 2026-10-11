@@ -1,24 +1,25 @@
 package io.julienmetral.tasks.notification.webhook;
 
-import org.springframework.security.crypto.encrypt.AesGcmBytesEncryptor;
-import org.springframework.security.crypto.encrypt.BytesEncryptor;
-
-import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Base64;
+import javax.crypto.spec.SecretKeySpec;
+import org.springframework.security.crypto.encrypt.AesGcmBytesEncryptor;
+import org.springframework.security.crypto.encrypt.BytesEncryptor;
 
 /**
- * Creates the signing secrets of webhook endpoints, and encrypts them for the database with AES-256-GCM.
- * <p>
- * A secret follows the Standard Webhooks format: {@code whsec_} and the Base64 of 32 random bytes. Receivers
- * decode the part after the prefix to get the HMAC key.
+ * Creates the signing secrets of webhook endpoints, and encrypts them for the database with
+ * AES-256-GCM.
+ *
+ * <p>A secret follows the Standard Webhooks format: {@code whsec_} and the Base64 of 32 random
+ * bytes. Receivers decode the part after the prefix to get the HMAC key.
  */
 public class WebhookSecrets {
 
     private static final String PREFIX = "whsec_";
 
-    // Names the key that encrypted a value, so a later key can be introduced without re-encrypting everything at once
+    // Names the key that encrypted a value, so a later key can be introduced without re-encrypting
+    // everything at once
     private static final String KEY_VERSION = "v1:";
 
     private static final int SECRET_BYTES = 32;
@@ -40,11 +41,13 @@ public class WebhookSecrets {
         }
 
         if (key.length < 32) {
-            throw new IllegalStateException("webhooks.encryption-key (WEBHOOK_ENCRYPTION_KEY) must be the Base64 of "
-                    + "at least 32 bytes; generate one with: openssl rand -base64 32");
+            throw new IllegalStateException(
+                    "webhooks.encryption-key (WEBHOOK_ENCRYPTION_KEY) must be the Base64 of "
+                            + "at least 32 bytes; generate one with: openssl rand -base64 32");
         }
 
-        this.encryptor = AesGcmBytesEncryptor.withSecretKey(new SecretKeySpec(key, 0, 32, "AES")).build();
+        this.encryptor =
+                AesGcmBytesEncryptor.withSecretKey(new SecretKeySpec(key, 0, 32, "AES")).build();
     }
 
     public String generate() {
@@ -55,12 +58,13 @@ public class WebhookSecrets {
     }
 
     public String encrypt(String secret) {
-        return KEY_VERSION + Base64.getEncoder().encodeToString(
-                encryptor.encrypt(secret.getBytes(StandardCharsets.UTF_8)));
+        return KEY_VERSION
+                + Base64.getEncoder()
+                        .encodeToString(encryptor.encrypt(secret.getBytes(StandardCharsets.UTF_8)));
     }
 
     /**
-     * @throws IllegalStateException    when the value was encrypted with another key, or is damaged
+     * @throws IllegalStateException when the value was encrypted with another key, or is damaged
      * @throws IllegalArgumentException when the value is not Base64
      */
     public String decrypt(String encrypted) {
@@ -70,7 +74,8 @@ public class WebhookSecrets {
 
         byte[] bytes = Base64.getDecoder().decode(encrypted.substring(KEY_VERSION.length()));
 
-        // Shorter than that, the encryptor fails with an index exception instead of an IllegalStateException
+        // Shorter than that, the encryptor fails with an index exception instead of an
+        // IllegalStateException
         if (bytes.length < MIN_ENCRYPTED_BYTES) {
             throw new IllegalStateException("Webhook secret too short to be an encrypted value");
         }
@@ -79,8 +84,8 @@ public class WebhookSecrets {
     }
 
     /**
-     * Whether {@link #decrypt} would succeed. A change of {@code webhooks.encryption-key} leaves every stored value
-     * unreadable: callers check first instead of failing on it.
+     * Whether {@link #decrypt} would succeed. A change of {@code webhooks.encryption-key} leaves
+     * every stored value unreadable: callers check first instead of failing on it.
      */
     public boolean canDecrypt(String encrypted) {
         try {

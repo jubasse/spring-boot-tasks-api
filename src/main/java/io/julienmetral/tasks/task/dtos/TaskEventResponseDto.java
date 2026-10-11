@@ -4,7 +4,6 @@ import io.julienmetral.tasks.identity.dtos.UserProfileResponseDto;
 import io.julienmetral.tasks.media.services.MediaUrls;
 import io.julienmetral.tasks.task.entities.TaskEvent;
 import io.julienmetral.tasks.task.entities.TaskEventType;
-
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
@@ -14,8 +13,7 @@ public record TaskEventResponseDto(
         TaskEventType type,
         UserProfileResponseDto actor,
         Instant occurredAt,
-        Map<String, Object> payload
-) {
+        Map<String, Object> payload) {
 
     public TaskEventResponseDto(TaskEvent event, MediaUrls mediaUrls) {
         this(
@@ -23,7 +21,6 @@ public record TaskEventResponseDto(
                 event.getType(),
                 UserProfileResponseDto.of(event.getActor(), mediaUrls),
                 event.getOccurredAt(),
-                event.getPayload()
-        );
+                event.getPayload());
     }
 }

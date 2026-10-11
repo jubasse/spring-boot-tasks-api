@@ -7,8 +7,9 @@ import org.springframework.http.client.observation.ClientRequestObservationConte
 import org.springframework.http.client.observation.DefaultClientRequestObservationConvention;
 
 /**
- * The metrics and traces of webhook calls, without their destination. The default convention tags metrics with the
- * host, one series per subscriber host, and puts the full URL in traces, where a Slack URL would expose its secret.
+ * The metrics and traces of webhook calls, without their destination. The default convention tags
+ * metrics with the host, one series per subscriber host, and puts the full URL in traces, where a
+ * Slack URL would expose its secret.
  */
 class WebhookObservationConvention extends DefaultClientRequestObservationConvention {
 

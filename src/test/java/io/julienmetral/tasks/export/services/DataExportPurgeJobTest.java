@@ -1,7 +1,16 @@
 package io.julienmetral.tasks.export.services;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.export.ExportProperties;
 import io.julienmetral.tasks.export.repositories.BatchMetadataQueries;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -10,16 +19,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneOffset;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 @ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class DataExportPurgeJobTest {
 
@@ -27,30 +26,33 @@ class DataExportPurgeJobTest {
 
     private static final Duration HISTORY_RETENTION = Duration.ofDays(30);
 
-    @Mock
-    private DataExportService exportService;
+    @Mock private DataExportService exportService;
 
-    @Mock
-    private BatchMetadataQueries batchMetadataQueries;
+    @Mock private BatchMetadataQueries batchMetadataQueries;
 
     private DataExportPurgeJob job;
 
     @BeforeEach
     void setUp() {
-        ExportProperties properties = new ExportProperties(
-                "https://app.example/exports",
-                Duration.ofDays(7),
-                HISTORY_RETENTION,
-                500,
-                Duration.ofMinutes(15),
-                3,
-                true,
-                "0 30 4 * * *",
-                true,
-                Duration.ofMinutes(5),
-                1000
-        );
-        job = new DataExportPurgeJob(exportService, batchMetadataQueries, properties, Clock.fixed(NOW, ZoneOffset.UTC));
+        ExportProperties properties =
+                new ExportProperties(
+                        "https://app.example/exports",
+                        Duration.ofDays(7),
+                        HISTORY_RETENTION,
+                        500,
+                        Duration.ofMinutes(15),
+                        3,
+                        true,
+                        "0 30 4 * * *",
+                        true,
+                        Duration.ofMinutes(5),
+                        1000);
+        job =
+                new DataExportPurgeJob(
+                        exportService,
+                        batchMetadataQueries,
+                        properties,
+                        Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @Test

@@ -5,6 +5,9 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import java.time.Instant;
+import java.util.Map;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -13,17 +16,14 @@ import org.hibernate.annotations.Generated;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
-import java.time.Instant;
-import java.util.Map;
-import java.util.UUID;
-
 @Entity
 @Table(
         name = "outbox_messages",
         indexes = {
-                @Index(name = "outbox_messages_pendingIDX", columnList = "published_at, next_attempt_at")
-        }
-)
+            @Index(
+                    name = "outbox_messages_pendingIDX",
+                    columnList = "published_at, next_attempt_at")
+        })
 @Getter
 @Setter
 @NoArgsConstructor
@@ -35,7 +35,8 @@ public class OutboxMessage {
     @Column(name = "id", nullable = false, updatable = false)
     private UUID id;
 
-    // Exactly one of queue and exchange is set: a queue through the default exchange, or a broadcast exchange
+    // Exactly one of queue and exchange is set: a queue through the default exchange, or a
+    // broadcast exchange
     @Column(name = "queue", updatable = false)
     private String queue;
 

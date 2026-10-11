@@ -3,6 +3,7 @@ package io.julienmetral.tasks.shared.entities;
 import jakarta.persistence.Column;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.MappedSuperclass;
+import java.time.Instant;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.SoftDelete;
@@ -11,14 +12,9 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
-import java.time.Instant;
-
 @MappedSuperclass
 @EntityListeners(AuditingEntityListener.class)
-@SoftDelete(
-        strategy = SoftDeleteType.TIMESTAMP,
-        columnName = "deleted_at"
-)
+@SoftDelete(strategy = SoftDeleteType.TIMESTAMP, columnName = "deleted_at")
 @Getter
 @Setter
 public abstract class AuditableEntity {
