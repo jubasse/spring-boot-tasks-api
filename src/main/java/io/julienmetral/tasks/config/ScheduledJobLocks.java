@@ -10,6 +10,7 @@ public final class ScheduledJobLocks {
 
     public static final String DATA_EXPORT_PURGE = "data-export-purge";
     public static final String DATA_EXPORT_RECOVERY = "data-export-recovery";
+    public static final String EXPIRED_TOKEN_PURGE = "expired-token-purge";
     public static final String MEDIA_CLEANUP = "media-cleanup";
     public static final String OUTBOX_PURGE = "outbox-purge";
     public static final String RATE_LIMIT_PURGE = "rate-limit-purge";
@@ -21,6 +22,7 @@ public final class ScheduledJobLocks {
     public static final List<String> NAMES = List.of(
             DATA_EXPORT_PURGE,
             DATA_EXPORT_RECOVERY,
+            EXPIRED_TOKEN_PURGE,
             MEDIA_CLEANUP,
             OUTBOX_PURGE,
             RATE_LIMIT_PURGE,
