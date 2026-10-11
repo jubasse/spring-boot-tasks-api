@@ -6,18 +6,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.boot.test.system.CapturedOutput;
-import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import java.time.Duration;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
-@ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
+@ExtendWith(MockitoExtension.class)
 class OutboxRelayJobTest {
 
     private static final int BATCH_SIZE = 3;
@@ -35,6 +32,7 @@ class OutboxRelayJobTest {
                 Duration.ofMinutes(10),
                 Duration.ofSeconds(5),
                 Duration.ofDays(7),
+                true,
                 "0 0 * * * *"
         );
 
@@ -76,24 +74,5 @@ class OutboxRelayJobTest {
         job.publishDue();
 
         verify(relay, times(2)).publishDue();
-    }
-
-    @Test
-    void deletePublishedLogsHowManyRowsWereDeleted(CapturedOutput output) {
-        when(relay.deletePublished()).thenReturn(4);
-
-        job.deletePublished();
-
-        verify(relay).deletePublished();
-        assertThat(output).contains("Outbox: 4 published messages deleted");
-    }
-
-    @Test
-    void deletePublishedLogsNothingWhenNothingWasDeleted(CapturedOutput output) {
-        when(relay.deletePublished()).thenReturn(0);
-
-        job.deletePublished();
-
-        assertThat(output).doesNotContain("published messages deleted");
     }
 }

@@ -4,6 +4,7 @@ import io.julienmetral.tasks.config.ScheduledJobLocks;
 import io.julienmetral.tasks.ratelimit.repositories.RateLimitQueries;
 import lombok.RequiredArgsConstructor;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -12,6 +13,7 @@ import java.time.Duration;
 
 @Component
 @RequiredArgsConstructor
+@ConditionalOnBooleanProperty(name = "rate-limit.purge-enabled", matchIfMissing = true)
 public class RateLimitCleanupJob {
 
     // Longer than any configured window, so a window still counting is never deleted

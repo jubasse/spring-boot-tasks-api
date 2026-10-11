@@ -417,13 +417,15 @@ Les verrous et leurs durées :
 
 Les deux pollers sans verrou, qui se partagent leur stock avec `SKIP LOCKED` : `OutboxRelayJob.publishDue` et `WebhookRetryJob.enqueueDueRetries`.
 
+Chaque job s'éteint par instance avec une propriété, `true` par défaut : `@ConditionalOnBooleanProperty(name = "...", matchIfMissing = true)` sur sa classe (guide 01), et un champ du record de propriétés de sa fonctionnalité. Par exemple `rate-limit.purge-enabled` pour `RateLimitCleanupJob` et `messaging.outbox.purge-enabled` pour `OutboxPurgeJob`. La condition retire tout le bean : c'est pourquoi la purge de l'outbox a sa propre classe, à côté du poller `OutboxRelayJob`.
+
 Les tests :
 
 - [`ScheduledJobLocksTest`][lock-test] parcourt tout le code. Il échoue si un `@Scheduled` n'a pas de verrou (hors pollers autorisés), si un nom manque dans `NAMES` ou sert à deux jobs, si une durée manque, si la méthode est `private` ou `final`, ou si un nom dépasse 64 caractères.
 - [`SchedulerLockConfigurationTests`][lock-config-test] joue deux instances sur un vrai Postgres : verrou refusé, durée minimale, heures en UTC, course à deux.
 - [`ScheduledJobLockingTests`][locking-test] vérifie que le vrai job de purge est sauté quand une autre instance tient son verrou.
 
-Pour ajouter un job : la constante et son entrée dans `NAMES`, puis les deux annotations sur une méthode `public` d'une classe `...Job`. Les jobs sont éteints dans `src/test/resources/config/application.yaml`.
+Pour ajouter un job : la constante et son entrée dans `NAMES`, les deux annotations sur une méthode `public` d'une classe `...Job` qui ne porte que lui, et son interrupteur. Les jobs sont éteints dans `src/test/resources/config/application.yaml`, sauf les purges horaires de l'outbox et des compteurs : elles ne suppriment que des lignes vieilles d'un jour ou plus, et `ScheduledJobLockingTests` a besoin du bean `RateLimitCleanupJob`.
 
 ## Voir aussi
 

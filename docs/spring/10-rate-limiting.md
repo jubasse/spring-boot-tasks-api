@@ -484,7 +484,7 @@ Le trajet d'une requête limitée est celui du schéma « Ce qui compte, et ce q
 | [`RateLimitQueries`][queries] | l'upsert `increment`, la purge `deleteWindowsStartedBefore` |
 | [`RateLimitKeys`][keys] | clés `endpoint:ip:`, `endpoint:email:` (SHA-256), `endpoint:user:<uuid>` |
 | [`RateLimitExceededException`][exception] | délai restant, arrondi au-dessus |
-| [`RateLimitCleanupJob`][job] | purge horaire, verrou `rate-limit-purge` |
+| [`RateLimitCleanupJob`][job] | purge horaire, verrou `rate-limit-purge`, désactivable par instance |
 | [`RateLimitProperties`][properties] | les limites, bornes `@DurationMin(seconds = 1)` et `@DurationMax(days = 1)` |
 | [`RateLimitCounter`][entity] | entité `@Immutable` : la table reste dans le modèle Hibernate, jamais écrite par JPA |
 | [`ApiExceptionHandler`][handler] | `handleRateLimitExceeded` : 429, `Retry-After`, problème `about:blank` |
@@ -496,6 +496,7 @@ Les limites, sous `rate-limit` dans `application.yaml` :
 | Réglage | Valeur | Rôle |
 |---|---|---|
 | `enabled` | `${RATE_LIMIT_ENABLED:true}` | `false` coupe tout comptage |
+| `purge-enabled` | `${RATE_LIMIT_PURGE_ENABLED:true}` | `false` retire la purge de cette instance |
 | `purge-cron` | `0 20 * * * *` | purge chaque heure, à la minute 20 |
 | `login-per-ip` | 30 par `PT1M` | connexions par adresse |
 | `login-per-email` | 10 par `PT15M` | connexions par e-mail, toutes adresses confondues |
@@ -519,7 +520,7 @@ Les tests :
 
 - [`RateLimitTests`][it] : chaque endpoint limité, le 429 avec `Retry-After`, les connexions ratées qui comptent, les requêtes refusées qui ne comptent pas, des requêtes parallèles qui acceptent exactement la limite.
 - [`RateLimiterTest`][unit] (fenêtres, arrondi, ordre des contrôles), [`RateLimitKeysTest`][keys-test] (longueur fixe, /64 IPv6) et [`RateLimitQueriesTests`][queries-test] (`concurrentRequestsNeverReadTheSameCount`).
-- [`RateLimitConfigurationTest`][config-test] : une fenêtre ou un nombre de requêtes à zéro fait échouer le démarrage.
+- [`RateLimitConfigurationTest`][config-test] : une fenêtre ou un nombre de requêtes à zéro fait échouer le démarrage, et `purge-enabled=false` retire `RateLimitCleanupJob`.
 
 Pour limiter un nouvel endpoint : une `Limit` dans `RateLimitProperties` avec son `@param` et ses valeurs dans `application.yaml`, une méthode `REQUIRES_NEW` dans `RateLimiter` avec un nouveau préfixe de clé, l'appel après la validation, `@RateLimited` sur la méthode du contrôleur, et un cas dans `RateLimitTests` (avec sa limite basse dans le `@TestPropertySource` de cette classe).
 

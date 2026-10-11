@@ -361,6 +361,7 @@ class RateLimiterTest {
     private static RateLimitProperties properties(boolean enabled, Limit signUpPerIp) {
         return new RateLimitProperties(
                 enabled,
+                true,
                 "0 20 * * * *",
                 new Limit(LOGIN_PER_IP, Duration.ofMinutes(1)),
                 new Limit(LOGIN_PER_EMAIL, Duration.ofMinutes(15)),

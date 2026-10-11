@@ -79,6 +79,22 @@ class RateLimitConfigurationTest {
     }
 
     @Test
+    void missingPurgeSwitchKeepsTheCleanupJob() {
+        withCleanupJob(configured).run(context -> {
+            assertThat(context).hasSingleBean(RateLimitCleanupJob.class);
+            assertThat(context.getBean(RateLimitProperties.class).purgeEnabled()).isTrue();
+        });
+    }
+
+    @Test
+    void disabledPurgeRemovesTheCleanupJob() {
+        withCleanupJob(configured).withPropertyValues("rate-limit.purge-enabled=false").run(context -> {
+            assertThat(context).doesNotHaveBean(RateLimitCleanupJob.class);
+            assertThat(context.getBean(RateLimitProperties.class).purgeEnabled()).isFalse();
+        });
+    }
+
+    @Test
     void applicationYamlShipsTheDocumentedDefaults() {
         runner.withInitializer(context -> context.getEnvironment().getPropertySources()
                         .addLast(mainApplicationYaml()))
@@ -86,6 +102,7 @@ class RateLimitConfigurationTest {
                     assertThat(context).hasNotFailed();
                     RateLimitProperties properties = context.getBean(RateLimitProperties.class);
                     assertThat(properties.enabled()).isTrue();
+                    assertThat(properties.purgeEnabled()).isTrue();
                     assertThat(properties.purgeCron()).isEqualTo("0 20 * * * *");
                     assertThat(properties.loginPerIp()).isEqualTo(new Limit(30, Duration.ofMinutes(1)));
                     assertThat(properties.loginPerEmail()).isEqualTo(new Limit(10, Duration.ofMinutes(15)));
@@ -167,10 +184,17 @@ class RateLimitConfigurationTest {
                 .run(context -> assertThat(context).getFailure()
                         .hasStackTraceContaining("NotNull.rate-limit.verificationResendPerUser.window"));
     }
+
     @Test
     void zeroWindowFailsStartup() {
         configured.withPropertyValues("rate-limit.login-per-ip.window=0s")
                 .run(context -> assertThat(context).hasFailed());
+    }
+
+    private static ApplicationContextRunner withCleanupJob(ApplicationContextRunner runner) {
+        return runner.withUserConfiguration(RateLimitCleanupJob.class)
+                .withBean(RateLimitQueries.class, () -> mock(RateLimitQueries.class))
+                .withBean(Clock.class, Clock::systemUTC);
     }
 
     /** Every valid property, except those whose key starts with {@code keyPrefix} when it is not null. */

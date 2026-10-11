@@ -96,7 +96,8 @@ src/main/java/.../messaging/
   OutboxMessageRepository.java         les lectures avec SKIP LOCKED (étape 3)
   Outbox.java                          l'écriture dans la transaction (étape 4)
   OutboxRelay.java                     la publication (étapes 6 et 7)
-  OutboxRelayJob.java                  le poller et la purge (étape 8)
+  OutboxRelayJob.java                  le poller (étape 8)
+  OutboxPurgeJob.java                  la purge (étape 8)
 src/test/java/.../
   OutboxTests.java                     la vérification (étape 9)
 ```
@@ -314,7 +315,7 @@ private void send(OutboxMessage message) {
 }
 ```
 
-**Étape 8. Rattraper avec un poller, puis purger.** Le poller tourne sur chaque instance, sans ShedLock, car `SKIP LOCKED` partage les lignes (guide 21). La purge est verrouillée.
+**Étape 8. Rattraper avec un poller, puis purger.** Le poller tourne sur chaque instance, sans ShedLock, car `SKIP LOCKED` partage les lignes (guide 21). La purge est verrouillée, dans une classe à part : son interrupteur retire tout le bean, et retirerait le poller avec elle s'ils partageaient une classe.
 
 ```java
 @Component
@@ -330,6 +331,14 @@ public class OutboxRelayJob {
             published = relay.publishDue();
         } while (published == OutboxRelay.BATCH_SIZE);    // un lot plein : il en reste peut-être
     }
+}
+
+@Component
+@RequiredArgsConstructor
+@ConditionalOnBooleanProperty(name = "messaging.outbox.purge-enabled", matchIfMissing = true)
+public class OutboxPurgeJob {
+
+    private final OutboxRelay relay;
 
     @Scheduled(cron = "0 0 * * * *")                       // chaque heure
     @SchedulerLock(name = "outbox-purge", lockAtMostFor = "PT30M", lockAtLeastFor = "PT1M")
@@ -574,14 +583,15 @@ Le trajet d'un message :
   OutboxRelayJob.publishDue           toutes les 5 s, sur chaque instance
                           |
                           v
-  OutboxRelayJob.deletePublished      chaque heure, une seule instance
+  OutboxPurgeJob.deletePublished      chaque heure, une seule instance
 ```
 
 | Fichier | Rôle |
 |---|---|
 | [`Outbox`][outbox] | `enqueue` vers une file, `broadcast` vers un exchange, dans la transaction de l'appelant |
 | [`OutboxRelay`][relay] | publication, confirmation, contrôle du retour, réessais, compteurs |
-| [`OutboxRelayJob`][job] | le poller sans verrou, la purge verrouillée |
+| [`OutboxRelayJob`][job] | le poller, sans verrou |
+| [`OutboxPurgeJob`][purge-job] | la purge, verrouillée et désactivable |
 | [`OutboxMessage`][entity] | la ligne : file ou exchange, type, contenu, tentatives |
 | [`OutboxMessageRepository`][repository] | `lockUnpublished`, `lockDue`, la purge, les lectures des jauges |
 | [`OutboxMetrics`][metrics] | les deux jauges |
@@ -598,6 +608,7 @@ Les réglages, sous `messaging.outbox` dans `application.yaml` :
 | `max-retry-delay` | PT10M | plafond du délai entre deux tentatives |
 | `confirm-timeout` | PT5S | attente maximale de la confirmation |
 | `retention` | P7D | conservation des lignes publiées |
+| `purge-enabled` | `true` (`OUTBOX_PURGE_ENABLED`) | `false` retire la purge de cette instance, pas le poller |
 | `purge-cron` | `0 0 * * * *` | la purge, chaque heure |
 
 Ce qui est propre au dépôt :
@@ -613,6 +624,7 @@ Les tests :
 
 - [`OutboxTest`][outbox-test] : la ligne écrite, la publication au commit seulement.
 - [`OutboxRelayTest`][relay-test] : confirmation, refus, retour, délai qui double, erreur tronquée, compteurs, diffusions.
+- [`OutboxConfigurationTest`][configuration-test] : les réglages liés, et `purge-enabled=false` qui retire la purge en gardant le poller.
 - [`OutboxTests`][outbox-tests] : contre les vrais conteneurs. Il couvre le rollback sans ligne, `SKIP LOCKED` vu d'une autre connexion, la file inexistante (`NO_ROUTE`) et la purge.
 - [`OutboxBrokerFailureTests`][broker-failure-tests] : un espion du `RabbitTemplate` simule la panne. La ligne garde l'erreur, réessaie à 5 s puis 10 s, et le mail part une seule fois au retour du broker. L'espion lui donne un contexte à part.
 - [`RealtimeBroadcastTests`][broadcast-tests] : une diffusion sans file est marquée publiée, sans réessai.
@@ -634,6 +646,7 @@ Pour ajouter un message : un record dans un paquet de confiance, un appel à `ou
 [outbox]: ../../src/main/java/io/julienmetral/tasks/messaging/services/Outbox.java
 [relay]: ../../src/main/java/io/julienmetral/tasks/messaging/services/OutboxRelay.java
 [job]: ../../src/main/java/io/julienmetral/tasks/messaging/services/OutboxRelayJob.java
+[purge-job]: ../../src/main/java/io/julienmetral/tasks/messaging/services/OutboxPurgeJob.java
 [entity]: ../../src/main/java/io/julienmetral/tasks/messaging/entities/OutboxMessage.java
 [repository]: ../../src/main/java/io/julienmetral/tasks/messaging/repositories/OutboxMessageRepository.java
 [metrics]: ../../src/main/java/io/julienmetral/tasks/messaging/services/OutboxMetrics.java
@@ -643,6 +656,7 @@ Pour ajouter un message : un record dans un paquet de confiance, un appel à `ou
 [mail-config]: ../../src/main/java/io/julienmetral/tasks/mail/MailConfiguration.java
 [outbox-test]: ../../src/test/java/io/julienmetral/tasks/messaging/services/OutboxTest.java
 [relay-test]: ../../src/test/java/io/julienmetral/tasks/messaging/services/OutboxRelayTest.java
+[configuration-test]: ../../src/test/java/io/julienmetral/tasks/config/OutboxConfigurationTest.java
 [outbox-tests]: ../../src/test/java/io/julienmetral/tasks/messaging/OutboxTests.java
 [broker-failure-tests]: ../../src/test/java/io/julienmetral/tasks/messaging/OutboxBrokerFailureTests.java
 [broadcast-tests]: ../../src/test/java/io/julienmetral/tasks/realtime/messaging/RealtimeBroadcastTests.java

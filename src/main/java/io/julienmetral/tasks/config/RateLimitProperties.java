@@ -14,6 +14,7 @@ import java.time.Duration;
 
 /**
  * @param enabled                   count requests and refuse those over a limit
+ * @param purgeEnabled              whether this instance deletes old counters
  * @param purgeCron                 when counters of windows older than a day are deleted (Spring cron, six fields)
  * @param loginPerIp                login attempts from one client address
  * @param loginPerEmail             login attempts for one email, from any address
@@ -28,6 +29,7 @@ import java.time.Duration;
 @ConfigurationProperties(prefix = "rate-limit")
 public record RateLimitProperties(
         @DefaultValue("true") boolean enabled,
+        @DefaultValue("true") boolean purgeEnabled,
         @NotBlank String purgeCron,
         @Valid @NotNull Limit loginPerIp,
         @Valid @NotNull Limit loginPerEmail,
