@@ -384,7 +384,7 @@ Hibernate sérialise les colonnes JSON avec son propre mapper Jackson, pas le `J
 | Fichier | Rôle |
 |---|---|
 | [`AuditableEntity`][auditable] | `created_at`, `updated_at` et `@SoftDelete` sur `deleted_at`, pour `User` et `Task` |
-| [`JpaAuditingConfiguration`][auditing] | `@EnableJpaAuditing` |
+| [`JpaAuditingConfiguration`][auditing] | `@EnableJpaAuditing`, avec un `DateTimeProvider` qui lit le `Clock` : une horloge de test figée date aussi `created_at` et `updated_at` |
 | [`User`][user] | le compte : `@DynamicUpdate`, `users_emailUQ`, `@MapsId` vers le profil, rôles en `@ElementCollection` `EAGER` |
 | [`UserProfile`][profile] | le profil visible, sans suppression logique ; photos en `@ManyToOne` avec contraintes uniques nommées |
 | [`Task`][task] | UUIDv7, `tasks_referenceUQ`, `@Version`, références `LAZY` vers `UserProfile` |

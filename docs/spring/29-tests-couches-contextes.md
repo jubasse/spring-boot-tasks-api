@@ -411,7 +411,7 @@ Un `./mvnw test` tourne dans une seule JVM, ce qui permet au cache de servir. De
 | [`WebLayerTest`][web] | `@WebMvcTest` de tous les contrôleurs, la vraie sécurité, les services et `UserRepository` en mocks |
 | [`WebCallers`][callers] | les appelants des tests web : `user`, `admin`, `withoutUid`, et `everyAccountIsActive` |
 | [`JdbcSliceTest`][jdbc] | `@JdbcTest`, toutes les classes `*Queries` (filtre par expression régulière), Postgres |
-| [`RepositoryTest`][jpa] | `@DataJpaTest`, Postgres, et `JpaAuditingConfiguration` pour `created_at` et `updated_at` |
+| [`RepositoryTest`][jpa] | `@DataJpaTest`, Postgres, `JpaAuditingConfiguration` pour `created_at` et `updated_at`, et `TestClock` |
 | [`DeadLetterIntegrationTest`][dead-letter] | l'intégration avec 2 réessais rapides, SMTP en mock, stockage et antivirus en spy |
 | [`Transactions`][transactions] | `inNewTransaction` : valider sur une autre connexion, comme une autre instance |
 | [`spring.properties`][spring-properties] | `spring.test.context.cache.maxSize=12`, et pourquoi |
