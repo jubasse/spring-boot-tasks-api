@@ -24,6 +24,7 @@ import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.Generated;
+import org.jspecify.annotations.Nullable;
 
 /**
  * An HTTPS endpoint of a user, which receives the task events it subscribes to, signed with its
@@ -73,10 +74,10 @@ public class WebhookEndpoint {
     // The secret before the last rotation, still used to sign until previousSecretExpiresAt so
     // receivers can switch
     @Column(name = "previous_secret", length = 512)
-    private String previousSecret;
+    private @Nullable String previousSecret;
 
     @Column(name = "previous_secret_expires_at")
-    private Instant previousSecretExpiresAt;
+    private @Nullable Instant previousSecretExpiresAt;
 
     @ElementCollection
     @CollectionTable(
@@ -89,14 +90,14 @@ public class WebhookEndpoint {
 
     // When the first of the failed attempts since the last success happened; cleared by a success
     @Column(name = "failing_since")
-    private Instant failingSince;
+    private @Nullable Instant failingSince;
 
     @Column(name = "disabled_at")
-    private Instant disabledAt;
+    private @Nullable Instant disabledAt;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "disabled_reason", length = 50)
-    private WebhookDisabledReason disabledReason;
+    private @Nullable WebhookDisabledReason disabledReason;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

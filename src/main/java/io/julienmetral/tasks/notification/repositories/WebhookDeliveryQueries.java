@@ -23,7 +23,7 @@ public class WebhookDeliveryQueries {
      * @return the ids of the deliveries taken
      */
     public List<UUID> claimDue(Instant now, Instant leaseEnd, int limit) {
-        return jdbc.queryForList(
+        return jdbc.query(
                 """
                         UPDATE webhook_deliveries
                         SET next_attempt_at = :leaseEnd
@@ -40,7 +40,7 @@ public class WebhookDeliveryQueries {
                         .addValue("now", Timestamp.from(now))
                         .addValue("leaseEnd", Timestamp.from(leaseEnd))
                         .addValue("limit", limit),
-                UUID.class);
+                (row, rowNumber) -> row.getObject(1, UUID.class));
     }
 
     public int deleteCreatedBefore(Instant cutoff) {

@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
@@ -60,7 +61,7 @@ public class TaskNotificationPublisher {
 
     @EventListener
     public void onCancelled(TaskCancelled event) {
-        Map<String, Object> details = new LinkedHashMap<>();
+        Map<String, @Nullable Object> details = new LinkedHashMap<>();
         details.put("reason", event.reason());
 
         publish(
@@ -129,15 +130,15 @@ public class TaskNotificationPublisher {
 
     private void publish(
             WebhookEvent event,
-            UUID recipientId,
-            UUID actorId,
+            @Nullable UUID recipientId,
+            @Nullable UUID actorId,
             Map<String, Object> task,
-            Map<String, Object> details) {
+            Map<String, ? extends @Nullable Object> details) {
         if (recipientId == null || Objects.equals(recipientId, actorId) || !isActive(recipientId)) {
             return;
         }
 
-        Map<String, Object> data = new LinkedHashMap<>();
+        Map<String, @Nullable Object> data = new LinkedHashMap<>();
         data.put("task", task);
         data.put("actor", actor(actorId));
         data.putAll(details);
@@ -152,12 +153,12 @@ public class TaskNotificationPublisher {
                 == UserStatus.ACTIVE;
     }
 
-    private Map<String, Object> actor(UUID actorId) {
+    private @Nullable Map<String, @Nullable Object> actor(@Nullable UUID actorId) {
         if (actorId == null) {
             return null;
         }
 
-        Map<String, Object> actor = new LinkedHashMap<>();
+        Map<String, @Nullable Object> actor = new LinkedHashMap<>();
         actor.put("id", actorId);
         actor.put(
                 "displayName",

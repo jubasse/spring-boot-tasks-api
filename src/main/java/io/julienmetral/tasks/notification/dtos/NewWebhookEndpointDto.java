@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 /** A webhook just declared: the only response that carries its secret, besides a rotation. */
 public record NewWebhookEndpointDto(
@@ -22,7 +23,7 @@ public record NewWebhookEndpointDto(
                                 "Signing secret in the Standard Webhooks format; it is never shown again. Absent for a "
                                         + "Slack webhook, whose messages are not signed",
                         example = "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw")
-                String secret) {
+                @Nullable String secret) {
 
     public NewWebhookEndpointDto(WebhookEndpoint endpoint, String secret) {
         this(

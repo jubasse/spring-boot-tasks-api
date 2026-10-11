@@ -18,6 +18,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One event to send to one endpoint, with its attempts. Its id is the {@code webhook-id} header,
@@ -66,21 +67,21 @@ public class WebhookDelivery {
 
     // When a pending delivery is due; while an attempt is in flight, the end of its lease
     @Column(name = "next_attempt_at")
-    private Instant nextAttemptAt;
+    private @Nullable Instant nextAttemptAt;
 
     @Column(name = "last_attempt_at")
-    private Instant lastAttemptAt;
+    private @Nullable Instant lastAttemptAt;
 
     @Column(name = "last_status_code")
-    private Integer lastStatusCode;
+    private @Nullable Integer lastStatusCode;
 
     // A short failure kind, never an exception message: those carry the URL, and a Slack URL
     // carries its secret
     @Column(name = "last_error", length = 100)
-    private String lastError;
+    private @Nullable String lastError;
 
     @Column(name = "delivered_at")
-    private Instant deliveredAt;
+    private @Nullable Instant deliveredAt;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

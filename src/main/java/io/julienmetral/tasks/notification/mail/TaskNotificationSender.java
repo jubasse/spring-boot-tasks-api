@@ -22,6 +22,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Objects;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
@@ -170,8 +171,8 @@ public class TaskNotificationSender {
 
     private void notify(
             TaskNotificationType type,
-            UUID recipientId,
-            UUID actorId,
+            @Nullable UUID recipientId,
+            @Nullable UUID actorId,
             String subject,
             String body) {
         if (recipientId == null || Objects.equals(recipientId, actorId)) {
@@ -203,7 +204,7 @@ public class TaskNotificationSender {
         return commentExcerpts.of(body);
     }
 
-    private String actorName(UUID actorId) {
+    private String actorName(@Nullable UUID actorId) {
         return actorId == null
                 ? "Someone"
                 : userRepository.findById(actorId).map(User::getDisplayName).orElse("Someone");

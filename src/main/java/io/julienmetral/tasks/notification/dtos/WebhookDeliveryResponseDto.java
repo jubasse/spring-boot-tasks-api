@@ -6,6 +6,7 @@ import io.julienmetral.tasks.notification.entities.WebhookEvent;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 public record WebhookDeliveryResponseDto(
         @Schema(description = "Also the webhook-id header of every attempt") UUID id,
@@ -13,15 +14,15 @@ public record WebhookDeliveryResponseDto(
         WebhookDeliveryStatus status,
         int attempts,
         @Schema(description = "HTTP status of the last attempt, absent when no response came back")
-                Integer lastStatusCode,
+                @Nullable Integer lastStatusCode,
         @Schema(
                         description = "Why the last attempt got no response or could not go on",
                         example = "Timeout")
-                String lastError,
+                @Nullable String lastError,
         @Schema(description = "When the next attempt is due, while the delivery is pending")
-                Instant nextAttemptAt,
-        Instant lastAttemptAt,
-        Instant deliveredAt,
+                @Nullable Instant nextAttemptAt,
+        @Nullable Instant lastAttemptAt,
+        @Nullable Instant deliveredAt,
         Instant createdAt) {
 
     public WebhookDeliveryResponseDto(WebhookDelivery delivery) {

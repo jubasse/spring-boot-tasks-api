@@ -28,6 +28,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -39,7 +40,7 @@ public class WebhookEndpointService {
 
     public record CreatedWebhookEndpoint(WebhookEndpoint endpoint, String secret) {}
 
-    public record RotatedWebhookSecret(String secret, Instant previousSecretExpiresAt) {}
+    public record RotatedWebhookSecret(String secret, @Nullable Instant previousSecretExpiresAt) {}
 
     private final WebhookEndpointRepository endpointRepository;
     private final WebhookDeliveryRepository deliveryRepository;
@@ -206,7 +207,7 @@ public class WebhookEndpointService {
 
     // Null for a Slack URL left unreadable by a key change: any URL sent then replaces it, which is
     // the way out
-    private String currentUrl(WebhookEndpoint endpoint) {
+    private @Nullable String currentUrl(WebhookEndpoint endpoint) {
         if (endpoint.getKind() != WebhookKind.SLACK) {
             return endpoint.getUrl();
         }
