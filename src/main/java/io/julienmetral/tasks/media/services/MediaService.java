@@ -23,6 +23,7 @@ import java.util.HexFormat;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,7 +51,7 @@ public class MediaService {
     private final Clock clock;
 
     @Transactional
-    public Media store(MultipartFile file, MediaUsage usage, UUID uploadedById) {
+    public Media store(MultipartFile file, MediaUsage usage, @Nullable UUID uploadedById) {
         return store(MediaSource.of(file), usage, uploadedById);
     }
 
@@ -59,7 +60,7 @@ public class MediaService {
      * the caller's transaction: if it rolls back, the uploaded object is deleted again.
      */
     @Transactional
-    public Media store(MediaSource source, MediaUsage usage, UUID uploadedById) {
+    public Media store(MediaSource source, MediaUsage usage, @Nullable UUID uploadedById) {
         String contentType = validate(source, usage);
         String filename = originalFilename(source.filename());
 
@@ -90,8 +91,13 @@ public class MediaService {
      */
     @Transactional
     public Media storeGenerated(
-            Path file, String filename, String contentType, MediaUsage usage, UUID ownerId) {
-        return storeGenerated(MediaSource.of(file, filename), contentType, usage, ownerId);
+            Path file,
+            String filename,
+            String contentType,
+            MediaUsage usage,
+            @Nullable UUID ownerId) {
+        return storeGenerated(
+                MediaSource.of(file, filename), filename, contentType, usage, ownerId);
     }
 
     /**
@@ -100,12 +106,21 @@ public class MediaService {
      */
     @Transactional
     public Media storeGenerated(
-            byte[] content, String filename, String contentType, MediaUsage usage, UUID ownerId) {
-        return storeGenerated(MediaSource.of(content, filename), contentType, usage, ownerId);
+            byte[] content,
+            String filename,
+            String contentType,
+            MediaUsage usage,
+            @Nullable UUID ownerId) {
+        return storeGenerated(
+                MediaSource.of(content, filename), filename, contentType, usage, ownerId);
     }
 
     private Media storeGenerated(
-            MediaSource source, String contentType, MediaUsage usage, UUID ownerId) {
+            MediaSource source,
+            String filename,
+            String contentType,
+            MediaUsage usage,
+            @Nullable UUID ownerId) {
         if (!usage.allows(contentType)) {
             throw new IllegalArgumentException(contentType + " is not a type of " + usage);
         }
@@ -119,7 +134,7 @@ public class MediaService {
 
         media.setStorageKey(storageKey);
         media.setUsage(usage);
-        media.setOriginalFilename(source.filename());
+        media.setOriginalFilename(filename);
         media.setContentType(contentType);
         media.setSizeBytes(source.size());
         media.setSha256(sha256);
@@ -222,7 +237,7 @@ public class MediaService {
     }
 
     // Path segments are dropped: some clients send "C:\\Users\\...\\report.pdf"
-    private static String originalFilename(String sent) {
+    private static String originalFilename(@Nullable String sent) {
         String name =
                 StringUtils.getFilename(
                         StringUtils.cleanPath(String.valueOf(sent).replace('\\', '/')));

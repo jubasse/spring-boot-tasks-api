@@ -26,7 +26,7 @@ public class MediaCleanupQueries {
      * @return the media ids that were attached
      */
     public List<UUID> detachAttachmentsOfTasksDeletedBefore(Instant cutoff) {
-        return jdbc.queryForList(
+        return jdbc.query(
                 """
                         DELETE FROM task_attachments ta
                         USING tasks t
@@ -34,14 +34,14 @@ public class MediaCleanupQueries {
                         RETURNING ta.media_id
                         """,
                 cutoff(cutoff),
-                UUID.class);
+                (row, rowNumber) -> row.getObject(1, UUID.class));
     }
 
     /**
      * @return the media ids that were profile photos, processed or still waiting for the worker
      */
     public List<UUID> detachAvatarsOfUsersDeletedBefore(Instant cutoff) {
-        return jdbc.queryForList(
+        return jdbc.query(
                 """
                         WITH detached AS (
                             SELECT p.id, p.avatar_media_id, p.pending_avatar_media_id
@@ -61,14 +61,14 @@ public class MediaCleanupQueries {
                         SELECT pending_avatar_media_id FROM updated WHERE pending_avatar_media_id IS NOT NULL
                         """,
                 cutoff(cutoff),
-                UUID.class);
+                (row, rowNumber) -> row.getObject(1, UUID.class));
     }
 
     /**
      * @return the storage keys of the deleted rows
      */
     public List<String> deleteUnreferencedMediaCreatedBefore(Instant cutoff) {
-        return jdbc.queryForList(
+        return jdbc.query(
                 """
                         DELETE FROM media m
                         WHERE m.created_at < :cutoff
@@ -79,7 +79,7 @@ public class MediaCleanupQueries {
                         RETURNING m.storage_key
                         """,
                 cutoff(cutoff),
-                String.class);
+                (row, rowNumber) -> row.getString(1));
     }
 
     public Set<String> existingStorageKeys(Collection<String> keys) {
@@ -88,10 +88,10 @@ public class MediaCleanupQueries {
         }
 
         return jdbc
-                .queryForList(
+                .query(
                         "SELECT storage_key FROM media WHERE storage_key IN (:keys)",
                         new MapSqlParameterSource("keys", keys),
-                        String.class)
+                        (row, rowNumber) -> row.getString(1))
                 .stream()
                 .collect(Collectors.toSet());
     }

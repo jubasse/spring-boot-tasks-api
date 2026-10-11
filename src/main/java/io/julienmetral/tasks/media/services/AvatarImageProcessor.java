@@ -23,6 +23,7 @@ import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
 import javax.imageio.stream.ImageInputStream;
 import javax.imageio.stream.ImageOutputStream;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -229,7 +230,7 @@ public class AvatarImageProcessor {
         return rgb;
     }
 
-    private static byte[] encode(BufferedImage image, String format, Float quality) {
+    private static byte[] encode(BufferedImage image, String format, @Nullable Float quality) {
         ImageWriter writer = ImageIO.getImageWritersByFormatName(format).next();
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 

@@ -19,6 +19,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
+import org.jspecify.annotations.Nullable;
 
 /** A stored file: metadata here, bytes in object storage under {@link #storageKey}. */
 @Entity
@@ -63,7 +64,7 @@ public class Media {
     // UserProfile, not User: the uploader may later be soft-deleted
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "uploaded_by_id", foreignKey = @ForeignKey(name = "media_uploaded_byFK"))
-    private UserProfile uploadedBy;
+    private @Nullable UserProfile uploadedBy;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
