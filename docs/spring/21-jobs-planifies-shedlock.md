@@ -417,7 +417,7 @@ Les verrous et leurs durées :
 
 Les deux pollers sans verrou, qui se partagent leur stock avec `SKIP LOCKED` : `OutboxRelayJob.publishDue` et `WebhookRetryJob.enqueueDueRetries`.
 
-Chaque job s'éteint par instance avec une propriété, `true` par défaut : `@ConditionalOnBooleanProperty(name = "...", matchIfMissing = true)` sur sa classe (guide 01), et un champ du record de propriétés de sa fonctionnalité. Par exemple `rate-limit.purge-enabled` pour `RateLimitCleanupJob` et `messaging.outbox.purge-enabled` pour `OutboxPurgeJob`. La condition retire tout le bean : c'est pourquoi la purge de l'outbox a sa propre classe, à côté du poller `OutboxRelayJob`.
+Chaque job, sauf le poller de l'outbox, s'éteint par instance avec une propriété, `true` par défaut : `@ConditionalOnBooleanProperty(name = "...", matchIfMissing = true)` sur sa classe (guide 01), et un champ du record de propriétés de sa fonctionnalité. Par exemple `rate-limit.purge-enabled` pour `RateLimitCleanupJob` et `messaging.outbox.purge-enabled` pour `OutboxPurgeJob`. La condition retire tout le bean : c'est pourquoi la purge de l'outbox a sa propre classe, à côté du poller `OutboxRelayJob`.
 
 Les tests :
 

@@ -438,7 +438,9 @@ Réglages de `src/test/resources/config/application.yaml` :
 | Réglage | Valeur | Rôle |
 |---|---|---|
 | `security.jwt.secret`, `webhooks.encryption-key` | clés de test | démarrer sans `.env`, en CI comme en local |
-| `task.reminders.enabled`, `identity.retention.enabled`, `media.cleanup.enabled` | `false` | les tests appellent les services (guide 21) |
+| `task.reminders.enabled`, `identity.retention.enabled`, `identity.token-purge.enabled` | `false` | les tests appellent les services (guide 21) |
+| `media.cleanup.enabled` | `false` | idem |
+| `rate-limit.purge-enabled`, `messaging.outbox.purge-enabled` | absents, donc `true` | purges horaires inoffensives (guide 21) |
 | `exports.purge-enabled`, `exports.recovery-enabled`, `webhooks.retry-enabled`, `webhooks.purge-enabled` | `false` | idem pour exports et webhooks |
 | `rate-limit.enabled` | `false` | `RateLimitTests` le rallume dans son contexte |
 | `messaging.outbox.poll-interval` | `PT1H` | ne pas publier les lignes d'un autre contexte (guide 30) |

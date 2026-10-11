@@ -504,6 +504,7 @@ Spring lit les classes de configuration avant de créer les beans, et décide al
 | Enregistrer les propriétés dans une configuration conditionnelle | une valeur inconnue donne un bean manquant | Les enregistrer sans condition |
 | Utiliser `@ConditionalOnBean` dans une configuration du projet | le résultat dépend de l'ordre de lecture | Le réserver aux auto-configurations |
 | Oublier `matchIfMissing = true` sur un job | une clé absente l'éteint sans bruit | Écrire `matchIfMissing = true` |
+| Mettre deux jobs dans une classe conditionnelle | l'interrupteur de l'un retire aussi l'autre | Donner une classe à chaque job |
 | Couper une protection sans trace | personne ne sait que l'antivirus est éteint | Logger un WARN au démarrage |
 
 ## En résumé
@@ -580,10 +581,10 @@ Ce qui est propre au dépôt :
 - Chaque fonctionnalité enregistre ses records dans sa propre configuration (`ExportConfiguration`, `WebhookConfiguration`, `RealtimeConfiguration`...), sans `@ConfigurationPropertiesScan`.
 - Le `@param` par composant est la seule Javadoc exigée, car il documente la clé YAML.
 - `StorageConfiguration` répare un défaut mesuré. Quand les propriétés étaient enregistrées dans les seules configurations des drivers, une valeur inconnue ne chargeait rien. La validation ne tournait pas, et le démarrage échouait sur un bean manquant.
-- Sept jobs portent `@ConditionalOnBooleanProperty(matchIfMissing = true)` : rappels, rétention, nettoyage des médias, réessais et purge des webhooks, purge et reprise des exports. La configuration de test les éteint ([`config/application.yaml`][test-yaml]).
-- Les services qui lisent l'heure injectent `Clock`, pour leurs règles de temps (rétention, rappels, exports, outbox, rate limiting) comme pour de simples horodatages (jetons, tâches, commentaires, médias). En intégration, [`TestClock`][test-clock] le remplace (guide 31). Seul `JwtService` garde l'heure système : le décodeur JWT compare `exp` à l'horloge système, et un jeton émis depuis une horloge figée serait déjà expiré, ou valide trop longtemps.
+- Dix jobs portent `@ConditionalOnBooleanProperty(matchIfMissing = true)` : rappels, rétention, purge des jetons expirés, nettoyage des médias, réessais et purge des webhooks, purge et reprise des exports, purges de l'outbox et des compteurs de limite. Seul le poller de l'outbox n'en a pas. La configuration de test ([`config/application.yaml`][test-yaml]) en éteint huit : les purges horaires de l'outbox et des compteurs restent actives (guide 21).
+- Les services qui lisent l'heure injectent `Clock`, pour leurs règles de temps (rétention, rappels, purge des jetons, exports, outbox, rate limiting) comme pour de simples horodatages (jetons, tâches, commentaires, médias). En intégration, [`TestClock`][test-clock] le remplace (guide 31). `JwtService` garde l'heure système : le décodeur JWT compare `exp` à l'horloge système, et un jeton émis depuis une horloge figée serait déjà expiré, ou valide trop longtemps. L'audit de Spring Data (`created_at`, `updated_at`) la garde aussi (guide 12).
 
-Les tests : [`RateLimitConfigurationTest`][rate-limit-test], [`StorageConfigurationTest`][storage-test], [`RealtimeConfigurationTest`][realtime-test], [`ExportConfigurationTest`][export-test] et [`AntivirusConfigurationTest`][antivirus-test] démarrent chacun un `ApplicationContextRunner`. Ils vérifient les défauts de `application.yaml`, l'arrêt du démarrage sur une valeur hors bornes, et les beans présents ou absents selon les interrupteurs.
+Les tests : [`RateLimitConfigurationTest`][rate-limit-test], [`StorageConfigurationTest`][storage-test], [`RealtimeConfigurationTest`][realtime-test], [`ExportConfigurationTest`][export-test], [`AntivirusConfigurationTest`][antivirus-test], [`OutboxConfigurationTest`][outbox-test], [`ExpiredTokenPurgeConfigurationTest`][token-purge-test] et [`MailConfigurationTest`][mail-test] démarrent chacun un `ApplicationContextRunner`. Ils vérifient les défauts de `application.yaml`, l'arrêt du démarrage sur une valeur hors bornes, et les beans présents ou absents selon les interrupteurs.
 
 Pour ajouter un réglage : la clé dans le bloc, le composant du record avec `@param`, contrainte et défaut, puis un cas de test.
 
@@ -618,3 +619,6 @@ Pour ajouter un réglage : la clé dans le bloc, le composant du record avec `@p
 [realtime-test]: ../../src/test/java/io/julienmetral/tasks/realtime/RealtimeConfigurationTest.java
 [export-test]: ../../src/test/java/io/julienmetral/tasks/export/ExportConfigurationTest.java
 [antivirus-test]: ../../src/test/java/io/julienmetral/tasks/config/AntivirusConfigurationTest.java
+[outbox-test]: ../../src/test/java/io/julienmetral/tasks/config/OutboxConfigurationTest.java
+[token-purge-test]: ../../src/test/java/io/julienmetral/tasks/config/ExpiredTokenPurgeConfigurationTest.java
+[mail-test]: ../../src/test/java/io/julienmetral/tasks/config/MailConfigurationTest.java

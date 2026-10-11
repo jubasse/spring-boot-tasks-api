@@ -462,7 +462,7 @@ Metrics worth alerting on:
 | `cache_gets_total{cache="userStatus",result=...}` | The share of `hit` falls: every task request reads the account from the database again |
 | `tasks_scheduled_execution_seconds_count{outcome="ERROR"}` | A background job failed |
 | `shedlock_lock_acquired_total{lock_name=...}` | It did not increase for longer than the job's period (25 hours for a daily job): no instance ran the job, for example because of a stuck lock |
-| `webhook_deliveries_total{outcome="failed"}` | It increases steadily: webhook notifications are being dropped after all their retries |
+| `webhook_deliveries_total{outcome="failed"}` | It increases steadily: webhook notifications are being dropped after all their retries, or at once when the server can no longer read their secret (`SecretUnreadable`, after a change of `WEBHOOK_ENCRYPTION_KEY`) |
 | `webhook_circuit_breakers_open` | Above 0 for long: some webhook receivers are down, and notifications to them wait |
 
 ## Architecture
@@ -522,6 +522,8 @@ Scheduled jobs run inside the API. When several instances are deployed, a job th
 | Rate limit purge | hourly, at 20 minutes past | one instance | Deletes expired request counters |
 | Outbox poller | every 5 seconds | every instance | Publishes the messages RabbitMQ could not take right after their commit |
 | Webhook retries | every 30 seconds | every instance | Queues the webhook deliveries due for another attempt |
+
+Every job but the outbox poller can be turned off on one instance with its `*_ENABLED` variable, for example `TOKEN_PURGE_ENABLED=false` (see `application.yaml`).
 
 A lock is released when its job ends, but held at least 30 seconds to 5 minutes, so an instance whose clock is slightly late does not run the job again. If an instance crashes during a job, its lock expires after the job's maximum duration (from 4 minutes to 2 hours). To release a stuck lock earlier, set its `lock_until` to the current time; never delete the row, or the instances that already know it skip the job until they restart:
 

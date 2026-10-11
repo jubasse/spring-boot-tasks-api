@@ -51,7 +51,7 @@ Une propriété posée sur une seule classe change la clé du cache, et la class
 **4. La base partagée.** Liquibase tourne au démarrage sur le Postgres commun, déjà migré : rien à appliquer (guide 18). Tous les contextes écrivent dans cette même base. D'où trois règles :
 
 - chaque test prend des valeurs uniques et n'asserte jamais sur un total global ;
-- les jobs planifiés sont éteints en test (`task.reminders.enabled`, `identity.retention.enabled`, `media.cleanup.enabled`, `exports.purge-enabled`, `exports.recovery-enabled`, `webhooks.retry-enabled` et `webhooks.purge-enabled`, tous à `false`). Un job actif dans un contexte agirait sur les données de tous les autres, et son verrou dans `scheduler_locks` ferait sauter le même job partout ailleurs ;
+- les jobs planifiés sont éteints en test (`task.reminders.enabled`, `identity.retention.enabled`, `identity.token-purge.enabled`, `media.cleanup.enabled`, `exports.purge-enabled`, `exports.recovery-enabled`, `webhooks.retry-enabled` et `webhooks.purge-enabled`, tous à `false`), sauf les purges horaires de l'outbox et des compteurs, qui ne suppriment que des lignes vieilles d'un jour au moins. Un job actif dans un contexte agirait sur les données de tous les autres, et son verrou dans `scheduler_locks` ferait sauter le même job partout ailleurs ;
 - le poller de l'outbox tourne toutes les heures (`messaging.outbox.poll-interval: PT1H`). Un poller fréquent publierait les lignes d'un autre contexte vers son propre broker, où personne ne les attend.
 
 [`ScheduledJobLockingTests`][locking-tests] sait partager la table des verrous : sa ligne de purge des compteurs de limite est commune à tous les contextes (guides 20 et 21).

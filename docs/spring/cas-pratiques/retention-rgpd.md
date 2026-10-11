@@ -83,6 +83,8 @@ Pour les ids renvoyés, il supprime ensuite ce qui ne contenait que les données
 
 **10. Les fichiers.** L'effacement détache les photos du profil, mais ne touche pas au stockage. [`MediaCleanupJob`][cleanup], chaque nuit à 03:30, purge les photos des comptes supprimés depuis 30 jours, puis les médias que plus rien ne référence, après un jour de grâce (guide 28).
 
+**11. Les jetons, sans attendre l'effacement.** Indépendamment de la rétention, [`ExpiredTokenPurgeJob`][token-purge] supprime chaque nuit à 04:15, pour tous les comptes, les jetons expirés depuis 7 jours, ceux de rafraîchissement par famille entière (guide 09). Un compte actif n'accumule donc pas ses jetons jusqu'à son effacement.
+
 ## Quand ça se passe mal
 
 | Situation | Ce qui se passe | Comment le système s'en sort |
@@ -120,3 +122,4 @@ Les trois passes sont des requêtes sur des dates limites, sans état intermédi
 [properties]: ../../../src/main/java/io/julienmetral/tasks/config/UserRetentionProperties.java
 [mail]: ../../../src/main/java/io/julienmetral/tasks/identity/mail/InactiveAccountEmailSender.java
 [cleanup]: ../../../src/main/java/io/julienmetral/tasks/media/services/MediaCleanupJob.java
+[token-purge]: ../../../src/main/java/io/julienmetral/tasks/identity/services/ExpiredTokenPurgeJob.java

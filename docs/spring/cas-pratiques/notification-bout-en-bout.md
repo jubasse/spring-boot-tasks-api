@@ -82,6 +82,7 @@ Chaque canal se remet à sa façon :
 | RabbitMQ arrêté au commit | pas de confirmation, la ligne garde `last_error` | `OutboxRelayJob` réessaie : 5 s, doublé, plafond 10 min |
 | Plantage après la confirmation, avant le commit du relais | message publié, `published_at` vide | il repart : chaque consommateur tolère un doublon |
 | Serveur SMTP en panne | `MailQueueListener` lève une exception | réessais dans le consommateur, puis `mail.send.dead-letter` |
+| Serveur SMTP muet | `mail.smtp.timeout` (15 s) dépassé, `MailSendException` | réessais, puis `mail.send.dead-letter` (guide 23) |
 | Récepteur du webhook arrêté | connexion refusée, un réessai rapide | nouvel essai à 5 s, 5 min, 30 min, 2 h, 5 h et 10 h, puis `FAILED` |
 | Message `webhook.deliver` perdu | la livraison reste `PENDING` | `WebhookRetryJob` la reprend à la fin de son bail de 5 min |
 | Bruno a fermé l'onglet | l'écriture échoue, le flux est oublié | l'événement reste 5 min en mémoire ; `Last-Event-ID` le rejoue |
