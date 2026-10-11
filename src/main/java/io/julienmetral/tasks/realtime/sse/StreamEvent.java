@@ -2,13 +2,18 @@ package io.julienmetral.tasks.realtime.sse;
 
 import java.time.Duration;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * An event waiting to be written to a stream. Immutable, unlike Spring's event builder, whose
  * {@code build()} appends to it: one event can go to several streams of the same user.
  */
-record StreamEvent(String id, String name, String data, Duration reconnectDelay) {
+record StreamEvent(
+        @Nullable String id,
+        @Nullable String name,
+        @Nullable String data,
+        @Nullable Duration reconnectDelay) {
 
     static final String RESYNC = "resync";
 

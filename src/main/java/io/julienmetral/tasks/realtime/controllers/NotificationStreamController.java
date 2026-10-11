@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
@@ -57,7 +58,7 @@ public class NotificationStreamController {
                             schema = @Schema(ref = "#/components/schemas/Problem")))
     @GetMapping(path = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamNotifications(
-            @RequestHeader(name = "Last-Event-ID", required = false) String lastEventId,
+            @RequestHeader(name = "Last-Event-ID", required = false) @Nullable String lastEventId,
             JwtAuthenticationToken authentication,
             HttpServletResponse response) {
         UUID userId =

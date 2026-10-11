@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.realtime.stomp;
 
 import io.julienmetral.tasks.realtime.RealtimeProperties;
+import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnThreading;
 import org.springframework.boot.task.SimpleAsyncTaskSchedulerBuilder;
@@ -150,8 +151,8 @@ public class StompConfiguration implements WebSocketMessageBrokerConfigurer {
     private static final class RefusalReasons extends StompSubProtocolErrorHandler {
 
         @Override
-        public Message<byte[]> handleClientMessageProcessingError(
-                Message<byte[]> clientMessage, Throwable ex) {
+        public @Nullable Message<byte[]> handleClientMessageProcessingError(
+                @Nullable Message<byte[]> clientMessage, Throwable ex) {
             Throwable reason =
                     ex instanceof MessageDeliveryException && ex.getCause() != null
                             ? ex.getCause()

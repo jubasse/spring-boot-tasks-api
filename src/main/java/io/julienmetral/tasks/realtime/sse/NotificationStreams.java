@@ -19,6 +19,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ThreadLocalRandom;
+import org.jspecify.annotations.Nullable;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.security.access.AccessDeniedException;
@@ -65,7 +66,8 @@ public class NotificationStreams {
      *     streams here
      * @throws AccessDeniedException when the account is no longer active
      */
-    public SseEmitter open(UUID userId, Instant tokenExpiresAt, String lastEventId) {
+    public SseEmitter open(
+            UUID userId, @Nullable Instant tokenExpiresAt, @Nullable String lastEventId) {
         Duration untilExpiry =
                 tokenExpiresAt == null
                         ? properties.maxDuration()
