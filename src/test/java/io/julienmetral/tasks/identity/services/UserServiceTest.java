@@ -11,11 +11,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
@@ -34,6 +37,8 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
 
+    private static final Instant NOW = Instant.parse("2026-10-11T08:30:00Z");
+
     private static final UUID ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
     @Mock
@@ -50,6 +55,9 @@ class UserServiceTest {
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
+
+    @Spy
+    private Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 
     @InjectMocks
     private UserService userService;
@@ -216,11 +224,10 @@ class UserServiceTest {
     @Test
     void verifyEmailSetsTimestampWhenNotYetVerified() {
         User user = stubExisting();
-        Instant before = Instant.now();
 
         userService.verifyEmail(ID);
 
-        assertThat(user.getEmailVerifiedAt()).isNotNull().isBetween(before, Instant.now());
+        assertThat(user.getEmailVerifiedAt()).isEqualTo(NOW);
         verify(eventPublisher).publishEvent(new AccountStateChanged(ID));
     }
 
@@ -239,11 +246,10 @@ class UserServiceTest {
     @Test
     void recordLoginSetsLastLoginAt() {
         User user = stubExisting();
-        Instant before = Instant.now();
 
         userService.recordLogin(ID);
 
-        assertThat(user.getLastLoginAt()).isBetween(before, Instant.now());
+        assertThat(user.getLastLoginAt()).isEqualTo(NOW);
     }
 
     @Test
