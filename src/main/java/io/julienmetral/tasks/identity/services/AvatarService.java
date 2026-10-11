@@ -8,7 +8,6 @@ import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.media.exceptions.InvalidImageException;
 import io.julienmetral.tasks.media.model.Media;
-import io.julienmetral.tasks.media.model.MediaSource;
 import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.media.model.ProcessedImage;
 import io.julienmetral.tasks.media.services.AvatarImageProcessor;
@@ -89,8 +88,12 @@ public class AvatarService {
             return;
         }
 
-        Media avatar = mediaService.store(
-                MediaSource.of(image.content(), "avatar." + image.extension()),
+        // Not store: the upload was scanned, and scanning the re-encoded pixels again dead-lettered good photos
+        // whenever clamd was down
+        Media avatar = mediaService.storeGenerated(
+                image.content(),
+                "avatar." + image.extension(),
+                image.contentType(),
                 MediaUsage.AVATAR,
                 upload.getUploadedBy() == null ? null : upload.getUploadedBy().getId()
         );
