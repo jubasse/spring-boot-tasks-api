@@ -17,6 +17,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
+import org.jspecify.annotations.Nullable;
 
 /** A single-use email verification token, stored as a SHA-256 hash. */
 @Entity
@@ -57,5 +58,5 @@ public class EmailVerificationToken {
     private Instant expiresAt;
 
     @Column(name = "used_at")
-    private Instant usedAt;
+    private @Nullable Instant usedAt;
 }

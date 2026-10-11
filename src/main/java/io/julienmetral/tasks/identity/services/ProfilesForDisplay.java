@@ -2,6 +2,7 @@ package io.julienmetral.tasks.identity.services;
 
 import io.julienmetral.tasks.identity.entities.UserProfile;
 import org.hibernate.Hibernate;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Loads what {@code UserProfileResponseDto} reads. With open-in-view off, a response is written
@@ -13,7 +14,7 @@ public final class ProfilesForDisplay {
 
     private ProfilesForDisplay() {}
 
-    public static void load(UserProfile profile) {
+    public static void load(@Nullable UserProfile profile) {
         if (profile != null) {
             Hibernate.initialize(profile);
             Hibernate.initialize(profile.getAvatar());

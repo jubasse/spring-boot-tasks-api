@@ -19,6 +19,7 @@ import java.util.Objects;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -119,7 +120,7 @@ public class AvatarService {
         return user;
     }
 
-    private void replaceAvatar(User user, Media avatar) {
+    private void replaceAvatar(User user, @Nullable Media avatar) {
         Media previous = user.getProfile().getAvatar();
 
         user.getProfile().setAvatar(avatar);
@@ -129,7 +130,7 @@ public class AvatarService {
         }
     }
 
-    private void replacePendingAvatar(User user, Media upload) {
+    private void replacePendingAvatar(User user, @Nullable Media upload) {
         Media previous = user.getProfile().getPendingAvatar();
 
         user.getProfile().setPendingAvatar(upload);

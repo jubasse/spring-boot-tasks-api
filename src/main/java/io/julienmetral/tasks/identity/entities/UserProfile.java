@@ -21,6 +21,7 @@ import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.Generated;
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -73,18 +74,18 @@ public class UserProfile {
     @JoinColumn(
             name = "avatar_media_id",
             foreignKey = @ForeignKey(name = "user_profiles_avatar_mediaFK"))
-    private Media avatar;
+    private @Nullable Media avatar;
 
     // The uploaded photo waiting for the worker (see AvatarService.process); null once processed
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "pending_avatar_media_id",
             foreignKey = @ForeignKey(name = "user_profiles_pending_avatar_mediaFK"))
-    private Media pendingAvatar;
+    private @Nullable Media pendingAvatar;
 
     // Written by UserRetentionQueries when the account's personal data is erased
     @Column(name = "anonymized_at")
-    private Instant anonymizedAt;
+    private @Nullable Instant anonymizedAt;
 
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -97,7 +98,7 @@ public class UserProfile {
     /**
      * The photo others may see: none while the account is disabled (the file is kept) or deleted.
      */
-    public Media visibleAvatar() {
+    public @Nullable Media visibleAvatar() {
         return status == UserStatus.ACTIVE || status == UserStatus.UNVERIFIED ? avatar : null;
     }
 }

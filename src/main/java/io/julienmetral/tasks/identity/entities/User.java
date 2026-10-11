@@ -26,6 +26,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.DynamicUpdate;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The account: credentials, roles, verification and activity. What others see of the user lives in
@@ -66,17 +67,17 @@ public class User extends AuditableEntity implements Serializable {
 
     @Column(name = "email_verified_at")
     @Setter(AccessLevel.NONE)
-    private Instant emailVerifiedAt;
+    private @Nullable Instant emailVerifiedAt;
 
     @Column(name = "last_login_at")
-    private Instant lastLoginAt;
+    private @Nullable Instant lastLoginAt;
 
     // Login or token refresh: what the inactivity retention measures (see UserRetentionService)
     @Column(name = "last_active_at")
-    private Instant lastActiveAt;
+    private @Nullable Instant lastActiveAt;
 
     @Column(name = "inactivity_warned_at")
-    private Instant inactivityWarnedAt;
+    private @Nullable Instant inactivityWarnedAt;
 
     @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;
