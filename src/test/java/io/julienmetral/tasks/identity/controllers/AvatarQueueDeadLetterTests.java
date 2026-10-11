@@ -4,8 +4,10 @@ import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.messaging.AvatarQueues;
 import io.julienmetral.tasks.identity.messaging.AvatarUploaded;
+import io.julienmetral.tasks.media.exceptions.AntivirusUnavailableException;
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
 import io.julienmetral.tasks.media.services.ObjectStorage;
+import io.julienmetral.tasks.media.services.VirusScanner;
 import io.julienmetral.tasks.support.DeadLetterIntegrationTest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -14,6 +16,7 @@ import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.io.InputStream;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -32,7 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Retries and dead-lettering of the profile photo queue, with reads from storage made to fail through a spy. The
- * same spy also lets a test act while the worker's transaction is open.
+ * same spy also lets a test act while the worker's transaction is open, such as taking the antivirus down.
  */
 @DeadLetterIntegrationTest
 class AvatarQueueDeadLetterTests extends AbstractAvatarApiTests {
@@ -43,6 +47,9 @@ class AvatarQueueDeadLetterTests extends AbstractAvatarApiTests {
 
     @Autowired
     private ObjectStorage objectStorage;
+
+    @Autowired
+    private VirusScanner virusScanner;
 
     @Autowired
     private RabbitTemplate rabbitTemplate;
@@ -107,6 +114,26 @@ class AvatarQueueDeadLetterTests extends AbstractAvatarApiTests {
 
         assertThat(avatarStorageKey(user)).isNotNull();
         assertThat(avatarUploadCountUploadedBy(user)).isZero();
+        assertThat(rabbitTemplate.receive(AvatarQueues.DEAD_LETTER, 500)).isNull();
+    }
+
+    @Test
+    void antivirusDownAfterTheUploadWasAcceptedDoesNotStopTheWorker() throws Exception {
+        User user = createUser(UserRole.USER);
+        doAnswer(invocation -> {
+            doThrow(new AntivirusUnavailableException("clamd down"))
+                    .when(virusScanner).findThreat(any(InputStream.class));
+
+            return invocation.callRealMethod();
+        }).when(objectStorage).open(startsWith("avatar-upload/"));
+
+        uploadAvatar(user, asUser(user), "me.png", opaquePng())
+                .andExpect(status().isAccepted());
+        awaitProcessed(user);
+
+        assertThat(avatarStorageKey(user)).startsWith("avatar/");
+        assertThat(avatarUploadCountUploadedBy(user)).isZero();
+        verify(virusScanner, times(1)).findThreat(any(InputStream.class));
         assertThat(rabbitTemplate.receive(AvatarQueues.DEAD_LETTER, 500)).isNull();
     }
 

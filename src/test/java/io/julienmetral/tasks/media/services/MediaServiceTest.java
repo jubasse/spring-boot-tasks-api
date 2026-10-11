@@ -908,6 +908,85 @@ class MediaServiceTest {
     }
 
     @Nested
+    class StoreGeneratedFromBytes {
+
+        @Test
+        void storesTheBytesUnderTheUsagePrefixWithTheirChecksum() {
+            savesWhatItIsGiven();
+            UserProfile owner = reference(UPLOADER_ID);
+            when(userProfileRepository.getReferenceById(UPLOADER_ID)).thenReturn(owner);
+            byte[][] uploaded = new byte[1][];
+            doAnswer(invocation -> {
+                uploaded[0] = invocation.<InputStream>getArgument(1).readAllBytes();
+                return null;
+            }).when(objectStorage).put(anyString(), any(InputStream.class), anyLong(), anyString());
+
+            Instant before = Instant.now();
+            Media media = service.storeGenerated(PHOTO, "avatar.jpg", "image/jpeg", MediaUsage.AVATAR, UPLOADER_ID);
+
+            String key = uploadedKey();
+            assertThat(key).startsWith("avatar/");
+            assertThat(UUID.fromString(key.substring("avatar/".length()))).isNotNull();
+            verify(objectStorage).put(eq(key), any(InputStream.class), eq((long) PHOTO.length), eq("image/jpeg"));
+            assertThat(uploaded[0]).isEqualTo(PHOTO);
+
+            assertThat(media.getStorageKey()).isEqualTo(key);
+            assertThat(media.getUsage()).isEqualTo(MediaUsage.AVATAR);
+            assertThat(media.getOriginalFilename()).isEqualTo("avatar.jpg");
+            assertThat(media.getContentType()).isEqualTo("image/jpeg");
+            assertThat(media.getSizeBytes()).isEqualTo(PHOTO.length);
+            assertThat(media.getSha256()).isEqualTo(sha256Hex(PHOTO));
+            assertThat(media.getUploadedBy()).isSameAs(owner);
+            assertThat(media.getCreatedAt()).isBetween(before, Instant.now());
+            verify(mediaRepository).save(media);
+        }
+
+        @Test
+        void neitherDetectsTheTypeNorScansTheBytes() {
+            savesWhatItIsGiven();
+
+            service.storeGenerated(PHOTO, "avatar.png", "image/png", MediaUsage.AVATAR, null);
+
+            verifyNoInteractions(contentTypeDetector, virusScanner);
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"image/gif", "application/pdf", "text/html", ""})
+        void typeTheUsageDoesNotAllowIsRefusedBeforeAnythingIsStored(String contentType) {
+            assertThatThrownBy(() -> service.storeGenerated(PHOTO, "avatar.jpg", contentType, MediaUsage.AVATAR,
+                    UPLOADER_ID))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage(contentType + " is not a type of AVATAR");
+
+            verifyNoInteractions(objectStorage, mediaRepository, userProfileRepository);
+            assertThat(synchronizations()).isEmpty();
+        }
+
+        @Test
+        void rollbackDeletesTheStoredBytes() {
+            savesWhatItIsGiven();
+            service.storeGenerated(PHOTO, "avatar.jpg", "image/jpeg", MediaUsage.AVATAR, null);
+
+            assertThat(synchronizations()).singleElement()
+                    .satisfies(cleanup -> cleanup.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+
+            String key = uploadedKey();
+            verify(objectStorage).delete(key);
+        }
+
+        @Test
+        void commitKeepsTheStoredBytes() {
+            savesWhatItIsGiven();
+            service.storeGenerated(PHOTO, "avatar.jpg", "image/jpeg", MediaUsage.AVATAR, null);
+
+            assertThat(synchronizations()).singleElement()
+                    .satisfies(cleanup -> cleanup.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+
+            verify(objectStorage, never()).delete(anyString());
+        }
+    }
+
+    @Nested
     class Delete {
 
         private static final String KEY = "avatar/previous";

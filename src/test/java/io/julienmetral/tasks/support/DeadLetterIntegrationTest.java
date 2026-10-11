@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.support;
 
 import io.julienmetral.tasks.media.services.ObjectStorage;
+import io.julienmetral.tasks.media.services.VirusScanner;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -16,8 +17,8 @@ import java.lang.annotation.Target;
 /**
  * An {@link IntegrationTest} whose queue listeners retry only {@link #MAX_RETRIES} times with a short backoff, so a
  * failing message reaches its dead-letter queue in well under a second. SMTP is a mock (so the mail health indicator,
- * which needs a real {@code JavaMailSenderImpl}, is off) and the object storage a spy, for every class that uses it:
- * declaring them here rather than in each class keeps the dead-letter tests in one context.
+ * which needs a real {@code JavaMailSenderImpl}, is off), and the object storage and the virus scanner are spies, for
+ * every class that uses them: declaring them here rather than in each class keeps the dead-letter tests in one context.
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
@@ -31,7 +32,7 @@ import java.lang.annotation.Target;
         "management.health.mail.enabled=false"
 })
 @MockitoBean(types = JavaMailSender.class)
-@MockitoSpyBean(types = ObjectStorage.class)
+@MockitoSpyBean(types = {ObjectStorage.class, VirusScanner.class})
 public @interface DeadLetterIntegrationTest {
 
     int MAX_RETRIES = 2;
