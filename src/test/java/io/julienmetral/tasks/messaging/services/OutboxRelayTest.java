@@ -59,6 +59,7 @@ class OutboxRelayTest {
             Duration.ofMinutes(10),
             Duration.ofSeconds(7),
             Duration.ofDays(7),
+            true,
             "0 0 * * * *"
     );
 
@@ -106,7 +107,7 @@ class OutboxRelayTest {
     @Test
     void messageNotConfirmedWithinTheTimeoutIsNotMarkedPublished() {
         OutboxProperties shortTimeout = new OutboxProperties(Duration.ofSeconds(5), BATCH_SIZE, Duration.ofMinutes(10),
-                Duration.ofMillis(50), Duration.ofDays(7), "0 0 * * * *");
+                Duration.ofMillis(50), Duration.ofDays(7), true, "0 0 * * * *");
         relay = new OutboxRelay(repository, rabbitTemplate, jsonMapper, shortTimeout, Clock.fixed(NOW, ZoneOffset.UTC), meterRegistry);
         OutboxMessage row = mailRow();
         when(repository.lockUnpublished(List.of(row.getId()))).thenReturn(List.of(row));

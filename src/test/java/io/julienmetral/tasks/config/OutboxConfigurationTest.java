@@ -1,5 +1,6 @@
 package io.julienmetral.tasks.config;
 
+import io.julienmetral.tasks.messaging.services.OutboxPurgeJob;
 import io.julienmetral.tasks.messaging.services.OutboxRelay;
 import io.julienmetral.tasks.messaging.services.OutboxRelayJob;
 import org.junit.jupiter.api.Test;
@@ -29,7 +30,8 @@ class OutboxConfigurationTest {
     private static final String YEARLY_CRON = "0 0 0 1 1 *";
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
-            .withUserConfiguration(MessagingConfiguration.class, SchedulingConfiguration.class, OutboxRelayJob.class)
+            .withUserConfiguration(MessagingConfiguration.class, SchedulingConfiguration.class, OutboxRelayJob.class,
+                    OutboxPurgeJob.class)
             .withBean(JsonMapper.class, () -> JsonMapper.builder().build())
             .withBean(OutboxRelay.class, () -> mock(OutboxRelay.class))
             .withBean(AmqpAdmin.class, () -> mock(AmqpAdmin.class))
@@ -70,7 +72,25 @@ class OutboxConfigurationTest {
             assertThat(properties.maxRetryDelay()).isEqualTo(Duration.ofMinutes(15));
             assertThat(properties.confirmTimeout()).isEqualTo(Duration.ofSeconds(3));
             assertThat(properties.retention()).isEqualTo(Duration.ofDays(2));
+            assertThat(properties.purgeEnabled()).isTrue();
             assertThat(properties.purgeCron()).isEqualTo(YEARLY_CRON);
+        });
+    }
+
+    @Test
+    void missingPurgeSwitchKeepsThePurgeAndThePoller() {
+        configured.run(context -> assertThat(context)
+                .hasSingleBean(OutboxPurgeJob.class)
+                .hasSingleBean(OutboxRelayJob.class));
+    }
+
+    @Test
+    void disabledPurgeRemovesOnlyThePurgeJob() {
+        configured.withPropertyValues("messaging.outbox.purge-enabled=false").run(context -> {
+            assertThat(context)
+                    .doesNotHaveBean(OutboxPurgeJob.class)
+                    .hasSingleBean(OutboxRelayJob.class);
+            assertThat(context.getBean(OutboxProperties.class).purgeEnabled()).isFalse();
         });
     }
 
@@ -168,6 +188,7 @@ class OutboxConfigurationTest {
                     assertThat(properties.maxRetryDelay()).isEqualTo(Duration.ofMinutes(10));
                     assertThat(properties.confirmTimeout()).isEqualTo(Duration.ofSeconds(5));
                     assertThat(properties.retention()).isEqualTo(Duration.ofDays(7));
+                    assertThat(properties.purgeEnabled()).isTrue();
                     assertThat(properties.purgeCron()).isEqualTo("0 0 * * * *");
                     assertThat(context.getEnvironment().getProperty("spring.rabbitmq.publisher-confirm-type"))
                             .isEqualTo("correlated");
