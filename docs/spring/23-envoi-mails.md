@@ -74,6 +74,7 @@ Le listener de la file ne rejette tout de suite que les deux dernières. Les deu
 
 - Par défaut, certains délais de JavaMail sont infinis : un serveur muet bloque le thread qui envoie.
 - On les borne avec `mail.smtp.connectiontimeout`, `mail.smtp.timeout` et `mail.smtp.writetimeout`, en millisecondes, sous `spring.mail.properties`.
+- Un envoi bloqué ne lève aucune exception : ni réessai ni dead letter, et le consommateur de la file reste pris. Avec un délai, l'envoi échoue en `MailSendException` et repart dans les réessais.
 
 ## Implémentation avec Spring
 
@@ -118,8 +119,8 @@ spring:
     port: ${MAIL_PORT:1025}                    # Mailpit en développement
     properties:
       "[mail.smtp.connectiontimeout]": 5000    # millisecondes
-      "[mail.smtp.timeout]": 3000
-      "[mail.smtp.writetimeout]": 5000
+      "[mail.smtp.timeout]": 15000
+      "[mail.smtp.writetimeout]": 15000
 app:
   mail:
     from: ${MAIL_FROM:no-reply@shop.local}
@@ -425,12 +426,15 @@ Les réglages :
 | `spring.mail.host` / `port` | `localhost` / `1025` (`MAIL_HOST`, `MAIL_PORT`) | Mailpit de `compose.yaml` |
 | `spring.mail.port` en `prod` | `${MAIL_PORT:587}` | port de soumission |
 | `mail.smtp.auth`, `starttls.enable`, `starttls.required` en `prod` | `true` (`MAIL_SMTP_AUTH`, `MAIL_STARTTLS`) | authentification et STARTTLS |
+| `mail.smtp.connectiontimeout` | `5000` (5 s) | connexion au serveur SMTP |
+| `mail.smtp.timeout`, `mail.smtp.writetimeout` | `15000` (15 s) | lecture et écriture |
 
 Ce qui est propre au dépôt :
 
 - `TaskNotificationSender` : seul l'assigné concerné (ou la personne mentionnée) reçoit un mail. Jamais pour sa propre action, seulement si son compte est actif (`UserStatus.ACTIVE`, lu en base) et si l'interrupteur correspondant est allumé (`NotificationSettingsService.isEnabled`). Un assigné mentionné reçoit le mail de mention au lieu du mail de commentaire, sauf s'il a éteint les mentions.
 - Les dates des mails sont en UTC, écrites avec « UTC ». Le mail « webhook désactivé » ne cite que l'hôte.
 - En production, `spring.mail.host` et `mail.from` n'ont pas de valeur par défaut et sont vérifiés au démarrage (`deployment.required-properties`, guide 02).
+- Les délais SMTP sont ceux du HTTP sortant (5 s pour la connexion, 15 s pour la lecture, guide 26), réglés dans `application.yaml` pour tous les profils. Le bloc `properties` du profil `prod` (authentification, STARTTLS) s'y ajoute sans les remplacer. Sans eux, deux envois vers un serveur muet suffiraient à bloquer les deux consommateurs de `mail.send` (`concurrency: 2`), et l'indicateur de santé `mail` resterait bloqué aussi.
 
 Les tests :
 
@@ -438,6 +442,7 @@ Les tests :
 - [`TestcontainersConfiguration`][containers] porte le conteneur Mailpit, réutilisé, et règle `spring.mail.host`, `spring.mail.port` et `mailpit.api-url` par un `DynamicPropertyRegistrar`.
 - [`MailQueueTests`][mail-queue-tests] joue le trajet complet : un mail validé arrive, attend dans la file sans consommateur, et n'existe pas après un rollback (délai de grâce de 800 ms avant de compter).
 - [`MailQueueListenerTest`][listener-test] teste le listener seul : envoi, réessais sur les échecs SMTP, rejet immédiat.
+- [`MailConfigurationTest`][mail-config-test] vérifie les trois délais du `JavaMailSenderImpl`, avec `application.yaml` seul et avec le profil `prod` par-dessus.
 - Les réessais et la dead letter sont testés par `MailQueueDeadLetterTests` (guide 19).
 
 Pour ajouter un mail : un événement publié par le service concerné, un `...EmailSender` avec un `@EventListener` qui appelle `MailService.send`, et un test qui lit le mail avec `Mailpit`.
@@ -466,3 +471,4 @@ Pour ajouter un mail : un événement publié par le service concerné, un `...E
 [containers]: ../../src/test/java/io/julienmetral/tasks/TestcontainersConfiguration.java
 [mail-queue-tests]: ../../src/test/java/io/julienmetral/tasks/mail/MailQueueTests.java
 [listener-test]: ../../src/test/java/io/julienmetral/tasks/mail/MailQueueListenerTest.java
+[mail-config-test]: ../../src/test/java/io/julienmetral/tasks/config/MailConfigurationTest.java
