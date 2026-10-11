@@ -151,7 +151,7 @@ public class QuotaQueries {
 ```java
 // dans InvoiceQueries
 public List<UUID> recordReminders(Instant from, Instant to, Instant now) {
-    return jdbc.queryForList(
+    return jdbc.query(
             """
                     WITH due AS (
                         SELECT id, due_at FROM invoices
@@ -167,7 +167,7 @@ public List<UUID> recordReminders(Instant from, Instant to, Instant now) {
                     .addValue("from", Timestamp.from(from))
                     .addValue("to", Timestamp.from(to))
                     .addValue("now", Timestamp.from(now)),
-            UUID.class);
+            (row, rowNumber) -> row.getObject(1, UUID.class));
 }
 ```
 
@@ -185,7 +185,7 @@ public class PrintJobQueries {
     private final NamedParameterJdbcTemplate jdbc;
 
     public List<UUID> claimDue(Instant now, Instant leaseEnd, int limit) {
-        return jdbc.queryForList(
+        return jdbc.query(
                 """
                         UPDATE print_jobs
                         SET next_attempt_at = :leaseEnd
@@ -202,7 +202,7 @@ public class PrintJobQueries {
                         .addValue("now", Timestamp.from(now))
                         .addValue("leaseEnd", Timestamp.from(leaseEnd))
                         .addValue("limit", limit),
-                UUID.class);
+                (row, rowNumber) -> row.getObject(1, UUID.class));
     }
 }
 ```
@@ -214,7 +214,7 @@ La méthode est appelée dans un service `@Transactional`. Les verrous de lignes
 ```java
 // dans InvoiceQueries
 public List<UUID> anonymizeDeletedBefore(Instant cutoff, Instant now) {
-    List<UUID> ids = jdbc.queryForList(
+    List<UUID> ids = jdbc.query(
             """
                     UPDATE invoices
                     SET customer_name = 'Deleted customer', anonymized_at = :now
@@ -224,7 +224,7 @@ public List<UUID> anonymizeDeletedBefore(Instant cutoff, Instant now) {
             new MapSqlParameterSource()
                     .addValue("cutoff", Timestamp.from(cutoff))
                     .addValue("now", Timestamp.from(now)),
-            UUID.class);
+            (row, rowNumber) -> row.getObject(1, UUID.class));
 
     if (!ids.isEmpty()) {                       // rien à supprimer sinon
         jdbc.update("DELETE FROM invoice_reminders WHERE invoice_id IN (:ids)",
@@ -298,10 +298,13 @@ Les méthodes les plus utiles de `NamedParameterJdbcTemplate` :
 |---|---|---|
 | `query(sql, params, rowMapper)` | `List<T>` | plusieurs lignes en objets |
 | `queryForObject(sql, params, Integer.class)` | une valeur | un compteur, un `RETURNING count` |
-| `queryForList(sql, params, UUID.class)` | `List<T>` | une colonne, souvent un `RETURNING id` |
+| `query(sql, params, (row, n) -> row.getObject(1, UUID.class))` | `List<T>` | une colonne non nulle, souvent un `RETURNING id` |
+| `queryForList(sql, params, UUID.class)` | `List<@Nullable T>` | une colonne qui peut contenir `NULL` |
 | `queryForMap(sql, params)` | `Map<String, Object>` | une ligne, dans un test |
 | `update(sql, params)` | `int` | lignes modifiées par `INSERT`, `UPDATE`, `DELETE` |
 | `update(sql, params, keyHolder)` | `int` | lire des clés générées |
+
+Spring 7 déclare `queryForList(sql, params, UUID.class)` avec le type `List<@Nullable T>` : une ligne peut porter `NULL`. NullAway refuse alors de l'affecter à une `List<UUID>`. Pour une colonne `NOT NULL`, le dépôt passe un `RowMapper` à `query`, qui renvoie `List<T>`.
 
 Limites de cette version : rien ne vérifie le SQL à la compilation ni au démarrage. Une faute de frappe se voit au premier appel, d'où un test de slice par classe.
 
