@@ -30,6 +30,7 @@ mail:
 # Requests counted per client address or account on the endpoints anyone can call; over a limit, 429 with Retry-After
 rate-limit:
   enabled: ${RATE_LIMIT_ENABLED:true}
+  purge-enabled: ${RATE_LIMIT_PURGE_ENABLED:true}
   purge-cron: 0 20 * * * *
   login-per-ip: {requests: 30, window: PT1M}
   login-per-email: {requests: 10, window: PT15M}
@@ -46,6 +47,7 @@ messaging:
     max-retry-delay: PT10M
     confirm-timeout: PT5S
     retention: P7D
+    purge-enabled: ${OUTBOX_PURGE_ENABLED:true}
     purge-cron: 0 0 * * * *
 # Media file storage. storage.driver picks the implementation: rustfs (defaults match compose.yaml) or aws-s3.
 storage:

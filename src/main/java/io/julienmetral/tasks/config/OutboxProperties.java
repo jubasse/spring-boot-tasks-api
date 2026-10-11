@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 import org.springframework.validation.annotation.Validated;
 
 import java.time.Duration;
@@ -14,6 +15,7 @@ import java.time.Duration;
  * @param maxRetryDelay  upper bound of the delay between two attempts to publish the same message
  * @param confirmTimeout how long to wait for the broker to confirm a message
  * @param retention      how long published messages are kept before being deleted
+ * @param purgeEnabled   whether this instance deletes published messages
  * @param purgeCron      when published messages older than the retention are deleted (Spring cron, six fields)
  */
 @Validated
@@ -24,6 +26,7 @@ public record OutboxProperties(
         @NotNull Duration maxRetryDelay,
         @NotNull Duration confirmTimeout,
         @NotNull Duration retention,
+        @DefaultValue("true") boolean purgeEnabled,
         @NotBlank String purgeCron
 ) {
 }
