@@ -7,7 +7,7 @@
 - **Problème** : JPA ne sait pas écrire certaines instructions SQL (un upsert qui renvoie le nouveau compte, un lot réservé avec `SKIP LOCKED`) et ne voit pas les lignes supprimées logiquement.
 - **Quand l'utiliser** : compteurs atomiques, enregistrements « une seule fois », lots partagés entre plusieurs instances, purges et anonymisations sur des lignes supprimées logiquement, rapports.
 - **Quand s'en passer** : un CRUD simple sur des entités (guide 11). JPA apporte gratuitement le dirty checking, `@Version`, l'audit et la suppression logique.
-- **Dans ce dépôt** : une classe `...Queries` par besoin (`RateLimitQueries`, `TaskReminderQueries`, `WebhookDeliveryQueries`, `UserRetentionQueries`, `MediaCleanupQueries`, `PersonalDataQueries`, `BatchMetadataQueries`).
+- **Dans ce dépôt** : une classe `...Queries` par besoin (`RateLimitQueries`, `TaskReminderQueries`, `WebhookDeliveryQueries`, `UserRetentionQueries`, `ExpiredTokenQueries`, `MediaCleanupQueries`, `PersonalDataQueries`, `BatchMetadataQueries`).
 - **Prérequis** : guides 12 (suppression logique) et 14 (transactions). Versions : Spring Boot 4.1, Spring Framework 7 (`spring-jdbc`), PostgreSQL 18.
 
 Les façons d'envoyer du SQL écrit à la main :
@@ -382,6 +382,7 @@ Chaque motif de ce guide est sûr avec plusieurs instances, car Postgres sérial
 | [`TaskReminderQueries`][reminders] | CTE `due`, `ON CONFLICT ON CONSTRAINT ... DO NOTHING RETURNING` : un rappel par tâche, type, échéance et destinataire |
 | [`WebhookDeliveryQueries`][webhooks] | `claimDue` : `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED) RETURNING id`, et la purge |
 | [`UserRetentionQueries`][retention] | anonymise les comptes supprimés (`UPDATE user_profiles ... FROM users`), puis supprime les lignes du compte |
+| [`ExpiredTokenQueries`][expired-tokens] | purge les jetons expirés : les jetons à usage unique un par un, ceux de rafraîchissement par famille entière (`NOT EXISTS`, guide 09) |
 | [`MediaCleanupQueries`][media] | détache et purge les médias des tâches et comptes supprimés, `RETURNING` des clés de stockage |
 | [`PersonalDataQueries`][personal] | lit toutes les données d'un compte, tâches supprimées comprises, pour l'export RGPD |
 | [`BatchMetadataQueries`][batch] | purge l'historique de Spring Batch (guide 22) |
@@ -399,7 +400,7 @@ Les tests :
 
 - [`RateLimitQueriesTests`][rate-limit-tests] : fenêtre datée `2000-06-01T12:00:00Z`, et `concurrentRequestsNeverReadTheSameCount` (8 threads de 25 requêtes, sous `NOT_SUPPORTED`, compteur supprimé dans `finally`).
 - [`TaskReminderQueriesTests`][reminders-tests] : échéances en 2000 ; un rappel par échéance, une échéance déplacée ou un nouvel assigné en crée un autre, les tâches closes ou supprimées sont sautées.
-- [`UserRetentionQueriesTests`][retention-tests] et [`MediaCleanupQueriesTests`][media-tests].
+- [`UserRetentionQueriesTests`][retention-tests], [`ExpiredTokenQueriesTests`][expired-tokens-tests] et [`MediaCleanupQueriesTests`][media-tests].
 - Un test qui doit valider depuis une autre connexion utilise [`Transactions.inNewTransaction`][transactions] (guide 14).
 
 Pour ajouter une requête : la mettre dans la classe `...Queries` de sa fonctionnalité (son nom finit par `Queries`, pour que `@JdbcSliceTest` la charge), écrire `deleted_at IS NULL` si besoin, puis un test de ce slice avec des données datées en 2000 et des clés uniques.
@@ -419,6 +420,7 @@ Pour ajouter une requête : la mettre dans la classe `...Queries` de sa fonction
 [reminders]: ../../src/main/java/io/julienmetral/tasks/task/repositories/TaskReminderQueries.java
 [webhooks]: ../../src/main/java/io/julienmetral/tasks/notification/repositories/WebhookDeliveryQueries.java
 [retention]: ../../src/main/java/io/julienmetral/tasks/identity/repositories/UserRetentionQueries.java
+[expired-tokens]: ../../src/main/java/io/julienmetral/tasks/identity/repositories/ExpiredTokenQueries.java
 [media]: ../../src/main/java/io/julienmetral/tasks/media/repositories/MediaCleanupQueries.java
 [personal]: ../../src/main/java/io/julienmetral/tasks/export/personaldata/PersonalDataQueries.java
 [batch]: ../../src/main/java/io/julienmetral/tasks/export/repositories/BatchMetadataQueries.java
@@ -426,5 +428,6 @@ Pour ajouter une requête : la mettre dans la classe `...Queries` de sa fonction
 [rate-limit-tests]: ../../src/test/java/io/julienmetral/tasks/ratelimit/repositories/RateLimitQueriesTests.java
 [reminders-tests]: ../../src/test/java/io/julienmetral/tasks/task/repositories/TaskReminderQueriesTests.java
 [retention-tests]: ../../src/test/java/io/julienmetral/tasks/identity/repositories/UserRetentionQueriesTests.java
+[expired-tokens-tests]: ../../src/test/java/io/julienmetral/tasks/identity/repositories/ExpiredTokenQueriesTests.java
 [media-tests]: ../../src/test/java/io/julienmetral/tasks/media/repositories/MediaCleanupQueriesTests.java
 [transactions]: ../../src/test/java/io/julienmetral/tasks/support/Transactions.java

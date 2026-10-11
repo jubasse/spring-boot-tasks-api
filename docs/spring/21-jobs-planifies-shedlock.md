@@ -413,7 +413,7 @@ Les verrous et leurs durées :
 | `data-export-recovery` | 5 min après la fin du tour précédent | 4 min | 30 s |
 | `outbox-purge`, `rate-limit-purge` | toutes les heures | 30 min | 1 min |
 | `media-cleanup`, `user-retention` | chaque nuit (03:30, 04:00) | 2 h | 5 min |
-| `webhook-delivery-purge`, `data-export-purge` | chaque nuit (03:45, 04:30) | 1 h | 5 min |
+| `webhook-delivery-purge`, `expired-token-purge`, `data-export-purge` | chaque nuit (03:45, 04:15, 04:30) | 1 h | 5 min |
 
 Les deux pollers sans verrou, qui se partagent leur stock avec `SKIP LOCKED` : `OutboxRelayJob.publishDue` et `WebhookRetryJob.enqueueDueRetries`.
 

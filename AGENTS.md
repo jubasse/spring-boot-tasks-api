@@ -81,7 +81,7 @@ Controllers are served under `/api/v1/...` but declare their paths without it (`
 
 6. **Password reset** (`PasswordResetService`): `POST /api/v1/auth/password-reset/request` always answers 202 and emails a 1-hour, single-use link only to enabled accounts, so the endpoint does not reveal which emails exist. `POST /api/v1/auth/password-reset/confirm` sets the new password, revokes all refresh tokens, and marks the email as verified.
 
-Refresh, verification and reset tokens are 256-bit random values (`OpaqueTokens`). Only their SHA-256 hash is stored.
+Refresh, verification and reset tokens are 256-bit random values (`OpaqueTokens`). Only their SHA-256 hash is stored. `ExpiredTokenPurgeJob` deletes them daily once expired for `identity.token-purge.retention` (7 days); refresh tokens go by whole family, since reuse detection needs a revoked token while its family can still be used (`ExpiredTokenQueries`).
 
 7. **GDPR retention** (`UserRetentionService`, run daily at 04:00 by `UserRetentionJob`, settings under `identity.retention`):
    - users soft-deleted for 30 days are erased in native SQL (`UserRetentionQueries`): their profile becomes "Deleted user" without photo, and their `users` row is deleted with its roles, settings and tokens. Tasks and history keep pointing to the profile, and the original email becomes free for a new sign-up. The photo files go with the media cleanup, which uses the same 30 days.
@@ -270,7 +270,7 @@ Every message for RabbitMQ goes through `messaging.services.Outbox.enqueue` (a q
 ### Scheduled jobs
 
 Jobs run with `@Scheduled` inside the API. A job that must run once per schedule carries ShedLock's `@SchedulerLock` (`config.SchedulerLockConfiguration`): the method first takes its row in `scheduler_locks`, and an instance that finds it taken skips that run.
-- **Locked:** the media cleanup, the user retention, the due-date reminders, the export recovery, and the purges of the outbox, rate limit counters, webhook deliveries and exports. Their lock names are the constants of `ScheduledJobLocks`.
+- **Locked:** the media cleanup, the user retention, the due-date reminders, the export recovery, and the purges of the outbox, rate limit counters, webhook deliveries, exports and expired tokens. Their lock names are the constants of `ScheduledJobLocks`.
 - **Not locked on purpose:** the outbox poller and the webhook retries. Every instance polls and `FOR UPDATE SKIP LOCKED` shares the backlog; a lock would leave it to one instance.
 - **Durations:** `lockAtMostFor` releases a crashed instance's lock, so it stays well above the longest run, and below the period of a frequent job. `lockAtLeastFor` keeps a quick run's lock for a while, so an instance whose clock fires late does not run the job again.
 - **Times:** `usingDbTime()` takes every time from the database clock. The columns have no time zone on purpose: ShedLock writes UTC wall-clock values, which a `timestamptz` column would read in each session's zone.
