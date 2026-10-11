@@ -17,6 +17,7 @@ import io.julienmetral.tasks.export.repositories.BatchMetadataQueries;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.support.SqlStatementCounter;
+import io.julienmetral.tasks.support.SweepsSharedData;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -47,6 +48,7 @@ import tools.jackson.databind.JsonNode;
  * The scheduled work of the exports, called directly: the purge, and the recovery of interrupted
  * runs and of lost run messages, which relies on the lease a run renews.
  */
+@SweepsSharedData
 class DataExportLifecycleTests extends AbstractDataExportTests {
 
     private static final Instant LONG_AGO = Instant.parse("2000-01-01T00:00:00Z");

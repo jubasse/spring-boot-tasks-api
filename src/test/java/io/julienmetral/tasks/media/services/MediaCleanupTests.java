@@ -7,11 +7,13 @@ import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.model.MediaCleanupReport;
 import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.SweepsSharedData;
 import java.sql.Timestamp;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 @IntegrationTest
+@SweepsSharedData
 class MediaCleanupTests extends AbstractMediaCleanupTests {
 
     @Test

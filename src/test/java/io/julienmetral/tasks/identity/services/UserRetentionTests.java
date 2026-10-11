@@ -13,6 +13,7 @@ import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
+import io.julienmetral.tasks.support.SweepsSharedData;
 import io.julienmetral.tasks.support.TestClock;
 import java.sql.Timestamp;
 import java.time.Duration;
@@ -41,6 +42,7 @@ import tools.jackson.databind.json.JsonMapper;
  * their own users only, never on the counts of the report.
  */
 @IntegrationTest
+@SweepsSharedData
 class UserRetentionTests {
 
     private static final Instant NOW = Instant.parse("2100-01-01T00:00:00Z");

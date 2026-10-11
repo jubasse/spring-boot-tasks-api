@@ -15,6 +15,7 @@ import io.julienmetral.tasks.ratelimit.services.RateLimitKeys;
 import io.julienmetral.tasks.ratelimit.services.RateLimiter;
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
+import io.julienmetral.tasks.support.SweepsSharedData;
 import io.julienmetral.tasks.support.TestClock;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -79,6 +80,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
             "rate-limit.webhook-test-per-user.requests=" + RateLimitTests.WEBHOOK_TEST_PER_USER,
             "rate-limit.webhook-test-per-user.window=PT1H"
         })
+@SweepsSharedData
 class RateLimitTests {
 
     static final int LOGIN_PER_IP = 5;

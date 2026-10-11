@@ -21,6 +21,7 @@ import io.julienmetral.tasks.messaging.services.Outbox;
 import io.julienmetral.tasks.messaging.services.OutboxRelay;
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
+import io.julienmetral.tasks.support.SweepsSharedData;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
@@ -60,6 +61,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * RabbitMQ after commit, locked with {@code SKIP LOCKED} and purged after the retention.
  */
 @IntegrationTest
+@SweepsSharedData
 class OutboxTests {
 
     // Publishing runs asynchronously after commit: "nothing sent" can only be checked after a grace

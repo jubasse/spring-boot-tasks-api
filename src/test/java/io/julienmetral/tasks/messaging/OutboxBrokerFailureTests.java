@@ -13,6 +13,7 @@ import io.julienmetral.tasks.messaging.repositories.OutboxMessageRepository;
 import io.julienmetral.tasks.messaging.services.OutboxRelay;
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
+import io.julienmetral.tasks.support.SweepsSharedData;
 import io.julienmetral.tasks.support.TestClock;
 import java.net.ConnectException;
 import java.time.Duration;
@@ -41,6 +42,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * OutboxRelay#publishDue} itself.
  */
 @IntegrationTest
+@SweepsSharedData
 class OutboxBrokerFailureTests {
 
     // Delivery is asynchronous: "sent only once" can only be checked after a grace period

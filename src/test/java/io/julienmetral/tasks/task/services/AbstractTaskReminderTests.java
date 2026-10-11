@@ -13,6 +13,7 @@ import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.SweepsSharedData;
 import io.julienmetral.tasks.support.TestClock;
 import io.julienmetral.tasks.task.entities.TaskReminderKind;
 import java.time.Duration;
@@ -42,6 +43,7 @@ import tools.jackson.databind.json.JsonMapper;
  * global counts.
  */
 @IntegrationTest
+@SweepsSharedData
 abstract class AbstractTaskReminderTests {
 
     static final Instant NOW = Instant.parse("2100-01-01T00:00:00Z");

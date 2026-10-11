@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.julienmetral.tasks.ratelimit.services.RateLimitCleanupJob;
 import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.SweepsSharedData;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.sql.Timestamp;
 import java.time.Duration;
@@ -23,6 +24,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * context, whose own purge skips while this class holds it.
  */
 @IntegrationTest
+@SweepsSharedData
 class ScheduledJobLockingTests {
 
     // Older than the day a purge keeps, and long before any window the other test contexts count

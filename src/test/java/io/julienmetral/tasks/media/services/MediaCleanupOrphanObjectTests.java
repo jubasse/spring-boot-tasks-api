@@ -6,6 +6,7 @@ import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.model.MediaCleanupReport;
 import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.SweepsSharedData;
 import io.julienmetral.tasks.support.TestClock;
 import java.time.Duration;
 import java.util.UUID;
@@ -19,6 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
  * the tests backdate them.
  */
 @IntegrationTest
+@SweepsSharedData
 class MediaCleanupOrphanObjectTests extends AbstractMediaCleanupTests {
 
     @Autowired private TestClock clock;

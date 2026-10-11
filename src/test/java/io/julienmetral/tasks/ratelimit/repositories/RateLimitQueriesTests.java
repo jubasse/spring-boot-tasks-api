@@ -3,6 +3,7 @@ package io.julienmetral.tasks.ratelimit.repositories;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.julienmetral.tasks.support.JdbcSliceTest;
+import io.julienmetral.tasks.support.SweepsSharedData;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -22,6 +23,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @JdbcSliceTest
+@SweepsSharedData
 class RateLimitQueriesTests {
 
     // Before anything the other test contexts write to the shared database: the purge below reaches

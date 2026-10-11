@@ -3,6 +3,7 @@ package io.julienmetral.tasks.export.repositories;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.julienmetral.tasks.support.JdbcSliceTest;
+import io.julienmetral.tasks.support.SweepsSharedData;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -14,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 @JdbcSliceTest
+@SweepsSharedData
 class BatchMetadataQueriesTests {
 
     // Every execution sits in 2000, before anything the jobs of the other test contexts record in
