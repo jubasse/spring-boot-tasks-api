@@ -69,6 +69,8 @@ public class WebhookDeliveryService {
 
     private static final String DESTINATION_NOT_ALLOWED = "DestinationNotAllowed";
 
+    private static final String SECRET_UNREADABLE = "SecretUnreadable";
+
     private static final String TEST_EVENT = "webhook.test";
 
     private record Attempt(UUID deliveryId, URI url, byte[] body, List<String> secrets) {
@@ -190,6 +192,10 @@ public class WebhookDeliveryService {
      * paused or not, and records nothing. Runs outside any transaction.
      */
     public WebhookTestResult sendTest(WebhookEndpoint endpoint) {
+        if (!credentialReadable(endpoint)) {
+            return new WebhookTestResult(false, null, SECRET_UNREADABLE, 0);
+        }
+
         String payload;
 
         if (endpoint.getKind() == WebhookKind.SLACK) {
@@ -289,12 +295,26 @@ public class WebhookDeliveryService {
             return Optional.empty();
         }
 
+        // An unreadable value once threw here: the message was dead-lettered and the retry job queued it every 5 min
+        if (!credentialReadable(endpoint)) {
+            fail(delivery, SECRET_UNREADABLE);
+            return Optional.empty();
+        }
+
         return Optional.of(new Attempt(
                 deliveryId,
                 targetUrl(endpoint),
                 delivery.getPayload().getBytes(StandardCharsets.UTF_8),
                 signingSecrets(endpoint)
         ));
+    }
+
+    /**
+     * Whether the value a call cannot do without decrypts: the URL of a Slack endpoint, the current secret of a signed
+     * one. A change of {@code webhooks.encryption-key} leaves it unreadable until the owner replaces it.
+     */
+    private boolean credentialReadable(WebhookEndpoint endpoint) {
+        return secrets.canDecrypt(endpoint.getKind() == WebhookKind.SLACK ? endpoint.getUrl() : endpoint.getSecret());
     }
 
     private URI targetUrl(WebhookEndpoint endpoint) {
@@ -312,7 +332,9 @@ public class WebhookDeliveryService {
         List<String> signingSecrets = new ArrayList<>();
         signingSecrets.add(secrets.decrypt(endpoint.getSecret()));
 
-        if (endpoint.getPreviousSecret() != null && endpoint.getPreviousSecretExpiresAt().isAfter(clock.instant())) {
+        // An unreadable previous secret is left out: the current one still signs
+        if (endpoint.getPreviousSecret() != null && endpoint.getPreviousSecretExpiresAt().isAfter(clock.instant())
+                && secrets.canDecrypt(endpoint.getPreviousSecret())) {
             signingSecrets.add(secrets.decrypt(endpoint.getPreviousSecret()));
         }
 

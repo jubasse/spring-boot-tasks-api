@@ -23,6 +23,9 @@ public class WebhookSecrets {
 
     private static final int SECRET_BYTES = 32;
 
+    // The 16-byte IV and the 16-byte tag of AesGcmBytesEncryptor
+    private static final int MIN_ENCRYPTED_BYTES = 32;
+
     private final BytesEncryptor encryptor;
 
     private final SecureRandom random = new SecureRandom();
@@ -56,14 +59,35 @@ public class WebhookSecrets {
                 encryptor.encrypt(secret.getBytes(StandardCharsets.UTF_8)));
     }
 
+    /**
+     * @throws IllegalStateException    when the value was encrypted with another key, or is damaged
+     * @throws IllegalArgumentException when the value is not Base64
+     */
     public String decrypt(String encrypted) {
         if (!encrypted.startsWith(KEY_VERSION)) {
             throw new IllegalStateException("Webhook secret encrypted with an unknown key version");
         }
 
-        return new String(
-                encryptor.decrypt(Base64.getDecoder().decode(encrypted.substring(KEY_VERSION.length()))),
-                StandardCharsets.UTF_8
-        );
+        byte[] bytes = Base64.getDecoder().decode(encrypted.substring(KEY_VERSION.length()));
+
+        // Shorter than that, the encryptor fails with an index exception instead of an IllegalStateException
+        if (bytes.length < MIN_ENCRYPTED_BYTES) {
+            throw new IllegalStateException("Webhook secret too short to be an encrypted value");
+        }
+
+        return new String(encryptor.decrypt(bytes), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Whether {@link #decrypt} would succeed. A change of {@code webhooks.encryption-key} leaves every stored value
+     * unreadable: callers check first instead of failing on it.
+     */
+    public boolean canDecrypt(String encrypted) {
+        try {
+            decrypt(encrypted);
+            return true;
+        } catch (IllegalStateException | IllegalArgumentException unreadable) {
+            return false;
+        }
     }
 }

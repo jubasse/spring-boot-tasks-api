@@ -201,12 +201,12 @@ Each notification and its attempts are listed at `GET /api/v1/users/{id}/webhook
 {"delivered": false, "statusCode": 500, "error": null, "durationMillis": 184}
 ```
 
-When no answer came back, `statusCode` is absent and `error` says why: `Timeout`, `ConnectionFailed` or `DestinationNotAllowed`. You can send 10 test events per hour.
+When no answer came back, `statusCode` is absent and `error` says why: `Timeout`, `ConnectionFailed` or `DestinationNotAllowed`, or `SecretUnreadable` when nothing was sent because the server can no longer read the webhook's secret (rotate it, or for Slack send its URL again). You can send 10 test events per hour.
 
 ### Pause, change or rotate
 
 - `PUT /api/v1/users/{id}/webhooks/{webhookId}` replaces the URL and events, and pauses (`"enabled": false`) or resumes the webhook, also after a 410 or an automatic disabling.
-- `POST /api/v1/users/{id}/webhooks/{webhookId}/secret` gives a new secret. For the next 24 hours, each request is signed with both the old and the new one, so you can switch without losing any.
+- `POST /api/v1/users/{id}/webhooks/{webhookId}/secret` gives a new secret. For the next 24 hours, each request is signed with both the old and the new one, so you can switch without losing any. If the server can no longer read the old secret, after a change of its encryption key, only the new one signs and `previousSecretExpiresAt` is `null`.
 - `DELETE /api/v1/users/{id}/webhooks/{webhookId}` removes it with its delivery history.
 
 ### Receive them on your machine
@@ -322,7 +322,7 @@ The API reads its configuration from `src/main/resources/application.yaml`, whic
 | Variable | Default | Meaning |
 |---|---|---|
 | `JWT_SECRET` | none, required | Base64 key of at least 32 bytes that signs the access tokens |
-| `WEBHOOK_ENCRYPTION_KEY` | none, required | Base64 key of at least 32 bytes that encrypts the webhook signing secrets in the database. Changing it makes the secrets of existing webhooks unreadable |
+| `WEBHOOK_ENCRYPTION_KEY` | none, required | Base64 key of at least 32 bytes that encrypts the webhook signing secrets in the database. Changing it makes the secrets of existing webhooks unreadable: their deliveries fail with `SecretUnreadable` until each owner rotates the secret, or sends a Slack URL again |
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | set in `.env.example` | Database of the local PostgreSQL service |
 | `MAIL_FROM` | `no-reply@tasks.local` | Sender address of every email |
 | `EMAIL_VERIFICATION_URL`, `PASSWORD_RESET_URL` | `http://localhost:3000/...` | Front-end pages that the emailed links open, with `?token=...` |
@@ -359,7 +359,7 @@ Required variables:
 | Variable | Meaning | Example |
 |---|---|---|
 | `JWT_SECRET` | Base64 key of at least 32 bytes that signs the access tokens: `openssl rand -base64 32` | |
-| `WEBHOOK_ENCRYPTION_KEY` | Base64 key of at least 32 bytes that encrypts the webhook signing secrets, generated the same way. Keep it: a new key makes the secrets of existing webhooks unreadable | |
+| `WEBHOOK_ENCRYPTION_KEY` | Base64 key of at least 32 bytes that encrypts the webhook signing secrets, generated the same way. Keep it: a new key makes the secrets of existing webhooks unreadable, and their deliveries fail with `SecretUnreadable` until each owner rotates the secret, or sends a Slack URL again | |
 | `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` | PostgreSQL 18 database | `jdbc:postgresql://db.internal:5432/tasks` |
 | `SPRING_RABBITMQ_HOST` | RabbitMQ host. Set `SPRING_RABBITMQ_USERNAME` and `SPRING_RABBITMQ_PASSWORD` too: the default account, `guest`, only connects from the broker's own machine | `rabbitmq.internal` |
 | `MAIL_HOST` | SMTP server. `SPRING_MAIL_USERNAME` and `SPRING_MAIL_PASSWORD` hold its credentials | `smtp.example.com` |

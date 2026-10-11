@@ -9,7 +9,8 @@ public record WebhookSecretDto(
                 example = "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw")
         String secret,
 
-        @Schema(description = "Until then, deliveries carry a signature with the previous secret too")
+        @Schema(description = "Until then, deliveries carry a signature with the previous secret too; null when the "
+                + "previous secret could no longer be read, after a change of the server's encryption key")
         Instant previousSecretExpiresAt
 ) {
 }

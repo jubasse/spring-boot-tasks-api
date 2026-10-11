@@ -163,6 +163,48 @@ class WebhookSecretsTest {
                 .isInstanceOf(IllegalStateException.class);
     }
 
+    @Test
+    void valueTooShortToHoldTheIvAndTheTagIsRefused() {
+        String tooShort = "v1:" + Base64.getEncoder().encodeToString(new byte[3]);
+
+        assertThatIllegalStateException().isThrownBy(() -> secrets.decrypt(tooShort));
+    }
+
+    // canDecrypt
+
+    @Test
+    void canDecryptAValueEncryptedWithItsOwnKey() {
+        assertThat(secrets.canDecrypt(secrets.encrypt(secrets.generate()))).isTrue();
+    }
+
+    @Test
+    void cannotDecryptAValueEncryptedWithAnotherKey() {
+        String encrypted = new WebhookSecrets(key(32, 2)).encrypt(secrets.generate());
+
+        assertThat(secrets.canDecrypt(encrypted)).isFalse();
+    }
+
+    @Test
+    void cannotDecryptATamperedValue() {
+        byte[] bytes = Base64.getDecoder().decode(secrets.encrypt(secrets.generate()).substring("v1:".length()));
+        bytes[bytes.length / 2] ^= 1;
+
+        assertThat(secrets.canDecrypt("v1:" + Base64.getEncoder().encodeToString(bytes))).isFalse();
+    }
+
+    @Test
+    void cannotDecryptAValueWithAnUnknownKeyVersion() {
+        String otherVersion = "v2:" + secrets.encrypt(secrets.generate()).substring("v1:".length());
+
+        assertThat(secrets.canDecrypt(otherVersion)).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"v1:not base64!", "v1:AAAA", "v1:", ""})
+    void cannotDecryptAValueThatIsNotBase64OrTooShort(String value) {
+        assertThat(secrets.canDecrypt(value)).isFalse();
+    }
+
     private static void assertRefused(String key) {
         assertThatIllegalStateException()
                 .isThrownBy(() -> new WebhookSecrets(key))

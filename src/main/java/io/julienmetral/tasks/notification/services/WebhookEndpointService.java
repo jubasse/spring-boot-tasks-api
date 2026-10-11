@@ -160,7 +160,8 @@ public class WebhookEndpointService {
 
     /**
      * Replaces the signing secret. The previous one keeps signing deliveries, next to the new one, for
-     * {@code webhooks.previous-secret-validity}, so the receiver can switch without losing any.
+     * {@code webhooks.previous-secret-validity}, so the receiver can switch without losing any; unless it can no longer
+     * be read, after a change of {@code webhooks.encryption-key}: then none is kept, and the expiry returned is null.
      */
     @Transactional
     public RotatedWebhookSecret rotateSecret(UUID userId, UUID webhookId) {
@@ -171,10 +172,13 @@ public class WebhookEndpointService {
         }
 
         Instant now = clock.instant();
-        Instant previousSecretExpiresAt = now.plus(properties.previousSecretValidity());
         String secret = secrets.generate();
 
-        endpoint.setPreviousSecret(endpoint.getSecret());
+        // Rotating is the way out after a key change: copying the unreadable secret kept it for another 24 h
+        boolean previousReadable = secrets.canDecrypt(endpoint.getSecret());
+        Instant previousSecretExpiresAt = previousReadable ? now.plus(properties.previousSecretValidity()) : null;
+
+        endpoint.setPreviousSecret(previousReadable ? endpoint.getSecret() : null);
         endpoint.setPreviousSecretExpiresAt(previousSecretExpiresAt);
         endpoint.setSecret(secrets.encrypt(secret));
         endpoint.setUpdatedAt(now);
@@ -195,8 +199,13 @@ public class WebhookEndpointService {
         return url;
     }
 
+    // Null for a Slack URL left unreadable by a key change: any URL sent then replaces it, which is the way out
     private String currentUrl(WebhookEndpoint endpoint) {
-        return endpoint.getKind() == WebhookKind.SLACK ? secrets.decrypt(endpoint.getUrl()) : endpoint.getUrl();
+        if (endpoint.getKind() != WebhookKind.SLACK) {
+            return endpoint.getUrl();
+        }
+
+        return secrets.canDecrypt(endpoint.getUrl()) ? secrets.decrypt(endpoint.getUrl()) : null;
     }
 
     // A client that sends back the URL of a response, masked for Slack, keeps the current one
