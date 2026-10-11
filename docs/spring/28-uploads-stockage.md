@@ -560,11 +560,12 @@ Les usages :
 
 | Usage | Types acceptés | Taille maximale |
 |---|---|---|
-| `AVATAR_UPLOAD`, `AVATAR` | JPEG, PNG, WebP | `media.avatar-max-size`, 5MB |
+| `AVATAR_UPLOAD` | JPEG, PNG, WebP | `media.avatar-max-size`, 5MB |
+| `AVATAR` | JPEG, PNG, WebP | écrit par le worker (`storeGenerated`), sans limite, détection ni antivirus |
 | `TASK_ATTACHMENT` | images, PDF, texte, CSV, Markdown, RTF, Office, OpenDocument, ZIP | `media.attachment-max-size`, 25MB |
 | `EXPORT` | CSV, ZIP | écrit par l'application (`storeGenerated`, guide 22), sans détection ni antivirus |
 
-`AVATAR` est lui aussi écrit par l'application : le worker y range la photo ré-encodée par `storeGenerated`, sans la limite de taille, la détection ni l'antivirus de `store`.
+`AVATAR` est lui aussi écrit par l'application : la photo ré-encodée par le worker, dont l'original a déjà été analysé à l'upload.
 
 Ces limites sont des réglages, et non des constantes d'énumération comme dans l'exemple.
 

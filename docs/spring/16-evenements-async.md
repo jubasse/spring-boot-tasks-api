@@ -382,7 +382,7 @@ Qui écoute quoi, tout dans la transaction de la requête :
 | [`OutboxRelay`][relay] | `publishNow`, la seule méthode `@Async` (guide 20) |
 | [`NotificationStreams`][streams] | écoute `ContextClosedEvent` pour fermer les flux (guide 24) |
 
-Le seul réglage propre à ce guide est `spring.threads.virtual.enabled: true`, qui met les requêtes et les méthodes `@Async` sur des threads virtuels.
+Le seul réglage propre à ce guide est `spring.threads.virtual.enabled: true`, qui met les requêtes, les méthodes `@Async` (`OutboxRelay.publishNow`), les jobs `@Scheduled` et les listeners RabbitMQ sur des threads virtuels.
 
 Ce qui est propre au dépôt :
 

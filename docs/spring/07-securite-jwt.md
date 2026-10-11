@@ -589,7 +589,7 @@ Les règles de [`SecurityConfiguration`][security], dans l'ordre où elles s'app
 | [`SecurityConfiguration`][security] | la chaîne, le convertisseur, le résolveur, l'`AuthenticationManager` et le `PasswordEncoder` |
 | [`JwtConfiguration`][jwt-config] | la clé (refusée sous 32 octets), l'encodeur et le décodeur |
 | [`JwtProperties`][jwt-properties] | les réglages `security.jwt.*` |
-| [`JwtService`][jwt-service] | émet le jeton d'accès, à la connexion et au rafraîchissement |
+| [`JwtService`][jwt-service] | émet le jeton d'accès, à l'heure système : le décodeur compare `exp` à cette heure (guide 01) |
 | [`PublicEndpoints`][public] | la liste unique des endpoints publics, lue aussi par la documentation OpenAPI |
 | [`AuthService`][auth-service] | connexion, rafraîchissement et déconnexion |
 | [`DatabaseUserDetailsService`][user-details] | charge le compte par email pour `DaoAuthenticationProvider` |

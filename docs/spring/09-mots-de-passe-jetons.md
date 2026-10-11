@@ -459,8 +459,10 @@ Un jeton expiré ne sert plus, mais sa ligne reste. Un job de nuit les supprime,
         expirés avant la date limite --> supprimés, utilisés ou non
 
   jetons de rafraîchissement, par famille
-        F : R1 révoqué expiré, R2 révoqué expiré, R3 expiré --> toute la famille supprimée
-        G : R1 révoqué expiré, R2 encore valable           --> famille gardée entière
+        F : R1 révoqué expiré, R2 révoqué expiré, R3 expiré
+            --> toute la famille supprimée
+        G : R1 révoqué expiré, R2 encore valable
+            --> famille gardée entière
 ```
 
 - Les jetons à usage unique se suppriment un par un : expiré, un jeton est refusé, qu'il ait servi ou non.
@@ -491,7 +493,7 @@ Hachages et jetons vivent dans la base. N'importe quelle instance vérifie n'imp
 | Oublier `noRollbackFor` sur une méthode du chemin | la révocation est annulée avec l'exception | Le poser sur chaque méthode traversée |
 | Lire le jeton sans verrou | deux rafraîchissements simultanés font deux successeurs | `@Lock(PESSIMISTIC_WRITE)` sur la recherche |
 | Révoquer par une requête JPQL qui joint l'utilisateur | `@SoftDelete` filtre l'utilisateur : rien n'est révoqué | SQL natif sur la clé étrangère |
-| Purger chaque jeton de rafraîchissement expiré pour lui-même | le rejeu d'un jeton révoqué supprimé ne révoque plus la famille, et son successeur survit | Supprimer une famille quand aucun de ses jetons n'est encore valable |
+| Purger chaque jeton de rafraîchissement pour lui-même | son rejeu ne révoque plus la famille | Supprimer une famille entièrement expirée |
 | Répondre 404 à une demande de réinitialisation inconnue | on apprend quels e-mails ont un compte | Répondre 202 dans tous les cas |
 
 ## En résumé
@@ -573,6 +575,7 @@ Les tests :
 - [`RefreshTokenApiTests`][refresh-tests] : `refreshTokensAreStoredOnlyAsSha256Hashes`, `replayingUsedRefreshTokenRevokesWholeFamily`, `reuseDetectionDoesNotAffectOtherFamiliesOfSameUser`, `deletingUserRevokesRefreshTokens`, `logoutRevokesWholeFamily`, `refreshIgnoresAnExpiredAccessTokenLeftInTheAuthorizationHeader`.
 - [`ExpiredTokenQueriesTests`][purge-tests] : `familyWithALiveTokenKeepsItsRevokedExpiredTokens`, `familyWhoseTokensAllExpiredBeforeTheCutoffIsDeleted`, `tokenExpiringAtTheCutoffKeepsItsFamily`, `singleUseTokensExpiredBeforeTheCutoffAreDeletedUsedOrNot`.
 - `PasswordResetApiTests`, `EmailVerificationApiTests` et les tests unitaires `OpaqueTokensTest`, `RefreshTokenServiceTest`, `PasswordResetServiceTest`, `DatabaseUserDetailsServiceTest`.
+- `ExpiredTokenPurgeConfigurationTest` (l'interrupteur retire le job, une rétention négative est refusée), `ExpiredTokenPurgeServiceTest` (date limite égale à maintenant moins la rétention) et `ExpiredTokenPurgeJobTest` (journalise seulement s'il a supprimé).
 
 Pour ajouter un type de jeton par e-mail : une table avec `token_hash` (unique), `expires_at` et `used_at` ; `OpaqueTokens.generate` et `hash` ; une recherche par empreinte avec verrou, un usage unique, les jetons non utilisés supprimés à l'émission d'un nouveau ; l'e-mail envoyé par un listener après le commit (guide 23).
 

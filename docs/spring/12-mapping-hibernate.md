@@ -403,6 +403,7 @@ Ce qui est propre au dépôt :
 - `UserProfile.status` est une copie de l'état du compte, écrite par `User` à chaque transition (`setEnabled`, `setEmailVerifiedAt`, `markDeleted`). Les contrôles d'accès lisent le compte lui-même.
 - Les associations vers `UserProfile` et `Media` sont `LAZY`. Celles vers `Task` sont `EAGER` (`TaskAttachment.task`, `TaskEvent.task`, `TaskComment.task`, `TaskReminder.task`).
 - `@DynamicUpdate` sur `User` et `UserProfile` : le worker de la photo réécrivait toute la ligne et réactivait un compte qu'un admin venait de désactiver.
+- L'audit date `created_at` et `updated_at` à l'heure système, pas avec le `Clock` des services. C'est voulu : avec le `Clock`, les tâches créées par `TaskReminderTests` sous une horloge figée en 2100 passaient en tête de toutes les listes « plus récentes d'abord » de la base de test partagée.
 
 Les tests :
 

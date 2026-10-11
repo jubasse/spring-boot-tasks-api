@@ -16,7 +16,7 @@ Les façons d'avoir un service en test :
 |---|---|---|
 | Base embarquée (H2) | une base en mémoire dans la JVM | jamais pour du SQL propre à Postgres ; prototypes |
 | Conteneurs en beans Spring (`@ServiceConnection`) | Spring Boot les démarre avec le contexte | cas courant ; partagés par les classes du contexte |
-| `@Testcontainers` + `@Container` (JUnit) | JUnit démarre un conteneur par classe (champ `static`) | tests sans Spring, ou un conteneur propre à une classe |
+| `@Testcontainers` + `@Container` (JUnit) | un conteneur par classe, module `testcontainers-junit-jupiter` | tests sans Spring ; absent du dépôt |
 
 ## Concepts clés
 

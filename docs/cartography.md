@@ -17,7 +17,7 @@ relative to `src/main/java/io/julienmetral/tasks` unless they start with `src/`,
 | `src/main/resources/db/changelog/changes/` | Liquibase changesets `NNN-name.yaml` |
 | `src/main/resources/messages.properties` | reworded details of Spring MVC problems (`problemDetail.<exception>`) |
 | `src/main/resources/templates/exports/` | Thymeleaf XHTML of the personal data PDF; fonts in `fonts/` |
-| `src/test/resources/config/application.yaml` | test overrides (JWT secret, jobs off, limits off) |
+| `src/test/resources/config/application.yaml` | test overrides (JWT secret, jobs off but the hourly purges, limits off) |
 | `postman/` | Postman collection and its upload fixtures |
 | `compose.yaml`, `compose.production.yaml` | development services; hardened local run of the image |
 | `Dockerfile`, `.dockerignore` | image build with AOT training run; allowlist of build inputs |
@@ -170,7 +170,7 @@ In `src/test/java/io/julienmetral/tasks/support` unless noted.
 | endpoint | path without `/api/v1`; `@Tag`, `@Operation(summary)`, unique method name, `@ResponseStatus` for 201/202/204, `@DocumentedProblems`, `@RateLimited`, a role annotation; `PublicEndpoints` if public; regenerate `docs/openapi.json` (`-Dtest=OpenApiSpecTests -Dopenapi.update=true`); Postman |
 | exception | handler in `ApiExceptionHandler`; if typed: `ProblemType` constant and a section of `docs/problems.md` |
 | entity or column | a changeset in `db/changelog/changes/`, constraint names `<table>_<column>UQ`/`FK`, `<table>PK` |
-| scheduled job | lock name in `ScheduledJobLocks` (or `UNLOCKED_POLLERS` in `ScheduledJobLocksTest`), `@SchedulerLock`, an `enabled` property; off in tests |
+| scheduled job | lock name in `ScheduledJobLocks` (or `UNLOCKED_POLLERS` in `ScheduledJobLocksTest`), `@SchedulerLock`, an `enabled` property on a class of its own (the switch removes the whole bean); off in tests |
 | RabbitMQ message | `Outbox`, a `*Queues` declaration with its dead-letter queue, package trusted in `MessagingConfiguration` |
 | setting | `*Properties` record with one `@param` per property, `application.yaml`, `.env.example`, README Configuration; without a safe default: `deployment.required-properties`; required at startup: a throwaway value in the `Dockerfile` training run |
 | cache | `spring.cache.cache-names` and `CacheConfiguration` |
