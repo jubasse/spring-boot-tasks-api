@@ -536,7 +536,7 @@ Les réglages de test, dans [`config/application.yaml`][test-yaml] :
 Ce qui est propre au dépôt :
 
 - `@IntegrationTest` importe `TestClock` et `Mailpit` et porte `@ExtendWith({TestClock.ResetAfterEach.class, ClearCachesAfterEach.class})`. Le contexte de `MonitoringTests` n'importe ni l'un ni l'autre.
-- `ClockConfiguration` fournit `Clock.systemUTC()` en production, et une vingtaine de classes de `src/main` injectent `Clock`.
+- `ClockConfiguration` fournit `Clock.systemUTC()` en production, et une trentaine de classes de `src/main` injectent `Clock`. Seul `JwtService` lit l'heure système, car le décodeur JWT vérifie `exp` sur l'horloge système (guide 01).
 - `Mailpit.latestTextTo(email, containing)` : les mails passent par l'outbox et RabbitMQ, donc deux mails envoyés à la suite peuvent arriver dans le désordre. On cherche le plus récent qui contient un texte, pas le dernier de tous. La boucle est écrite à la main, avec une lecture toutes les 100 ms et une échéance de 5 s. `latestVerificationTokenFor(email)` extrait le jeton de 43 caractères.
 - Délai de grâce : une constante `NO_MAIL_GRACE_PERIOD` dans les classes qui prouvent qu'un mail ne part pas, ou une seule fois. Elle vaut 800 ms le plus souvent (`MailQueueTests`, `OutboxTests`, `TaskNotificationApiTests`), 500 ms dans `RateLimitTests` et 1 s dans les tests de webhooks.
 - Les bornes mesurées dans `TaskQueryCountTests` : 2 requêtes pour une page de tâches, 1 pour une tâche, 3 pour une page d'événements, 6 pour une page de commentaires, 2 pour la liste des pièces jointes, avec le statut de l'appelant déjà en cache (une requête de plus au premier appel, vérifiée par `callerStatusIsReadOnceWhileItIsCached`). La taille de page est 50, plus grande que toutes les listes.
