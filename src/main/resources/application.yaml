@@ -250,6 +250,12 @@ spring:
   mail:
     host: ${MAIL_HOST:localhost}
     port: ${MAIL_PORT:1025}
+    # In milliseconds, as outgoing HTTP (5 s, 15 s). Jakarta Mail waits for ever by default: a hung SMTP server would
+    # hold a mail.send consumer without an exception, so neither retry nor dead letter, and hang the mail health check.
+    properties:
+      "[mail.smtp.connectiontimeout]": 5000
+      "[mail.smtp.timeout]": 15000
+      "[mail.smtp.writetimeout]": 15000
 
   # Jobs start only when an export asks for one; Liquibase creates Batch's tables (changeset 023). Executions are
   # created at read committed: serializable made concurrent starts fail on Postgres.
