@@ -67,7 +67,7 @@ Une propriété posée sur une seule classe change la clé du cache, et la class
 - un bean de test toujours présent plutôt qu'un mock : `TestClock` au lieu de `@MockitoBean Clock` ;
 - un vrai outil plutôt qu'un mock : Mailpit lit les emails envoyés ;
 - un réglage enregistré par propriété : `SqlStatementCounter` passe par `hibernate.session_factory.statement_inspector` (guide 31) ;
-- une annotation de famille quand une configuration différente est inévitable : [`@DeadLetterIntegrationTest`][dead-letter] porte ses propriétés, son mock de `JavaMailSender` et son espion d'`ObjectStorage` pour trois classes (`MailQueueDeadLetterTests`, `AvatarQueueDeadLetterTests`, `DataExportFailureTests`). Cela fait un contexte et non trois ;
+- une annotation de famille quand une configuration différente est inévitable : [`@DeadLetterIntegrationTest`][dead-letter] porte ses propriétés, son mock de `JavaMailSender` et ses espions d'`ObjectStorage` et de `VirusScanner` pour trois classes (`MailQueueDeadLetterTests`, `AvatarQueueDeadLetterTests`, `DataExportFailureTests`). Cela fait un contexte et non trois ;
 - les mêmes annotations recopiées à l'identique : [`MonitoringTests`][monitoring], `PublicEndpointErrorTests` et `TaskRoomsWebSocketTests` portent les trois mêmes annotations (`@Import(TestcontainersConfiguration.class)`, `@AutoConfigureMetrics`, `@SpringBootTest(webEnvironment = RANDOM_PORT, properties = "management.server.port=0")`) et partagent un contexte ;
 - la slice JDBC importe toutes les classes `*Queries` par un filtre à expression régulière plutôt que la seule classe testée ([`JdbcSliceTest`][jdbc]).
 

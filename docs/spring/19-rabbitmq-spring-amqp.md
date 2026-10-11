@@ -616,7 +616,7 @@ Les tests :
 
 - [`MessagingConfigurationTest`][messaging-config-test] : le JSON, l'en-tête de type, le refus des classes hors des paquets de confiance.
 - [`MailQueueTests`][mail-queue-tests] : file durable, ses arguments (lus par l'API de la console), message en attente.
-- [`MailQueueDeadLetterTests`][mail-dead-letter-tests] et [`AvatarQueueDeadLetterTests`][avatar-dead-letter-tests] : réessais, dead letter, `x-death`, rejet immédiat d'un mail impossible. Ils utilisent [`@DeadLetterIntegrationTest`][dead-letter-annotation] (2 réessais de 50 ms, SMTP simulé, stockage espionné, un seul contexte).
+- [`MailQueueDeadLetterTests`][mail-dead-letter-tests] et [`AvatarQueueDeadLetterTests`][avatar-dead-letter-tests] : réessais, dead letter, `x-death`, rejet immédiat d'un mail impossible. Ils utilisent [`@DeadLetterIntegrationTest`][dead-letter-annotation] (2 réessais de 50 ms, SMTP simulé, stockage et antivirus espionnés, un seul contexte).
 - [`DeadLetterQueueMetricsTest`][dlq-metrics-test] : la jauge, et `NaN` sans réponse du broker.
 - [`TestcontainersConfiguration`][containers] : RabbitMQ n'est jamais réutilisé, car les tests de dead letter font échouer les listeners.
 

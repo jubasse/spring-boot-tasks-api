@@ -412,7 +412,7 @@ Un `./mvnw test` tourne dans une seule JVM, ce qui permet au cache de servir. De
 | [`WebCallers`][callers] | les appelants des tests web : `user`, `admin`, `withoutUid`, et `everyAccountIsActive` |
 | [`JdbcSliceTest`][jdbc] | `@JdbcTest`, toutes les classes `*Queries` (filtre par expression régulière), Postgres |
 | [`RepositoryTest`][jpa] | `@DataJpaTest`, Postgres, et `JpaAuditingConfiguration` pour `created_at` et `updated_at` |
-| [`DeadLetterIntegrationTest`][dead-letter] | l'intégration avec 2 réessais rapides, SMTP en mock, stockage en spy |
+| [`DeadLetterIntegrationTest`][dead-letter] | l'intégration avec 2 réessais rapides, SMTP en mock, stockage et antivirus en spy |
 | [`Transactions`][transactions] | `inNewTransaction` : valider sur une autre connexion, comme une autre instance |
 | [`spring.properties`][spring-properties] | `spring.test.context.cache.maxSize=12`, et pourquoi |
 | [`config/application.yaml`][test-yaml] | les réglages de test, chargés par-dessus ceux de `main` |
@@ -426,7 +426,7 @@ Les contextes d'intégration qui diffèrent exprès (chacun a son RabbitMQ) :
 | Contexte | Ce qui change | Pourquoi |
 |---|---|---|
 | `@IntegrationTest` | rien : c'est la référence | toutes les autres classes d'intégration |
-| `@DeadLetterIntegrationTest` | 2 réessais en 50 à 100 ms, SMTP en mock, stockage en spy | une dead letter atteinte en moins d'une seconde |
+| `@DeadLetterIntegrationTest` | 2 réessais en 50 à 100 ms, SMTP en mock, stockage et antivirus en spy | une dead letter atteinte en moins d'une seconde |
 | `OutboxBrokerFailureTests` | `RabbitTemplate` en spy | faire échouer la publication à la demande |
 | `RateLimitTests` | limites allumées et basses | les autres tests se connectent en boucle depuis une adresse |
 | `MonitoringTests`, `PublicEndpointErrorTests`, `TaskRoomsWebSocketTests` | vrai serveur, port de gestion séparé | deux ports, `/error`, WebSocket |
