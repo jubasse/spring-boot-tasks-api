@@ -564,6 +564,8 @@ Les usages :
 | `TASK_ATTACHMENT` | images, PDF, texte, CSV, Markdown, RTF, Office, OpenDocument, ZIP | `media.attachment-max-size`, 25MB |
 | `EXPORT` | CSV, ZIP | écrit par l'application (`storeGenerated`, guide 22), sans détection ni antivirus |
 
+`AVATAR` est lui aussi écrit par l'application : le worker y range la photo ré-encodée par `storeGenerated`, sans la limite de taille, la détection ni l'antivirus de `store`.
+
 Ces limites sont des réglages, et non des constantes d'énumération comme dans l'exemple.
 
 | Réglage | Valeur | Rôle |
@@ -580,7 +582,7 @@ Ce qui est propre au dépôt :
 - L'ordre de `validate` : vide (400), taille (413), Tika (415), antivirus (422 pour le problème typé `infected-file`, 503 quand clamd échoue). Les 400, 413, 415 et 503 sont des problèmes `about:blank` (`ApiExceptionHandler`).
 - `S3ObjectStorage.presignDownload` résout lui-même les identifiants et renvoie `expiresAt`, la plus proche des deux expirations. `CacheConfiguration.reuseWindow` redistribue une URL pendant la moitié de sa validité au plus (guide 17). Le `@Cacheable` est sur `MediaService` et non sur `MediaUrls`, dont `avatarOf` appelle `of` sur lui-même et contournerait le proxy Spring.
 - Avec `aws-s3`, le bucket est créé par l'infrastructure, jamais par l'application. Ce driver n'est pas couvert par les tests d'intégration.
-- Les photos de profil passent par le même `store` (`AVATAR_UPLOAD`), puis un 202 et un worker qui les ré-encode. Le [cas pratique](cas-pratiques/upload-photo-profil.md) détaille le trajet.
+- Les photos de profil passent par le même `store` (`AVATAR_UPLOAD`), puis un 202 et un worker qui les ré-encode. Le worker stocke son résultat par `storeGenerated` (variante en `byte[]`), sans seconde analyse : l'original a déjà été analysé, et le résultat n'est fait que de pixels ré-encodés. Avec `store`, une panne de clamd pendant le worker envoyait en dead letter une photo déjà analysée. Le [cas pratique](cas-pratiques/upload-photo-profil.md) détaille le trajet.
 - `MediaCleanupJob` (verrou `media-cleanup`) purge les pièces jointes des tâches et les photos des utilisateurs supprimés depuis 30 jours. Il purge aussi les lignes `media` sans référence et les objets sans ligne plus vieux d'un jour. Il utilise du SQL natif (`MediaCleanupQueries`), car les lignes supprimées logiquement sont invisibles pour JPA. Les objets partent après le commit, et un échec est balayé au passage suivant.
 
 Les tests :

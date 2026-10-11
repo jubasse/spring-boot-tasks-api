@@ -140,7 +140,7 @@ Each feature uses the same sub-packages: `controllers`, `dtos`, `entities`, `rep
 | `@WebLayerTest` | test `support` | controllers and real security, services mocked, no Docker |
 | `@JdbcSliceTest` | test `support` | `JdbcTemplate` and `*Queries`, rolled back |
 | `@RepositoryTest` | test `support` | JPA repositories, rolled back |
-| `@DeadLetterIntegrationTest` | test `support` | fast listener retries, SMTP mock, storage spy |
+| `@DeadLetterIntegrationTest` | test `support` | fast listener retries, SMTP mock, storage and antivirus spies |
 
 ## Test helpers
 

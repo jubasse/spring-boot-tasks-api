@@ -42,7 +42,7 @@ Deux transactions, une réponse synchrone et un traitement asynchrone :
  |    verrou de la ligne users ; message périmé ? --> rien    |
  |    AvatarImageProcessor.process                            |
  |      orientation EXIF, carré centré, 256 px, JPEG ou PNG   |
- |    MediaService.store(AVATAR) : objet avatar/<uuid>        |
+ |    MediaService.storeGenerated(AVATAR) : avatar/<uuid>     |
  |    ancienne photo et upload : lignes supprimées            |
  ===== commit : objets supprimés du stockage, message acquitté
 ```
@@ -79,7 +79,7 @@ Deux transactions, une réponse synchrone et un traitement asynchrone :
 
 Une image dont l'en-tête passe mais qui ne se décode pas lève `InvalidImageException`. Elle est journalisée en avertissement (« Dropped the profile photo ... ») et jamais rejouée. La transaction se termine sans upload en attente, et l'ancienne photo reste.
 
-**11. Le remplacement.** `MediaService.store(MediaSource.of(bytes, "avatar.jpg"), MediaUsage.AVATAR, uploaderId)` stocke le résultat sous `avatar/<uuid>`, après une nouvelle validation (type, antivirus). `replaceAvatar` y fait pointer `user_profiles.avatar_media_id` et supprime l'ancienne photo par `MediaService.delete`. Au commit, les anciens objets quittent le stockage et le message est acquitté. La réponse suivante pour Bob porte une URL présignée de la nouvelle photo (guides 17 et 28).
+**11. Le remplacement.** `MediaService.storeGenerated(bytes, "avatar.jpg", "image/jpeg", MediaUsage.AVATAR, uploaderId)` stocke le résultat sous `avatar/<uuid>`, sans détection de type ni second passage par l'antivirus : l'original a été analysé à l'étape 3, et le résultat n'est fait que de pixels décodés puis ré-encodés par l'application. Seul le type annoncé par `ProcessedImage` est comparé à ceux de `AVATAR`. Avec `store`, une panne de clamd pendant le worker faisait échouer le traitement, puis l'envoyait en dead letter, alors que la photo avait déjà été analysée. `replaceAvatar` y fait pointer `user_profiles.avatar_media_id` et supprime l'ancienne photo par `MediaService.delete`. Au commit, les anciens objets quittent le stockage et le message est acquitté. La réponse suivante pour Bob porte une URL présignée de la nouvelle photo (guides 17 et 28).
 
 **12. La mise à jour partielle.** [`User`][user] et [`UserProfile`][profile] sont `@DynamicUpdate` : l'`UPDATE user_profiles` du worker n'écrit que les colonnes de la photo (guide 12). L'échec mesuré tient à ce que le worker verrouille `users`, pas `user_profiles`. Si un admin désactive Bob pendant ce temps, `user_profiles.status = 'DISABLED'` est validé. Une mise à jour de toute la ligne par le worker réécrivait alors l'ancien statut et réactivait le compte à l'affichage.
 
@@ -96,6 +96,7 @@ Chaque panne, et ce que voit Bob :
 | Image qui déclare 50000 x 50000 | l'en-tête suffit à la refuser (étape 5) | 422 `invalid-image`, l'original est supprimé au rollback |
 | En-tête valide, image indécodable | `InvalidImageException` dans le worker (étape 10) | avertissement, pas de réessai ; l'ancienne photo reste |
 | Stockage en panne dans le worker | `StorageUnavailableException` (étape 10) | rollback, 4 réessais (2, 6, 18, 54 s), puis `avatar.process.dead-letter` |
+| clamd injoignable pendant le worker | le worker n'analyse pas (étape 11) | la photo est remplacée normalement |
 | Deux photos coup sur coup | la seconde remplace la première en attente (étape 6) | le message de la première ne fait rien (étape 9) |
 | Plantage après le commit, avant l'acquittement | RabbitMQ relivre le message | plus d'upload en attente : message ignoré (étape 9) |
 | Un admin désactive Bob en plein traitement | les deux transactions touchent le compte | verrou commun et `@DynamicUpdate` : il reste désactivé (étape 12) |
@@ -105,6 +106,7 @@ Les réessais viennent du réglage global `spring.rabbitmq.listener.simple.retry
 ## À retenir
 
 - La requête vérifie tout ce qui coûte peu (taille, type réel, antivirus, dimensions de l'en-tête) et répond 202. Le travail coûteux passe au worker par l'outbox.
+- Le worker stocke son résultat par `storeGenerated`, sans seconde analyse : l'application a écrit ces octets, et une panne de clamd ne bloque plus une photo déjà analysée.
 - Un premier verrou commun sur la ligne du compte met la requête et le worker en file, et `@DynamicUpdate` empêche le worker de réécrire des colonnes qu'il n'a pas changées.
 - Le worker est idempotent : un message pour un upload qui n'est plus en attente ne fait rien.
 - Les objets suivent la transaction : supprimés au rollback pour un nouvel upload, après le commit pour une photo remplacée.

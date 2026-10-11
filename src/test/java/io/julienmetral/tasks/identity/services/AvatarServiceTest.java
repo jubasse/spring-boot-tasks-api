@@ -19,7 +19,6 @@ import io.julienmetral.tasks.messaging.services.Outbox;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -30,7 +29,6 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.util.Optional;
 import java.util.UUID;
@@ -41,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
@@ -103,12 +102,6 @@ class AvatarServiceTest {
         media.setStorageKey(storageKey);
         media.setUploadedBy(uploaderId == null ? null : reference(uploaderId));
         return media;
-    }
-
-    private static byte[] read(MediaSource source) throws IOException {
-        try (InputStream content = source.open()) {
-            return content.readAllBytes();
-        }
     }
 
     @Nested
@@ -297,26 +290,35 @@ class AvatarServiceTest {
         }
 
         @Test
-        void reencodesThePendingUploadIntoTheProfilePhoto() throws IOException {
+        void reencodesThePendingUploadIntoTheProfilePhoto() {
             Media upload = media(UPLOAD_ID, "avatar-upload/key", USER_ID);
             User user = existingUser(null, upload);
             Media stored = media("avatar/new");
             when(mediaService.read(upload)).thenReturn(ORIGINAL);
             when(imageProcessor.process(ORIGINAL)).thenReturn(new ProcessedImage(PROCESSED, "image/jpeg", "jpg"));
-            when(mediaService.store(any(MediaSource.class), eq(MediaUsage.AVATAR), eq(USER_ID))).thenReturn(stored);
+            when(mediaService.storeGenerated(any(byte[].class), anyString(), anyString(), eq(MediaUsage.AVATAR),
+                    eq(USER_ID))).thenReturn(stored);
 
             service.process(USER_ID, UPLOAD_ID);
 
             assertThat(user.getProfile().getAvatar()).isSameAs(stored);
             assertThat(user.getProfile().getPendingAvatar()).isNull();
-
-            ArgumentCaptor<MediaSource> storedSource = ArgumentCaptor.forClass(MediaSource.class);
-            verify(mediaService).store(storedSource.capture(), eq(MediaUsage.AVATAR), eq(USER_ID));
-            assertThat(storedSource.getValue().filename()).isEqualTo("avatar.jpg");
-            assertThat(storedSource.getValue().size()).isEqualTo(PROCESSED.length);
-            assertThat(read(storedSource.getValue())).isEqualTo(PROCESSED);
+            verify(mediaService).storeGenerated(PROCESSED, "avatar.jpg", "image/jpeg", MediaUsage.AVATAR, USER_ID);
             verify(mediaService).delete(upload);
             verify(imageProcessor, never()).checkDimensions(any());
+        }
+
+        @Test
+        void processedPhotoIsNotScannedAgainSinceTheUploadWas() {
+            Media upload = media(UPLOAD_ID, "avatar-upload/key", USER_ID);
+            existingUser(null, upload);
+            when(mediaService.read(upload)).thenReturn(ORIGINAL);
+            when(imageProcessor.process(ORIGINAL)).thenReturn(new ProcessedImage(PROCESSED, "image/jpeg", "jpg"));
+
+            service.process(USER_ID, UPLOAD_ID);
+
+            verify(mediaService, never()).store(any(MediaSource.class), any(), any());
+            verify(mediaService, never()).validate(any(), any());
         }
 
         @Test
@@ -328,9 +330,7 @@ class AvatarServiceTest {
 
             service.process(USER_ID, UPLOAD_ID);
 
-            ArgumentCaptor<MediaSource> storedSource = ArgumentCaptor.forClass(MediaSource.class);
-            verify(mediaService).store(storedSource.capture(), eq(MediaUsage.AVATAR), eq(USER_ID));
-            assertThat(storedSource.getValue().filename()).isEqualTo("avatar.png");
+            verify(mediaService).storeGenerated(PROCESSED, "avatar.png", "image/png", MediaUsage.AVATAR, USER_ID);
         }
 
         @Test
@@ -342,7 +342,8 @@ class AvatarServiceTest {
 
             service.process(USER_ID, UPLOAD_ID);
 
-            verify(mediaService).store(any(MediaSource.class), eq(MediaUsage.AVATAR), eq(ADMIN_ID));
+            verify(mediaService).storeGenerated(any(byte[].class), anyString(), anyString(), eq(MediaUsage.AVATAR),
+                    eq(ADMIN_ID));
         }
 
         @Test
@@ -354,7 +355,8 @@ class AvatarServiceTest {
 
             service.process(USER_ID, UPLOAD_ID);
 
-            verify(mediaService).store(any(MediaSource.class), eq(MediaUsage.AVATAR), isNull());
+            verify(mediaService).storeGenerated(any(byte[].class), anyString(), anyString(), eq(MediaUsage.AVATAR),
+                    isNull());
         }
 
         @Test
@@ -365,14 +367,16 @@ class AvatarServiceTest {
             Media stored = media("avatar/new");
             when(mediaService.read(upload)).thenReturn(ORIGINAL);
             when(imageProcessor.process(ORIGINAL)).thenReturn(new ProcessedImage(PROCESSED, "image/jpeg", "jpg"));
-            when(mediaService.store(any(MediaSource.class), eq(MediaUsage.AVATAR), eq(USER_ID))).thenReturn(stored);
+            when(mediaService.storeGenerated(any(byte[].class), anyString(), anyString(), eq(MediaUsage.AVATAR),
+                    eq(USER_ID))).thenReturn(stored);
 
             service.process(USER_ID, UPLOAD_ID);
 
             assertThat(user.getProfile().getAvatar()).isSameAs(stored);
             assertThat(user.getProfile().getPendingAvatar()).isNull();
             InOrder order = inOrder(mediaService);
-            order.verify(mediaService).store(any(MediaSource.class), eq(MediaUsage.AVATAR), eq(USER_ID));
+            order.verify(mediaService).storeGenerated(any(byte[].class), anyString(), anyString(),
+                    eq(MediaUsage.AVATAR), eq(USER_ID));
             order.verify(mediaService).delete(previous);
             verify(mediaService).delete(upload);
         }
@@ -391,7 +395,7 @@ class AvatarServiceTest {
             assertThat(user.getProfile().getAvatar()).isSameAs(previous);
             verify(mediaService).delete(upload);
             verify(mediaService, never()).delete(previous);
-            verify(mediaService, never()).store(any(MediaSource.class), any(), any());
+            verify(mediaService, never()).storeGenerated(any(byte[].class), any(), any(), any(), any());
             assertThat(output).contains(
                     "Dropped the profile photo " + UPLOAD_ID + " of user " + USER_ID,
                     "no pixel data"
@@ -410,7 +414,7 @@ class AvatarServiceTest {
 
             assertThat(user.getProfile().getAvatar()).isSameAs(previous);
             verifyNoInteractions(imageProcessor);
-            verify(mediaService, never()).store(any(MediaSource.class), any(), any());
+            verify(mediaService, never()).storeGenerated(any(byte[].class), any(), any(), any(), any());
             verify(mediaService, never()).delete(previous);
         }
 
@@ -422,7 +426,8 @@ class AvatarServiceTest {
             when(mediaService.read(upload)).thenReturn(ORIGINAL);
             when(imageProcessor.process(ORIGINAL)).thenReturn(new ProcessedImage(PROCESSED, "image/jpeg", "jpg"));
             StorageUnavailableException failure = new StorageUnavailableException(new RuntimeException("down"));
-            when(mediaService.store(any(MediaSource.class), eq(MediaUsage.AVATAR), eq(USER_ID))).thenThrow(failure);
+            when(mediaService.storeGenerated(any(byte[].class), anyString(), anyString(), eq(MediaUsage.AVATAR),
+                    eq(USER_ID))).thenThrow(failure);
 
             assertThatThrownBy(() -> service.process(USER_ID, UPLOAD_ID)).isSameAs(failure);
 

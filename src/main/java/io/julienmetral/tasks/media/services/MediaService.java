@@ -83,16 +83,26 @@ public class MediaService {
     }
 
     /**
-     * Stores a file the application wrote itself, such as an export: no type detection and no antivirus scan, which
-     * guard against what clients send. Must run in the caller's transaction, like {@link #store}.
+     * Stores a file the application wrote itself, such as an export or a re-encoded profile photo: no type detection
+     * and no antivirus scan, which guard against what clients send. Must run in the caller's transaction, like
+     * {@link #store}.
      */
     @Transactional
     public Media storeGenerated(Path file, String filename, String contentType, MediaUsage usage, UUID ownerId) {
+        return storeGenerated(MediaSource.of(file, filename), contentType, usage, ownerId);
+    }
+
+    /** Same as {@link #storeGenerated(Path, String, String, MediaUsage, UUID)}, for content held in memory. */
+    @Transactional
+    public Media storeGenerated(byte[] content, String filename, String contentType, MediaUsage usage, UUID ownerId) {
+        return storeGenerated(MediaSource.of(content, filename), contentType, usage, ownerId);
+    }
+
+    private Media storeGenerated(MediaSource source, String contentType, MediaUsage usage, UUID ownerId) {
         if (!usage.allows(contentType)) {
             throw new IllegalArgumentException(contentType + " is not a type of " + usage);
         }
 
-        MediaSource source = MediaSource.of(file, filename);
         String storageKey = usage.storagePrefix() + "/" + UUID.randomUUID();
         String sha256 = upload(source, storageKey, contentType);
 
@@ -102,7 +112,7 @@ public class MediaService {
 
         media.setStorageKey(storageKey);
         media.setUsage(usage);
-        media.setOriginalFilename(filename);
+        media.setOriginalFilename(source.filename());
         media.setContentType(contentType);
         media.setSizeBytes(source.size());
         media.setSha256(sha256);

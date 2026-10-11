@@ -353,7 +353,8 @@ class DataExportServiceTest {
             DataExport export = export(DataExportStatus.RUNNING);
             StorageUnavailableException failure = new StorageUnavailableException(new RuntimeException("down"));
             when(repository.findById(EXPORT_ID)).thenReturn(Optional.of(export));
-            when(mediaService.storeGenerated(any(), anyString(), anyString(), any(), any())).thenThrow(failure);
+            when(mediaService.storeGenerated(any(Path.class), anyString(), anyString(), any(), any()))
+                    .thenThrow(failure);
 
             assertThatThrownBy(() -> service.complete(EXPORT_ID, file, "tasks.csv", "text/csv", 1L)).isSameAs(failure);
 

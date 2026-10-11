@@ -5,6 +5,7 @@ import java.util.Set;
 /** What a file is uploaded for, which decides the accepted content types (detected from the bytes). */
 public enum MediaUsage {
 
+    // A profile photo as the worker re-encoded it (see MediaService.storeGenerated): the upload was already scanned
     AVATAR(Set.of(
             "image/jpeg",
             "image/png",
