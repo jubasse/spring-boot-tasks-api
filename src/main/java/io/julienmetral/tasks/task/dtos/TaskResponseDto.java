@@ -7,25 +7,26 @@ import io.julienmetral.tasks.task.entities.TaskPriority;
 import io.julienmetral.tasks.task.entities.TaskStatus;
 import java.time.Instant;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 public record TaskResponseDto(
         UUID id,
         String reference,
         String title,
-        String description,
+        @Nullable String description,
         TaskStatus status,
         TaskPriority priority,
-        Instant dueAt,
-        Instant completedAt,
-        Instant archivedAt,
-        Instant cancelledAt,
-        String cancelledReason,
-        Instant blockedAt,
-        String blockedReason,
+        @Nullable Instant dueAt,
+        @Nullable Instant completedAt,
+        @Nullable Instant archivedAt,
+        @Nullable Instant cancelledAt,
+        @Nullable String cancelledReason,
+        @Nullable Instant blockedAt,
+        @Nullable String blockedReason,
         long version,
         Instant updatedAt,
-        UserProfileResponseDto assignedTo,
-        UserProfileResponseDto createdBy) {
+        @Nullable UserProfileResponseDto assignedTo,
+        @Nullable UserProfileResponseDto createdBy) {
 
     public TaskResponseDto(Task task, MediaUrls mediaUrls) {
         this(
@@ -44,7 +45,7 @@ public record TaskResponseDto(
                 task.getBlockedReason(),
                 task.getVersion(),
                 task.getUpdatedAt(),
-                UserProfileResponseDto.of(task.getAssignedTo(), mediaUrls),
-                UserProfileResponseDto.of(task.getCreatedBy(), mediaUrls));
+                UserProfileResponseDto.ofNullable(task.getAssignedTo(), mediaUrls),
+                UserProfileResponseDto.ofNullable(task.getCreatedBy(), mediaUrls));
     }
 }

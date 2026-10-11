@@ -6,14 +6,15 @@ import io.julienmetral.tasks.media.services.MediaUrls;
 import io.julienmetral.tasks.task.entities.TaskAttachment;
 import java.time.Instant;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 public record TaskAttachmentResponseDto(
         UUID id,
         String filename,
         String contentType,
         long sizeBytes,
-        UserProfileResponseDto uploadedBy,
-        UUID commentId,
+        @Nullable UserProfileResponseDto uploadedBy,
+        @Nullable UUID commentId,
         Instant createdAt,
         String downloadUrl) {
 
@@ -27,7 +28,7 @@ public record TaskAttachmentResponseDto(
                 media.getOriginalFilename(),
                 media.getContentType(),
                 media.getSizeBytes(),
-                UserProfileResponseDto.of(media.getUploadedBy(), mediaUrls),
+                UserProfileResponseDto.ofNullable(media.getUploadedBy(), mediaUrls),
                 attachment.getComment() == null ? null : attachment.getComment().getId(),
                 attachment.getCreatedAt(),
                 mediaUrls.of(media));

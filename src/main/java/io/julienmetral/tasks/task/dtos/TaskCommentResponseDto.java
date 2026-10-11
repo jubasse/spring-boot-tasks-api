@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code body} keeps the {@code <@user-id>} mention tokens; {@code mentions} gives the users to
@@ -19,7 +20,7 @@ public record TaskCommentResponseDto(
         List<UserProfileResponseDto> mentions,
         List<TaskAttachmentResponseDto> attachments,
         Instant createdAt,
-        Instant editedAt) {
+        @Nullable Instant editedAt) {
 
     public TaskCommentResponseDto(TaskComment comment, MediaUrls mediaUrls) {
         this(

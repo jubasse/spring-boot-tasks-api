@@ -1,6 +1,7 @@
 package io.julienmetral.tasks.task.events;
 
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Published when a task is cancelled, through {@code /cancel} (with a reason) or a status change to
@@ -10,6 +11,6 @@ public record TaskCancelled(
         UUID taskId,
         String reference,
         String title,
-        UUID assigneeId,
-        String reason,
-        UUID actorId) {}
+        @Nullable UUID assigneeId,
+        @Nullable String reason,
+        @Nullable UUID actorId) {}

@@ -7,6 +7,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Mentions are written {@code <@user-id>} in a comment body. Clients insert the token from a user
@@ -34,7 +35,7 @@ public final class CommentMentions {
     }
 
     /** Replaces each token with {@code @name}; a token whose name is null stays as written. */
-    public static String render(String body, Function<UUID, String> displayName) {
+    public static String render(String body, Function<UUID, @Nullable String> displayName) {
         return TOKEN.matcher(body)
                 .replaceAll(
                         match -> {

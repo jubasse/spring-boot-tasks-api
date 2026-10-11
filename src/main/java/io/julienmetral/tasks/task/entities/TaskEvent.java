@@ -21,6 +21,7 @@ import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import org.jspecify.annotations.Nullable;
 
 @Entity
 @Getter
@@ -44,7 +45,7 @@ public class TaskEvent {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "actor_id", foreignKey = @ForeignKey(name = "task_events_actorFK"))
-    private UserProfile actor;
+    private @Nullable UserProfile actor;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
@@ -55,5 +56,5 @@ public class TaskEvent {
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
-    private Map<String, Object> payload;
+    private @Nullable Map<String, Object> payload;
 }

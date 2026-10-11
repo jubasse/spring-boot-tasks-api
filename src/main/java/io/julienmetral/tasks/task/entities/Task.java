@@ -22,6 +22,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
+import org.jspecify.annotations.Nullable;
 
 @Entity
 @Table(
@@ -53,7 +54,7 @@ public class Task extends AuditableEntity {
     private String title;
 
     @Column(columnDefinition = "TEXT")
-    private String description;
+    private @Nullable String description;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
@@ -64,25 +65,25 @@ public class Task extends AuditableEntity {
     private TaskPriority priority = TaskPriority.MEDIUM;
 
     @Column(name = "due_at")
-    private Instant dueAt;
+    private @Nullable Instant dueAt;
 
     @Column(name = "completed_at")
-    private Instant completedAt;
+    private @Nullable Instant completedAt;
 
     @Column(name = "archived_at")
-    private Instant archivedAt;
+    private @Nullable Instant archivedAt;
 
     @Column(name = "cancelled_at")
-    private Instant cancelledAt;
+    private @Nullable Instant cancelledAt;
 
     @Column(name = "cancelled_reason", length = 500)
-    private String cancelledReason;
+    private @Nullable String cancelledReason;
 
     @Column(name = "blocked_at")
-    private Instant blockedAt;
+    private @Nullable Instant blockedAt;
 
     @Column(name = "blocked_reason", length = 500)
-    private String blockedReason;
+    private @Nullable String blockedReason;
 
     @Version
     @Column(nullable = false)
@@ -91,13 +92,13 @@ public class Task extends AuditableEntity {
     // UserProfile, not User: soft-deleted users must still load (see UserProfile)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by_id", foreignKey = @ForeignKey(name = "tasks_created_byFK"))
-    private UserProfile createdBy;
+    private @Nullable UserProfile createdBy;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assigned_to_id", foreignKey = @ForeignKey(name = "tasks_assigned_toFK"))
-    private UserProfile assignedTo;
+    private @Nullable UserProfile assignedTo;
 
-    public UUID currentAssigneeId() {
+    public @Nullable UUID currentAssigneeId() {
         return assignedTo == null ? null : assignedTo.getId();
     }
 }
