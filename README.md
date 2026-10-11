@@ -101,7 +101,7 @@ Open http://localhost:8080/swagger-ui.html. Every endpoint is listed with its pa
 
 Every path starts with the API version, `/api/v1`; a version the API does not support answers 400.
 
-The OpenAPI document behind the page is at http://localhost:8080/v3/api-docs, and a copy is kept in [docs/openapi.json](docs/openapi.json), so a change to the API shows in the diff of its pull request. To generate a client, use that file.
+The OpenAPI document behind the page is at http://localhost:8080/v3/api-docs, and a copy is kept in [docs/openapi.json](docs/openapi.json), so a change to the API shows in the diff of its pull request. To generate a client, use that file: it marks which fields are always present and which can be `null`.
 
 ### Explore every endpoint with Postman
 

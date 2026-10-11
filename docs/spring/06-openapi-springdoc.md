@@ -64,7 +64,7 @@ springdoc lit les annotations et les types Java. Le reste, il faut le lui dire :
 |---|---|---|
 | Chemin et méthode HTTP | `@GetMapping`, `@PostMapping`... | |
 | Paramètres et corps | `@PathVariable`, `@RequestParam`, `@RequestBody` | `@ParameterObject` développe un objet en paramètres |
-| Schéma d'un corps | les records et leurs contraintes Bean Validation | `@NotBlank` rend le champ `required`, `@Size` donne `maxLength` |
+| Schéma d'un corps | les records et leurs contraintes Bean Validation | `@NotBlank` rend le champ `required`, `@Size` donne `maxLength` ; le `@Nullable` de JSpecify n'est pas lu |
 | Code de succès | `@ResponseStatus`, sinon 200 | un `ResponseEntity.created(...)` ne se voit qu'à l'exécution |
 | `operationId` | le nom de la méthode | suffixé `_1` si deux méthodes portent le même nom |
 | Résumé, groupe | `@Operation(summary)`, `@Tag` | |
@@ -422,6 +422,7 @@ Deux outils lisent le fichier commité dans la CI (guide 33) : Spectral pour le 
 | Laisser toutes les langues avant springdoc 3.1.1 | un document gardé par valeur d'`Accept-Language` : mémoire épuisée | Fixer `allowed-locales` |
 | Laisser springdoc décrire `ProblemDetail` | le schéma montre un objet `properties`, que le JSON aplatit | Écrire le schéma `Problem` à la main |
 | Servir la documentation en production | toute la surface de l'API est exposée | L'éteindre sous `prod` |
+| Compter sur springdoc pour le `@Nullable` de JSpecify | annotation de type (`TYPE_USE`), invisible pour swagger-core : aucun champ requis ni `null` | Un `OpenApiCustomizer` qui lit les composants des records |
 
 ### Avec un document figé
 
@@ -450,6 +451,7 @@ Deux outils lisent le fichier commité dans la CI (guide 33) : Spectral pour le 
 - [ ] Un nom de méthode unique par opération
 - [ ] Les règles répétées dans un `OperationCustomizer` ou un `OpenApiCustomizer`, jamais copiées sur chaque méthode
 - [ ] Le schéma `Problem` écrit à la main
+- [ ] Les champs requis et `null` publiés d'après les `@Nullable` des records
 - [ ] Les endpoints publics dans une seule liste, lue par la sécurité et la documentation
 - [ ] Le document commité et comparé par un test
 - [ ] Spectral et oasdiff en CI
@@ -473,6 +475,9 @@ Du contrôleur à la CI :
   PathDocumentation            par chemin : /api/v1, public ou 401, 403,
        |                       400, 404, default, taille de page, pages
        v
+  NullabilityDocumentation     par record : champs requis, null permis
+       |
+       v
   /v3/api-docs --> OpenApiSpecTests --> docs/openapi.json --> CI
 ```
 
@@ -481,6 +486,7 @@ Du contrôleur à la CI :
 | [`OpenApiConfiguration`][config] | le bean `OpenAPI` et les réponses partagées (`NotFound`, `Unauthorized`, `TooManyRequests`...) |
 | [`OperationDocumentation`][operation] | `OperationCustomizer` : ce que disent les annotations de la méthode |
 | [`PathDocumentation`][path] | `OpenApiCustomizer` : ce que dit le chemin, et les correctifs du document |
+| [`NullabilityDocumentation`][nullability] | `OpenApiCustomizer` : `required` et `null` d'après les `@Nullable` des records |
 | [`ProblemDocumentation`][problem] | les schémas `Problem`, `ValidationProblem` et `InvalidValue`, un exemple par type |
 | [`DocumentedProblems`][documented] | les `ProblemType` qu'une opération peut renvoyer |
 | [`RateLimited`][rate-limited] | marque une opération qui appelle `RateLimiter` ; ne limite rien |
@@ -498,6 +504,12 @@ Ce qui est propre au dépôt :
 - **Commentaires** : `addComment` et `addCommentWithFiles` partagent l'`operationId` `addComment`.
 - **Version d'API** : `PathDocumentation` remplace d'abord le préfixe brut `/api/v{version}` par `/api/v1`. Sinon ses autres règles liraient `{version}` comme l'id d'une ressource (guide 04).
 - **Pages** : springdoc ne marque pas `content` et `page` de `PagedModel` comme requis (springdoc-openapi #3360). `PathDocumentation` les marque, comme les quatre champs de `PageMetadata`, et donne au paramètre `size` le maximum de `spring.data.web.pageable.max-page-size` (guide 03).
+- **Champs requis et `null`** : `NullabilityDocumentation` retrouve le record de chaque schéma par son nom simple et lit le `@Nullable` de ses composants (guide 34).
+  - Un composant `@Nullable` accepte `null` : `"null"` rejoint ses types (et son énumération), et une référence devient `oneOf` la référence et `null`.
+  - Dans une requête, un champ est requis sauf s'il est `@Nullable`. Dans une réponse, tous le sont : Jackson écrit un composant nul comme `null`, il ne l'omet jamais. Un client généré obtient donc `assignedTo: UserProfileResponseDto | null`.
+  - Un record en `@JsonInclude(NON_NULL)` (`InvalidValue`) omet ses composants nuls : ils restent facultatifs, jamais `null`.
+  - Un schéma servi à la fois par une requête et une réponse ne peut pas avoir de composant `@Nullable` : le document ne pourrait pas le dire requis et facultatif à la fois, et sa construction échoue.
+  - L'arrivée de ces règles a corrigé le document, pas le comportement de l'API : oasdiff l'a signalée comme une rupture (types devenus `null`, `oneOf` ajoutés), acceptée une fois.
 - **Sans corps** : les 401 et 403 des contrôles d'accès n'ont qu'un en-tête `WWW-Authenticate`. Les autres erreurs sont des problèmes `application/problem+json`.
 - **Version du document** : `info.version` vient de `build-info`, et `OpenApiSpecTests` la remplace par `development` avant de comparer.
 - **CI** : le job « API contract » lance Spectral (`.spectral.yaml` coupe seulement `operation-description`), puis oasdiff. `.oasdiff.yaml` ramène au niveau info l'ajout d'une valeur à une énumération de réponse, car la description de l'API demande aux clients d'accepter l'inconnu.
@@ -505,7 +517,8 @@ Ce qui est propre au dépôt :
 Les tests :
 
 - [`OpenApiSpecTests`][spec-tests] compare le document au fichier commité, et vérifie que la documentation se lit sans jeton.
-- [`OpenApiDocumentTests`][document-tests] vérifie des `operationId` uniques sans suffixe, un tag et un résumé par opération, un 401 sur les seules opérations non publiques, une `Location` sur chaque 201 et un exemple par `ProblemType`.
+- [`OpenApiDocumentTests`][document-tests] vérifie des `operationId` uniques sans suffixe, un tag et un résumé par opération, un 401 sur les seules opérations non publiques, une `Location` sur chaque 201, un exemple par `ProblemType`, et les champs requis et `null` des schémas.
+- [`NullabilityDocumentationTest`][nullability-test] teste ces règles sur des records de test, sans démarrer Spring.
 - [`OpenApiConformanceTests`][conformance-tests] appelle chaque opération sans jeton : seules les publiques répondent autre chose que 401.
 - [`PathDocumentationTest`][path-test] teste les règles de chemin sans démarrer Spring. [`AccessDescriptionTest`][access-test] refuse une règle de sécurité sans phrase (guide 31).
 
@@ -526,6 +539,8 @@ Pour ajouter un endpoint : le `@Tag` du contrôleur, un `@Operation(summary)`, u
 [config]: ../../src/main/java/io/julienmetral/tasks/config/OpenApiConfiguration.java
 [operation]: ../../src/main/java/io/julienmetral/tasks/config/OperationDocumentation.java
 [path]: ../../src/main/java/io/julienmetral/tasks/config/PathDocumentation.java
+[nullability]: ../../src/main/java/io/julienmetral/tasks/config/NullabilityDocumentation.java
+[nullability-test]: ../../src/test/java/io/julienmetral/tasks/config/NullabilityDocumentationTest.java
 [problem]: ../../src/main/java/io/julienmetral/tasks/config/ProblemDocumentation.java
 [documented]: ../../src/main/java/io/julienmetral/tasks/shared/openapi/DocumentedProblems.java
 [rate-limited]: ../../src/main/java/io/julienmetral/tasks/shared/openapi/RateLimited.java
