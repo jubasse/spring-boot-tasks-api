@@ -11,7 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
+import java.time.Clock;
 import java.util.UUID;
 
 @Service
@@ -20,6 +20,7 @@ public class NotificationSettingsService {
 
     private final NotificationSettingsRepository settingsRepository;
     private final UserRepository userRepository;
+    private final Clock clock;
 
     /** The user's settings, or the defaults (everything enabled) when they never changed them. */
     @Transactional(readOnly = true)
@@ -56,7 +57,7 @@ public class NotificationSettingsService {
         settings.setTaskMentioned(dto.taskMentioned());
         settings.setTaskDueSoon(dto.taskDueSoon());
         settings.setTaskOverdue(dto.taskOverdue());
-        settings.setUpdatedAt(Instant.now());
+        settings.setUpdatedAt(clock.instant());
 
         return settingsRepository.save(settings);
     }

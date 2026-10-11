@@ -29,7 +29,7 @@ import java.nio.file.Path;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.time.Instant;
+import java.time.Clock;
 import java.util.HexFormat;
 import java.util.UUID;
 
@@ -48,6 +48,7 @@ public class MediaService {
     private final ContentTypeDetector contentTypeDetector;
     private final VirusScanner virusScanner;
     private final MediaProperties properties;
+    private final Clock clock;
 
     @Transactional
     public Media store(MultipartFile file, MediaUsage usage, UUID uploadedById) {
@@ -77,7 +78,7 @@ public class MediaService {
         media.setSizeBytes(source.size());
         media.setSha256(sha256);
         media.setUploadedBy(uploadedById == null ? null : userProfileRepository.getReferenceById(uploadedById));
-        media.setCreatedAt(Instant.now());
+        media.setCreatedAt(clock.instant());
 
         return mediaRepository.save(media);
     }
@@ -117,7 +118,7 @@ public class MediaService {
         media.setSizeBytes(source.size());
         media.setSha256(sha256);
         media.setUploadedBy(ownerId == null ? null : userProfileRepository.getReferenceById(ownerId));
-        media.setCreatedAt(Instant.now());
+        media.setCreatedAt(clock.instant());
 
         return mediaRepository.save(media);
     }
