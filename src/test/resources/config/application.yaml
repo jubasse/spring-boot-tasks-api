@@ -37,9 +37,9 @@ media:
     enabled: false
 messaging:
   outbox:
-    # Reused containers share one database between test contexts: a poller running every few seconds would publish
-    # the rows of another context to its own broker. Messages still go out right after their commit; tests that
-    # exercise the retries call OutboxRelay.publishDue themselves.
+    # Reused containers share one database between test contexts: a poller running every few seconds, or at startup
+    # (the first poll waits one interval), would publish the rows of another context to its own broker. Messages
+    # still go out right after their commit; tests that exercise the retries call OutboxRelay.publishDue themselves.
     poll-interval: PT1H
 spring:
   testcontainers:
