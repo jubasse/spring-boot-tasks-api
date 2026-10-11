@@ -9,6 +9,7 @@ COPY mvnw pom.xml ./
 COPY .mvn/ .mvn/
 # A layer of its own, rebuilt only when the pom changes
 RUN ./mvnw --batch-mode --quiet dependency:go-offline
+COPY lombok.config ./
 COPY src/main/ src/main/
 RUN ./mvnw --batch-mode --quiet -Dmaven.test.skip=true package \
     && cp target/tasks-*.jar application.jar \
