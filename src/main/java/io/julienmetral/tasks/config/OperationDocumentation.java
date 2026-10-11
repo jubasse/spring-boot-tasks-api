@@ -32,6 +32,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 import org.springdoc.core.customizers.OperationCustomizer;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.annotation.AnnotatedElementUtils;
@@ -197,7 +198,7 @@ class OperationDocumentation implements OperationCustomizer {
                 });
     }
 
-    private static List<ProblemType> documentedTypes(ApiResponse response) {
+    private static List<ProblemType> documentedTypes(@Nullable ApiResponse response) {
         if (response == null || response.getContent() == null) {
             return List.of();
         }
