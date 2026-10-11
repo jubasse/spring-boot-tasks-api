@@ -436,8 +436,6 @@ Les annotations et ce qu'elles laissent passer (le texte de leur `@AccessDescrip
 | Annotation | SpEL | Qui passe |
 |---|---|---|
 | `@AdminOnly` | `hasRole({adminRole})`, `adminRole` vaut `ADMIN` par défaut | le rôle admin |
-| `@AllowedRoles(...)` | `hasAnyRole({value})` | les rôles listés |
-| `@SelfOnly` | `@userAuthorization.currentUserIsSelf(#id, authentication)` | l'utilisateur lui-même |
 | `@AllowedRolesOrSelfOnly(...)` | rôles ou `currentUserIsSelf(#id, ...)` | l'utilisateur, ou le rôle |
 | `@AllowedRolesOrAssignedToOnly(...)` | rôles ou `currentUserIsAssignedTo(#id, ...)` | l'assigné, ou le rôle |
 | `@AllowedRolesOrUploaderOnly(...)` | rôles ou `currentUserUploaded(#attachmentId, ...)` | qui a déposé la pièce, ou le rôle |

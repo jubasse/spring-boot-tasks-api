@@ -127,8 +127,6 @@ Each feature uses the same sub-packages: `controllers`, `dtos`, `entities`, `rep
 | Annotation | Where | Use |
 |---|---|---|
 | `@AdminOnly` | `shared/security` | admins only |
-| `@AllowedRoles` | `shared/security` | listed roles only |
-| `@SelfOnly` | `shared/security` | the user named by `#id` |
 | `@AllowedRolesOrSelfOnly` | `shared/security` | roles, or the user named by `#id` |
 | `@AllowedRolesOrAssignedToOnly` | `task/security` | roles, or the task's assignee (`#id`) |
 | `@AllowedRolesOrWithoutAssigneeOnly` | `task/security` | roles, or a creation without assignee (`#dto`) |

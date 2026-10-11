@@ -298,8 +298,8 @@ The default configuration serves development and tests. `application-prod.yaml` 
 
 Authorization is declared with custom meta-annotations wrapping `@PreAuthorize`, not with inline SpEL. `AnnotationTemplateExpressionDefaults` is registered so that `{value}` placeholders resolve, and `UserRole` implements `ExpressionTemplateValueProvider` so enum values render as quoted role names.
 
-- `@AdminOnly`, `@AllowedRoles(...)`: role checks.
-- `@SelfOnly`, `@AllowedRolesOrSelfOnly(...)`: delegate to the `userAuthorization` bean (`UserAuthorization`).
+- `@AdminOnly`: role check.
+- `@AllowedRolesOrSelfOnly(...)`: delegates to the `userAuthorization` bean (`UserAuthorization`).
 - `@AllowedRolesOrAssignedToOnly(...)` (in `task.security`): delegates to the `taskAuthorization` bean (`TaskAuthorization`).
 - `@AllowedRolesOrUploaderOnly(...)`, `@CommentAuthorOnly`, `@AllowedRolesOrCommentAuthorOnly(...)` (in `task.security`): delegate to `taskAttachmentAuthorization` and `taskCommentAuthorization`, and read `#attachmentId` or `#commentId` instead.
 - `@AllowedRolesOrWithoutAssigneeOnly(...)` (in `task.security`): anyone may create an unassigned task; assigning it on creation needs a role. It reads `#dto`.
