@@ -28,6 +28,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
@@ -37,7 +38,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -60,6 +63,8 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class TaskCommentServiceTest {
+
+    private static final Instant NOW = Instant.parse("2026-10-11T08:30:00Z");
 
     private static final UUID TASK_ID = UUID.fromString("00000000-0000-0000-0000-00000000000a");
     private static final UUID COMMENT_ID = UUID.fromString("00000000-0000-0000-0000-0000000000c1");
@@ -88,6 +93,9 @@ class TaskCommentServiceTest {
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
+
+    @Spy
+    private Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 
     @InjectMocks
     private TaskCommentService service;
@@ -130,7 +138,7 @@ class TaskCommentServiceTest {
         attachment.setId(UUID.randomUUID());
         attachment.setTask(task);
         attachment.setMedia(media);
-        attachment.setCreatedAt(Instant.now());
+        attachment.setCreatedAt(NOW);
         return attachment;
     }
 
@@ -226,7 +234,6 @@ class TaskCommentServiceTest {
         @Test
         void savesTheCommentByTheCurrentUserWithoutMentions() {
             stubAddUpToSave();
-            Instant before = Instant.now();
 
             TaskComment result = service.add(TASK_ID, "Looks good", List.of());
 
@@ -239,7 +246,7 @@ class TaskCommentServiceTest {
             assertThat(saved.getBody()).isEqualTo("Looks good");
             assertThat(saved.getMentions()).isEmpty();
             assertThat(saved.getAttachments()).isEmpty();
-            assertThat(saved.getCreatedAt()).isBetween(before, Instant.now());
+            assertThat(saved.getCreatedAt()).isEqualTo(NOW);
             assertThat(saved.getEditedAt()).isNull();
             verify(userProfileRepository, never()).findAllById(any());
             verifyNoInteractions(attachmentService);
@@ -434,13 +441,12 @@ class TaskCommentServiceTest {
         void replacesTheBodyAndSetsEditedAt() {
             TaskComment comment = existingComment("Before");
             stubComment(comment);
-            Instant before = Instant.now();
 
             TaskComment result = service.edit(TASK_ID, COMMENT_ID, "After");
 
             assertThat(result).isSameAs(comment);
             assertThat(comment.getBody()).isEqualTo("After");
-            assertThat(comment.getEditedAt()).isBetween(before, Instant.now());
+            assertThat(comment.getEditedAt()).isEqualTo(NOW);
             assertThat(comment.getCreatedAt()).isEqualTo(Instant.parse("2026-03-01T10:00:00Z"));
         }
 

@@ -18,11 +18,14 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -40,6 +43,8 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class TaskAttachmentServiceTest {
 
+    private static final Instant NOW = Instant.parse("2026-10-11T08:30:00Z");
+
     @Mock
     private TaskRepository taskRepository;
 
@@ -54,6 +59,9 @@ class TaskAttachmentServiceTest {
 
     @Mock
     private CurrentUser currentUser;
+
+    @Spy
+    private Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 
     @InjectMocks
     private TaskAttachmentService service;
@@ -80,7 +88,6 @@ class TaskAttachmentServiceTest {
         when(currentUser.getId()).thenReturn(Optional.of(userId));
         when(mediaService.store(file, MediaUsage.TASK_ATTACHMENT, userId)).thenReturn(media);
         when(attachmentRepository.save(any(TaskAttachment.class))).thenReturn(saved);
-        Instant before = Instant.now();
 
         TaskAttachment result = service.add(taskId, file);
 
@@ -91,7 +98,7 @@ class TaskAttachmentServiceTest {
         assertThat(toSave.getTask()).isSameAs(task);
         assertThat(toSave.getMedia()).isSameAs(media);
         assertThat(toSave.getComment()).isNull();
-        assertThat(toSave.getCreatedAt()).isBetween(before, Instant.now());
+        assertThat(toSave.getCreatedAt()).isEqualTo(NOW);
 
         InOrder order = inOrder(mediaService, attachmentRepository, taskEventService);
         order.verify(mediaService).store(file, MediaUsage.TASK_ATTACHMENT, userId);

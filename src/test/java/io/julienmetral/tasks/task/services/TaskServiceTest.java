@@ -34,6 +34,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -41,7 +42,9 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -62,6 +65,8 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class TaskServiceTest {
+
+    private static final Instant NOW = Instant.parse("2026-10-11T08:30:00Z");
 
     private static final UUID TASK_ID = UUID.fromString("00000000-0000-0000-0000-00000000000a");
     private static final Instant OLD = Instant.parse("2020-01-01T00:00:00Z");
@@ -85,6 +90,9 @@ class TaskServiceTest {
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
+
+    @Spy
+    private Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 
     @InjectMocks
     private TaskService taskService;
@@ -360,7 +368,7 @@ class TaskServiceTest {
         taskService.changeStatus(TASK_ID, TaskStatus.DONE);
 
         assertThat(task.getStatus()).isEqualTo(TaskStatus.DONE);
-        assertThat(task.getCompletedAt()).isNotNull().isAfter(OLD);
+        assertThat(task.getCompletedAt()).isEqualTo(NOW);
         assertThat(task.getCancelledAt()).isNull();
         assertThat(task.getCancelledReason()).isNull();
         verify(taskEventService).statusChanged(task, TaskStatus.CANCELLED, TaskStatus.DONE);
@@ -375,7 +383,7 @@ class TaskServiceTest {
         taskService.changeStatus(TASK_ID, TaskStatus.CANCELLED);
 
         assertThat(task.getStatus()).isEqualTo(TaskStatus.CANCELLED);
-        assertThat(task.getCancelledAt()).isNotNull().isAfter(OLD);
+        assertThat(task.getCancelledAt()).isEqualTo(NOW);
         assertThat(task.getCompletedAt()).isNull();
         verify(taskEventService).statusChanged(task, TaskStatus.DONE, TaskStatus.CANCELLED);
     }
@@ -584,7 +592,7 @@ class TaskServiceTest {
 
         taskService.archive(TASK_ID);
 
-        assertThat(task.getArchivedAt()).isNotNull();
+        assertThat(task.getArchivedAt()).isEqualTo(NOW);
         verify(taskEventService).archived(task);
     }
 
@@ -643,7 +651,7 @@ class TaskServiceTest {
 
         assertThat(result).isSameAs(task);
         assertThat(task.getStatus()).isEqualTo(TaskStatus.CANCELLED);
-        assertThat(task.getCancelledAt()).isNotNull();
+        assertThat(task.getCancelledAt()).isEqualTo(NOW);
         assertThat(task.getCancelledReason()).isEqualTo("no longer needed");
         assertThat(task.getCompletedAt()).isNull();
         verify(taskEventService).cancelled(task, TaskStatus.DONE, "no longer needed");
