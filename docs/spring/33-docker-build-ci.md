@@ -1,6 +1,6 @@
 # 33. Image Docker, build et CI
 
-[Sommaire](README.md) | [< 32. Actuator, sondes et métriques](32-actuator-metriques.md)
+[Sommaire](README.md) | [< 32. Actuator, sondes et métriques](32-actuator-metriques.md) | [34. Formatage et vérification de la nullité >](34-formatage-nullite.md)
 
 ## Contexte
 
@@ -387,11 +387,12 @@ Pour ajouter un réglage exigé au démarrage, on met une valeur jetable dans le
 - [32. Actuator, sondes et métriques](32-actuator-metriques.md) : les deux ports de l'image et ce que servent `build-info` et le SBOM.
 - [02. Profil de production](02-profil-production.md) : le profil `prod` et les réglages obligatoires.
 - [30. Testcontainers](30-testcontainers.md) : les conteneurs du job de tests.
+- [34. Formatage et vérification de la nullité](34-formatage-nullite.md) : l'étape de formatage et la compilation avec NullAway.
 - [06. OpenAPI avec springdoc](06-openapi-springdoc.md) : le job du contrat d'API.
 - [README du dépôt, « Deploy the API »](../../README.md#deploy-the-api) : variables, image publiée, vérification de l'attestation.
 - Documentation officielle : [cache AOT](https://docs.spring.io/spring-boot/reference/packaging/aot-cache.html), [Dockerfiles pour Spring Boot](https://docs.spring.io/spring-boot/reference/packaging/container-images/dockerfiles.html), [builds multi-étapes](https://docs.docker.com/build/building/multi-stage/).
 
-[Sommaire](README.md) | [< 32. Actuator, sondes et métriques](32-actuator-metriques.md)
+[Sommaire](README.md) | [< 32. Actuator, sondes et métriques](32-actuator-metriques.md) | [34. Formatage et vérification de la nullité >](34-formatage-nullite.md)
 
 [dockerfile]: ../../Dockerfile
 [dockerignore]: ../../.dockerignore
