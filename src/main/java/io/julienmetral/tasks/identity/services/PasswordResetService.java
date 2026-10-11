@@ -16,6 +16,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.util.Locale;
 
@@ -30,6 +31,7 @@ public class PasswordResetService {
     private final RefreshTokenService refreshTokenService;
     private final PasswordResetProperties properties;
     private final ApplicationEventPublisher eventPublisher;
+    private final Clock clock;
 
     /**
      * Emails a reset link to an enabled account. Unknown and disabled emails are silently ignored, so the
@@ -49,7 +51,7 @@ public class PasswordResetService {
      */
     @Transactional
     public void confirm(String rawToken, String newPassword) {
-        Instant now = Instant.now();
+        Instant now = clock.instant();
 
         PasswordResetToken token = tokenRepository
                 .findByTokenHash(OpaqueTokens.hash(rawToken))
@@ -80,7 +82,7 @@ public class PasswordResetService {
         tokenRepository.deleteUnusedForUser(user.getId());
 
         String value = OpaqueTokens.generate();
-        Instant now = Instant.now();
+        Instant now = clock.instant();
 
         PasswordResetToken token = new PasswordResetToken();
 

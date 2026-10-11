@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -23,11 +24,12 @@ public class RefreshTokenService {
     private final UserRepository userRepository;
     private final UserProfileRepository userProfileRepository;
     private final RefreshTokenProperties properties;
+    private final Clock clock;
 
     /** Starts a new token family, one per login. */
     @Transactional
     public IssuedRefreshToken issue(User user) {
-        return create(user, UUID.randomUUID(), Instant.now());
+        return create(user, UUID.randomUUID(), clock.instant());
     }
 
     /**
@@ -37,7 +39,7 @@ public class RefreshTokenService {
      */
     @Transactional(noRollbackFor = InvalidRefreshTokenException.class)
     public RotatedRefreshToken rotate(String rawToken) {
-        Instant now = Instant.now();
+        Instant now = clock.instant();
 
         RefreshToken current = refreshTokenRepository
                 .findByTokenHash(OpaqueTokens.hash(rawToken))
@@ -79,13 +81,13 @@ public class RefreshTokenService {
     public void revoke(String rawToken) {
         refreshTokenRepository
                 .findByTokenHash(OpaqueTokens.hash(rawToken))
-                .ifPresent(token -> refreshTokenRepository.revokeFamily(token.getFamilyId(), Instant.now()));
+                .ifPresent(token -> refreshTokenRepository.revokeFamily(token.getFamilyId(), clock.instant()));
     }
 
     /** Called when a user is disabled or deleted, so none of their sessions can be refreshed. */
     @Transactional
     public void revokeAllForUser(UUID userId) {
-        refreshTokenRepository.revokeAllForUser(userId, Instant.now());
+        refreshTokenRepository.revokeAllForUser(userId, clock.instant());
     }
 
     private IssuedRefreshToken create(User user, UUID familyId, Instant now) {

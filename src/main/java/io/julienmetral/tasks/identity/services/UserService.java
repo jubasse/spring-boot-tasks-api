@@ -13,7 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.time.Instant;
+import java.time.Clock;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
@@ -28,6 +28,7 @@ public class UserService {
     private final EmailVerificationService emailVerificationService;
     private final RefreshTokenService refreshTokenService;
     private final ApplicationEventPublisher eventPublisher;
+    private final Clock clock;
 
     @Transactional
     public User create(
@@ -90,14 +91,14 @@ public class UserService {
         User user = getUserForUpdate(id);
 
         if (user.getEmailVerifiedAt() == null) {
-            user.setEmailVerifiedAt(Instant.now());
+            user.setEmailVerifiedAt(clock.instant());
             eventPublisher.publishEvent(new AccountStateChanged(id));
         }
     }
 
     @Transactional
     public void recordLogin(UUID id) {
-        getUser(id).setLastLoginAt(Instant.now());
+        getUser(id).setLastLoginAt(clock.instant());
     }
 
     @Transactional

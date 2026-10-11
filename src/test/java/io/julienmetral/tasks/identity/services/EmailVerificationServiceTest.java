@@ -22,8 +22,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -40,6 +42,8 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class EmailVerificationServiceTest {
+
+    private static final Instant NOW = Instant.parse("2026-10-11T08:30:00Z");
 
     private static final Duration TTL = Duration.ofHours(24);
 
@@ -68,7 +72,8 @@ class EmailVerificationServiceTest {
                 userRepository,
                 userProfileRepository,
                 new EmailVerificationProperties(TTL, "https://app.example.com/verify-email"),
-                eventPublisher
+                eventPublisher,
+                Clock.fixed(NOW, ZoneOffset.UTC)
         );
     }
 
@@ -84,7 +89,7 @@ class EmailVerificationServiceTest {
         EmailVerificationToken token = new EmailVerificationToken();
         token.setUser(owner);
         token.setTokenHash(OpaqueTokens.hash(RAW_TOKEN));
-        token.setCreatedAt(Instant.now().minus(Duration.ofHours(1)));
+        token.setCreatedAt(NOW.minus(Duration.ofHours(1)));
         token.setExpiresAt(expiresAt);
         token.setUsedAt(usedAt);
         return token;
@@ -102,7 +107,7 @@ class EmailVerificationServiceTest {
         return reference;
     }
 
-    private void assertIssuedFor(UserProfile reference, Instant before, Instant after) {
+    private void assertIssuedFor(UserProfile reference) {
         InOrder order = inOrder(tokenRepository, eventPublisher);
         order.verify(tokenRepository).deleteUnusedForUser(USER_ID);
 
@@ -117,7 +122,7 @@ class EmailVerificationServiceTest {
 
         assertThat(token.getUser()).isSameAs(reference);
         assertThat(token.getUsedAt()).isNull();
-        assertThat(token.getCreatedAt()).isBetween(before, after);
+        assertThat(token.getCreatedAt()).isEqualTo(NOW);
         assertThat(token.getExpiresAt()).isEqualTo(token.getCreatedAt().plus(TTL));
 
         assertThat(published.userId()).isEqualTo(USER_ID);
@@ -132,11 +137,10 @@ class EmailVerificationServiceTest {
     @Test
     void issueDeletesPendingTokensSavesHashAndPublishesEvent() {
         UserProfile reference = stubReference();
-        Instant before = Instant.now();
 
         service.issue(user());
 
-        assertIssuedFor(reference, before, Instant.now());
+        assertIssuedFor(reference);
     }
 
     @Test
@@ -153,8 +157,8 @@ class EmailVerificationServiceTest {
 
     @Test
     void verifyUsedTokenThrowsAndKeepsOriginalUsage() {
-        Instant usedAt = Instant.now().minusSeconds(60);
-        EmailVerificationToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), usedAt);
+        Instant usedAt = NOW.minusSeconds(60);
+        EmailVerificationToken token = stubStored(reference(USER_ID), NOW.plus(TTL), usedAt);
 
         assertThatThrownBy(() -> service.verify(RAW_TOKEN))
                 .isInstanceOf(InvalidEmailVerificationTokenException.class);
@@ -165,7 +169,7 @@ class EmailVerificationServiceTest {
 
     @Test
     void verifyExpiredTokenThrows() {
-        EmailVerificationToken token = stubStored(reference(USER_ID), Instant.now().minusSeconds(1), null);
+        EmailVerificationToken token = stubStored(reference(USER_ID), NOW.minusSeconds(1), null);
 
         assertThatThrownBy(() -> service.verify(RAW_TOKEN))
                 .isInstanceOf(InvalidEmailVerificationTokenException.class);
@@ -176,7 +180,7 @@ class EmailVerificationServiceTest {
 
     @Test
     void verifyTokenOfDeletedUserThrowsWithoutConsumingIt() {
-        EmailVerificationToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
+        EmailVerificationToken token = stubStored(reference(USER_ID), NOW.plus(TTL), null);
         when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.verify(RAW_TOKEN))
@@ -189,13 +193,12 @@ class EmailVerificationServiceTest {
     @Test
     void verifyValidTokenMarksItUsedAndVerifiesEmail() {
         User loaded = user();
-        EmailVerificationToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
+        EmailVerificationToken token = stubStored(reference(USER_ID), NOW.plus(TTL), null);
         when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(loaded));
-        Instant before = Instant.now();
 
         service.verify(RAW_TOKEN);
 
-        assertThat(token.getUsedAt()).isBetween(before, Instant.now());
+        assertThat(token.getUsedAt()).isEqualTo(NOW);
         assertThat(loaded.getEmailVerifiedAt()).isEqualTo(token.getUsedAt());
         verify(eventPublisher).publishEvent(new AccountStateChanged(USER_ID));
     }
@@ -205,7 +208,7 @@ class EmailVerificationServiceTest {
         Instant verifiedAt = Instant.parse("2020-01-01T00:00:00Z");
         User user = user();
         user.setEmailVerifiedAt(verifiedAt);
-        EmailVerificationToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
+        EmailVerificationToken token = stubStored(reference(USER_ID), NOW.plus(TTL), null);
         when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
 
         service.verify(RAW_TOKEN);
@@ -243,11 +246,10 @@ class EmailVerificationServiceTest {
     void resendUnverifiedUserIssuesNewToken() {
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user()));
         UserProfile reference = stubReference();
-        Instant before = Instant.now();
 
         service.resend(USER_ID);
 
-        assertIssuedFor(reference, before, Instant.now());
+        assertIssuedFor(reference);
         verify(tokenRepository, never()).findByTokenHash(any());
     }
 }

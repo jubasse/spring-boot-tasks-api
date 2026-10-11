@@ -18,8 +18,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -28,7 +30,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -38,6 +39,8 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class RefreshTokenServiceTest {
+
+    private static final Instant NOW = Instant.parse("2026-10-11T08:30:00Z");
 
     private static final Duration TTL = Duration.ofDays(30);
 
@@ -64,7 +67,8 @@ class RefreshTokenServiceTest {
                 refreshTokenRepository,
                 userRepository,
                 userProfileRepository,
-                new RefreshTokenProperties(TTL)
+                new RefreshTokenProperties(TTL),
+                Clock.fixed(NOW, ZoneOffset.UTC)
         );
     }
 
@@ -81,7 +85,7 @@ class RefreshTokenServiceTest {
         token.setUser(owner);
         token.setTokenHash(OpaqueTokens.hash(RAW_TOKEN));
         token.setFamilyId(FAMILY_ID);
-        token.setCreatedAt(Instant.now().minus(Duration.ofDays(1)));
+        token.setCreatedAt(NOW.minus(Duration.ofDays(1)));
         token.setExpiresAt(expiresAt);
         token.setRevokedAt(revokedAt);
         return token;
@@ -108,11 +112,9 @@ class RefreshTokenServiceTest {
     @Test
     void issueSavesHashedTokenInNewFamilyAndReturnsRawValue() {
         UserProfile reference = stubReference();
-        Instant before = Instant.now();
 
         IssuedRefreshToken issued = service.issue(user());
 
-        Instant after = Instant.now();
         RefreshToken saved = captureSaved();
 
         assertThat(issued.value()).hasSize(43);
@@ -120,7 +122,7 @@ class RefreshTokenServiceTest {
         assertThat(saved.getUser()).isSameAs(reference);
         assertThat(saved.getFamilyId()).isNotNull();
         assertThat(saved.getRevokedAt()).isNull();
-        assertThat(saved.getCreatedAt()).isBetween(before, after);
+        assertThat(saved.getCreatedAt()).isEqualTo(NOW);
         assertThat(saved.getExpiresAt()).isEqualTo(saved.getCreatedAt().plus(TTL));
         assertThat(issued.expiresAt()).isEqualTo(saved.getExpiresAt());
     }
@@ -156,21 +158,18 @@ class RefreshTokenServiceTest {
 
     @Test
     void rotateRevokedTokenRevokesWholeFamilyAndThrows() {
-        stubStored(reference(USER_ID), Instant.now().plus(TTL), Instant.now().minusSeconds(60));
-        Instant before = Instant.now();
+        stubStored(reference(USER_ID), NOW.plus(TTL), NOW.minusSeconds(60));
 
         assertThatThrownBy(() -> service.rotate(RAW_TOKEN)).isInstanceOf(InvalidRefreshTokenException.class);
 
-        ArgumentCaptor<Instant> now = ArgumentCaptor.forClass(Instant.class);
-        verify(refreshTokenRepository).revokeFamily(eq(FAMILY_ID), now.capture());
-        assertThat(now.getValue()).isBetween(before, Instant.now());
+        verify(refreshTokenRepository).revokeFamily(FAMILY_ID, NOW);
         verify(refreshTokenRepository, never()).save(any());
         verifyNoInteractions(userRepository);
     }
 
     @Test
     void rotateExpiredTokenThrowsWithoutRevokingFamily() {
-        RefreshToken token = stubStored(reference(USER_ID), Instant.now().minusSeconds(1), null);
+        RefreshToken token = stubStored(reference(USER_ID), NOW.minusSeconds(1), null);
 
         assertThatThrownBy(() -> service.rotate(RAW_TOKEN)).isInstanceOf(InvalidRefreshTokenException.class);
 
@@ -182,12 +181,12 @@ class RefreshTokenServiceTest {
 
     @Test
     void rotateTokenOfSoftDeletedUserRevokesWholeFamilyAndThrows() {
-        RefreshToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
+        RefreshToken token = stubStored(reference(USER_ID), NOW.plus(TTL), null);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.rotate(RAW_TOKEN)).isInstanceOf(InvalidRefreshTokenException.class);
 
-        verify(refreshTokenRepository).revokeFamily(eq(FAMILY_ID), any(Instant.class));
+        verify(refreshTokenRepository).revokeFamily(FAMILY_ID, NOW);
         verify(refreshTokenRepository, never()).save(any());
         assertThat(token.getRevokedAt()).isNull();
     }
@@ -196,12 +195,12 @@ class RefreshTokenServiceTest {
     void rotateTokenOfDisabledUserRevokesWholeFamilyAndThrows() {
         User disabled = user();
         disabled.setEnabled(false);
-        stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
+        stubStored(reference(USER_ID), NOW.plus(TTL), null);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(disabled));
 
         assertThatThrownBy(() -> service.rotate(RAW_TOKEN)).isInstanceOf(InvalidRefreshTokenException.class);
 
-        verify(refreshTokenRepository).revokeFamily(eq(FAMILY_ID), any(Instant.class));
+        verify(refreshTokenRepository).revokeFamily(FAMILY_ID, NOW);
         verify(refreshTokenRepository, never()).save(any());
     }
 
@@ -209,18 +208,16 @@ class RefreshTokenServiceTest {
     void rotateValidTokenRevokesItAndIssuesSuccessorInSameFamily() {
         // The token holds a lazy reference; the returned user is the one reloaded from the database
         User loaded = user();
-        RefreshToken current = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
+        RefreshToken current = stubStored(reference(USER_ID), NOW.plus(TTL), null);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(loaded));
         UserProfile successorReference = stubReference();
-        Instant before = Instant.now();
 
         RotatedRefreshToken rotated = service.rotate(RAW_TOKEN);
 
-        Instant after = Instant.now();
         RefreshToken successor = captureSaved();
 
         assertThat(rotated.user()).isSameAs(loaded);
-        assertThat(current.getRevokedAt()).isBetween(before, after);
+        assertThat(current.getRevokedAt()).isEqualTo(NOW);
 
         assertThat(successor).isNotSameAs(current);
         assertThat(successor.getFamilyId()).isEqualTo(FAMILY_ID);
@@ -238,14 +235,11 @@ class RefreshTokenServiceTest {
 
     @Test
     void revokeKnownTokenRevokesItsFamily() {
-        stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
-        Instant before = Instant.now();
+        stubStored(reference(USER_ID), NOW.plus(TTL), null);
 
         service.revoke(RAW_TOKEN);
 
-        ArgumentCaptor<Instant> now = ArgumentCaptor.forClass(Instant.class);
-        verify(refreshTokenRepository).revokeFamily(eq(FAMILY_ID), now.capture());
-        assertThat(now.getValue()).isBetween(before, Instant.now());
+        verify(refreshTokenRepository).revokeFamily(FAMILY_ID, NOW);
     }
 
     @Test
@@ -260,12 +254,8 @@ class RefreshTokenServiceTest {
 
     @Test
     void revokeAllForUserDelegatesWithCurrentTime() {
-        Instant before = Instant.now();
-
         service.revokeAllForUser(USER_ID);
 
-        ArgumentCaptor<Instant> now = ArgumentCaptor.forClass(Instant.class);
-        verify(refreshTokenRepository).revokeAllForUser(eq(USER_ID), now.capture());
-        assertThat(now.getValue()).isBetween(before, Instant.now());
+        verify(refreshTokenRepository).revokeAllForUser(USER_ID, NOW);
     }
 }

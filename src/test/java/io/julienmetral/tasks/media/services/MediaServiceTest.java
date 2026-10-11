@@ -44,7 +44,9 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
@@ -73,6 +75,8 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class MediaServiceTest {
+
+    private static final Instant NOW = Instant.parse("2026-10-11T08:30:00Z");
 
     private static final UUID UPLOADER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
@@ -110,7 +114,8 @@ class MediaServiceTest {
                 objectStorage,
                 contentTypeDetector,
                 virusScanner,
-                new MediaProperties(AVATAR_MAX, ATTACHMENT_MAX)
+                new MediaProperties(AVATAR_MAX, ATTACHMENT_MAX),
+                Clock.fixed(NOW, ZoneOffset.UTC)
         );
         TransactionSynchronizationManager.initSynchronization();
     }
@@ -157,7 +162,6 @@ class MediaServiceTest {
                 return null;
             }).when(objectStorage).put(anyString(), any(InputStream.class), anyLong(), anyString());
 
-            Instant before = Instant.now();
             Media media = service.store(file("report.pdf", CONTENT), MediaUsage.TASK_ATTACHMENT, UPLOADER_ID);
 
             String key = uploadedKey();
@@ -174,7 +178,7 @@ class MediaServiceTest {
             assertThat(media.getSizeBytes()).isEqualTo(CONTENT.length);
             assertThat(media.getSha256()).isEqualTo(sha256Hex(CONTENT));
             assertThat(media.getUploadedBy()).isSameAs(uploader);
-            assertThat(media.getCreatedAt()).isBetween(before, Instant.now());
+            assertThat(media.getCreatedAt()).isEqualTo(NOW);
             assertThat(media.getId()).isNull();
             verify(mediaRepository).save(media);
         }
@@ -818,7 +822,6 @@ class MediaServiceTest {
                 return null;
             }).when(objectStorage).put(anyString(), any(InputStream.class), anyLong(), anyString());
 
-            Instant before = Instant.now();
             Media media = service.storeGenerated(writtenFile(), "tasks-2030-01-01.csv", "text/csv",
                     MediaUsage.EXPORT, UPLOADER_ID);
 
@@ -835,7 +838,7 @@ class MediaServiceTest {
             assertThat(media.getSizeBytes()).isEqualTo(CSV.length);
             assertThat(media.getSha256()).isEqualTo(sha256Hex(CSV));
             assertThat(media.getUploadedBy()).isSameAs(owner);
-            assertThat(media.getCreatedAt()).isBetween(before, Instant.now());
+            assertThat(media.getCreatedAt()).isEqualTo(NOW);
             verify(mediaRepository).save(media);
         }
 
@@ -921,7 +924,6 @@ class MediaServiceTest {
                 return null;
             }).when(objectStorage).put(anyString(), any(InputStream.class), anyLong(), anyString());
 
-            Instant before = Instant.now();
             Media media = service.storeGenerated(PHOTO, "avatar.jpg", "image/jpeg", MediaUsage.AVATAR, UPLOADER_ID);
 
             String key = uploadedKey();
@@ -937,7 +939,7 @@ class MediaServiceTest {
             assertThat(media.getSizeBytes()).isEqualTo(PHOTO.length);
             assertThat(media.getSha256()).isEqualTo(sha256Hex(PHOTO));
             assertThat(media.getUploadedBy()).isSameAs(owner);
-            assertThat(media.getCreatedAt()).isBetween(before, Instant.now());
+            assertThat(media.getCreatedAt()).isEqualTo(NOW);
             verify(mediaRepository).save(media);
         }
 

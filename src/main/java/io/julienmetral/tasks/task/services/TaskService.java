@@ -29,6 +29,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
@@ -43,6 +44,7 @@ public class TaskService {
     private final UserProfileRepository userProfileRepository;
     private final CurrentUser currentUser;
     private final ApplicationEventPublisher eventPublisher;
+    private final Clock clock;
 
     @Transactional
     public Task create(CreateTaskDto dto) {
@@ -153,7 +155,7 @@ public class TaskService {
     @Transactional
     public Task changeStatus(UUID id, TaskStatus status) {
         Task task = getTask(id);
-        Instant now = Instant.now();
+        Instant now = clock.instant();
 
         if (task.getStatus() == status) {
             return withUsersLoaded(task);
@@ -238,7 +240,7 @@ public class TaskService {
             return withUsersLoaded(task);
         }
 
-        task.setArchivedAt(Instant.now());
+        task.setArchivedAt(clock.instant());
 
         taskEventService.archived(task);
 
@@ -268,7 +270,7 @@ public class TaskService {
                 task.getStatus();
 
         task.setStatus(TaskStatus.CANCELLED);
-        task.setCancelledAt(Instant.now());
+        task.setCancelledAt(clock.instant());
         task.setCancelledReason(reason);
 
         task.setCompletedAt(null);

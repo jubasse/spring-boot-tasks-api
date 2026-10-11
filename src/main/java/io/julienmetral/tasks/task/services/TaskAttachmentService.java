@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.time.Instant;
+import java.time.Clock;
 import java.util.List;
 import java.util.UUID;
 
@@ -31,6 +31,7 @@ public class TaskAttachmentService {
     private final MediaService mediaService;
     private final TaskEventService taskEventService;
     private final CurrentUser currentUser;
+    private final Clock clock;
 
     /** Validates (size, type, antivirus) and stores the file, then records an ATTACHMENT_ADDED event. */
     @Transactional
@@ -48,7 +49,7 @@ public class TaskAttachmentService {
         attachment.setTask(task);
         attachment.setComment(comment);
         attachment.setMedia(media);
-        attachment.setCreatedAt(Instant.now());
+        attachment.setCreatedAt(clock.instant());
 
         TaskAttachment saved = attachmentRepository.save(attachment);
 

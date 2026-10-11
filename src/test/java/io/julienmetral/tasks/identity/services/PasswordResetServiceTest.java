@@ -21,8 +21,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -39,6 +41,8 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class PasswordResetServiceTest {
+
+    private static final Instant NOW = Instant.parse("2026-10-11T08:30:00Z");
 
     private static final Duration TTL = Duration.ofHours(1);
 
@@ -81,7 +85,8 @@ class PasswordResetServiceTest {
                 passwordEncoder,
                 refreshTokenService,
                 new PasswordResetProperties(TTL, "https://app.example.com/reset-password"),
-                eventPublisher
+                eventPublisher,
+                Clock.fixed(NOW, ZoneOffset.UTC)
         );
     }
 
@@ -99,7 +104,7 @@ class PasswordResetServiceTest {
         PasswordResetToken token = new PasswordResetToken();
         token.setUser(owner);
         token.setTokenHash(OpaqueTokens.hash(RAW_TOKEN));
-        token.setCreatedAt(Instant.now().minus(Duration.ofMinutes(10)));
+        token.setCreatedAt(NOW.minus(Duration.ofMinutes(10)));
         token.setExpiresAt(expiresAt);
         token.setUsedAt(usedAt);
 
@@ -124,11 +129,8 @@ class PasswordResetServiceTest {
         when(userRepository.findByEmailIgnoreCase("jane@example.com")).thenReturn(Optional.of(user()));
         UserProfile reference = reference(USER_ID);
         when(userProfileRepository.getReferenceById(USER_ID)).thenReturn(reference);
-        Instant before = Instant.now();
 
         service.request("  Jane@Example.COM ");
-
-        Instant after = Instant.now();
 
         InOrder order = inOrder(tokenRepository, eventPublisher);
         order.verify(tokenRepository).deleteUnusedForUser(USER_ID);
@@ -144,7 +146,7 @@ class PasswordResetServiceTest {
 
         assertThat(token.getUser()).isSameAs(reference);
         assertThat(token.getUsedAt()).isNull();
-        assertThat(token.getCreatedAt()).isBetween(before, after);
+        assertThat(token.getCreatedAt()).isEqualTo(NOW);
         assertThat(token.getExpiresAt()).isEqualTo(token.getCreatedAt().plus(TTL));
 
         assertThat(published.email()).isEqualTo("jane@example.com");
@@ -192,8 +194,8 @@ class PasswordResetServiceTest {
 
     @Test
     void confirmUsedTokenThrowsAndKeepsOriginalUsage() {
-        Instant usedAt = Instant.now().minusSeconds(60);
-        PasswordResetToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), usedAt);
+        Instant usedAt = NOW.minusSeconds(60);
+        PasswordResetToken token = stubStored(reference(USER_ID), NOW.plus(TTL), usedAt);
 
         assertThatThrownBy(() -> service.confirm(RAW_TOKEN, NEW_PASSWORD))
                 .isInstanceOf(InvalidPasswordResetTokenException.class);
@@ -205,7 +207,7 @@ class PasswordResetServiceTest {
 
     @Test
     void confirmExpiredTokenThrows() {
-        PasswordResetToken token = stubStored(reference(USER_ID), Instant.now().minusSeconds(1), null);
+        PasswordResetToken token = stubStored(reference(USER_ID), NOW.minusSeconds(1), null);
 
         assertThatThrownBy(() -> service.confirm(RAW_TOKEN, NEW_PASSWORD))
                 .isInstanceOf(InvalidPasswordResetTokenException.class);
@@ -217,7 +219,7 @@ class PasswordResetServiceTest {
 
     @Test
     void confirmTokenOfSoftDeletedUserThrowsWithoutConsumingIt() {
-        PasswordResetToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
+        PasswordResetToken token = stubStored(reference(USER_ID), NOW.plus(TTL), null);
         when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.confirm(RAW_TOKEN, NEW_PASSWORD))
@@ -231,7 +233,7 @@ class PasswordResetServiceTest {
     void confirmTokenOfDisabledUserThrowsWithoutConsumingIt() {
         User user = user();
         user.setEnabled(false);
-        PasswordResetToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
+        PasswordResetToken token = stubStored(reference(USER_ID), NOW.plus(TTL), null);
         when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
 
         assertThatThrownBy(() -> service.confirm(RAW_TOKEN, NEW_PASSWORD))
@@ -245,14 +247,13 @@ class PasswordResetServiceTest {
     void confirmValidTokenSetsPasswordVerifiesEmailAndSignsOutEverywhere() {
         // The token holds a lazy reference; the service works on the user loaded by id
         User loaded = user();
-        PasswordResetToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
+        PasswordResetToken token = stubStored(reference(USER_ID), NOW.plus(TTL), null);
         when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(loaded));
         when(passwordEncoder.encode(NEW_PASSWORD)).thenReturn(ENCODED_PASSWORD);
-        Instant before = Instant.now();
 
         service.confirm(RAW_TOKEN, NEW_PASSWORD);
 
-        assertThat(token.getUsedAt()).isBetween(before, Instant.now());
+        assertThat(token.getUsedAt()).isEqualTo(NOW);
         assertThat(loaded.getPasswordHash()).isEqualTo(ENCODED_PASSWORD);
         assertThat(loaded.getEmailVerifiedAt()).isEqualTo(token.getUsedAt());
 
@@ -267,7 +268,7 @@ class PasswordResetServiceTest {
         Instant verifiedAt = Instant.parse("2020-01-01T00:00:00Z");
         User user = user();
         user.setEmailVerifiedAt(verifiedAt);
-        PasswordResetToken token = stubStored(reference(USER_ID), Instant.now().plus(TTL), null);
+        PasswordResetToken token = stubStored(reference(USER_ID), NOW.plus(TTL), null);
         when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
         when(passwordEncoder.encode(NEW_PASSWORD)).thenReturn(ENCODED_PASSWORD);
 

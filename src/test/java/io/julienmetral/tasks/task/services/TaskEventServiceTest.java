@@ -29,7 +29,9 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -46,6 +48,8 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class TaskEventServiceTest {
+
+    private static final Instant NOW = Instant.parse("2026-10-11T08:30:00Z");
 
     private static final UUID ACTOR_ID = UUID.fromString("00000000-0000-0000-0000-0000000000a1");
 
@@ -86,7 +90,8 @@ class TaskEventServiceTest {
                 userProfileRepository,
                 currentUser,
                 JsonMapper.builder().build(),
-                eventPublisher
+                eventPublisher,
+                Clock.fixed(NOW, ZoneOffset.UTC)
         );
         actor.setId(ACTOR_ID);
         task.setId(TASK_ID);
@@ -100,7 +105,6 @@ class TaskEventServiceTest {
 
     private TaskEvent recordedEvent(Consumer<TaskEventService> action) {
         stubActor();
-        Instant before = Instant.now();
 
         action.accept(service);
 
@@ -109,7 +113,7 @@ class TaskEventServiceTest {
         TaskEvent event = captor.getValue();
         assertThat(event.getTask()).isSameAs(task);
         assertThat(event.getActor()).isSameAs(actorReference);
-        assertThat(event.getOccurredAt()).isBetween(before, Instant.now());
+        assertThat(event.getOccurredAt()).isEqualTo(NOW);
         return event;
     }
 

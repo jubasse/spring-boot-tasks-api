@@ -14,9 +14,12 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -31,6 +34,8 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class NotificationSettingsServiceTest {
 
+    private static final Instant NOW = Instant.parse("2026-10-11T08:30:00Z");
+
     private static final UUID USER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
     @Mock
@@ -38,6 +43,9 @@ class NotificationSettingsServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Spy
+    private Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 
     @InjectMocks
     private NotificationSettingsService service;
@@ -110,7 +118,6 @@ class NotificationSettingsServiceTest {
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
         when(settingsRepository.findById(USER_ID)).thenReturn(Optional.empty());
         when(settingsRepository.save(any(NotificationSettings.class))).thenAnswer(inv -> inv.getArgument(0));
-        Instant before = Instant.now();
 
         NotificationSettings result = service.update(
                 USER_ID, new NotificationSettingsDto(false, true, false, true, false, true, false, true)
@@ -131,7 +138,7 @@ class NotificationSettingsServiceTest {
         assertThat(saved.isTaskMentioned()).isTrue();
         assertThat(saved.isTaskDueSoon()).isFalse();
         assertThat(saved.isTaskOverdue()).isTrue();
-        assertThat(saved.getUpdatedAt()).isBetween(before, Instant.now());
+        assertThat(saved.getUpdatedAt()).isEqualTo(NOW);
     }
 
     @Test
