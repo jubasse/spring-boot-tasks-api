@@ -62,7 +62,7 @@ Each feature uses the same sub-packages: `controllers`, `dtos`, `entities`, `rep
 | `media/services` | `MediaService`, `MediaUrls`, `ObjectStorage`/`S3ObjectStorage`, `VirusScanner`/`ClamAvScanner`, type detection, avatar processing, cleanup |
 | `messaging/entities` | `OutboxMessage` |
 | `messaging/repositories` | `OutboxMessageRepository` |
-| `messaging/services` | `Outbox` (enqueue, broadcast), `OutboxRelay`, `OutboxRelayJob`, outbox and dead-letter metrics |
+| `messaging/services` | `Outbox` (enqueue, broadcast), `OutboxRelay`, `OutboxRelayJob`, `OutboxPurgeJob`, outbox and dead-letter metrics |
 | `notification/controllers` | notification settings, webhook endpoints |
 | `notification/dtos` | settings and webhook DTOs |
 | `notification/entities` | `NotificationSettings`, `TaskNotificationType`, webhook endpoint, delivery, event, kind |
