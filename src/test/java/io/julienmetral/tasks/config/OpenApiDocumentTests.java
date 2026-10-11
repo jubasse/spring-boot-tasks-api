@@ -14,6 +14,7 @@ import io.julienmetral.tasks.config.ServedOpenApi.Operation;
 import io.julienmetral.tasks.identity.security.PublicEndpoints;
 import io.julienmetral.tasks.shared.exceptions.ProblemType;
 import io.julienmetral.tasks.support.IntegrationTest;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
@@ -391,6 +392,65 @@ class OpenApiDocumentTests {
     }
 
     @Test
+    void responseSchemasRequireEveryField() {
+        Map<String, JsonNode> schemas = new LinkedHashMap<>();
+        api.document().path("components").path("schemas").forEachEntry(schemas::put);
+
+        assertThat(schemas.keySet())
+                .filteredOn(name -> name.endsWith("ResponseDto"))
+                .hasSizeGreaterThan(5)
+                .allSatisfy(
+                        name -> {
+                            List<String> properties = new ArrayList<>();
+                            schemas.get(name)
+                                    .path("properties")
+                                    .forEachEntry((key, value) -> properties.add(key));
+                            assertThat(requiredOf(schemas.get(name)))
+                                    .as(name)
+                                    .containsExactlyInAnyOrderElementsOf(properties);
+                        });
+    }
+
+    @Test
+    void nullableFieldsAllowNull() {
+        JsonNode schemas = api.document().path("components").path("schemas");
+        JsonNode task = schemas.path("TaskResponseDto").path("properties");
+
+        assertThat(task.path("assignedTo").path("oneOf").valueStream().map(JsonNode::toString))
+                .containsExactly(
+                        "{\"$ref\":\"#/components/schemas/UserProfileResponseDto\"}",
+                        "{\"type\":\"null\"}");
+        assertThat(typesOf(task.path("dueAt"))).containsExactly("string", "null");
+        assertThat(typesOf(task.path("id"))).containsExactly("string");
+
+        JsonNode disabledReason =
+                schemas.path("WebhookEndpointResponseDto")
+                        .path("properties")
+                        .path("disabledReason");
+        assertThat(typesOf(disabledReason)).containsExactly("string", "null");
+        assertThat(disabledReason.path("enum").valueStream().anyMatch(JsonNode::isNull)).isTrue();
+    }
+
+    @Test
+    void requestSchemasRequireOnlyTheirNonNullFields() {
+        JsonNode schemas = api.document().path("components").path("schemas");
+
+        assertThat(requiredOf(schemas.path("CreateTaskDto")))
+                .containsExactlyInAnyOrder("reference", "title");
+        assertThat(requiredOf(schemas.path("UpdateTaskDto"))).isEmpty();
+    }
+
+    @Test
+    void fieldsLeftOutWhenNullStayOptionalAndNeverNull() {
+        JsonNode schemas = api.document().path("components").path("schemas");
+
+        // InvalidValue is @JsonInclude(NON_NULL)
+        assertThat(requiredOf(schemas.path("InvalidValue"))).containsExactly("detail");
+        assertThat(typesOf(schemas.path("InvalidValue").path("properties").path("pointer")))
+                .containsExactly("string");
+    }
+
+    @Test
     void examplesShowProblemTypesUnderTheirOwnStatus() {
         Map<String, ProblemType> typesByUri =
                 Arrays.stream(ProblemType.values())
@@ -507,6 +567,14 @@ class OpenApiDocumentTests {
                 .path("examples")
                 .forEachEntry(examples::put);
         return examples;
+    }
+
+    private static List<String> typesOf(JsonNode schema) {
+        JsonNode type = schema.path("type");
+
+        return type.isArray()
+                ? type.valueStream().map(JsonNode::asString).toList()
+                : List.of(type.asString());
     }
 
     private static List<String> requiredOf(JsonNode schema) {

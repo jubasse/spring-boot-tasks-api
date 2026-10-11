@@ -361,6 +361,7 @@ Ce qui est propre au dépôt :
 - Avant le reformatage, un script a rejoint 265 blocs de commentaires et les imports `*` ont été développés. Un contrôle par jetons a montré un code identique, à 5 imports inutilisés près ; un second `spotless:apply` ne change rien.
 - google-java-format 1.37.0 échoue dans Spotless 3.10.4 (`InvocationTargetException`) : le pom épingle 1.36.1 et le dit.
 - `.dockerignore` réautorise `.mvn/jvm.config` et `lombok.config` : le build de l'image compile avec NullAway lui aussi.
+- Les `@Nullable` des records servent aussi le contrat de l'API : `NullabilityDocumentation` en tire les champs requis et `null` du document OpenAPI (guide 06).
 - `AGENTS.md` porte les règles (sections Layout et Nullness), et `NullMarkedPackagesTest` suit le principe des tests garde-fous du guide 31 : il lit `src/main/java` sans démarrer Spring.
 
 ## Voir aussi
