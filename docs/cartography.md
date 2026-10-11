@@ -21,7 +21,8 @@ relative to `src/main/java/io/julienmetral/tasks` unless they start with `src/`,
 | `postman/` | Postman collection and its upload fixtures |
 | `compose.yaml`, `compose.production.yaml` | development services; hardened local run of the image |
 | `Dockerfile`, `.dockerignore` | image build with AOT training run; allowlist of build inputs |
-| `.github/workflows/ci.yml` | tests, gitleaks, API contract, image scan, publish on tag |
+| `.github/workflows/ci.yml` | formatting check, tests, gitleaks, API contract, image scan, publish on tag |
+| `.editorconfig`, `.git-blame-ignore-revs` | IDE layout settings (google-java-format, AOSP, 100 columns); the reformat commit for `git blame` |
 
 ## Packages
 
@@ -189,3 +190,4 @@ In `src/test/java/io/julienmetral/tasks/support` unless noted.
 | `OpenApiDocumentTests` | an operation lacks a tag, summary, unique id or its 401/403 |
 | `TaskQueryCountTests`, `UserQueryCountTests` | a read runs more SQL for a longer list |
 | `CartographyTest` | this file misses a package, an annotation or a test helper |
+| `spotless:check` (Maven, in `verify`) | a file is not formatted by google-java-format, or has an unused or wildcard import |
