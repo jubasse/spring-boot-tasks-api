@@ -443,7 +443,7 @@ Réglages de `src/test/resources/config/application.yaml` :
 | `rate-limit.purge-enabled`, `messaging.outbox.purge-enabled` | absents, donc `true` | purges horaires inoffensives (guide 21) |
 | `exports.purge-enabled`, `exports.recovery-enabled`, `webhooks.retry-enabled`, `webhooks.purge-enabled` | `false` | idem pour exports et webhooks |
 | `rate-limit.enabled` | `false` | `RateLimitTests` le rallume dans son contexte |
-| `messaging.outbox.poll-interval` | `PT1H` | ne pas publier les lignes d'un autre contexte (guide 30) |
+| `messaging.outbox.poll-interval` | `PT1H` | ne pas publier les lignes d'un autre contexte, ni au démarrage : le premier tour attend un intervalle (guide 30) |
 | `webhooks.require-https`, `outbound-http.allowed-addresses` | `false`, `127.0.0.1/32` | appeler MockWebServer en HTTP local (guide 31) |
 | `spring.http.serviceclient.webhooks.read-timeout` | `2s` | ici et non sur la classe, qui créerait un contexte |
 | `spring.testcontainers.beans.startup` | `parallel` | démarrer les conteneurs d'un contexte en parallèle (guide 30) |

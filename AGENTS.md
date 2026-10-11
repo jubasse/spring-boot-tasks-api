@@ -403,6 +403,7 @@ Cut:
   - Warning: a background job enabled in a test context acts on every other context's data, and its lock in `scheduler_locks` skips the same job everywhere else. Tests keep scheduled jobs off and call the services directly, except the hourly outbox and rate limit purges, which only delete rows a day old or more (`ScheduledJobLockingTests` needs `RateLimitCleanupJob`). The outbox poller runs hourly (`messaging.outbox.poll-interval`): it would publish another context's messages to its own broker.
   - RabbitMQ is never reused: the dead-letter tests make listeners' collaborators fail, and on a shared broker those listeners would consume every other context's messages.
 - `src/test/resources/spring.properties` caps the context cache at 12; an evicted context stops its containers, restarted when a later class needs it. Warning: a full run needs several GB of memory; never run two full suites at once on one machine.
+- **CI forks:** CI runs `./mvnw -Pci verify`: the `ci` profile runs the tests in two forks on the same reused containers, then the classes annotated `@SweepsSharedData` alone (the JaCoCo report moves to `verify`). A local `./mvnw test` keeps one fork. Warning: a class that sweeps a whole table (purge, cleanup, reminders, retention, outbox relay), moves the clock until a sweep reaches every row, or uses a shared lock row must carry `@SweepsSharedData`; next to the other fork, it would remind, erase or publish that fork's data mid-test. The outbox poller waits one interval before its first poll for the same reason.
 
 ## Git workflow and CI
 

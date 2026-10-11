@@ -603,7 +603,7 @@ Les réglages, sous `messaging.outbox` dans `application.yaml` :
 
 | Réglage | Valeur | Rôle |
 |---|---|---|
-| `poll-interval` | PT5S | délai entre deux tours du poller (PT1H en test) |
+| `poll-interval` | PT5S | délai entre deux tours du poller, et avant le premier (PT1H en test) |
 | `batch-size` | 100 | lignes par lot du poller |
 | `max-retry-delay` | PT10M | plafond du délai entre deux tentatives |
 | `confirm-timeout` | PT5S | attente maximale de la confirmation |
@@ -617,7 +617,7 @@ Ce qui est propre au dépôt :
 - `payload` est une `Map<String, Object>` et non un `JsonNode`, car Hibernate mappe les colonnes JSON avec Jackson 2 alors que l'application utilise Jackson 3. Le `JsonMapper` de Jackson 3 convertit le message et écrit les UUID en texte.
 - L'id de la ligne devient le `message-id` AMQP : les événements temps réel s'en servent comme id d'événement, le même sur toutes les instances (guide 24).
 - `MailService.send` est `@Transactional` sans propagation particulière : hors transaction, il en ouvre une. `RealtimeBroadcasts` fait de même avec un `TransactionTemplate`, pour un changement de compte publié hors transaction.
-- En test, `poll-interval` vaut une heure. Les conteneurs réutilisés partagent une base, et un poller publierait les lignes d'un autre contexte vers son propre broker.
+- En test, `poll-interval` vaut une heure. Les conteneurs réutilisés partagent une base, et un poller publierait les lignes d'un autre contexte vers son propre broker. Le premier tour attend lui aussi un intervalle (`initialDelayString`) : un contexte qui démarre ne publie pas les lignes fraîches d'un autre.
 - La classe d'un message doit appartenir à un paquet de confiance du convertisseur (guide 19).
 
 Les tests :

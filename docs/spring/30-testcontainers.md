@@ -329,6 +329,22 @@ Les services réutilisés sont uniques, mais chaque contexte a son broker :
 - Un contexte qui fait échouer ses listeners exprès enverrait en dead letter les messages des autres, d'où un broker par contexte.
 - La base, elle, est commune. Un job planifié ou un poller actif dans un contexte agit sur les lignes de tous les autres (guide 29 pour les réglages qui les éteignent, et le cas pratique en fin de guide).
 
+### En CI : deux JVM sur la même base
+
+Avec un seul fork, une seule classe tourne à la fois. Avec deux, deux classes tournent en même temps sur les mêmes conteneurs réutilisés :
+
+```
+ phase 1 : surefire, forkCount=2, sans le tag sweeps-shared-data
+   JVM 1 : classe A, classe C, ...  ---+
+                                       +--> Postgres, Mailpit, RustFS, ClamAV
+   JVM 2 : classe B, classe D, ...  ---+
+ phase 2 : une JVM, seulement les classes taguées, l'une après l'autre
+```
+
+- Les valeurs uniques suffisent tant qu'une classe ne touche que ses lignes.
+- Une classe qui balaie une table entière (purge, nettoyage, rappels, rétention, relais de l'outbox), qui avance l'horloge jusqu'à atteindre toutes les lignes, ou qui prend une ligne de verrou commune agirait sur les données de la classe voisine pendant son test. On la tague, et elle passe seule, après.
+- Le poller de l'outbox attend un intervalle avant son premier tour. Un contexte qui démarre dans une JVM ne publie donc pas les lignes fraîches de l'autre JVM vers son propre broker.
+
 ## Pièges à éviter
 
 ### Avec Testcontainers et Spring Boot
@@ -350,6 +366,7 @@ Les services réutilisés sont uniques, mais chaque contexte a son broker :
 | Modifier une migration déjà appliquée | Liquibase refuse la base réutilisée (checksum) | Supprimer les conteneurs par leur label |
 | Rendre réutilisable un broker que des tests font échouer | ses listeners consomment les messages des autres contextes | Garder ce conteneur jetable |
 | Changer de branche avec une base réutilisée | la branche tourne sur le schéma et les lignes d'une autre | Relancer avec `TESTCONTAINERS_REUSE_ENABLE=false` |
+| Lancer en parallèle une classe qui balaie une table | elle rappelle, efface ou publie les lignes d'une classe de l'autre JVM | La taguer pour qu'elle passe seule |
 
 ## En résumé
 
@@ -406,6 +423,7 @@ Ce qui est propre au dépôt :
 - ClamAV charge seulement une signature EICAR (`eicar.ndb`, copiée avec `withCopyToContainer`, `CLAMD_CONF_DatabaseDirectory=/var/lib/clamav-test`), et freshclam est coupé (`CLAMAV_NO_FRESHCLAMD=true`) : environ 14 Mo au lieu d'environ 1 Go par clamd avec la base complète, et aucun accès réseau. Avec la base complète, un clamd par contexte avait saturé la mémoire. Le nom rapporté est `TestcontainersConfiguration.EICAR_THREAT`, `Eicar-Test-Signature.UNOFFICIAL` (le suffixe vient de la base non signée).
 - Les tags de test sont ceux de `compose.yaml`. Dependabot met à jour `compose.yaml` (écosystème `docker-compose`), pas le code Java : on recopie le tag à la main.
 - La CI active la réutilisation (`TESTCONTAINERS_REUSE_ENABLE: "true"` dans le job « Build and test » de `.github/workflows/ci.yml`) : les défauts d'isolation y apparaissent aussi.
+- La CI lance `./mvnw -Pci verify`. Le profil `ci` du `pom.xml` fait tourner les tests dans deux JVM, sauf les classes annotées `@SweepsSharedData` (tag `sweeps-shared-data`), qui passent ensuite seules. En local, `./mvnw test` garde une seule JVM : deux suites à la fois demandent plus de mémoire qu'une machine de développement n'en libère.
 - La base réutilisée sert toutes les branches et tous les worktrees de la machine. Une branche plus ancienne tourne alors sur le schéma et les lignes d'une plus récente. Si une suite échoue seulement sur des tables qu'une autre branche ajoute, on relance ces classes avec `TESTCONTAINERS_REUSE_ENABLE=false` (conteneurs neufs) avant de suspecter la branche.
 - `./mvnw spring-boot:test-run` lance `TestTasksApplication` sur ces conteneurs, qui sont ceux des tests si la réutilisation est activée.
 - Les fixtures des requêtes qui balaient une table sont datées de 2000 (par exemple `RateLimitQueriesTests.WINDOW = 2000-06-01T12:00:00Z`). Les tests qui valident sur une autre connexion nettoient leurs lignes (`Transactions.inNewTransaction`, guide 29).

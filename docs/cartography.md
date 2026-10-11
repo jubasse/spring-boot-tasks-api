@@ -142,6 +142,7 @@ Each feature uses the same sub-packages: `controllers`, `dtos`, `entities`, `rep
 | `@JdbcSliceTest` | test `support` | `JdbcTemplate` and `*Queries`, rolled back |
 | `@RepositoryTest` | test `support` | JPA repositories, rolled back |
 | `@DeadLetterIntegrationTest` | test `support` | fast listener retries, SMTP mock, storage and antivirus spies |
+| `@SweepsSharedData` | test `support` | tag `sweeps-shared-data`: a class that sweeps shared tables runs alone on CI, after the two forks |
 
 ## Test helpers
 
