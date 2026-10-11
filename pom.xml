@@ -39,6 +39,10 @@
 		<standardwebhooks.version>1.2.0</standardwebhooks.version>
 		<shedlock.version>7.10.1</shedlock.version>
 		<openhtmltopdf.version>1.1.87</openhtmltopdf.version>
+		<spotless.version>3.10.4</spotless.version>
+		<!-- 1.37.0 fails inside Spotless 3.10.4 (InvocationTargetException on every file, while it formats them run
+		     on its own): move to it once a Spotless release supports it -->
+		<google-java-format.version>1.36.1</google-java-format.version>
 		<!-- Above the versions Spring Boot 4.1.1 manages, which have fixed vulnerabilities: Tomcat 11.0.24 three critical
 		     (GHSA-9xv2-5v5q-p794, GHSA-gcx9-497g-6cp6, GHSA-h3x4-894j-xpx5), amqp-client 5.30.0 four high, Jackson 3.1.5
 		     and 2.21.5 (Hibernate brings 2 for JSON columns) five high in jackson-databind and jackson-core
@@ -378,6 +382,34 @@
 			<plugin>
 				<groupId>org.cyclonedx</groupId>
 				<artifactId>cyclonedx-maven-plugin</artifactId>
+			</plugin>
+			<!-- google-java-format, AOSP style (4 spaces, 100 columns): spotless:check fails verify on unformatted code,
+			     ./mvnw spotless:apply formats it. The formatter version is pinned, since a new one can move lines. -->
+			<plugin>
+				<groupId>com.diffplug.spotless</groupId>
+				<artifactId>spotless-maven-plugin</artifactId>
+				<version>${spotless.version}</version>
+				<configuration>
+					<java>
+						<includes>
+							<include>src/main/java/**/*.java</include>
+							<include>src/test/java/**/*.java</include>
+						</includes>
+						<googleJavaFormat>
+							<version>${google-java-format.version}</version>
+							<style>AOSP</style>
+						</googleJavaFormat>
+						<removeUnusedImports/>
+						<forbidWildcardImports/>
+					</java>
+				</configuration>
+				<executions>
+					<execution>
+						<goals>
+							<goal>check</goal>
+						</goals>
+					</execution>
+				</executions>
 			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
