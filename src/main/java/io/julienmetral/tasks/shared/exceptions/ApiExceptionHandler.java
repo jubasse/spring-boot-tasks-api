@@ -33,6 +33,7 @@ import io.julienmetral.tasks.task.exceptions.TooManyCommentAttachmentsException;
 import java.util.List;
 import java.util.Locale;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.beans.TypeMismatchException;
 import org.springframework.context.MessageSource;
 import org.springframework.context.MessageSourceResolvable;
@@ -250,7 +251,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     @Override
-    protected ResponseEntity<Object> handleMethodArgumentNotValid(
+    protected @Nullable ResponseEntity<Object> handleMethodArgumentNotValid(
             MethodArgumentNotValidException ex,
             HttpHeaders headers,
             HttpStatusCode status,
@@ -281,21 +282,26 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     @Override
-    protected ResponseEntity<Object> handleTypeMismatch(
+    protected @Nullable ResponseEntity<Object> handleTypeMismatch(
             TypeMismatchException ex,
             HttpHeaders headers,
             HttpStatusCode status,
             WebRequest request) {
+        String parameter = ex.getPropertyName();
+
+        if (parameter == null) {
+            return super.handleTypeMismatch(ex, headers, status, request);
+        }
+
         InvalidValue error =
-                InvalidValue.inParameter(
-                        InvalidValue.expected(ex.getRequiredType()), ex.getPropertyName());
+                InvalidValue.inParameter(InvalidValue.expected(ex.getRequiredType()), parameter);
 
         return handleExceptionInternal(
                 ex, invalidRequest(List.of(error)), headers, status, request);
     }
 
     @Override
-    protected ResponseEntity<Object> handleMissingServletRequestParameter(
+    protected @Nullable ResponseEntity<Object> handleMissingServletRequestParameter(
             MissingServletRequestParameterException ex,
             HttpHeaders headers,
             HttpStatusCode status,
@@ -307,7 +313,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     @Override
-    protected ResponseEntity<Object> handleMissingServletRequestPart(
+    protected @Nullable ResponseEntity<Object> handleMissingServletRequestPart(
             MissingServletRequestPartException ex,
             HttpHeaders headers,
             HttpStatusCode status,
@@ -322,7 +328,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     // message names Java types and positions, so it is never passed on; malformed JSON keeps the
     // generic "Failed to read request".
     @Override
-    protected ResponseEntity<Object> handleHttpMessageNotReadable(
+    protected @Nullable ResponseEntity<Object> handleHttpMessageNotReadable(
             HttpMessageNotReadableException ex,
             HttpHeaders headers,
             HttpStatusCode status,
@@ -352,12 +358,16 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     private String message(MessageSourceResolvable error, Locale locale) {
         MessageSource messageSource = getMessageSource();
 
-        return messageSource != null
-                ? messageSource.getMessage(error, locale)
-                : error.getDefaultMessage();
+        if (messageSource != null) {
+            return messageSource.getMessage(error, locale);
+        }
+
+        String defaultMessage = error.getDefaultMessage();
+
+        return defaultMessage != null ? defaultMessage : "is invalid";
     }
 
-    private static MismatchedInputException mismatchedInput(Throwable exception) {
+    private static @Nullable MismatchedInputException mismatchedInput(Throwable exception) {
         for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
             if (cause instanceof MismatchedInputException mismatch) {
                 return mismatch;

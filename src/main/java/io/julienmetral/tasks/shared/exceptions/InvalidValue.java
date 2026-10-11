@@ -13,6 +13,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 import tools.jackson.core.JacksonException;
 
 /**
@@ -22,7 +23,7 @@ import tools.jackson.core.JacksonException;
  * parameter. Exactly one of them is set.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record InvalidValue(String detail, String pointer, String parameter) {
+public record InvalidValue(String detail, @Nullable String pointer, @Nullable String parameter) {
 
     static final Comparator<InvalidValue> ORDER =
             Comparator.comparing(
@@ -56,15 +57,11 @@ public record InvalidValue(String detail, String pointer, String parameter) {
     }
 
     /**
-     * What a value of this type must look like, in the client's terms: a Java type name or a parser
-     * message would reveal the implementation without helping the client.
-     */
-    /**
      * Like {@link #expected}, for a value of the JSON body: an enum lists the names its JSON uses,
      * which a {@code @JsonValue} method can make differ from its constant names ({@code
      * task.assigned} for {@code TASK_ASSIGNED}).
      */
-    static String expectedInJson(Class<?> type) {
+    static String expectedInJson(@Nullable Class<?> type) {
         if (type != null && type.isEnum()) {
             return Arrays.stream(type.getEnumConstants())
                     .map(constant -> jsonName((Enum<?>) constant))
@@ -88,7 +85,11 @@ public record InvalidValue(String detail, String pointer, String parameter) {
         return constant.name();
     }
 
-    static String expected(Class<?> type) {
+    /**
+     * What a value of this type must look like, in the client's terms: a Java type name or a parser
+     * message would reveal the implementation without helping the client.
+     */
+    static String expected(@Nullable Class<?> type) {
         if (type == null) {
             return "has an invalid value";
         }
