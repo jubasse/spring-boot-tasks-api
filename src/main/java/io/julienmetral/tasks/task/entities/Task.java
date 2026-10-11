@@ -2,31 +2,39 @@ package io.julienmetral.tasks.task.entities;
 
 import io.julienmetral.tasks.identity.entities.UserProfile;
 import io.julienmetral.tasks.shared.entities.AuditableEntity;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ForeignKey;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
+import java.time.Instant;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
 
-import java.time.Instant;
-import java.util.UUID;
-
 @Entity
 @Table(
-    name = "tasks",
-    uniqueConstraints = {
-            // Covers soft-deleted rows too: the reference of a deleted task stays taken (see TaskRepository)
-            @UniqueConstraint(
-                    name = "tasks_referenceUQ",
-                    columnNames = "reference"
-            )
-    },
-    indexes = {
+        name = "tasks",
+        uniqueConstraints = {
+            // Covers soft-deleted rows too: the reference of a deleted task stays taken (see
+            // TaskRepository)
+            @UniqueConstraint(name = "tasks_referenceUQ", columnNames = "reference")
+        },
+        indexes = {
             // The reminder job scans tasks by due date
             @Index(name = "tasks_due_atIDX", columnList = "due_at")
-    }
-)
+        })
 @Getter
 @Setter
 @NoArgsConstructor
@@ -38,12 +46,7 @@ public class Task extends AuditableEntity {
     @Column(name = "id", nullable = false, updatable = false)
     private UUID id;
 
-    @Column(
-            name = "reference",
-            nullable = false,
-            updatable = false,
-            length = 30
-    )
+    @Column(name = "reference", nullable = false, updatable = false, length = 30)
     private String reference;
 
     @Column(nullable = false, length = 255)
@@ -87,17 +90,11 @@ public class Task extends AuditableEntity {
 
     // UserProfile, not User: soft-deleted users must still load (see UserProfile)
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(
-            name = "created_by_id",
-            foreignKey = @ForeignKey(name = "tasks_created_byFK")
-    )
+    @JoinColumn(name = "created_by_id", foreignKey = @ForeignKey(name = "tasks_created_byFK"))
     private UserProfile createdBy;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(
-            name = "assigned_to_id",
-            foreignKey = @ForeignKey(name = "tasks_assigned_toFK")
-    )
+    @JoinColumn(name = "assigned_to_id", foreignKey = @ForeignKey(name = "tasks_assigned_toFK"))
     private UserProfile assignedTo;
 
     public UUID currentAssigneeId() {

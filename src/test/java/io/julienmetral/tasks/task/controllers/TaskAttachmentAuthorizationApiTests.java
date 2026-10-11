@@ -1,15 +1,14 @@
 package io.julienmetral.tasks.task.controllers;
 
-import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserRole;
-import org.junit.jupiter.api.Test;
-
-import java.util.UUID;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserRole;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
 
 /** Who may upload, read and remove task attachments. */
 class TaskAttachmentAuthorizationApiTests extends AbstractTaskAttachmentApiTests {
@@ -54,8 +53,7 @@ class TaskAttachmentAuthorizationApiTests extends AbstractTaskAttachmentApiTests
         User user = createUser(UserRole.USER);
         UUID taskId = createTask(admin, null);
 
-        upload(asUser(user), taskId, "report.pdf", uniquePdf())
-                .andExpect(status().isForbidden());
+        upload(asUser(user), taskId, "report.pdf", uniquePdf()).andExpect(status().isForbidden());
     }
 
     @Test
@@ -64,8 +62,7 @@ class TaskAttachmentAuthorizationApiTests extends AbstractTaskAttachmentApiTests
         User formerAssignee = createUser(UserRole.USER);
         UUID taskId = createTask(admin, formerAssignee);
 
-        assign(admin, taskId, createUser(UserRole.USER).getId())
-                .andExpect(status().isOk());
+        assign(admin, taskId, createUser(UserRole.USER).getId()).andExpect(status().isOk());
 
         upload(asUser(formerAssignee), taskId, "report.pdf", uniquePdf())
                 .andExpect(status().isForbidden());
@@ -93,8 +90,7 @@ class TaskAttachmentAuthorizationApiTests extends AbstractTaskAttachmentApiTests
         UUID taskId = createTask(admin, assignee);
         UUID attachmentId = uploadPdf(asUser(assignee), taskId, "report.pdf");
 
-        remove(asUser(assignee), taskId, attachmentId)
-                .andExpect(status().isNoContent());
+        remove(asUser(assignee), taskId, attachmentId).andExpect(status().isNoContent());
 
         assertThat(attachmentCount(taskId)).isZero();
     }
@@ -106,11 +102,9 @@ class TaskAttachmentAuthorizationApiTests extends AbstractTaskAttachmentApiTests
         UUID taskId = createTask(admin, formerAssignee);
         UUID attachmentId = uploadPdf(asUser(formerAssignee), taskId, "report.pdf");
 
-        assign(admin, taskId, createUser(UserRole.USER).getId())
-                .andExpect(status().isOk());
+        assign(admin, taskId, createUser(UserRole.USER).getId()).andExpect(status().isOk());
 
-        remove(asUser(formerAssignee), taskId, attachmentId)
-                .andExpect(status().isNoContent());
+        remove(asUser(formerAssignee), taskId, attachmentId).andExpect(status().isNoContent());
     }
 
     @Test
@@ -121,8 +115,7 @@ class TaskAttachmentAuthorizationApiTests extends AbstractTaskAttachmentApiTests
         UUID taskId = createTask(admin, assignee);
         UUID attachmentId = uploadPdf(asUser(assignee), taskId, "report.pdf");
 
-        remove(asAdmin(otherAdmin), taskId, attachmentId)
-                .andExpect(status().isNoContent());
+        remove(asAdmin(otherAdmin), taskId, attachmentId).andExpect(status().isNoContent());
 
         assertThat(attachmentCount(taskId)).isZero();
     }
@@ -135,8 +128,7 @@ class TaskAttachmentAuthorizationApiTests extends AbstractTaskAttachmentApiTests
         UUID attachmentId = uploadPdf(asAdmin(admin), taskId, "report.pdf");
         String storageKey = storageKeyOf(attachmentId);
 
-        remove(asUser(assignee), taskId, attachmentId)
-                .andExpect(status().isForbidden());
+        remove(asUser(assignee), taskId, attachmentId).andExpect(status().isForbidden());
 
         assertThat(attachmentCount(taskId)).isOne();
         assertThat(objectBytes(storageKey)).isNotEmpty();
@@ -150,8 +142,7 @@ class TaskAttachmentAuthorizationApiTests extends AbstractTaskAttachmentApiTests
         UUID taskId = createTask(admin, assignee);
         UUID attachmentId = uploadPdf(asUser(assignee), taskId, "report.pdf");
 
-        remove(asUser(outsider), taskId, attachmentId)
-                .andExpect(status().isForbidden());
+        remove(asUser(outsider), taskId, attachmentId).andExpect(status().isForbidden());
 
         assertThat(attachmentCount(taskId)).isOne();
     }
@@ -162,8 +153,7 @@ class TaskAttachmentAuthorizationApiTests extends AbstractTaskAttachmentApiTests
         User assignee = createUser(UserRole.USER);
         UUID taskId = createTask(admin, assignee);
 
-        remove(asUser(assignee), taskId, UUID.randomUUID())
-                .andExpect(status().isForbidden());
+        remove(asUser(assignee), taskId, UUID.randomUUID()).andExpect(status().isForbidden());
     }
 
     @Test
@@ -173,10 +163,8 @@ class TaskAttachmentAuthorizationApiTests extends AbstractTaskAttachmentApiTests
         UUID taskId = createTask(admin, null);
         UUID attachmentId = uploadPdf(asAdmin(admin), taskId, "report.pdf");
 
-        list(asUser(unverified), taskId)
-                .andExpect(status().isForbidden());
-        find(asUser(unverified), taskId, attachmentId)
-                .andExpect(status().isForbidden());
+        list(asUser(unverified), taskId).andExpect(status().isForbidden());
+        find(asUser(unverified), taskId, attachmentId).andExpect(status().isForbidden());
     }
 
     @Test
@@ -212,8 +200,7 @@ class TaskAttachmentAuthorizationApiTests extends AbstractTaskAttachmentApiTests
 
         unverify(assignee);
 
-        remove(asUser(assignee), taskId, attachmentId)
-                .andExpect(status().isForbidden());
+        remove(asUser(assignee), taskId, attachmentId).andExpect(status().isForbidden());
 
         assertThat(attachmentCount(taskId)).isOne();
     }
@@ -227,8 +214,7 @@ class TaskAttachmentAuthorizationApiTests extends AbstractTaskAttachmentApiTests
 
         disableThroughApi(assignee);
 
-        remove(asUser(assignee), taskId, attachmentId)
-                .andExpect(status().isForbidden());
+        remove(asUser(assignee), taskId, attachmentId).andExpect(status().isForbidden());
 
         assertThat(attachmentCount(taskId)).isOne();
     }

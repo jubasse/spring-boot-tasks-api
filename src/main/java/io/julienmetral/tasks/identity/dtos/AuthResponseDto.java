@@ -7,5 +7,4 @@ public record AuthResponseDto(
         String tokenType,
         Instant expiresAt,
         String refreshToken,
-        Instant refreshTokenExpiresAt
-) {}
+        Instant refreshTokenExpiresAt) {}

@@ -1,5 +1,12 @@
 package io.julienmetral.tasks.realtime.messaging;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.entities.UserStatus;
@@ -11,6 +18,11 @@ import io.julienmetral.tasks.messaging.repositories.OutboxMessageRepository;
 import io.julienmetral.tasks.messaging.services.Outbox;
 import io.julienmetral.tasks.realtime.RealtimeConfiguration;
 import io.julienmetral.tasks.support.IntegrationTest;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.core.FanoutExchange;
@@ -28,68 +40,57 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.time.Duration;
-import java.time.Instant;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.awaitility.Awaitility.await;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
-/** Real-time broadcasts through the outbox and the real broker, and what this instance does when one arrives. */
+/**
+ * Real-time broadcasts through the outbox and the real broker, and what this instance does when one
+ * arrives.
+ */
 @IntegrationTest
 class RealtimeBroadcastTests {
 
     private static final Duration PUBLISH_TIMEOUT = Duration.ofSeconds(10);
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    @Autowired private PasswordEncoder passwordEncoder;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
-    @Autowired
-    private OutboxMessageRepository outboxRepository;
+    @Autowired private OutboxMessageRepository outboxRepository;
 
-    @Autowired
-    private Outbox outbox;
+    @Autowired private Outbox outbox;
 
-    @Autowired
-    private TransactionTemplate transactionTemplate;
+    @Autowired private TransactionTemplate transactionTemplate;
 
-    @Autowired
-    private AmqpAdmin amqpAdmin;
+    @Autowired private AmqpAdmin amqpAdmin;
 
-    @Autowired
-    private CacheManager cacheManager;
+    @Autowired private CacheManager cacheManager;
 
-    @Autowired
-    private ApplicationEventPublisher eventPublisher;
+    @Autowired private ApplicationEventPublisher eventPublisher;
 
     @Test
-    void taskNotificationIsBroadcastThroughAnOutboxRowForTheExchangeWhichIsMarkedPublished() throws Exception {
+    void taskNotificationIsBroadcastThroughAnOutboxRowForTheExchangeWhichIsMarkedPublished()
+            throws Exception {
         User assignee = createUser(UserRole.USER);
 
-        mockMvc.perform(post("/api/v1/tasks")
-                        .with(as(createUser(UserRole.ADMIN), UserRole.ADMIN))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+        mockMvc.perform(
+                        post("/api/v1/tasks")
+                                .with(as(createUser(UserRole.ADMIN), UserRole.ADMIN))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
                                 {"reference": "RB-%s", "title": "Broadcast", "assignedTo": "%s"}
-                                """.formatted(UUID.randomUUID().toString().substring(0, 8), assignee.getId())))
+                                """
+                                                .formatted(
+                                                        UUID.randomUUID()
+                                                                .toString()
+                                                                .substring(0, 8),
+                                                        assignee.getId())))
                 .andExpect(status().isCreated());
 
-        OutboxMessage row = awaitPublished(onlyBroadcastRow(UserNotification.class, "recipientId", assignee));
+        OutboxMessage row =
+                awaitPublished(onlyBroadcastRow(UserNotification.class, "recipientId", assignee));
         assertThat(row.getExchange()).isEqualTo("tasks.realtime");
         assertThat(row.getQueue()).isNull();
         assertThat(row.getPayload()).containsEntry("type", "task.assigned");
@@ -98,14 +99,17 @@ class RealtimeBroadcastTests {
     }
 
     @Test
-    void accountChangeIsBroadcastThroughAnOutboxRowForTheExchangeWhichIsMarkedPublished() throws Exception {
+    void accountChangeIsBroadcastThroughAnOutboxRowForTheExchangeWhichIsMarkedPublished()
+            throws Exception {
         User user = createUser(UserRole.USER);
 
-        mockMvc.perform(post("/api/v1/users/{id}/disable", user.getId())
-                        .with(as(createUser(UserRole.ADMIN), UserRole.ADMIN)))
+        mockMvc.perform(
+                        post("/api/v1/users/{id}/disable", user.getId())
+                                .with(as(createUser(UserRole.ADMIN), UserRole.ADMIN)))
                 .andExpect(status().isNoContent());
 
-        OutboxMessage row = awaitPublished(onlyBroadcastRow(AccountStatusChanged.class, "userId", user));
+        OutboxMessage row =
+                awaitPublished(onlyBroadcastRow(AccountStatusChanged.class, "userId", user));
         assertThat(row.getExchange()).isEqualTo("tasks.realtime");
         assertThat(row.getQueue()).isNull();
         assertThat(row.getAttempts()).isZero();
@@ -118,7 +122,8 @@ class RealtimeBroadcastTests {
 
         eventPublisher.publishEvent(new AccountStateChanged(user.getId()));
 
-        OutboxMessage row = awaitPublished(onlyBroadcastRow(AccountStatusChanged.class, "userId", user));
+        OutboxMessage row =
+                awaitPublished(onlyBroadcastRow(AccountStatusChanged.class, "userId", user));
         assertThat(row.getExchange()).isEqualTo("tasks.realtime");
     }
 
@@ -126,10 +131,11 @@ class RealtimeBroadcastTests {
     void accountChangeOfARolledBackTransactionIsNotBroadcast() {
         User user = createUser(UserRole.USER);
 
-        transactionTemplate.executeWithoutResult(transaction -> {
-            eventPublisher.publishEvent(new AccountStateChanged(user.getId()));
-            transaction.setRollbackOnly();
-        });
+        transactionTemplate.executeWithoutResult(
+                transaction -> {
+                    eventPublisher.publishEvent(new AccountStateChanged(user.getId()));
+                    transaction.setRollbackOnly();
+                });
 
         assertThat(broadcastRows(AccountStatusChanged.class, "userId", user)).isEmpty();
     }
@@ -138,15 +144,21 @@ class RealtimeBroadcastTests {
     void accountChangeBroadcastByAnotherInstanceEvictsTheStatusCachedHere() throws Exception {
         User user = createUser(UserRole.USER);
         listTasks(user).andExpect(status().isOk());
-        // A change this instance never saw: only the broadcast can evict its cached ACTIVE before the TTL
+        // A change this instance never saw: only the broadcast can evict its cached ACTIVE before
+        // the TTL
         jdbcTemplate.update("UPDATE users SET enabled = false WHERE id = ?", user.getId());
         listTasks(user).andExpect(status().isOk());
         assertThat(cachedStatusOf(user)).isEqualTo(UserStatus.ACTIVE);
 
-        transactionTemplate.executeWithoutResult(transaction ->
-                outbox.broadcast(RealtimeConfiguration.EXCHANGE, new AccountStatusChanged(user.getId())));
+        transactionTemplate.executeWithoutResult(
+                transaction ->
+                        outbox.broadcast(
+                                RealtimeConfiguration.EXCHANGE,
+                                new AccountStatusChanged(user.getId())));
 
-        await().atMost(PUBLISH_TIMEOUT).pollInterval(Duration.ofMillis(50)).until(() -> cachedStatusOf(user) == null);
+        await().atMost(PUBLISH_TIMEOUT)
+                .pollInterval(Duration.ofMillis(50))
+                .until(() -> cachedStatusOf(user) == null);
         listTasks(user).andExpect(status().isForbidden());
     }
 
@@ -156,11 +168,16 @@ class RealtimeBroadcastTests {
         amqpAdmin.declareExchange(new FanoutExchange(exchange, false, false));
 
         try {
-            transactionTemplate.executeWithoutResult(transaction ->
-                    outbox.broadcast(exchange, new AccountStatusChanged(UUID.randomUUID())));
+            transactionTemplate.executeWithoutResult(
+                    transaction ->
+                            outbox.broadcast(
+                                    exchange, new AccountStatusChanged(UUID.randomUUID())));
 
-            List<UUID> ids = jdbcTemplate.queryForList(
-                    "SELECT id FROM outbox_messages WHERE exchange = ?", UUID.class, exchange);
+            List<UUID> ids =
+                    jdbcTemplate.queryForList(
+                            "SELECT id FROM outbox_messages WHERE exchange = ?",
+                            UUID.class,
+                            exchange);
             assertThat(ids).hasSize(1);
             OutboxMessage row = awaitPublished(ids.getFirst());
             assertThat(row.getAttempts()).isZero();
@@ -183,14 +200,17 @@ class RealtimeBroadcastTests {
                 UUID.class,
                 type.getName(),
                 payloadKey,
-                user.getId().toString()
-        );
+                user.getId().toString());
     }
 
-    // The relay publishes on an async thread after commit, and sets published_at once the broker confirmed
+    // The relay publishes on an async thread after commit, and sets published_at once the broker
+    // confirmed
     private OutboxMessage awaitPublished(UUID id) {
-        return await().atMost(PUBLISH_TIMEOUT).pollInterval(Duration.ofMillis(50))
-                .until(() -> outboxRepository.findById(id).orElseThrow(), row -> row.getPublishedAt() != null);
+        return await().atMost(PUBLISH_TIMEOUT)
+                .pollInterval(Duration.ofMillis(50))
+                .until(
+                        () -> outboxRepository.findById(id).orElseThrow(),
+                        row -> row.getPublishedAt() != null);
     }
 
     private UserStatus cachedStatusOf(User user) {
@@ -208,15 +228,15 @@ class RealtimeBroadcastTests {
         user.setEmail("realtime-broadcast-" + UUID.randomUUID() + "@example.com");
         user.setPasswordHash(passwordEncoder.encode("password"));
         user.setEmailVerifiedAt(Instant.now());
-        user.setDisplayName("Broadcast " + role + " " + UUID.randomUUID().toString().substring(0, 6));
+        user.setDisplayName(
+                "Broadcast " + role + " " + UUID.randomUUID().toString().substring(0, 6));
         user.setRoles(EnumSet.of(UserRole.USER, role));
 
         return userRepository.saveAndFlush(user);
     }
 
     private static RequestPostProcessor as(User user, UserRole role) {
-        return jwt()
-                .jwt(token -> token.claim("uid", user.getId().toString()))
+        return jwt().jwt(token -> token.claim("uid", user.getId().toString()))
                 .authorities(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
 }

@@ -1,5 +1,7 @@
 package io.julienmetral.tasks.config;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;
@@ -9,17 +11,14 @@ import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.parameters.Parameter;
 import io.swagger.v3.oas.models.parameters.RequestBody;
 import io.swagger.v3.oas.models.responses.ApiResponses;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.MethodSource;
-
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.stream.Stream;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class PathDocumentationTest {
 
@@ -45,14 +44,19 @@ class PathDocumentationTest {
     void pathsOutsideTheVersionedApiAreUntouchedAndKeepTheirOrder() {
         PathItem other = new PathItem().get(operation("other"));
         PathItem alreadyPinned = new PathItem().get(operation("listUsers"));
-        OpenAPI openApi = document(new Paths()
-                .addPathItem("/other/{id}", other)
-                .addPathItem("/api/v{version}/tasks", new PathItem().get(operation("listTasks")))
-                .addPathItem("/api/v1/users", alreadyPinned));
+        OpenAPI openApi =
+                document(
+                        new Paths()
+                                .addPathItem("/other/{id}", other)
+                                .addPathItem(
+                                        "/api/v{version}/tasks",
+                                        new PathItem().get(operation("listTasks")))
+                                .addPathItem("/api/v1/users", alreadyPinned));
 
         documentation.customise(openApi);
 
-        assertThat(openApi.getPaths().keySet()).containsExactly("/other/{id}", "/api/v1/tasks", "/api/v1/users");
+        assertThat(openApi.getPaths().keySet())
+                .containsExactly("/other/{id}", "/api/v1/tasks", "/api/v1/users");
         assertThat(openApi.getPaths().get("/other/{id}")).isSameAs(other);
         assertThat(openApi.getPaths().get("/api/v1/users")).isSameAs(alreadyPinned);
     }
@@ -60,7 +64,11 @@ class PathDocumentationTest {
     @Test
     void versionPrefixIsNotDocumentedAsAResourceId() {
         Operation listTasks = operation("listTasks");
-        OpenAPI openApi = document(new Paths().addPathItem("/api/v{version}/tasks", new PathItem().get(listTasks)));
+        OpenAPI openApi =
+                document(
+                        new Paths()
+                                .addPathItem(
+                                        "/api/v{version}/tasks", new PathItem().get(listTasks)));
 
         documentation.customise(openApi);
 
@@ -71,9 +79,14 @@ class PathDocumentationTest {
     void exportOperationsDocumentTheForbiddenResponseOfAnInactiveAccount() {
         Operation listExports = operation("listExports");
         Operation getExport = operation("getExport");
-        OpenAPI openApi = document(new Paths()
-                .addPathItem("/api/v{version}/exports", new PathItem().get(listExports))
-                .addPathItem("/api/v{version}/exports/{id}", new PathItem().get(getExport)));
+        OpenAPI openApi =
+                document(
+                        new Paths()
+                                .addPathItem(
+                                        "/api/v{version}/exports", new PathItem().get(listExports))
+                                .addPathItem(
+                                        "/api/v{version}/exports/{id}",
+                                        new PathItem().get(getExport)));
 
         documentation.customise(openApi);
 
@@ -84,7 +97,11 @@ class PathDocumentationTest {
     @Test
     void operationOutsideTheActiveAccountPathsGetsNoForbiddenResponseFromItsPath() {
         Operation getUser = operation("getUser");
-        OpenAPI openApi = document(new Paths().addPathItem("/api/v{version}/users/{id}", new PathItem().get(getUser)));
+        OpenAPI openApi =
+                document(
+                        new Paths()
+                                .addPathItem(
+                                        "/api/v{version}/users/{id}", new PathItem().get(getUser)));
 
         documentation.customise(openApi);
 
@@ -94,7 +111,11 @@ class PathDocumentationTest {
     @Test
     void publicEndpointIsRecognisedThroughItsPinnedPath() {
         Operation login = operation("login");
-        OpenAPI openApi = document(new Paths().addPathItem("/api/v{version}/auth/login", new PathItem().post(login)));
+        OpenAPI openApi =
+                document(
+                        new Paths()
+                                .addPathItem(
+                                        "/api/v{version}/auth/login", new PathItem().post(login)));
 
         documentation.customise(openApi);
 
@@ -105,8 +126,12 @@ class PathDocumentationTest {
     @Test
     void notificationOperationsDocumentTheForbiddenResponseOfAnInactiveAccount() {
         Operation stream = operation("streamNotifications");
-        OpenAPI openApi = document(new Paths()
-                .addPathItem("/api/v{version}/notifications/stream", new PathItem().get(stream)));
+        OpenAPI openApi =
+                document(
+                        new Paths()
+                                .addPathItem(
+                                        "/api/v{version}/notifications/stream",
+                                        new PathItem().get(stream)));
 
         documentation.customise(openApi);
 
@@ -116,8 +141,12 @@ class PathDocumentationTest {
     @Test
     void operationsOnAnAccountGetNoForbiddenResponseFromTheirPath() {
         Operation settings = operation("getNotificationSettings");
-        OpenAPI openApi = document(new Paths()
-                .addPathItem("/api/v{version}/users/{id}/notification-settings", new PathItem().get(settings)));
+        OpenAPI openApi =
+                document(
+                        new Paths()
+                                .addPathItem(
+                                        "/api/v{version}/users/{id}/notification-settings",
+                                        new PathItem().get(settings)));
 
         documentation.customise(openApi);
 
@@ -126,10 +155,15 @@ class PathDocumentationTest {
 
     @Test
     void optionalTextHeaderIsNoInputThatCanBeInvalid() {
-        Operation stream = operation("streamNotifications")
-                .addParametersItem(header("Last-Event-ID", false, schema("string", null)));
-        OpenAPI openApi = document(new Paths()
-                .addPathItem("/api/v{version}/notifications/stream", new PathItem().get(stream)));
+        Operation stream =
+                operation("streamNotifications")
+                        .addParametersItem(header("Last-Event-ID", false, schema("string", null)));
+        OpenAPI openApi =
+                document(
+                        new Paths()
+                                .addPathItem(
+                                        "/api/v{version}/notifications/stream",
+                                        new PathItem().get(stream)));
 
         documentation.customise(openApi);
 
@@ -138,26 +172,51 @@ class PathDocumentationTest {
 
     static Stream<Arguments> inputsThatCanBeInvalid() {
         return Stream.of(
-                Arguments.of("required text header", operation("read")
-                        .addParametersItem(header("X-Tenant", true, schema("string", null)))),
-                Arguments.of("optional header with a format", operation("read")
-                        .addParametersItem(header("X-Request-Id", false, schema("string", "uuid")))),
-                Arguments.of("optional number header", operation("read")
-                        .addParametersItem(header("X-Page", false, schema("integer", null)))),
-                Arguments.of("optional text query parameter", operation("read")
-                        .addParametersItem(new Parameter().in("query").name("q").required(false)
-                                .schema(schema("string", null)))),
-                Arguments.of("optional text header next to a query parameter", operation("read")
-                        .addParametersItem(header("Last-Event-ID", false, schema("string", null)))
-                        .addParametersItem(new Parameter().in("query").name("size").schema(schema("integer", null)))),
-                Arguments.of("request body", operation("create").requestBody(new RequestBody()))
-        );
+                Arguments.of(
+                        "required text header",
+                        operation("read")
+                                .addParametersItem(
+                                        header("X-Tenant", true, schema("string", null)))),
+                Arguments.of(
+                        "optional header with a format",
+                        operation("read")
+                                .addParametersItem(
+                                        header("X-Request-Id", false, schema("string", "uuid")))),
+                Arguments.of(
+                        "optional number header",
+                        operation("read")
+                                .addParametersItem(
+                                        header("X-Page", false, schema("integer", null)))),
+                Arguments.of(
+                        "optional text query parameter",
+                        operation("read")
+                                .addParametersItem(
+                                        new Parameter()
+                                                .in("query")
+                                                .name("q")
+                                                .required(false)
+                                                .schema(schema("string", null)))),
+                Arguments.of(
+                        "optional text header next to a query parameter",
+                        operation("read")
+                                .addParametersItem(
+                                        header("Last-Event-ID", false, schema("string", null)))
+                                .addParametersItem(
+                                        new Parameter()
+                                                .in("query")
+                                                .name("size")
+                                                .schema(schema("integer", null)))),
+                Arguments.of("request body", operation("create").requestBody(new RequestBody())));
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("inputsThatCanBeInvalid")
     void inputThatCanBeInvalidDocumentsTheBadRequestResponse(String input, Operation operation) {
-        OpenAPI openApi = document(new Paths().addPathItem("/api/v{version}/users", new PathItem().post(operation)));
+        OpenAPI openApi =
+                document(
+                        new Paths()
+                                .addPathItem(
+                                        "/api/v{version}/users", new PathItem().post(operation)));
 
         documentation.customise(openApi);
 
@@ -165,7 +224,9 @@ class PathDocumentationTest {
     }
 
     private static OpenAPI document(Paths paths) {
-        return new OpenAPI().paths(paths).components(new Components().schemas(new LinkedHashMap<>()));
+        return new OpenAPI()
+                .paths(paths)
+                .components(new Components().schemas(new LinkedHashMap<>()));
     }
 
     private static Operation operation(String id) {

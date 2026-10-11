@@ -1,13 +1,13 @@
 package io.julienmetral.tasks.identity.controllers;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.drew.imaging.ImageMetadataReader;
 import com.drew.metadata.Metadata;
 import com.drew.metadata.exif.ExifIFD0Directory;
 import com.drew.metadata.exif.GpsDirectory;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
-import org.junit.jupiter.api.Test;
-
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
@@ -18,15 +18,15 @@ import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
 
 class AvatarImageProcessingApiTests extends AbstractAvatarApiTests {
 
     private static final int AVATAR_SIDE = 256;
 
     // 1x1 lossless WebP: the JDK has no WebP reader, so this proves the ImageIO plugin is active
-    private static final byte[] WEBP = Base64.getDecoder().decode("UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==");
+    private static final byte[] WEBP =
+            Base64.getDecoder().decode("UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==");
 
     @Test
     void opaquePngBecomesSquareJpeg() throws Exception {
@@ -90,26 +90,37 @@ class AvatarImageProcessingApiTests extends AbstractAvatarApiTests {
     void exifOrientationIsAppliedAndMetadataDropped() throws Exception {
         User user = createUser(UserRole.USER);
         byte[] original = withExif(jpeg(redTopLeftQuadrant()));
-        Metadata originalMetadata = ImageMetadataReader.readMetadata(new ByteArrayInputStream(original));
+        Metadata originalMetadata =
+                ImageMetadataReader.readMetadata(new ByteArrayInputStream(original));
 
-        assertThat(originalMetadata.getFirstDirectoryOfType(ExifIFD0Directory.class)
-                .getInt(ExifIFD0Directory.TAG_ORIENTATION)).isEqualTo(6);
-        assertThat(originalMetadata.getFirstDirectoryOfType(GpsDirectory.class)
-                .getString(GpsDirectory.TAG_LATITUDE_REF)).isEqualTo("N");
+        assertThat(
+                        originalMetadata
+                                .getFirstDirectoryOfType(ExifIFD0Directory.class)
+                                .getInt(ExifIFD0Directory.TAG_ORIENTATION))
+                .isEqualTo(6);
+        assertThat(
+                        originalMetadata
+                                .getFirstDirectoryOfType(GpsDirectory.class)
+                                .getString(GpsDirectory.TAG_LATITUDE_REF))
+                .isEqualTo("N");
 
-        byte[] stored = downloadAvatar(uploadAndAwaitAvatar(user, asUser(user), "IMG_0001.JPG", original));
+        byte[] stored =
+                downloadAvatar(uploadAndAwaitAvatar(user, asUser(user), "IMG_0001.JPG", original));
 
         assertThat(isJpeg(stored)).isTrue();
 
         BufferedImage avatar = decode(stored);
 
         assertThat(avatar.getWidth()).isEqualTo(AVATAR_SIDE);
-        assertThat(isRed(avatar.getRGB(192, 64))).as("top-right after a 90 degree clockwise turn").isTrue();
+        assertThat(isRed(avatar.getRGB(192, 64)))
+                .as("top-right after a 90 degree clockwise turn")
+                .isTrue();
         assertThat(isBlue(avatar.getRGB(64, 64))).isTrue();
         assertThat(isBlue(avatar.getRGB(64, 192))).isTrue();
         assertThat(isBlue(avatar.getRGB(192, 192))).isTrue();
 
-        Metadata storedMetadata = ImageMetadataReader.readMetadata(new ByteArrayInputStream(stored));
+        Metadata storedMetadata =
+                ImageMetadataReader.readMetadata(new ByteArrayInputStream(stored));
 
         assertThat(storedMetadata.getFirstDirectoryOfType(ExifIFD0Directory.class)).isNull();
         assertThat(storedMetadata.getFirstDirectoryOfType(GpsDirectory.class)).isNull();
@@ -119,7 +130,10 @@ class AvatarImageProcessingApiTests extends AbstractAvatarApiTests {
     void webpIsAccepted() throws Exception {
         User user = createUser(UserRole.USER);
 
-        BufferedImage avatar = decode(downloadAvatar(uploadAndAwaitAvatar(user, asUser(user), "photo.webp", WEBP)));
+        BufferedImage avatar =
+                decode(
+                        downloadAvatar(
+                                uploadAndAwaitAvatar(user, asUser(user), "photo.webp", WEBP)));
 
         assertThat(avatar.getWidth()).isEqualTo(AVATAR_SIDE);
         assertThat(avatar.getHeight()).isEqualTo(AVATAR_SIDE);
@@ -144,23 +158,38 @@ class AvatarImageProcessingApiTests extends AbstractAvatarApiTests {
     }
 
     /**
-     * Inserts, after the JFIF segment, an EXIF APP1 segment with orientation 6 (stored sideways, to be turned 90
-     * degrees clockwise) and a GPS directory. Big-endian TIFF layout: IFD0 at offset 8, GPS IFD right after it.
+     * Inserts, after the JFIF segment, an EXIF APP1 segment with orientation 6 (stored sideways, to
+     * be turned 90 degrees clockwise) and a GPS directory. Big-endian TIFF layout: IFD0 at offset
+     * 8, GPS IFD right after it.
      */
     private static byte[] withExif(byte[] jpeg) throws IOException {
         int gpsIfdOffset = 8 + 2 + 2 * 12 + 4;
 
-        ByteBuffer tiff = ByteBuffer.allocate(gpsIfdOffset + 2 + 2 * 12 + 4)
-                .put(new byte[]{'M', 'M', 0, 42})
-                .putInt(8)
-                .putShort((short) 2)
-                .putShort((short) 0x0112).putShort((short) 3).putInt(1).putShort((short) 6).putShort((short) 0)
-                .putShort((short) 0x8825).putShort((short) 4).putInt(1).putInt(gpsIfdOffset)
-                .putInt(0)
-                .putShort((short) 2)
-                .putShort((short) 0x0000).putShort((short) 1).putInt(4).put(new byte[]{2, 3, 0, 0})
-                .putShort((short) 0x0001).putShort((short) 2).putInt(2).put(new byte[]{'N', 0, 0, 0})
-                .putInt(0);
+        ByteBuffer tiff =
+                ByteBuffer.allocate(gpsIfdOffset + 2 + 2 * 12 + 4)
+                        .put(new byte[] {'M', 'M', 0, 42})
+                        .putInt(8)
+                        .putShort((short) 2)
+                        .putShort((short) 0x0112)
+                        .putShort((short) 3)
+                        .putInt(1)
+                        .putShort((short) 6)
+                        .putShort((short) 0)
+                        .putShort((short) 0x8825)
+                        .putShort((short) 4)
+                        .putInt(1)
+                        .putInt(gpsIfdOffset)
+                        .putInt(0)
+                        .putShort((short) 2)
+                        .putShort((short) 0x0000)
+                        .putShort((short) 1)
+                        .putInt(4)
+                        .put(new byte[] {2, 3, 0, 0})
+                        .putShort((short) 0x0001)
+                        .putShort((short) 2)
+                        .putInt(2)
+                        .put(new byte[] {'N', 0, 0, 0})
+                        .putInt(0);
 
         byte[] exifHeader = "Exif\0\0".getBytes(StandardCharsets.US_ASCII);
         int segmentLength = 2 + exifHeader.length + tiff.capacity();

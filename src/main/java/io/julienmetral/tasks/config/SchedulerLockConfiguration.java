@@ -11,21 +11,24 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
- * ShedLock for the jobs of {@link ScheduledJobLocks}: {@code @SchedulerLock} on a job method takes its row in
- * {@code scheduler_locks} before the method runs, and an instance that finds it taken skips that run.
+ * ShedLock for the jobs of {@link ScheduledJobLocks}: {@code @SchedulerLock} on a job method takes
+ * its row in {@code scheduler_locks} before the method runs, and an instance that finds it taken
+ * skips that run.
+ *
  * <ul>
- *     <li>{@code lockAtMostFor} releases the lock of a crashed instance. It must stay well above the longest run,
- *     or a second instance starts while the first still works, and below the period of a frequent job, so a crash
- *     costs one run at most.</li>
- *     <li>{@code lockAtLeastFor} keeps a quick run's lock for a while, so an instance whose clock fires a few seconds
- *     late finds it taken instead of running the job again.</li>
+ *   <li>{@code lockAtMostFor} releases the lock of a crashed instance. It must stay well above the
+ *       longest run, or a second instance starts while the first still works, and below the period
+ *       of a frequent job, so a crash costs one run at most.
+ *   <li>{@code lockAtLeastFor} keeps a quick run's lock for a while, so an instance whose clock
+ *       fires a few seconds late finds it taken instead of running the job again.
  * </ul>
- * <p>
- * Kept apart from {@link SchedulingConfiguration}, which tests load without a database to validate the jobs'
- * properties.
- * <p>
- * Warning: put {@code @SchedulerLock} on the job method, never on a {@code @Transactional} one. The lock is written in
- * its own transaction, so on a transactional method it would be released before the work commits.
+ *
+ * <p>Kept apart from {@link SchedulingConfiguration}, which tests load without a database to
+ * validate the jobs' properties.
+ *
+ * <p>Warning: put {@code @SchedulerLock} on the job method, never on a {@code @Transactional} one.
+ * The lock is written in its own transaction, so on a transactional method it would be released
+ * before the work commits.
  */
 @Configuration
 @EnableSchedulerLock(defaultLockAtMostFor = "PT30M")
@@ -39,10 +42,11 @@ public class SchedulerLockConfiguration {
     }
 
     /**
-     * Every lock time comes from the database clock, so the instances' clocks may drift apart. The product is set
-     * because detecting it would open a connection on the first lock.
+     * Every lock time comes from the database clock, so the instances' clocks may drift apart. The
+     * product is set because detecting it would open a connection on the first lock.
      */
-    static JdbcTemplateLockProvider.Configuration.Builder lockProviderConfiguration(JdbcTemplate jdbcTemplate) {
+    static JdbcTemplateLockProvider.Configuration.Builder lockProviderConfiguration(
+            JdbcTemplate jdbcTemplate) {
         return JdbcTemplateLockProvider.Configuration.builder()
                 .withJdbcTemplate(jdbcTemplate)
                 .withTableName(TABLE)
@@ -52,7 +56,8 @@ public class SchedulerLockConfiguration {
 
     @Bean
     MicrometerLockingTaskExecutorListener schedulerLockMetrics(MeterRegistry meterRegistry) {
-        MicrometerLockingTaskExecutorListener listener = new MicrometerLockingTaskExecutorListener(meterRegistry);
+        MicrometerLockingTaskExecutorListener listener =
+                new MicrometerLockingTaskExecutorListener(meterRegistry);
         listener.registerMetricsFor(ScheduledJobLocks.NAMES.toArray(String[]::new));
         return listener;
     }

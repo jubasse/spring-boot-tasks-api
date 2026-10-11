@@ -18,7 +18,10 @@ public class ExpiredTokenPurgeJob {
     private final ExpiredTokenPurgeService purgeService;
 
     @Scheduled(cron = "${identity.token-purge.cron}")
-    @SchedulerLock(name = ScheduledJobLocks.EXPIRED_TOKEN_PURGE, lockAtMostFor = "PT1H", lockAtLeastFor = "PT5M")
+    @SchedulerLock(
+            name = ScheduledJobLocks.EXPIRED_TOKEN_PURGE,
+            lockAtMostFor = "PT1H",
+            lockAtLeastFor = "PT5M")
     public void purge() {
         PurgedTokens purged = purgeService.purge();
 
@@ -27,8 +30,7 @@ public class ExpiredTokenPurgeJob {
                     "Expired tokens purged: {} refresh, {} email verification, {} password reset",
                     purged.refreshTokens(),
                     purged.verificationTokens(),
-                    purged.resetTokens()
-            );
+                    purged.resetTokens());
         }
     }
 }

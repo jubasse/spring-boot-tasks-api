@@ -22,27 +22,24 @@ import io.julienmetral.tasks.notification.webhook.WebhookTestResult;
 import io.julienmetral.tasks.notification.webhook.WebhookUrlPolicy;
 import io.julienmetral.tasks.notification.webhook.WebhookUrls;
 import io.julienmetral.tasks.ratelimit.services.RateLimiter;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Clock;
-import java.time.Instant;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.UUID;
-
 @Service
 @RequiredArgsConstructor
 public class WebhookEndpointService {
 
-    public record CreatedWebhookEndpoint(WebhookEndpoint endpoint, String secret) {
-    }
+    public record CreatedWebhookEndpoint(WebhookEndpoint endpoint, String secret) {}
 
-    public record RotatedWebhookSecret(String secret, Instant previousSecretExpiresAt) {
-    }
+    public record RotatedWebhookSecret(String secret, Instant previousSecretExpiresAt) {}
 
     private final WebhookEndpointRepository endpointRepository;
     private final WebhookDeliveryRepository deliveryRepository;
@@ -59,7 +56,9 @@ public class WebhookEndpointService {
     @Transactional
     public CreatedWebhookEndpoint create(UUID userId, CreateWebhookEndpointDto dto) {
         // Locking the account row makes two concurrent creations count each other against the limit
-        userRepository.findByIdForUpdate(userId).orElseThrow(() -> new UserNotFoundException(userId));
+        userRepository
+                .findByIdForUpdate(userId)
+                .orElseThrow(() -> new UserNotFoundException(userId));
 
         if (endpointRepository.countByUserId(userId) >= properties.maxPerUser()) {
             throw new WebhookLimitReachedException(properties.maxPerUser());
@@ -105,7 +104,8 @@ public class WebhookEndpointService {
 
         Instant now = clock.instant();
 
-        // Only a disabled endpoint is enabled again: enable() restarts the count of days without success
+        // Only a disabled endpoint is enabled again: enable() restarts the count of days without
+        // success
         if (dto.enabled()) {
             if (!endpoint.isEnabled()) {
                 endpoint.enable();
@@ -129,8 +129,9 @@ public class WebhookEndpointService {
     }
 
     /**
-     * Sends a test event to the endpoint and returns how the receiver answered; nothing is recorded. Rate limited per
-     * owner, since each call is an HTTP request to a URL the user chose. Not transactional: the call can take seconds.
+     * Sends a test event to the endpoint and returns how the receiver answered; nothing is
+     * recorded. Rate limited per owner, since each call is an HTTP request to a URL the user chose.
+     * Not transactional: the call can take seconds.
      */
     public WebhookTestResult sendTest(UUID userId, UUID webhookId) {
         WebhookEndpoint endpoint = find(userId, webhookId);
@@ -144,9 +145,10 @@ public class WebhookEndpointService {
     @Transactional
     public WebhookDelivery redeliver(UUID userId, UUID webhookId, UUID deliveryId) {
         WebhookEndpoint endpoint = find(userId, webhookId);
-        WebhookDelivery delivery = deliveryRepository
-                .findByIdAndEndpointId(deliveryId, endpoint.getId())
-                .orElseThrow(() -> new WebhookDeliveryNotFoundException(deliveryId));
+        WebhookDelivery delivery =
+                deliveryRepository
+                        .findByIdAndEndpointId(deliveryId, endpoint.getId())
+                        .orElseThrow(() -> new WebhookDeliveryNotFoundException(deliveryId));
 
         deliveryService.requeue(delivery);
 
@@ -159,9 +161,10 @@ public class WebhookEndpointService {
     }
 
     /**
-     * Replaces the signing secret. The previous one keeps signing deliveries, next to the new one, for
-     * {@code webhooks.previous-secret-validity}, so the receiver can switch without losing any; unless it can no longer
-     * be read, after a change of {@code webhooks.encryption-key}: then none is kept, and the expiry returned is null.
+     * Replaces the signing secret. The previous one keeps signing deliveries, next to the new one,
+     * for {@code webhooks.previous-secret-validity}, so the receiver can switch without losing any;
+     * unless it can no longer be read, after a change of {@code webhooks.encryption-key}: then none
+     * is kept, and the expiry returned is null.
      */
     @Transactional
     public RotatedWebhookSecret rotateSecret(UUID userId, UUID webhookId) {
@@ -174,9 +177,11 @@ public class WebhookEndpointService {
         Instant now = clock.instant();
         String secret = secrets.generate();
 
-        // Rotating is the way out after a key change: copying the unreadable secret kept it for another 24 h
+        // Rotating is the way out after a key change: copying the unreadable secret kept it for
+        // another 24 h
         boolean previousReadable = secrets.canDecrypt(endpoint.getSecret());
-        Instant previousSecretExpiresAt = previousReadable ? now.plus(properties.previousSecretValidity()) : null;
+        Instant previousSecretExpiresAt =
+                previousReadable ? now.plus(properties.previousSecretValidity()) : null;
 
         endpoint.setPreviousSecret(previousReadable ? endpoint.getSecret() : null);
         endpoint.setPreviousSecretExpiresAt(previousSecretExpiresAt);
@@ -199,7 +204,8 @@ public class WebhookEndpointService {
         return url;
     }
 
-    // Null for a Slack URL left unreadable by a key change: any URL sent then replaces it, which is the way out
+    // Null for a Slack URL left unreadable by a key change: any URL sent then replaces it, which is
+    // the way out
     private String currentUrl(WebhookEndpoint endpoint) {
         if (endpoint.getKind() != WebhookKind.SLACK) {
             return endpoint.getUrl();
@@ -213,7 +219,8 @@ public class WebhookEndpointService {
         return endpoint.getKind() == WebhookKind.SLACK && WebhookUrls.SLACK_MASK.equals(url);
     }
 
-    // The account is read first: its endpoints stay in the database while it is soft-deleted, until the erasure
+    // The account is read first: its endpoints stay in the database while it is soft-deleted, until
+    // the erasure
     private WebhookEndpoint find(UUID userId, UUID webhookId) {
         userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
 

@@ -1,30 +1,5 @@
 package io.julienmetral.tasks.identity.services;
 
-import io.julienmetral.tasks.identity.entities.RefreshToken;
-import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserProfile;
-import io.julienmetral.tasks.identity.exceptions.InvalidRefreshTokenException;
-import io.julienmetral.tasks.identity.repositories.RefreshTokenRepository;
-import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
-import io.julienmetral.tasks.identity.security.OpaqueTokens;
-import io.julienmetral.tasks.identity.security.RefreshTokenProperties;
-import io.julienmetral.tasks.identity.services.RefreshTokenService.IssuedRefreshToken;
-import io.julienmetral.tasks.identity.services.RefreshTokenService.RotatedRefreshToken;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.Optional;
-import java.util.UUID;
-
 import static io.julienmetral.tasks.support.UserProfiles.reference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -36,6 +11,30 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
+
+import io.julienmetral.tasks.identity.entities.RefreshToken;
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserProfile;
+import io.julienmetral.tasks.identity.exceptions.InvalidRefreshTokenException;
+import io.julienmetral.tasks.identity.repositories.RefreshTokenRepository;
+import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
+import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.identity.security.OpaqueTokens;
+import io.julienmetral.tasks.identity.security.RefreshTokenProperties;
+import io.julienmetral.tasks.identity.services.RefreshTokenService.IssuedRefreshToken;
+import io.julienmetral.tasks.identity.services.RefreshTokenService.RotatedRefreshToken;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class RefreshTokenServiceTest {
@@ -50,26 +49,23 @@ class RefreshTokenServiceTest {
 
     private static final UUID FAMILY_ID = UUID.fromString("00000000-0000-0000-0000-0000000000f1");
 
-    @Mock
-    private RefreshTokenRepository refreshTokenRepository;
+    @Mock private RefreshTokenRepository refreshTokenRepository;
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
-    @Mock
-    private UserProfileRepository userProfileRepository;
+    @Mock private UserProfileRepository userProfileRepository;
 
     private RefreshTokenService service;
 
     @BeforeEach
     void setUp() {
-        service = new RefreshTokenService(
-                refreshTokenRepository,
-                userRepository,
-                userProfileRepository,
-                new RefreshTokenProperties(TTL),
-                Clock.fixed(NOW, ZoneOffset.UTC)
-        );
+        service =
+                new RefreshTokenService(
+                        refreshTokenRepository,
+                        userRepository,
+                        userProfileRepository,
+                        new RefreshTokenProperties(TTL),
+                        Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     private static User user() {
@@ -80,7 +76,8 @@ class RefreshTokenServiceTest {
         return user;
     }
 
-    private static RefreshToken storedToken(UserProfile owner, Instant expiresAt, Instant revokedAt) {
+    private static RefreshToken storedToken(
+            UserProfile owner, Instant expiresAt, Instant revokedAt) {
         RefreshToken token = new RefreshToken();
         token.setUser(owner);
         token.setTokenHash(OpaqueTokens.hash(RAW_TOKEN));
@@ -93,7 +90,8 @@ class RefreshTokenServiceTest {
 
     private RefreshToken stubStored(UserProfile owner, Instant expiresAt, Instant revokedAt) {
         RefreshToken token = storedToken(owner, expiresAt, revokedAt);
-        when(refreshTokenRepository.findByTokenHash(OpaqueTokens.hash(RAW_TOKEN))).thenReturn(Optional.of(token));
+        when(refreshTokenRepository.findByTokenHash(OpaqueTokens.hash(RAW_TOKEN)))
+                .thenReturn(Optional.of(token));
         return token;
     }
 
@@ -118,7 +116,9 @@ class RefreshTokenServiceTest {
         RefreshToken saved = captureSaved();
 
         assertThat(issued.value()).hasSize(43);
-        assertThat(saved.getTokenHash()).isEqualTo(OpaqueTokens.hash(issued.value())).isNotEqualTo(issued.value());
+        assertThat(saved.getTokenHash())
+                .isEqualTo(OpaqueTokens.hash(issued.value()))
+                .isNotEqualTo(issued.value());
         assertThat(saved.getUser()).isSameAs(reference);
         assertThat(saved.getFamilyId()).isNotNull();
         assertThat(saved.getRevokedAt()).isNull();
@@ -160,7 +160,8 @@ class RefreshTokenServiceTest {
     void rotateRevokedTokenRevokesWholeFamilyAndThrows() {
         stubStored(reference(USER_ID), NOW.plus(TTL), NOW.minusSeconds(60));
 
-        assertThatThrownBy(() -> service.rotate(RAW_TOKEN)).isInstanceOf(InvalidRefreshTokenException.class);
+        assertThatThrownBy(() -> service.rotate(RAW_TOKEN))
+                .isInstanceOf(InvalidRefreshTokenException.class);
 
         verify(refreshTokenRepository).revokeFamily(FAMILY_ID, NOW);
         verify(refreshTokenRepository, never()).save(any());
@@ -171,7 +172,8 @@ class RefreshTokenServiceTest {
     void rotateExpiredTokenThrowsWithoutRevokingFamily() {
         RefreshToken token = stubStored(reference(USER_ID), NOW.minusSeconds(1), null);
 
-        assertThatThrownBy(() -> service.rotate(RAW_TOKEN)).isInstanceOf(InvalidRefreshTokenException.class);
+        assertThatThrownBy(() -> service.rotate(RAW_TOKEN))
+                .isInstanceOf(InvalidRefreshTokenException.class);
 
         verify(refreshTokenRepository, never()).revokeFamily(any(), any());
         verify(refreshTokenRepository, never()).save(any());
@@ -184,7 +186,8 @@ class RefreshTokenServiceTest {
         RefreshToken token = stubStored(reference(USER_ID), NOW.plus(TTL), null);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.rotate(RAW_TOKEN)).isInstanceOf(InvalidRefreshTokenException.class);
+        assertThatThrownBy(() -> service.rotate(RAW_TOKEN))
+                .isInstanceOf(InvalidRefreshTokenException.class);
 
         verify(refreshTokenRepository).revokeFamily(FAMILY_ID, NOW);
         verify(refreshTokenRepository, never()).save(any());
@@ -198,7 +201,8 @@ class RefreshTokenServiceTest {
         stubStored(reference(USER_ID), NOW.plus(TTL), null);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(disabled));
 
-        assertThatThrownBy(() -> service.rotate(RAW_TOKEN)).isInstanceOf(InvalidRefreshTokenException.class);
+        assertThatThrownBy(() -> service.rotate(RAW_TOKEN))
+                .isInstanceOf(InvalidRefreshTokenException.class);
 
         verify(refreshTokenRepository).revokeFamily(FAMILY_ID, NOW);
         verify(refreshTokenRepository, never()).save(any());
@@ -225,7 +229,8 @@ class RefreshTokenServiceTest {
         assertThat(successor.getRevokedAt()).isNull();
         assertThat(successor.getCreatedAt()).isEqualTo(current.getRevokedAt());
         assertThat(successor.getExpiresAt()).isEqualTo(successor.getCreatedAt().plus(TTL));
-        assertThat(successor.getTokenHash()).isEqualTo(OpaqueTokens.hash(rotated.refreshToken().value()));
+        assertThat(successor.getTokenHash())
+                .isEqualTo(OpaqueTokens.hash(rotated.refreshToken().value()));
 
         assertThat(rotated.refreshToken().value()).isNotEqualTo(RAW_TOKEN).hasSize(43);
         assertThat(rotated.refreshToken().expiresAt()).isEqualTo(successor.getExpiresAt());

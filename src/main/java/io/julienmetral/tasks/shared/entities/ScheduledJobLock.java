@@ -4,19 +4,20 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.Immutable;
 
-import java.time.LocalDateTime;
-
 /**
- * Written only by ShedLock (see {@code SchedulerLockConfiguration}); the entity keeps the table in the Hibernate model,
- * without which {@code liquibase:diff} proposes to drop it. Times are UTC wall-clock values from the database.
- * <p>
- * Warning: never delete a row to release a stuck lock. ShedLock remembers which rows exist and then only updates
- * them, so every later run would be skipped until a restart. Set {@code lock_until} to
- * {@code timezone('utc', now())} instead: {@code now()} would be read in the session's time zone.
+ * Written only by ShedLock (see {@code SchedulerLockConfiguration}); the entity keeps the table in
+ * the Hibernate model, without which {@code liquibase:diff} proposes to drop it. Times are UTC
+ * wall-clock values from the database.
+ *
+ * <p>Warning: never delete a row to release a stuck lock. ShedLock remembers which rows exist and
+ * then only updates them, so every later run would be skipped until a restart. Set {@code
+ * lock_until} to {@code timezone('utc', now())} instead: {@code now()} would be read in the
+ * session's time zone.
  */
 @Entity
 @Immutable

@@ -1,21 +1,21 @@
 package io.julienmetral.tasks.support;
 
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.springframework.boot.test.context.TestComponent;
 import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
-
 /**
- * The application's {@link Clock} in integration tests. It follows the system time until a test pins it
- * ({@link #set}) or moves it ({@link #advance}), and {@link ResetAfterEach} puts it back after every test, so one
- * context serves both the tests that need a fixed time and those that do not.
+ * The application's {@link Clock} in integration tests. It follows the system time until a test
+ * pins it ({@link #set}) or moves it ({@link #advance}), and {@link ResetAfterEach} puts it back
+ * after every test, so one context serves both the tests that need a fixed time and those that do
+ * not.
  */
 @TestComponent
 @Primary
@@ -66,7 +66,9 @@ public class TestClock extends Clock {
 
         @Override
         public void afterEach(ExtensionContext context) {
-            SpringExtension.getApplicationContext(context).getBeanProvider(TestClock.class).ifAvailable(TestClock::reset);
+            SpringExtension.getApplicationContext(context)
+                    .getBeanProvider(TestClock.class)
+                    .ifAvailable(TestClock::reset);
         }
     }
 }

@@ -1,7 +1,23 @@
 package io.julienmetral.tasks.identity.controllers;
 
+import static io.julienmetral.tasks.support.Problems.typedProblem;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.sql.Timestamp;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -12,28 +28,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.sql.Timestamp;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.HexFormat;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-import static io.julienmetral.tasks.support.Problems.typedProblem;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 /**
- * End-to-end tests of password reset: the request sends a real email to the Mailpit container,
- * the token is read from that email and sent back to {@code POST /api/v1/auth/password-reset/confirm}.
- * <p>
- * Sign-up also sends a verification email, so every account receives that one first.
+ * End-to-end tests of password reset: the request sends a real email to the Mailpit container, the
+ * token is read from that email and sent back to {@code POST /api/v1/auth/password-reset/confirm}.
+ *
+ * <p>Sign-up also sends a verification email, so every account receives that one first.
  */
 @IntegrationTest
 class PasswordResetApiTests {
@@ -44,19 +43,16 @@ class PasswordResetApiTests {
 
     private static final String RESET_LINK = "http://localhost:3000/reset-password?token=";
 
-    private static final String INVALID_TOKEN_DETAIL = "The password reset token is invalid, expired or already used";
+    private static final String INVALID_TOKEN_DETAIL =
+            "The password reset token is invalid, expired or already used";
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private Mailpit mailpit;
+    @Autowired private Mailpit mailpit;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
-    @Autowired
-    private JsonMapper jsonMapper;
+    @Autowired private JsonMapper jsonMapper;
 
     @Test
     void fullFlowReplacesPasswordSoOnlyTheNewOneWorks() throws Exception {
@@ -83,7 +79,9 @@ class PasswordResetApiTests {
         String text = mailpit.latestTextTo(email);
 
         assertThat(text).contains("Hello Alice Liddell,");
-        assertThat(text).containsPattern("http://localhost:3000/reset-password\\?token=[A-Za-z0-9_-]{43}(\\s|$)");
+        assertThat(text)
+                .containsPattern(
+                        "http://localhost:3000/reset-password\\?token=[A-Za-z0-9_-]{43}(\\s|$)");
         assertThat(text).contains("The link expires at ");
     }
 
@@ -107,11 +105,9 @@ class PasswordResetApiTests {
 
         confirm(awaitResetToken(email, 2), NEW_PASSWORD).andExpect(status().isNoContent());
 
-        String passwordHash = jdbcTemplate.queryForObject(
-                "SELECT password_hash FROM users WHERE id = ?",
-                String.class,
-                userId
-        );
+        String passwordHash =
+                jdbcTemplate.queryForObject(
+                        "SELECT password_hash FROM users WHERE id = ?", String.class, userId);
         assertThat(passwordHash).startsWith("{argon2id}$argon2id$").doesNotContain(NEW_PASSWORD);
     }
 
@@ -172,8 +168,7 @@ class PasswordResetApiTests {
 
         jdbcTemplate.update(
                 "UPDATE password_reset_tokens SET expires_at = now() - interval '1 second' WHERE user_id = ?",
-                userId
-        );
+                userId);
 
         expectInvalidToken(confirm(token, NEW_PASSWORD));
 
@@ -199,11 +194,11 @@ class PasswordResetApiTests {
 
         assertThat(secondToken).isNotEqualTo(firstToken);
 
-        List<String> hashes = jdbcTemplate.queryForList(
-                "SELECT token_hash FROM password_reset_tokens WHERE user_id = ?",
-                String.class,
-                userId
-        );
+        List<String> hashes =
+                jdbcTemplate.queryForList(
+                        "SELECT token_hash FROM password_reset_tokens WHERE user_id = ?",
+                        String.class,
+                        userId);
         assertThat(hashes).containsExactly(sha256Hex(secondToken));
 
         expectInvalidToken(confirm(firstToken, NEW_PASSWORD));
@@ -228,13 +223,14 @@ class PasswordResetApiTests {
 
         assertThat(row.get("token_hash")).isEqualTo(sha256Hex(token));
         assertThat(row.get("used_at")).isNull();
-        assertThat(row.values()).noneMatch(value -> value != null && value.toString().contains(token));
+        assertThat(row.values())
+                .noneMatch(value -> value != null && value.toString().contains(token));
 
-        Integer rawMatches = jdbcTemplate.queryForObject(
-                "SELECT count(*) FROM password_reset_tokens WHERE token_hash = ?",
-                Integer.class,
-                token
-        );
+        Integer rawMatches =
+                jdbcTemplate.queryForObject(
+                        "SELECT count(*) FROM password_reset_tokens WHERE token_hash = ?",
+                        Integer.class,
+                        token);
         assertThat(rawMatches).isZero();
 
         Instant createdAt = ((Timestamp) row.get("created_at")).toInstant();
@@ -247,14 +243,16 @@ class PasswordResetApiTests {
         String email = uniqueEmail();
         signUp(email);
 
-        String refreshToken = jsonMapper
-                .readTree(login(email, PASSWORD)
-                        .andExpect(status().isOk())
-                        .andReturn()
-                        .getResponse()
-                        .getContentAsString())
-                .get("refreshToken")
-                .asString();
+        String refreshToken =
+                jsonMapper
+                        .readTree(
+                                login(email, PASSWORD)
+                                        .andExpect(status().isOk())
+                                        .andReturn()
+                                        .getResponse()
+                                        .getContentAsString())
+                        .get("refreshToken")
+                        .asString();
 
         requestReset(email).andExpect(status().isAccepted());
         confirm(awaitResetToken(email, 2), NEW_PASSWORD).andExpect(status().isNoContent());
@@ -262,10 +260,11 @@ class PasswordResetApiTests {
         mockMvc.perform(
                         post("/api/v1/auth/refresh")
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
+                                .content(
+                                        """
                                         {"refreshToken": "%s"}
-                                        """.formatted(refreshToken))
-                )
+                                        """
+                                                .formatted(refreshToken)))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -284,7 +283,8 @@ class PasswordResetApiTests {
 
         Timestamp verifiedAt = emailVerifiedAt(userId);
         assertThat(verifiedAt).isNotNull();
-        assertThat(verifiedAt.toInstant()).isBetween(before.minusSeconds(1), Instant.now().plusSeconds(1));
+        assertThat(verifiedAt.toInstant())
+                .isBetween(before.minusSeconds(1), Instant.now().plusSeconds(1));
     }
 
     @Test
@@ -300,10 +300,9 @@ class PasswordResetApiTests {
 
         expectInvalidToken(confirm(token, NEW_PASSWORD));
 
-        Map<String, Object> user = jdbcTemplate.queryForMap(
-                "SELECT password_hash, deleted_at FROM users WHERE id = ?",
-                userId
-        );
+        Map<String, Object> user =
+                jdbcTemplate.queryForMap(
+                        "SELECT password_hash, deleted_at FROM users WHERE id = ?", userId);
         assertThat(user.get("deleted_at")).isNotNull();
         assertThat(tokenRows(userId).getFirst().get("used_at")).isNull();
     }
@@ -353,17 +352,19 @@ class PasswordResetApiTests {
     }
 
     private UUID signUp(String email, String displayName) throws Exception {
-        String location = mockMvc.perform(
-                        post("/api/v1/users")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
+        String location =
+                mockMvc.perform(
+                                post("/api/v1/users")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                """
                                         {"email": "%s", "password": "%s", "displayName": "%s"}
-                                        """.formatted(email, PASSWORD, displayName))
-                )
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getHeader("Location");
+                                        """
+                                                        .formatted(email, PASSWORD, displayName)))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getHeader("Location");
 
         return UUID.fromString(location.substring(location.lastIndexOf('/') + 1));
     }
@@ -372,30 +373,33 @@ class PasswordResetApiTests {
         return mockMvc.perform(
                 post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+                        .content(
+                                """
                                 {"email": "%s", "password": "%s"}
-                                """.formatted(email, password))
-        );
+                                """
+                                        .formatted(email, password)));
     }
 
     private ResultActions requestReset(String email) throws Exception {
         return mockMvc.perform(
                 post("/api/v1/auth/password-reset/request")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+                        .content(
+                                """
                                 {"email": "%s"}
-                                """.formatted(email))
-        );
+                                """
+                                        .formatted(email)));
     }
 
     private ResultActions confirm(String token, String newPassword) throws Exception {
         return mockMvc.perform(
                 post("/api/v1/auth/password-reset/confirm")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+                        .content(
+                                """
                                 {"token": "%s", "newPassword": "%s"}
-                                """.formatted(token, newPassword))
-        );
+                                """
+                                        .formatted(token, newPassword)));
     }
 
     private ResultActions adminPost(String uri, UUID id) throws Exception {
@@ -403,15 +407,15 @@ class PasswordResetApiTests {
     }
 
     private static SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor admin() {
-        return SecurityMockMvcRequestPostProcessors
-                .jwt()
+        return SecurityMockMvcRequestPostProcessors.jwt()
                 .jwt(jwt -> jwt.claim("uid", UUID.randomUUID().toString()))
                 .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"));
     }
 
     /**
-     * Waits until the address has received {@code expectedCount} emails (the verification email included), then
-     * returns the token of the latest reset email: the verification email sent at sign-up can arrive after it.
+     * Waits until the address has received {@code expectedCount} emails (the verification email
+     * included), then returns the token of the latest reset email: the verification email sent at
+     * sign-up can arrive after it.
      */
     private String awaitResetToken(String email, int expectedCount) throws InterruptedException {
         awaitEmailCount(email, expectedCount);
@@ -431,29 +435,22 @@ class PasswordResetApiTests {
 
     private List<Map<String, Object>> tokenRows(UUID userId) {
         return jdbcTemplate.queryForList(
-                "SELECT * FROM password_reset_tokens WHERE user_id = ?",
-                userId
-        );
+                "SELECT * FROM password_reset_tokens WHERE user_id = ?", userId);
     }
 
     private Timestamp emailVerifiedAt(UUID userId) {
         return jdbcTemplate.queryForObject(
-                "SELECT email_verified_at FROM users WHERE id = ?",
-                Timestamp.class,
-                userId
-        );
+                "SELECT email_verified_at FROM users WHERE id = ?", Timestamp.class, userId);
     }
 
     private static void expectInvalidToken(ResultActions result) throws Exception {
-        result
-                .andExpect(typedProblem(400, "invalid-token", "Invalid or expired token"))
+        result.andExpect(typedProblem(400, "invalid-token", "Invalid or expired token"))
                 .andExpect(jsonPath("$.detail").value(INVALID_TOKEN_DETAIL));
     }
 
     private static String sha256Hex(String value) throws Exception {
-        byte[] digest = MessageDigest
-                .getInstance("SHA-256")
-                .digest(value.getBytes(StandardCharsets.UTF_8));
+        byte[] digest =
+                MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
 
         return HexFormat.of().formatHex(digest);
     }

@@ -4,17 +4,16 @@ import io.julienmetral.tasks.identity.entities.RefreshToken;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.exceptions.InvalidRefreshTokenException;
 import io.julienmetral.tasks.identity.repositories.RefreshTokenRepository;
-import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
+import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.security.OpaqueTokens;
 import io.julienmetral.tasks.identity.security.RefreshTokenProperties;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -34,16 +33,17 @@ public class RefreshTokenService {
 
     /**
      * Revokes the presented token and issues its successor in the same family.
-     * <p>
-     * Revocations made before throwing must be committed, hence {@code noRollbackFor}.
+     *
+     * <p>Revocations made before throwing must be committed, hence {@code noRollbackFor}.
      */
     @Transactional(noRollbackFor = InvalidRefreshTokenException.class)
     public RotatedRefreshToken rotate(String rawToken) {
         Instant now = clock.instant();
 
-        RefreshToken current = refreshTokenRepository
-                .findByTokenHash(OpaqueTokens.hash(rawToken))
-                .orElseThrow(InvalidRefreshTokenException::new);
+        RefreshToken current =
+                refreshTokenRepository
+                        .findByTokenHash(OpaqueTokens.hash(rawToken))
+                        .orElseThrow(InvalidRefreshTokenException::new);
 
         if (current.getRevokedAt() != null) {
             // A revoked token used again has leaked: revoke every token of that login
@@ -57,10 +57,11 @@ public class RefreshTokenService {
         }
 
         // findById skips soft-deleted users; disabled users cannot refresh either
-        User user = userRepository
-                .findById(current.getUser().getId())
-                .filter(User::isEnabled)
-                .orElse(null);
+        User user =
+                userRepository
+                        .findById(current.getUser().getId())
+                        .filter(User::isEnabled)
+                        .orElse(null);
 
         if (user == null) {
             refreshTokenRepository.revokeFamily(current.getFamilyId(), now);
@@ -70,18 +71,21 @@ public class RefreshTokenService {
 
         current.setRevokedAt(now);
 
-        return new RotatedRefreshToken(
-                user,
-                create(user, current.getFamilyId(), now)
-        );
+        return new RotatedRefreshToken(user, create(user, current.getFamilyId(), now));
     }
 
-    /** Logout: revokes the token's whole family. Unknown tokens are ignored so the endpoint reveals nothing. */
+    /**
+     * Logout: revokes the token's whole family. Unknown tokens are ignored so the endpoint reveals
+     * nothing.
+     */
     @Transactional
     public void revoke(String rawToken) {
         refreshTokenRepository
                 .findByTokenHash(OpaqueTokens.hash(rawToken))
-                .ifPresent(token -> refreshTokenRepository.revokeFamily(token.getFamilyId(), clock.instant()));
+                .ifPresent(
+                        token ->
+                                refreshTokenRepository.revokeFamily(
+                                        token.getFamilyId(), clock.instant()));
     }
 
     /** Called when a user is disabled or deleted, so none of their sessions can be refreshed. */
@@ -106,15 +110,7 @@ public class RefreshTokenService {
         return new IssuedRefreshToken(value, token.getExpiresAt());
     }
 
-    public record IssuedRefreshToken(
-            String value,
-            Instant expiresAt
-    ) {
-    }
+    public record IssuedRefreshToken(String value, Instant expiresAt) {}
 
-    public record RotatedRefreshToken(
-            User user,
-            IssuedRefreshToken refreshToken
-    ) {
-    }
+    public record RotatedRefreshToken(User user, IssuedRefreshToken refreshToken) {}
 }

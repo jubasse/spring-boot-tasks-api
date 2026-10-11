@@ -8,5 +8,4 @@ import org.springframework.scheduling.annotation.EnableAsync;
 @Configuration
 @EnableAsync
 @EnableConfigurationProperties(MailProperties.class)
-public class MailConfiguration {
-}
+public class MailConfiguration {}

@@ -13,6 +13,9 @@ import io.julienmetral.tasks.task.services.TaskCommentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.net.URI;
+import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
@@ -22,12 +25,18 @@ import org.springframework.data.web.PagedModel;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.net.URI;
-import java.util.List;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/tasks/{id}/comments")
@@ -38,26 +47,27 @@ public class TaskCommentController {
     private final TaskCommentService commentService;
     private final MediaUrls mediaUrls;
 
-    @Operation(operationId = "addComment", summary = "Comment on a task, as JSON or as a form with up to 5 files")
+    @Operation(
+            operationId = "addComment",
+            summary = "Comment on a task, as JSON or as a form with up to 5 files")
     @ResponseStatus(HttpStatus.CREATED)
     @DocumentedProblems(ProblemType.INVALID_MENTION)
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<TaskCommentResponseDto> addComment(
-            @PathVariable UUID id,
-            @Valid @RequestBody TaskCommentDto dto
-    ) {
+            @PathVariable UUID id, @Valid @RequestBody TaskCommentDto dto) {
         return created(id, commentService.add(id, dto.body(), List.of()));
     }
 
-    @Operation(operationId = "addComment", summary = "Comment on a task, as JSON or as a form with up to 5 files")
+    @Operation(
+            operationId = "addComment",
+            summary = "Comment on a task, as JSON or as a form with up to 5 files")
     @ResponseStatus(HttpStatus.CREATED)
     @DocumentedProblems(ProblemType.INVALID_MENTION)
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<TaskCommentResponseDto> addCommentWithFiles(
             @PathVariable UUID id,
             @Valid @ModelAttribute TaskCommentDto dto,
-            @RequestPart(name = "files", required = false) List<MultipartFile> files
-    ) {
+            @RequestPart(name = "files", required = false) List<MultipartFile> files) {
         return created(id, commentService.add(id, dto.body(), files == null ? List.of() : files));
     }
 
@@ -65,17 +75,14 @@ public class TaskCommentController {
     @GetMapping
     public PagedModel<TaskCommentResponseDto> listComments(
             @PathVariable UUID id,
-            @ParameterObject @PageableDefault(sort = "createdAt", direction = Sort.Direction.ASC) Pageable pageable
-    ) {
+            @ParameterObject @PageableDefault(sort = "createdAt", direction = Sort.Direction.ASC)
+                    Pageable pageable) {
         return new PagedModel<>(commentService.findAll(id, pageable).map(this::response));
     }
 
     @Operation(summary = "Get a comment")
     @GetMapping("/{commentId}")
-    public TaskCommentResponseDto getComment(
-            @PathVariable UUID id,
-            @PathVariable UUID commentId
-    ) {
+    public TaskCommentResponseDto getComment(@PathVariable UUID id, @PathVariable UUID commentId) {
         return response(commentService.find(id, commentId));
     }
 
@@ -86,8 +93,7 @@ public class TaskCommentController {
     public TaskCommentResponseDto editComment(
             @PathVariable UUID id,
             @PathVariable UUID commentId,
-            @Valid @RequestBody TaskCommentDto dto
-    ) {
+            @Valid @RequestBody TaskCommentDto dto) {
         return response(commentService.edit(id, commentId, dto.body()));
     }
 
@@ -95,20 +101,15 @@ public class TaskCommentController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @DeleteMapping("/{commentId}")
     @AllowedRolesOrCommentAuthorOnly(UserRole.ADMIN)
-    public ResponseEntity<Void> deleteComment(
-            @PathVariable UUID id,
-            @PathVariable UUID commentId
-    ) {
+    public ResponseEntity<Void> deleteComment(@PathVariable UUID id, @PathVariable UUID commentId) {
         commentService.delete(id, commentId);
 
-        return ResponseEntity
-                .noContent()
-                .build();
+        return ResponseEntity.noContent().build();
     }
 
     private ResponseEntity<TaskCommentResponseDto> created(UUID taskId, TaskComment comment) {
-        return ResponseEntity
-                .created(URI.create("/api/v1/tasks/" + taskId + "/comments/" + comment.getId()))
+        return ResponseEntity.created(
+                        URI.create("/api/v1/tasks/" + taskId + "/comments/" + comment.getId()))
                 .body(response(comment));
     }
 

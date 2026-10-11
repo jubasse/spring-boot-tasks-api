@@ -6,18 +6,17 @@ import io.julienmetral.tasks.identity.events.AccountStateChanged;
 import io.julienmetral.tasks.identity.exceptions.UserEmailAlreadyExistsException;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import java.time.Clock;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
-
-import java.time.Clock;
-import java.util.HashSet;
-import java.util.Locale;
-import java.util.Set;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -31,11 +30,7 @@ public class UserService {
     private final Clock clock;
 
     @Transactional
-    public User create(
-            String email,
-            String rawPassword,
-            String displayName
-    ) {
+    public User create(String email, String rawPassword, String displayName) {
         String normalizedEmail = normalizeEmail(email);
 
         if (userRepository.existsByEmailIncludingDeleted(normalizedEmail)) {
@@ -58,13 +53,15 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public User findById(UUID id) {
-        return userRepository.findWithProfileById(id)
+        return userRepository
+                .findWithProfileById(id)
                 .orElseThrow(() -> new UserNotFoundException(id));
     }
 
     @Transactional(readOnly = true)
     public User findByEmail(String email) {
-        return userRepository.findByEmailIgnoreCase(normalizeEmail(email))
+        return userRepository
+                .findByEmailIgnoreCase(normalizeEmail(email))
                 .orElseThrow(() -> new UserNotFoundException(email));
     }
 
@@ -143,15 +140,18 @@ public class UserService {
         refreshTokenService.revokeAllForUser(id);
     }
 
-    // Every change of the account state locks the row first, so it is computed from the committed state: without
-    // it, a verification racing a disable left the profile ACTIVE on a disabled account
+    // Every change of the account state locks the row first, so it is computed from the committed
+    // state: without it, a verification racing a disable left the profile ACTIVE on a disabled
+    // account
     private User getUserForUpdate(UUID id) {
-        return userRepository.findByIdForUpdate(id)
+        return userRepository
+                .findByIdForUpdate(id)
                 .orElseThrow(() -> new UserNotFoundException(id));
     }
 
     private User getUser(UUID id) {
-        return userRepository.findWithProfileById(id)
+        return userRepository
+                .findWithProfileById(id)
                 .orElseThrow(() -> new UserNotFoundException(id));
     }
 

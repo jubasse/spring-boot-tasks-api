@@ -1,19 +1,5 @@
 package io.julienmetral.tasks.task.controllers;
 
-import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserRole;
-import io.julienmetral.tasks.task.repositories.TaskRepository;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import org.springframework.test.web.servlet.request.RequestPostProcessor;
-
-import java.util.List;
-import java.util.UUID;
-
 import static io.julienmetral.tasks.support.Problems.typedProblem;
 import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -27,14 +13,26 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserRole;
+import io.julienmetral.tasks.task.repositories.TaskRepository;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
+
 /**
  * Only ACTIVE users (enabled, not deleted, email verified) can use {@code /api/v1/tasks/**}, and
  * only ACTIVE users can be assigned a task.
  */
 class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
 
-    @Autowired
-    private TaskRepository taskRepository;
+    @Autowired private TaskRepository taskRepository;
 
     @Test
     void unverifiedUserIsForbiddenOnEveryTaskEndpoint() throws Exception {
@@ -81,14 +79,18 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
         User assignee = createUser(UserRole.USER);
         UUID taskId = createTask(admin, assignee);
 
-        mockMvc.perform(get(TASKS + "/" + taskId).with(asUser(assignee))).andExpect(status().isOk());
+        mockMvc.perform(get(TASKS + "/" + taskId).with(asUser(assignee)))
+                .andExpect(status().isOk());
 
         disableThroughApi(assignee);
 
-        mockMvc.perform(get(TASKS + "/" + taskId).with(asUser(assignee))).andExpect(status().isForbidden());
-        mockMvc.perform(patch(TASKS + "/" + taskId + "/status").with(asUser(assignee))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\": \"IN_PROGRESS\"}"))
+        mockMvc.perform(get(TASKS + "/" + taskId).with(asUser(assignee)))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(
+                        patch(TASKS + "/" + taskId + "/status")
+                                .with(asUser(assignee))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"status\": \"IN_PROGRESS\"}"))
                 .andExpect(status().isForbidden());
     }
 
@@ -100,8 +102,9 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
         mockMvc.perform(get(TASKS).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isForbidden());
         // User endpoints stay reachable, e.g. to read one's own profile
-        mockMvc.perform(get("/api/v1/users/" + unverified.getId())
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+        mockMvc.perform(
+                        get("/api/v1/users/" + unverified.getId())
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isOk());
     }
 
@@ -111,14 +114,20 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
         UUID taskId = createTask(admin, null);
         String token = login(admin);
 
-        mockMvc.perform(get(TASKS + "/" + taskId).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+        mockMvc.perform(
+                        get(TASKS + "/" + taskId)
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isOk());
 
         disableThroughApi(admin);
 
-        mockMvc.perform(get(TASKS + "/" + taskId).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+        mockMvc.perform(
+                        get(TASKS + "/" + taskId)
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isForbidden());
-        mockMvc.perform(get(TASKS + "/" + taskId + "/events").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+        mockMvc.perform(
+                        get(TASKS + "/" + taskId + "/events")
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isForbidden());
     }
 
@@ -130,7 +139,9 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
 
         deleteThroughApi(admin);
 
-        mockMvc.perform(get(TASKS + "/" + taskId).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+        mockMvc.perform(
+                        get(TASKS + "/" + taskId)
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isForbidden());
     }
 
@@ -143,9 +154,11 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
                 .andExpect(status().isOk());
         mockMvc.perform(get("/api/v1/users/" + disabled.getId()).with(asUser(disabled)))
                 .andExpect(status().isOk());
-        mockMvc.perform(patch("/api/v1/users/" + unverified.getId()).with(asUser(unverified))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"displayName\": \"Renamed\"}"))
+        mockMvc.perform(
+                        patch("/api/v1/users/" + unverified.getId())
+                                .with(asUser(unverified))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"displayName\": \"Renamed\"}"))
                 .andExpect(status().isOk());
     }
 
@@ -154,7 +167,9 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
         User disabledAdmin = createDisabledUser(UserRole.ADMIN);
         User target = createUser(UserRole.USER);
 
-        mockMvc.perform(get("/api/v1/users/" + target.getId()).with(as(disabledAdmin, UserRole.ADMIN)))
+        mockMvc.perform(
+                        get("/api/v1/users/" + target.getId())
+                                .with(as(disabledAdmin, UserRole.ADMIN)))
                 .andExpect(status().isOk());
     }
 
@@ -166,7 +181,8 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
 
         mockMvc.perform(get(TASKS).with(asUser(user))).andExpect(status().isOk());
         mockMvc.perform(get(TASKS + "/" + taskId).with(asUser(user))).andExpect(status().isOk());
-        mockMvc.perform(get(TASKS + "/" + taskId + "/events").with(asUser(user))).andExpect(status().isOk());
+        mockMvc.perform(get(TASKS + "/" + taskId + "/events").with(asUser(user)))
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -191,9 +207,11 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
         User deleted = createDeletedUser(UserRole.USER);
         String reference = uniqueReference();
 
-        mockMvc.perform(post(TASKS).with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(createBody(reference, deleted.getId())))
+        mockMvc.perform(
+                        post(TASKS)
+                                .with(asAdmin(admin))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(createBody(reference, deleted.getId())))
                 .andExpect(untypedProblem(404, "Not Found"))
                 .andExpect(jsonPath("$.detail").value(startsWith("User not found")));
 
@@ -205,9 +223,11 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
         User admin = createUser(UserRole.ADMIN);
         User assignee = createUser(UserRole.USER);
 
-        mockMvc.perform(post(TASKS).with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(createBody(assignee.getId())))
+        mockMvc.perform(
+                        post(TASKS)
+                                .with(asAdmin(admin))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(createBody(assignee.getId())))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.assignedTo.id").value(assignee.getId().toString()))
                 .andExpect(jsonPath("$.assignedTo.status").value("ACTIVE"));
@@ -242,7 +262,8 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
                 .andExpect(jsonPath("$.detail").value(startsWith("User not found")));
 
         assertThat(events(taskId)).hasSize(eventsBefore);
-        getTask(admin, taskId).andExpect(jsonPath("$.assignedTo.id").value(assignee.getId().toString()));
+        getTask(admin, taskId)
+                .andExpect(jsonPath("$.assignedTo.id").value(assignee.getId().toString()));
     }
 
     @Test
@@ -257,19 +278,23 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
         assertThat(events(taskId)).hasSize(1);
     }
 
-    private void assertCreateRejected(User admin, UUID assigneeId, String expectedStatus) throws Exception {
+    private void assertCreateRejected(User admin, UUID assigneeId, String expectedStatus)
+            throws Exception {
         String reference = uniqueReference();
 
-        mockMvc.perform(post(TASKS).with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(createBody(reference, assigneeId)))
+        mockMvc.perform(
+                        post(TASKS)
+                                .with(asAdmin(admin))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(createBody(reference, assigneeId)))
                 .andExpect(typedProblem(422, "assignee-not-active", "Assignee not active"))
                 .andExpect(jsonPath("$.detail").value(containsString(expectedStatus)));
 
         assertThat(taskRepository.existsByReferenceIncludingDeleted(reference)).isFalse();
     }
 
-    private void assertAssignRejected(User admin, UUID assigneeId, String expectedStatus) throws Exception {
+    private void assertAssignRejected(User admin, UUID assigneeId, String expectedStatus)
+            throws Exception {
         User previous = createUser(UserRole.USER);
         UUID taskId = createTask(admin, previous);
         int eventsBefore = events(taskId).size();
@@ -286,25 +311,35 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
     }
 
     /** Sends one request to every task and task-history endpoint and expects 403 each time. */
-    private void assertForbiddenEverywhere(RequestPostProcessor auth, UUID taskId) throws Exception {
+    private void assertForbiddenEverywhere(RequestPostProcessor auth, UUID taskId)
+            throws Exception {
         String task = TASKS + "/" + taskId;
         User someone = createUser(UserRole.USER);
 
-        List<MockHttpServletRequestBuilder> requests = List.of(
-                get(TASKS),
-                get(TASKS).param("archived", "true"),
-                post(TASKS).contentType(MediaType.APPLICATION_JSON).content(createBody(null)),
-                get(task),
-                patch(task).contentType(MediaType.APPLICATION_JSON).content("{\"title\": \"Hacked\"}"),
-                patch(task + "/status").contentType(MediaType.APPLICATION_JSON).content("{\"status\": \"DONE\"}"),
-                patch(task + "/assign").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\": \"" + someone.getId() + "\"}"),
-                post(task + "/archive"),
-                post(task + "/unarchive"),
-                post(task + "/cancel").contentType(MediaType.APPLICATION_JSON).content("{\"reason\": \"No\"}"),
-                delete(task),
-                get(task + "/events")
-        );
+        List<MockHttpServletRequestBuilder> requests =
+                List.of(
+                        get(TASKS),
+                        get(TASKS).param("archived", "true"),
+                        post(TASKS)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(createBody(null)),
+                        get(task),
+                        patch(task)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"title\": \"Hacked\"}"),
+                        patch(task + "/status")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"status\": \"DONE\"}"),
+                        patch(task + "/assign")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"userId\": \"" + someone.getId() + "\"}"),
+                        post(task + "/archive"),
+                        post(task + "/unarchive"),
+                        post(task + "/cancel")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"reason\": \"No\"}"),
+                        delete(task),
+                        get(task + "/events"));
 
         for (MockHttpServletRequestBuilder request : requests) {
             mockMvc.perform(request.with(auth)).andExpect(status().isForbidden());
@@ -325,8 +360,7 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
     }
 
     private RequestPostProcessor jwtFor(UUID uid) {
-        return jwt()
-                .jwt(token -> token.claim("uid", uid.toString()))
+        return jwt().jwt(token -> token.claim("uid", uid.toString()))
                 .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"));
     }
 
@@ -339,17 +373,22 @@ class TaskAccessRulesApiTests extends AbstractUserStateTaskApiTests {
 
         return """
                 {"reference": "%s", "title": "Task", "assignedTo": %s}
-                """.formatted(reference, assigned);
+                """
+                .formatted(reference, assigned);
     }
 
     private String login(User user) throws Exception {
-        String body = mockMvc.perform(post("/api/v1/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\": \"%s\", \"password\": \"password\"}".formatted(user.getEmail())))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String body =
+                mockMvc.perform(
+                                post("/api/v1/auth/login")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                "{\"email\": \"%s\", \"password\": \"password\"}"
+                                                        .formatted(user.getEmail())))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
         return json(body).get("accessToken").asString();
     }

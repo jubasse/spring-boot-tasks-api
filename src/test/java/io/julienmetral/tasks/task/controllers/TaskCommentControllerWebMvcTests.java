@@ -1,36 +1,5 @@
 package io.julienmetral.tasks.task.controllers;
 
-import io.julienmetral.tasks.identity.entities.UserStatus;
-import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.support.WebLayerTest;
-import io.julienmetral.tasks.task.entities.TaskComment;
-import io.julienmetral.tasks.task.exceptions.InvalidMentionException;
-import io.julienmetral.tasks.task.exceptions.TaskCommentNotFoundException;
-import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
-import io.julienmetral.tasks.task.exceptions.TooManyCommentAttachmentsException;
-import io.julienmetral.tasks.task.security.TaskCommentAuthorization;
-import io.julienmetral.tasks.task.services.TaskCommentService;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.ResultActions;
-import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
-import org.springframework.test.web.servlet.request.RequestPostProcessor;
-import org.springframework.web.multipart.MultipartFile;
-
-import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.UUID;
-
 import static io.julienmetral.tasks.support.Problems.invalidBodyValue;
 import static io.julienmetral.tasks.support.Problems.invalidParameter;
 import static io.julienmetral.tasks.support.Problems.typedProblem;
@@ -55,6 +24,36 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.julienmetral.tasks.identity.entities.UserStatus;
+import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.support.WebLayerTest;
+import io.julienmetral.tasks.task.entities.TaskComment;
+import io.julienmetral.tasks.task.exceptions.InvalidMentionException;
+import io.julienmetral.tasks.task.exceptions.TaskCommentNotFoundException;
+import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
+import io.julienmetral.tasks.task.exceptions.TooManyCommentAttachmentsException;
+import io.julienmetral.tasks.task.security.TaskCommentAuthorization;
+import io.julienmetral.tasks.task.services.TaskCommentService;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import org.springframework.web.multipart.MultipartFile;
+
 @WebLayerTest
 class TaskCommentControllerWebMvcTests {
 
@@ -62,17 +61,13 @@ class TaskCommentControllerWebMvcTests {
 
     private static final byte[] PDF_BYTES = "%PDF-1.4\n".getBytes(StandardCharsets.US_ASCII);
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private TaskCommentService commentService;
+    @Autowired private TaskCommentService commentService;
 
-    @Autowired
-    private TaskCommentAuthorization taskCommentAuthorization;
+    @Autowired private TaskCommentAuthorization taskCommentAuthorization;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
     private final UUID taskId = UUID.randomUUID();
 
@@ -85,18 +80,21 @@ class TaskCommentControllerWebMvcTests {
 
     @Test
     void everyCommentEndpointRequiresAuthentication() throws Exception {
-        mockMvc.perform(post(comments()).contentType(MediaType.APPLICATION_JSON).content(bodyJson("Hello")))
+        mockMvc.perform(
+                        post(comments())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(bodyJson("Hello")))
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(multipartComment("Hello", pdf("report.pdf")))
                 .andExpect(status().isUnauthorized());
-        mockMvc.perform(get(comments()))
+        mockMvc.perform(get(comments())).andExpect(status().isUnauthorized());
+        mockMvc.perform(get(comment())).andExpect(status().isUnauthorized());
+        mockMvc.perform(
+                        patch(comment())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(bodyJson("Edited")))
                 .andExpect(status().isUnauthorized());
-        mockMvc.perform(get(comment()))
-                .andExpect(status().isUnauthorized());
-        mockMvc.perform(patch(comment()).contentType(MediaType.APPLICATION_JSON).content(bodyJson("Edited")))
-                .andExpect(status().isUnauthorized());
-        mockMvc.perform(delete(comment()))
-                .andExpect(status().isUnauthorized());
+        mockMvc.perform(delete(comment())).andExpect(status().isUnauthorized());
 
         verifyNoInteractions(commentService);
     }
@@ -122,9 +120,10 @@ class TaskCommentControllerWebMvcTests {
 
         @Test
         void blankMultipartBodyNamesTheBodyParameter() throws Exception {
-            mockMvc.perform(multipartComment(" ", pdf("report.pdf"))
-                            .with(user(UUID.randomUUID()))
-                            .header(HttpHeaders.ACCEPT_LANGUAGE, "en"))
+            mockMvc.perform(
+                            multipartComment(" ", pdf("report.pdf"))
+                                    .with(user(UUID.randomUUID()))
+                                    .header(HttpHeaders.ACCEPT_LANGUAGE, "en"))
                     .andExpect(invalidParameter("body", "must not be blank"));
 
             verifyNoInteractions(commentService);
@@ -168,10 +167,10 @@ class TaskCommentControllerWebMvcTests {
 
         @Test
         void multipartCommentPassesItsFilesToTheService() throws Exception {
-            when(commentService.add(eq(taskId), eq("With files"), anyList())).thenReturn(comment("With files"));
+            when(commentService.add(eq(taskId), eq("With files"), anyList()))
+                    .thenReturn(comment("With files"));
 
-            postMultipart("With files", pdf("a.pdf"), pdf("b.pdf"))
-                    .andExpect(status().isCreated());
+            postMultipart("With files", pdf("a.pdf"), pdf("b.pdf")).andExpect(status().isCreated());
 
             @SuppressWarnings("unchecked")
             ArgumentCaptor<List<MultipartFile>> files = ArgumentCaptor.forClass(List.class);
@@ -186,14 +185,21 @@ class TaskCommentControllerWebMvcTests {
             when(commentService.add(eq(taskId), anyString(), anyList()))
                     .thenThrow(new TooManyCommentAttachmentsException(5));
 
-            postMultipart("Six files",
-                    pdf("1.pdf"), pdf("2.pdf"), pdf("3.pdf"), pdf("4.pdf"), pdf("5.pdf"), pdf("6.pdf"))
+            postMultipart(
+                            "Six files",
+                            pdf("1.pdf"),
+                            pdf("2.pdf"),
+                            pdf("3.pdf"),
+                            pdf("4.pdf"),
+                            pdf("5.pdf"),
+                            pdf("6.pdf"))
                     .andExpect(invalidParameter("files", "A comment can have at most 5 files"));
         }
 
         @Test
         void commentOnUnknownTaskReturnsNotFoundProblem() throws Exception {
-            when(commentService.add(eq(taskId), anyString(), anyList())).thenThrow(new TaskNotFoundException(taskId));
+            when(commentService.add(eq(taskId), anyString(), anyList()))
+                    .thenThrow(new TaskNotFoundException(taskId));
 
             postJson(bodyJson("Hello"))
                     .andExpect(untypedProblem(404, "Not Found"))
@@ -204,7 +210,8 @@ class TaskCommentControllerWebMvcTests {
         void mentionOfInactiveUserReturnsInvalidMentionProblem() throws Exception {
             UUID mentioned = UUID.randomUUID();
             when(commentService.add(eq(taskId), anyString(), anyList()))
-                    .thenThrow(InvalidMentionException.inactiveUser(mentioned, UserStatus.DISABLED));
+                    .thenThrow(
+                            InvalidMentionException.inactiveUser(mentioned, UserStatus.DISABLED));
 
             postJson(bodyJson("Hi <@" + mentioned + ">"))
                     .andExpect(typedProblem(422, "invalid-mention", "Invalid mention"))
@@ -212,21 +219,24 @@ class TaskCommentControllerWebMvcTests {
         }
 
         private ResultActions postJson(String body) throws Exception {
-            return mockMvc.perform(post(comments())
-                    .with(user(UUID.randomUUID()))
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(body));
+            return mockMvc.perform(
+                    post(comments())
+                            .with(user(UUID.randomUUID()))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body));
         }
 
         private ResultActions postJsonInEnglish(String body) throws Exception {
-            return mockMvc.perform(post(comments())
-                    .with(user(UUID.randomUUID()))
-                    .header(HttpHeaders.ACCEPT_LANGUAGE, "en")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(body));
+            return mockMvc.perform(
+                    post(comments())
+                            .with(user(UUID.randomUUID()))
+                            .header(HttpHeaders.ACCEPT_LANGUAGE, "en")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body));
         }
 
-        private ResultActions postMultipart(String body, MockMultipartFile... files) throws Exception {
+        private ResultActions postMultipart(String body, MockMultipartFile... files)
+                throws Exception {
             return mockMvc.perform(multipartComment(body, files).with(user(UUID.randomUUID())));
         }
     }
@@ -243,16 +253,19 @@ class TaskCommentControllerWebMvcTests {
 
             ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
             verify(commentService).findAll(eq(taskId), pageable.capture());
-            assertThat(pageable.getValue().getSort()).isEqualTo(Sort.by(Sort.Direction.ASC, "createdAt"));
+            assertThat(pageable.getValue().getSort())
+                    .isEqualTo(Sort.by(Sort.Direction.ASC, "createdAt"));
         }
 
         @Test
         void unknownCommentReturnsNotFoundProblem() throws Exception {
-            when(commentService.find(taskId, commentId)).thenThrow(new TaskCommentNotFoundException(commentId));
+            when(commentService.find(taskId, commentId))
+                    .thenThrow(new TaskCommentNotFoundException(commentId));
 
             mockMvc.perform(get(comment()).with(user(UUID.randomUUID())))
                     .andExpect(untypedProblem(404, "Not Found"))
-                    .andExpect(jsonPath("$.detail").value("Comment not found with id: " + commentId));
+                    .andExpect(
+                            jsonPath("$.detail").value("Comment not found with id: " + commentId));
         }
 
         @Test
@@ -272,7 +285,8 @@ class TaskCommentControllerWebMvcTests {
             when(taskCommentAuthorization.currentUserWrote(eq(commentId), any())).thenReturn(true);
 
             edit(user(UUID.randomUUID()), " ").andExpect(status().isBadRequest());
-            edit(user(UUID.randomUUID()), "a".repeat(MAX_BODY_LENGTH + 1)).andExpect(status().isBadRequest());
+            edit(user(UUID.randomUUID()), "a".repeat(MAX_BODY_LENGTH + 1))
+                    .andExpect(status().isBadRequest());
 
             verifyNoInteractions(commentService);
         }
@@ -299,10 +313,11 @@ class TaskCommentControllerWebMvcTests {
         }
 
         private ResultActions edit(RequestPostProcessor caller, String body) throws Exception {
-            return mockMvc.perform(patch(comment())
-                    .with(caller)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(bodyJson(body)));
+            return mockMvc.perform(
+                    patch(comment())
+                            .with(caller)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(bodyJson(body)));
         }
     }
 
@@ -337,7 +352,8 @@ class TaskCommentControllerWebMvcTests {
         return comments() + "/" + commentId;
     }
 
-    private MockMultipartHttpServletRequestBuilder multipartComment(String body, MockMultipartFile... files) {
+    private MockMultipartHttpServletRequestBuilder multipartComment(
+            String body, MockMultipartFile... files) {
         MockMultipartHttpServletRequestBuilder request = multipart(comments());
 
         for (MockMultipartFile file : files) {

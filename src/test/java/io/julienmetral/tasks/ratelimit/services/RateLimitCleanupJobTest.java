@@ -1,23 +1,21 @@
 package io.julienmetral.tasks.ratelimit.services;
 
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+
 import io.julienmetral.tasks.ratelimit.repositories.RateLimitQueries;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
-
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
-
 @ExtendWith(MockitoExtension.class)
 class RateLimitCleanupJobTest {
 
-    @Mock
-    private RateLimitQueries queries;
+    @Mock private RateLimitQueries queries;
 
     @Test
     void deletesWindowsThatStartedMoreThanOneDayBeforeTheClock() {

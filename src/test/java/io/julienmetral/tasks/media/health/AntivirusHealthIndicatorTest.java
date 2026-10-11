@@ -1,15 +1,9 @@
 package io.julienmetral.tasks.media.health;
 
-import io.julienmetral.tasks.config.AntivirusProperties;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.MethodSource;
-import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.boot.health.contributor.Health;
-import org.springframework.boot.health.contributor.Status;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import io.julienmetral.tasks.config.AntivirusProperties;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -26,9 +20,14 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.boot.health.contributor.Health;
+import org.springframework.boot.health.contributor.Status;
 
 class AntivirusHealthIndicatorTest {
 
@@ -48,7 +47,8 @@ class AntivirusHealthIndicatorTest {
     @Test
     void disabledScanningIsUpWithoutAskingClamd() throws IOException {
         // Nothing listens on that port: a PING would report the antivirus down
-        AntivirusProperties disabled = new AntivirusProperties(false, LOOPBACK, closedPort(), SCAN_TIMEOUT);
+        AntivirusProperties disabled =
+                new AntivirusProperties(false, LOOPBACK, closedPort(), SCAN_TIMEOUT);
 
         Health health = new AntivirusHealthIndicator(disabled).health();
 
@@ -95,8 +95,7 @@ class AntivirusHealthIndicatorTest {
                 Arguments.of("UNKNOWN COMMAND\0", "UNKNOWN COMMAND"),
                 Arguments.of("pong\0", "pong"),
                 Arguments.of("PONGED\0", "PONGED"),
-                Arguments.of("\0", "")
-        );
+                Arguments.of("\0", ""));
     }
 
     @ParameterizedTest
@@ -122,18 +121,21 @@ class AntivirusHealthIndicatorTest {
 
     @Test
     void refusedConnectionIsDownWithTheError() throws IOException {
-        AntivirusProperties properties = new AntivirusProperties(true, LOOPBACK, closedPort(), SCAN_TIMEOUT);
+        AntivirusProperties properties =
+                new AntivirusProperties(true, LOOPBACK, closedPort(), SCAN_TIMEOUT);
 
         Health health = new AntivirusHealthIndicator(properties).health();
 
         assertThat(health.getStatus()).isEqualTo(Status.DOWN);
         assertThat(health.getDetails()).containsOnlyKeys("error");
-        assertThat(health.getDetails().get("error").toString()).startsWith(ConnectException.class.getName());
+        assertThat(health.getDetails().get("error").toString())
+                .startsWith(ConnectException.class.getName());
     }
 
     @Test
     void unknownHostIsDownWithTheError() {
-        AntivirusProperties properties = new AntivirusProperties(true, "clamd.invalid", 3310, SCAN_TIMEOUT);
+        AntivirusProperties properties =
+                new AntivirusProperties(true, "clamd.invalid", 3310, SCAN_TIMEOUT);
 
         Health health = new AntivirusHealthIndicator(properties).health();
 
@@ -150,7 +152,8 @@ class AntivirusHealthIndicatorTest {
 
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(4));
         assertThat(health.getStatus()).isEqualTo(Status.DOWN);
-        assertThat(health.getDetails().get("error").toString()).startsWith(SocketTimeoutException.class.getName());
+        assertThat(health.getDetails().get("error").toString())
+                .startsWith(SocketTimeoutException.class.getName());
     }
 
     @Test
@@ -158,7 +161,8 @@ class AntivirusHealthIndicatorTest {
         clamd = FakeClamd.silent();
 
         long start = System.nanoTime();
-        Health health = assertTimeoutPreemptively(Duration.ofSeconds(15), () -> health(SCAN_TIMEOUT));
+        Health health =
+                assertTimeoutPreemptively(Duration.ofSeconds(15), () -> health(SCAN_TIMEOUT));
         Duration elapsed = Duration.ofNanos(System.nanoTime() - start);
 
         assertThat(health.getStatus()).isEqualTo(Status.DOWN);
@@ -166,7 +170,9 @@ class AntivirusHealthIndicatorTest {
     }
 
     private Health health(Duration timeout) {
-        return new AntivirusHealthIndicator(new AntivirusProperties(true, LOOPBACK, clamd.port(), timeout)).health();
+        return new AntivirusHealthIndicator(
+                        new AntivirusProperties(true, LOOPBACK, clamd.port(), timeout))
+                .health();
     }
 
     private static int closedPort() throws IOException {
@@ -175,7 +181,10 @@ class AntivirusHealthIndicatorTest {
         }
     }
 
-    /** One-connection clamd stand-in: records the command up to its null byte, then answers with raw bytes. */
+    /**
+     * One-connection clamd stand-in: records the command up to its null byte, then answers with raw
+     * bytes.
+     */
     static final class FakeClamd implements AutoCloseable {
 
         private final ServerSocket server;

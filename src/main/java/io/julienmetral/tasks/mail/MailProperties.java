@@ -10,7 +10,4 @@ import org.springframework.validation.annotation.Validated;
  */
 @Validated
 @ConfigurationProperties(prefix = "mail")
-public record MailProperties(
-        @NotBlank @Email String from
-) {
-}
+public record MailProperties(@NotBlank @Email String from) {}

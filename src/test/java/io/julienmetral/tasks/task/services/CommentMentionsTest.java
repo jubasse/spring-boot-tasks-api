@@ -1,12 +1,11 @@
 package io.julienmetral.tasks.task.services;
 
-import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Map;
 import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import org.junit.jupiter.api.Test;
 
 class CommentMentionsTest {
 
@@ -56,17 +55,18 @@ class CommentMentionsTest {
 
     @Test
     void parseIgnoresMalformedTokens() {
-        String body = String.join(" ",
-                "@" + ALICE,
-                "<" + ALICE + ">",
-                "<@ " + ALICE + ">",
-                "<@" + ALICE,
-                "<@" + ALICE.toString().replace("-", "") + ">",
-                "<@" + ALICE.toString().substring(1) + ">",
-                "<@" + ALICE + "0>",
-                "<@0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5g>",
-                "<@alice>"
-        );
+        String body =
+                String.join(
+                        " ",
+                        "@" + ALICE,
+                        "<" + ALICE + ">",
+                        "<@ " + ALICE + ">",
+                        "<@" + ALICE,
+                        "<@" + ALICE.toString().replace("-", "") + ">",
+                        "<@" + ALICE.toString().substring(1) + ">",
+                        "<@" + ALICE + "0>",
+                        "<@0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5g>",
+                        "<@alice>");
 
         assertThat(CommentMentions.parse(body)).isEmpty();
     }
@@ -95,7 +95,9 @@ class CommentMentionsTest {
 
     @Test
     void renderReplacesEveryOccurrenceOfARepeatedMention() {
-        String rendered = CommentMentions.render(token(ALICE) + " " + token(ALICE), Map.of(ALICE, "Alice")::get);
+        String rendered =
+                CommentMentions.render(
+                        token(ALICE) + " " + token(ALICE), Map.of(ALICE, "Alice")::get);
 
         assertThat(rendered).isEqualTo("@Alice @Alice");
     }
@@ -113,7 +115,9 @@ class CommentMentionsTest {
     void renderTreatsDollarAndBackslashInNamesLiterally() {
         String body = "%s and %s".formatted(token(ALICE), token(BOB));
 
-        String rendered = CommentMentions.render(body, Map.of(ALICE, "Cash $1 $0", BOB, "C:\\Users\\bob")::get);
+        String rendered =
+                CommentMentions.render(
+                        body, Map.of(ALICE, "Cash $1 $0", BOB, "C:\\Users\\bob")::get);
 
         assertThat(rendered).isEqualTo("@Cash $1 $0 and @C:\\Users\\bob");
     }

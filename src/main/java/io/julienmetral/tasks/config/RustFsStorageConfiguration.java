@@ -2,6 +2,7 @@ package io.julienmetral.tasks.config;
 
 import io.julienmetral.tasks.media.services.ObjectStorage;
 import io.julienmetral.tasks.media.services.S3ObjectStorage;
+import java.net.URI;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
@@ -18,9 +19,10 @@ import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.NoSuchBucketException;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
-import java.net.URI;
-
-/** Self-hosted S3 (RustFS in development and tests): explicit endpoint, static keys, path-style URLs. */
+/**
+ * Self-hosted S3 (RustFS in development and tests): explicit endpoint, static keys, path-style
+ * URLs.
+ */
 @Slf4j
 @Configuration
 @ConditionalOnProperty(name = "storage.driver", havingValue = "rustfs")
@@ -33,8 +35,7 @@ public class RustFsStorageConfiguration {
     S3Client s3Client(StorageProperties properties) {
         StorageProperties.RustFs rustfs = settings(properties);
 
-        return S3Client
-                .builder()
+        return S3Client.builder()
                 .region(REGION)
                 .endpointOverride(URI.create(rustfs.endpoint()))
                 .credentialsProvider(credentials(rustfs))
@@ -46,12 +47,12 @@ public class RustFsStorageConfiguration {
     S3Presigner s3Presigner(StorageProperties properties) {
         StorageProperties.RustFs rustfs = settings(properties);
 
-        String endpoint = StringUtils.hasText(rustfs.publicEndpoint())
-                ? rustfs.publicEndpoint()
-                : rustfs.endpoint();
+        String endpoint =
+                StringUtils.hasText(rustfs.publicEndpoint())
+                        ? rustfs.publicEndpoint()
+                        : rustfs.endpoint();
 
-        return S3Presigner
-                .builder()
+        return S3Presigner.builder()
                 .region(REGION)
                 .endpointOverride(URI.create(endpoint))
                 .credentialsProvider(credentials(rustfs))
@@ -60,14 +61,14 @@ public class RustFsStorageConfiguration {
     }
 
     @Bean
-    ObjectStorage objectStorage(S3Client s3Client, S3Presigner s3Presigner, StorageProperties properties) {
+    ObjectStorage objectStorage(
+            S3Client s3Client, S3Presigner s3Presigner, StorageProperties properties) {
         return new S3ObjectStorage(
                 s3Client,
                 s3Presigner,
                 properties.bucket(),
                 properties.presignedUrlTtl(),
-                credentials(settings(properties))
-        );
+                credentials(settings(properties)));
     }
 
     @Bean
@@ -96,14 +97,12 @@ public class RustFsStorageConfiguration {
     }
 
     private static StaticCredentialsProvider credentials(StorageProperties.RustFs rustfs) {
-        return StaticCredentialsProvider.create(AwsBasicCredentials.create(rustfs.accessKey(), rustfs.secretKey()));
+        return StaticCredentialsProvider.create(
+                AwsBasicCredentials.create(rustfs.accessKey(), rustfs.secretKey()));
     }
 
     // Self-hosted servers serve buckets under /bucket, not as a bucket.host subdomain
     private static S3Configuration pathStyle() {
-        return S3Configuration
-                .builder()
-                .pathStyleAccessEnabled(true)
-                .build();
+        return S3Configuration.builder().pathStyleAccessEnabled(true).build();
     }
 }

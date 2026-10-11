@@ -6,7 +6,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
-/** Writes the verification email; {@link MailService} sends it once the sign-up transaction commits. */
+/**
+ * Writes the verification email; {@link MailService} sends it once the sign-up transaction commits.
+ */
 @Component
 @RequiredArgsConstructor
 public class VerificationEmailSender {
@@ -16,10 +18,11 @@ public class VerificationEmailSender {
 
     @EventListener
     public void send(EmailVerificationRequested event) {
-        mailService.send(new MailMessage(
-                event.email(),
-                "Verify your email address",
-                """
+        mailService.send(
+                new MailMessage(
+                        event.email(),
+                        "Verify your email address",
+                        """
                         Hello %s,
 
                         Please confirm your email address by opening this link:
@@ -28,12 +31,11 @@ public class VerificationEmailSender {
                         The link expires at %s.
 
                         If you did not create an account, you can ignore this email.
-                        """.formatted(
-                        event.displayName(),
-                        properties.verifyUrl(),
-                        event.token(),
-                        event.expiresAt()
-                )
-        ));
+                        """
+                                .formatted(
+                                        event.displayName(),
+                                        properties.verifyUrl(),
+                                        event.token(),
+                                        event.expiresAt())));
     }
 }

@@ -1,5 +1,10 @@
 package io.julienmetral.tasks.config;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
@@ -12,36 +17,35 @@ import org.springframework.core.env.PropertySource;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.io.ClassPathResource;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
 class ProdProfileTest {
 
-    private static final List<String> REQUIRED_PROPERTIES = List.of(
-            "security.jwt.secret",
-            "webhooks.encryption-key",
-            "spring.datasource.url",
-            "spring.datasource.username",
-            "spring.datasource.password",
-            "spring.rabbitmq.host",
-            "spring.mail.host",
-            "mail.from",
-            "identity.email-verification.verify-url",
-            "identity.password-reset.reset-url",
-            "exports.download-page-url",
-            "storage.bucket",
-            "antivirus.host"
-    );
+    private static final List<String> REQUIRED_PROPERTIES =
+            List.of(
+                    "security.jwt.secret",
+                    "webhooks.encryption-key",
+                    "spring.datasource.url",
+                    "spring.datasource.username",
+                    "spring.datasource.password",
+                    "spring.rabbitmq.host",
+                    "spring.mail.host",
+                    "mail.from",
+                    "identity.email-verification.verify-url",
+                    "identity.password-reset.reset-url",
+                    "exports.download-page-url",
+                    "storage.bucket",
+                    "antivirus.host");
 
     @Test
     void prodYamlActivatesNoProfile() {
-        assertThat(prodYaml()).isNotEmpty().allSatisfy(document -> {
-            assertThat(document.containsProperty("spring.profiles.active")).isFalse();
-            assertThat(document.containsProperty("spring.profiles.include")).isFalse();
-        });
+        assertThat(prodYaml())
+                .isNotEmpty()
+                .allSatisfy(
+                        document -> {
+                            assertThat(document.containsProperty("spring.profiles.active"))
+                                    .isFalse();
+                            assertThat(document.containsProperty("spring.profiles.include"))
+                                    .isFalse();
+                        });
     }
 
     @Test
@@ -49,9 +53,12 @@ class ProdProfileTest {
         MutablePropertySources sources = new MutablePropertySources();
         prodYaml().forEach(sources::addLast);
 
-        List<String> required = new Binder(ConfigurationPropertySources.from(sources))
-                .bind(RequiredPropertiesCheck.REQUIRED_PROPERTIES, Bindable.listOf(String.class))
-                .orElse(List.of());
+        List<String> required =
+                new Binder(ConfigurationPropertySources.from(sources))
+                        .bind(
+                                RequiredPropertiesCheck.REQUIRED_PROPERTIES,
+                                Bindable.listOf(String.class))
+                        .orElse(List.of());
 
         assertThat(required).containsExactlyInAnyOrderElementsOf(REQUIRED_PROPERTIES);
     }
@@ -60,13 +67,17 @@ class ProdProfileTest {
     void prodProfileWithoutEnvironmentVariablesFailsTheStartupNamingEveryRequiredSetting() {
         new ApplicationContextRunner()
                 .withUserConfiguration(DeploymentConfiguration.class)
-                .withInitializer(context -> useProdProfileWithoutEnvironmentVariables(context.getEnvironment()))
-                .run(context -> {
-                    assertThat(context).hasFailed();
-                    assertThat(context.getStartupFailure())
-                            .isInstanceOf(IllegalStateException.class)
-                            .hasMessageContainingAll(REQUIRED_PROPERTIES.toArray(String[]::new));
-                });
+                .withInitializer(
+                        context ->
+                                useProdProfileWithoutEnvironmentVariables(context.getEnvironment()))
+                .run(
+                        context -> {
+                            assertThat(context).hasFailed();
+                            assertThat(context.getStartupFailure())
+                                    .isInstanceOf(IllegalStateException.class)
+                                    .hasMessageContainingAll(
+                                            REQUIRED_PROPERTIES.toArray(String[]::new));
+                        });
     }
 
     @Test
@@ -74,17 +85,21 @@ class ProdProfileTest {
         ConfigurableEnvironment environment = prodEnvironmentWithoutEnvironmentVariables();
 
         assertThat(environment.getProperty("springdoc.api-docs.enabled", Boolean.class)).isFalse();
-        assertThat(environment.getProperty("springdoc.swagger-ui.enabled", Boolean.class)).isFalse();
+        assertThat(environment.getProperty("springdoc.swagger-ui.enabled", Boolean.class))
+                .isFalse();
     }
 
     @Test
     void prodProfileStoresMediaOnAwsS3ByDefault() {
-        assertThat(prodEnvironmentWithoutEnvironmentVariables().getProperty("storage.driver")).isEqualTo("aws-s3");
+        assertThat(prodEnvironmentWithoutEnvironmentVariables().getProperty("storage.driver"))
+                .isEqualTo("aws-s3");
     }
 
     @Test
     void prodProfileWritesEcsStructuredConsoleLogs() {
-        assertThat(prodEnvironmentWithoutEnvironmentVariables().getProperty("logging.structured.format.console"))
+        assertThat(
+                        prodEnvironmentWithoutEnvironmentVariables()
+                                .getProperty("logging.structured.format.console"))
                 .isEqualTo("ecs");
     }
 
@@ -95,9 +110,11 @@ class ProdProfileTest {
         return environment;
     }
 
-    // The main application.yaml sits below the profile, as Spring Boot orders them, so the profile must override its
-    // development defaults. The machine running the tests may export MAIL_FROM or S3_BUCKET.
-    private static void useProdProfileWithoutEnvironmentVariables(ConfigurableEnvironment environment) {
+    // The main application.yaml sits below the profile, as Spring Boot orders them, so the profile
+    // must override its development defaults. The machine running the tests may export MAIL_FROM or
+    // S3_BUCKET.
+    private static void useProdProfileWithoutEnvironmentVariables(
+            ConfigurableEnvironment environment) {
         MutablePropertySources sources = environment.getPropertySources();
 
         sources.remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);

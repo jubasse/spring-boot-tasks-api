@@ -1,7 +1,20 @@
 package io.julienmetral.tasks.identity.entities;
 
 import io.julienmetral.tasks.media.model.Media;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ForeignKey;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import java.time.Instant;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -12,16 +25,15 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
-import java.time.Instant;
-import java.util.UUID;
-
 /**
- * What other resources show of a user: every task, comment, event, reminder and media points here, never to
- * {@link User}. The row outlives the account: a deleted user keeps a profile with status DELETED, and once
- * anonymized, the {@code users} row is deleted while this one stays as "Deleted user".
- * <p>
- * Warning: {@code status} is a copy of the account state, written by {@link User} on every transition (see
- * {@code User.syncProfileStatus}). Checks that grant access read the account itself, not this copy.
+ * What other resources show of a user: every task, comment, event, reminder and media points here,
+ * never to {@link User}. The row outlives the account: a deleted user keeps a profile with status
+ * DELETED, and once anonymized, the {@code users} row is deleted while this one stays as "Deleted
+ * user".
+ *
+ * <p>Warning: {@code status} is a copy of the account state, written by {@link User} on every
+ * transition (see {@code User.syncProfileStatus}). Checks that grant access read the account
+ * itself, not this copy.
  */
 @Entity
 @DynamicUpdate
@@ -29,14 +41,14 @@ import java.util.UUID;
 @Table(
         name = "user_profiles",
         uniqueConstraints = {
-                // A media file is the photo of one profile at most
-                @UniqueConstraint(name = "user_profiles_avatar_media_idUQ", columnNames = "avatar_media_id"),
-                @UniqueConstraint(
-                        name = "user_profiles_pending_avatar_media_idUQ",
-                        columnNames = "pending_avatar_media_id"
-                )
-        }
-)
+            // A media file is the photo of one profile at most
+            @UniqueConstraint(
+                    name = "user_profiles_avatar_media_idUQ",
+                    columnNames = "avatar_media_id"),
+            @UniqueConstraint(
+                    name = "user_profiles_pending_avatar_media_idUQ",
+                    columnNames = "pending_avatar_media_id")
+        })
 @Getter
 @Setter
 @NoArgsConstructor
@@ -55,17 +67,19 @@ public class UserProfile {
     @Column(name = "status", nullable = false, length = 20)
     private UserStatus status = UserStatus.UNVERIFIED;
 
-    // ManyToOne rather than OneToOne: the uniqueness is the named constraint above, not an implicit generated one
+    // ManyToOne rather than OneToOne: the uniqueness is the named constraint above, not an implicit
+    // generated one
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "avatar_media_id", foreignKey = @ForeignKey(name = "user_profiles_avatar_mediaFK"))
+    @JoinColumn(
+            name = "avatar_media_id",
+            foreignKey = @ForeignKey(name = "user_profiles_avatar_mediaFK"))
     private Media avatar;
 
     // The uploaded photo waiting for the worker (see AvatarService.process); null once processed
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "pending_avatar_media_id",
-            foreignKey = @ForeignKey(name = "user_profiles_pending_avatar_mediaFK")
-    )
+            foreignKey = @ForeignKey(name = "user_profiles_pending_avatar_mediaFK"))
     private Media pendingAvatar;
 
     // Written by UserRetentionQueries when the account's personal data is erased
@@ -80,7 +94,9 @@ public class UserProfile {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    /** The photo others may see: none while the account is disabled (the file is kept) or deleted. */
+    /**
+     * The photo others may see: none while the account is disabled (the file is kept) or deleted.
+     */
     public Media visibleAvatar() {
         return status == UserStatus.ACTIVE || status == UserStatus.UNVERIFIED ? avatar : null;
     }

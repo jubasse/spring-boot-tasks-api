@@ -1,5 +1,12 @@
 package io.julienmetral.tasks.config;
 
+import static io.julienmetral.tasks.config.OpenApiConfiguration.BAD_REQUEST;
+import static io.julienmetral.tasks.config.OpenApiConfiguration.FORBIDDEN;
+import static io.julienmetral.tasks.config.OpenApiConfiguration.NOT_FOUND;
+import static io.julienmetral.tasks.config.OpenApiConfiguration.UNAUTHORIZED;
+import static io.julienmetral.tasks.config.OpenApiConfiguration.UNEXPECTED_ERROR;
+import static io.julienmetral.tasks.config.OperationDocumentation.reference;
+
 import io.julienmetral.tasks.identity.security.PublicEndpoints;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;
@@ -8,26 +15,18 @@ import io.swagger.v3.oas.models.Paths;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.parameters.Parameter;
 import io.swagger.v3.oas.models.responses.ApiResponses;
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Set;
 import org.springdoc.core.customizers.OpenApiCustomizer;
 import org.springframework.http.server.PathContainer;
 import org.springframework.web.util.pattern.PathPatternParser;
 
-import java.math.BigDecimal;
-import java.util.List;
-import java.util.Set;
-
-import static io.julienmetral.tasks.config.OpenApiConfiguration.BAD_REQUEST;
-import static io.julienmetral.tasks.config.OpenApiConfiguration.FORBIDDEN;
-import static io.julienmetral.tasks.config.OpenApiConfiguration.NOT_FOUND;
-import static io.julienmetral.tasks.config.OpenApiConfiguration.UNAUTHORIZED;
-import static io.julienmetral.tasks.config.OpenApiConfiguration.UNEXPECTED_ERROR;
-import static io.julienmetral.tasks.config.OperationDocumentation.reference;
-
 /**
  * Documents what depends on an operation's path: public operations without the bearer requirement
- * ({@link PublicEndpoints}), 401 on the others, 403 on task and notification operations (they need an active account),
- * 400 when the operation takes input that can be invalid, 404 when its path names a resource, and a default response
- * for an unexpected failure.
+ * ({@link PublicEndpoints}), 401 on the others, 403 on task and notification operations (they need
+ * an active account), 400 when the operation takes input that can be invalid, 404 when its path
+ * names a resource, and a default response for an unexpected failure.
  */
 class PathDocumentation implements OpenApiCustomizer {
 
@@ -48,33 +47,47 @@ class PathDocumentation implements OpenApiCustomizer {
     public void customise(OpenAPI openApi) {
         pinUnversionedPaths(openApi);
 
-        openApi.getPaths().forEach((path, item) -> item.readOperationsMap().forEach((method, operation) ->
-                document(path, method, operation)));
+        openApi.getPaths()
+                .forEach(
+                        (path, item) ->
+                                item.readOperationsMap()
+                                        .forEach(
+                                                (method, operation) ->
+                                                        document(path, method, operation)));
 
         requirePageFields(openApi);
     }
 
     /**
-     * springdoc publishes the raw {@code /api/v{version}} prefix of a mapping without a version attribute, since it
-     * cannot know that such a mapping answers the current version: every path became {@code /api/v{version}/...},
-     * and the rules below read {@code {version}} as a resource id.
+     * springdoc publishes the raw {@code /api/v{version}} prefix of a mapping without a version
+     * attribute, since it cannot know that such a mapping answers the current version: every path
+     * became {@code /api/v{version}/...}, and the rules below read {@code {version}} as a resource
+     * id.
      */
     private static void pinUnversionedPaths(OpenAPI openApi) {
         String unversioned = ApiVersioningConfiguration.API_PATH + "/";
         String current = ApiVersioningConfiguration.CURRENT_PATH + "/";
         Paths pinned = new Paths();
 
-        openApi.getPaths().forEach((path, item) -> pinned.addPathItem(path.replace(unversioned, current), item));
+        openApi.getPaths()
+                .forEach(
+                        (path, item) ->
+                                pinned.addPathItem(path.replace(unversioned, current), item));
         openApi.setPaths(pinned);
     }
 
     static boolean isPublic(PathItem.HttpMethod method, String path) {
-        // A documented path names its variables ({id}); any value matches the patterns of the security rules
+        // A documented path names its variables ({id}); any value matches the patterns of the
+        // security rules
         PathContainer concrete = PathContainer.parsePath(path.replaceAll("\\{[^}]+}", "x"));
 
-        return PublicEndpoints.ALL.stream().anyMatch(endpoint ->
-                endpoint.method().name().equals(method.name())
-                        && PathPatternParser.defaultInstance.parse(endpoint.pattern()).matches(concrete));
+        return PublicEndpoints.ALL.stream()
+                .anyMatch(
+                        endpoint ->
+                                endpoint.method().name().equals(method.name())
+                                        && PathPatternParser.defaultInstance
+                                                .parse(endpoint.pattern())
+                                                .matches(concrete));
     }
 
     private void document(String path, PathItem.HttpMethod method, Operation operation) {
@@ -103,23 +116,30 @@ class PathDocumentation implements OpenApiCustomizer {
         documentPageSizeLimit(operation);
     }
 
-    // Spring Data clamps a larger size silently (spring.data.web.pageable.max-page-size); springdoc does not show it
+    // Spring Data clamps a larger size silently (spring.data.web.pageable.max-page-size); springdoc
+    // does not show it
     private void documentPageSizeLimit(Operation operation) {
         if (operation.getParameters() == null) {
             return;
         }
 
         operation.getParameters().stream()
-                .filter(parameter -> "query".equals(parameter.getIn()) && "size".equals(parameter.getName()))
+                .filter(
+                        parameter ->
+                                "query".equals(parameter.getIn())
+                                        && "size".equals(parameter.getName()))
                 .filter(parameter -> parameter.getSchema() != null)
-                .forEach(parameter -> parameter.getSchema().setMaximum(BigDecimal.valueOf(maxPageSize)));
+                .forEach(
+                        parameter ->
+                                parameter.getSchema().setMaximum(BigDecimal.valueOf(maxPageSize)));
     }
 
     // An optional text header, such as Last-Event-ID, accepts any value
     private static boolean hasInput(Operation operation) {
         return operation.getRequestBody() != null
-                || (operation.getParameters() != null && operation.getParameters().stream()
-                .anyMatch(parameter -> !isOptionalTextHeader(parameter)));
+                || (operation.getParameters() != null
+                        && operation.getParameters().stream()
+                                .anyMatch(parameter -> !isOptionalTextHeader(parameter)));
     }
 
     private static boolean isOptionalTextHeader(Parameter parameter) {
@@ -131,22 +151,28 @@ class PathDocumentation implements OpenApiCustomizer {
                 && parameter.getSchema().getFormat() == null;
     }
 
-    // springdoc does not mark the members of PagedModel as required (springdoc-openapi #3360), while every page has
-    // them
+    // springdoc does not mark the members of PagedModel as required (springdoc-openapi #3360),
+    // while every page has them
     @SuppressWarnings("rawtypes")
     private static void requirePageFields(OpenAPI openApi) {
-        openApi.getComponents().getSchemas().forEach((name, schema) -> {
-            if (name.startsWith("PagedModel")) {
-                require(schema, List.of("content", "page"));
-            } else if (name.equals("PageMetadata")) {
-                require(schema, List.of("number", "size", "totalElements", "totalPages"));
-            }
-        });
+        openApi.getComponents()
+                .getSchemas()
+                .forEach(
+                        (name, schema) -> {
+                            if (name.startsWith("PagedModel")) {
+                                require(schema, List.of("content", "page"));
+                            } else if (name.equals("PageMetadata")) {
+                                require(
+                                        schema,
+                                        List.of("number", "size", "totalElements", "totalPages"));
+                            }
+                        });
     }
 
     @SuppressWarnings("rawtypes")
     private static void require(Schema schema, List<String> properties) {
-        if (schema.getProperties() != null && schema.getProperties().keySet().containsAll(properties)) {
+        if (schema.getProperties() != null
+                && schema.getProperties().keySet().containsAll(properties)) {
             schema.setRequired(properties);
         }
     }

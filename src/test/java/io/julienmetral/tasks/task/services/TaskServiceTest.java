@@ -1,11 +1,25 @@
 package io.julienmetral.tasks.task.services;
 
+import static io.julienmetral.tasks.support.UserProfiles.profile;
+import static io.julienmetral.tasks.support.UserProfiles.reference;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.identity.entities.UserProfile;
+import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
-import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
+import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.task.dtos.CreateTaskDto;
 import io.julienmetral.tasks.task.dtos.UpdateTaskDto;
@@ -25,8 +39,13 @@ import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -36,32 +55,12 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
-
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-
-import static io.julienmetral.tasks.support.UserProfiles.reference;
-import static io.julienmetral.tasks.support.UserProfiles.profile;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class TaskServiceTest {
@@ -73,38 +72,32 @@ class TaskServiceTest {
     private static final UUID ACTOR_ID = UUID.fromString("00000000-0000-0000-0000-0000000000ac");
     private static final Instant VERIFIED_AT = Instant.parse("2026-01-01T00:00:00Z");
 
-    @Mock
-    private TaskRepository taskRepository;
+    @Mock private TaskRepository taskRepository;
 
-    @Mock
-    private TaskEventService taskEventService;
+    @Mock private TaskEventService taskEventService;
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
-    @Mock
-    private UserProfileRepository userProfileRepository;
+    @Mock private UserProfileRepository userProfileRepository;
 
-    @Mock
-    private CurrentUser currentUser;
+    @Mock private CurrentUser currentUser;
 
-    @Mock
-    private ApplicationEventPublisher eventPublisher;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
-    @Spy
-    private Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+    @Spy private Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 
-    @InjectMocks
-    private TaskService taskService;
+    @InjectMocks private TaskService taskService;
 
-    /** A user whose status is the given one ({@code DELETED} is not loadable, so it is not a valid input). */
+    /**
+     * A user whose status is the given one ({@code DELETED} is not loadable, so it is not a valid
+     * input).
+     */
     private static User userWithStatus(UUID id, UserStatus status) {
         User user = user(id);
         switch (status) {
             case UNVERIFIED -> user.setEmailVerifiedAt(null);
             case DISABLED -> user.setEnabled(false);
-            default -> {
-            }
+            default -> {}
         }
         assertThat(UserStatus.of(user)).isEqualTo(status);
         return user;
@@ -256,13 +249,16 @@ class TaskServiceTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = UserStatus.class, names = {"UNVERIFIED", "DISABLED"})
+    @EnumSource(
+            value = UserStatus.class,
+            names = {"UNVERIFIED", "DISABLED"})
     void createWithInactiveAssigneeThrows(UserStatus status) {
         UUID assigneeId = UUID.randomUUID();
         var dto = new CreateTaskDto("TASK-1", "Title", null, null, null, assigneeId);
         when(taskRepository.existsByReferenceIncludingDeleted("TASK-1")).thenReturn(false);
         when(currentUser.getId()).thenReturn(Optional.empty());
-        when(userRepository.findById(assigneeId)).thenReturn(Optional.of(userWithStatus(assigneeId, status)));
+        when(userRepository.findById(assigneeId))
+                .thenReturn(Optional.of(userWithStatus(assigneeId, status)));
 
         assertThatThrownBy(() -> taskService.create(dto))
                 .isInstanceOf(AssigneeNotActiveException.class)
@@ -313,7 +309,9 @@ class TaskServiceTest {
         Task task = stubTask();
         Instant due = Instant.parse("2031-01-01T00:00:00Z");
 
-        Task result = taskService.update(TASK_ID, new UpdateTaskDto("New", "New desc", TaskPriority.URGENT, due));
+        Task result =
+                taskService.update(
+                        TASK_ID, new UpdateTaskDto("New", "New desc", TaskPriority.URGENT, due));
 
         assertThat(result).isSameAs(task);
         assertThat(task.getTitle()).isEqualTo("New");
@@ -340,7 +338,8 @@ class TaskServiceTest {
     void updateThrowsWhenTaskMissing() {
         stubMissingTask();
 
-        assertThatThrownBy(() -> taskService.update(TASK_ID, new UpdateTaskDto("x", null, null, null)))
+        assertThatThrownBy(
+                        () -> taskService.update(TASK_ID, new UpdateTaskDto("x", null, null, null)))
                 .isInstanceOf(TaskNotFoundException.class);
         verifyNoInteractions(taskEventService);
     }
@@ -389,7 +388,9 @@ class TaskServiceTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = TaskStatus.class, names = {"IN_PROGRESS", "IN_REVIEW", "BLOCKED", "ARCHIVED"})
+    @EnumSource(
+            value = TaskStatus.class,
+            names = {"IN_PROGRESS", "IN_REVIEW", "BLOCKED", "ARCHIVED"})
     void changeStatusToOtherStatusClearsCompletionAndCancellation(TaskStatus target) {
         Task task = stubTask();
         task.setStatus(TaskStatus.DONE);
@@ -473,13 +474,16 @@ class TaskServiceTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = UserStatus.class, names = {"UNVERIFIED", "DISABLED"})
+    @EnumSource(
+            value = UserStatus.class,
+            names = {"UNVERIFIED", "DISABLED"})
     void assignToInactiveUserThrowsAndKeepsCurrentAssignee(UserStatus status) {
         Task task = stubTask();
         UserProfile previous = reference(UUID.randomUUID());
         task.setAssignedTo(previous);
         UUID userId = UUID.randomUUID();
-        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithStatus(userId, status)));
+        when(userRepository.findById(userId))
+                .thenReturn(Optional.of(userWithStatus(userId, status)));
 
         assertThatThrownBy(() -> taskService.assign(TASK_ID, userId))
                 .isInstanceOf(AssigneeNotActiveException.class)
@@ -531,6 +535,7 @@ class TaskServiceTest {
 
     @SuppressWarnings("unchecked")
     private final Root<Task> root = mock(Root.class);
+
     private final CriteriaQuery<?> query = mock(CriteriaQuery.class);
     private final CriteriaBuilder builder = mock(CriteriaBuilder.class);
     private final Path<Object> archivedAtPath = mock(Path.class);
@@ -572,7 +577,8 @@ class TaskServiceTest {
     @Test
     void findAllWithAllFiltersMatchesArchivedStatusAndAssigneeId() {
         UUID assigneeId = UUID.randomUUID();
-        Specification<Task> specification = findAllAndCaptureSpecification(TaskStatus.DONE, assigneeId, true);
+        Specification<Task> specification =
+                findAllAndCaptureSpecification(TaskStatus.DONE, assigneeId, true);
         doReturn(archivedAtPath).when(root).get("archivedAt");
         doReturn(statusPath).when(root).get("status");
         doReturn(assignedToPath).when(root).get("assignedTo");
@@ -580,7 +586,8 @@ class TaskServiceTest {
         when(builder.isNotNull(archivedAtPath)).thenReturn(archivedPredicate);
         when(builder.equal(statusPath, TaskStatus.DONE)).thenReturn(statusPredicate);
         when(builder.equal(assignedToIdPath, assigneeId)).thenReturn(assigneePredicate);
-        when(builder.and(archivedPredicate, statusPredicate, assigneePredicate)).thenReturn(combined);
+        when(builder.and(archivedPredicate, statusPredicate, assigneePredicate))
+                .thenReturn(combined);
 
         assertThat(specification.toPredicate(root, query, builder)).isSameAs(combined);
         verify(root, never()).join(any(String.class));
@@ -631,14 +638,16 @@ class TaskServiceTest {
     void archiveThrowsWhenTaskMissing() {
         stubMissingTask();
 
-        assertThatThrownBy(() -> taskService.archive(TASK_ID)).isInstanceOf(TaskNotFoundException.class);
+        assertThatThrownBy(() -> taskService.archive(TASK_ID))
+                .isInstanceOf(TaskNotFoundException.class);
     }
 
     @Test
     void unarchiveThrowsWhenTaskMissing() {
         stubMissingTask();
 
-        assertThatThrownBy(() -> taskService.unarchive(TASK_ID)).isInstanceOf(TaskNotFoundException.class);
+        assertThatThrownBy(() -> taskService.unarchive(TASK_ID))
+                .isInstanceOf(TaskNotFoundException.class);
     }
 
     @Test
@@ -661,7 +670,8 @@ class TaskServiceTest {
     void cancelThrowsWhenTaskMissing() {
         stubMissingTask();
 
-        assertThatThrownBy(() -> taskService.cancel(TASK_ID, "r")).isInstanceOf(TaskNotFoundException.class);
+        assertThatThrownBy(() -> taskService.cancel(TASK_ID, "r"))
+                .isInstanceOf(TaskNotFoundException.class);
         verifyNoInteractions(taskEventService);
         verifyNoInteractions(eventPublisher);
     }
@@ -679,7 +689,8 @@ class TaskServiceTest {
     void deleteThrowsWhenTaskMissing() {
         stubMissingTask();
 
-        assertThatThrownBy(() -> taskService.delete(TASK_ID)).isInstanceOf(TaskNotFoundException.class);
+        assertThatThrownBy(() -> taskService.delete(TASK_ID))
+                .isInstanceOf(TaskNotFoundException.class);
         verify(taskRepository, never()).delete(any(Task.class));
         verifyNoInteractions(eventPublisher);
     }
@@ -700,11 +711,13 @@ class TaskServiceTest {
         stubReference(ACTOR_ID);
         when(userRepository.findById(assigneeId)).thenReturn(Optional.of(user(assigneeId)));
         stubReference(assigneeId);
-        when(taskRepository.save(any(Task.class))).thenAnswer(inv -> {
-            Task task = inv.getArgument(0);
-            task.setId(TASK_ID);
-            return task;
-        });
+        when(taskRepository.save(any(Task.class)))
+                .thenAnswer(
+                        inv -> {
+                            Task task = inv.getArgument(0);
+                            task.setId(TASK_ID);
+                            return task;
+                        });
 
         taskService.create(dto);
 
@@ -755,8 +768,10 @@ class TaskServiceTest {
         taskService.assign(TASK_ID, userId);
 
         InOrder order = inOrder(eventPublisher);
-        order.verify(eventPublisher).publishEvent(new TaskAssigned(TASK_ID, "TASK-1", "Title", userId, ACTOR_ID));
-        order.verify(eventPublisher).publishEvent(new TaskUnassigned(TASK_ID, "TASK-1", "Title", previousId, ACTOR_ID));
+        order.verify(eventPublisher)
+                .publishEvent(new TaskAssigned(TASK_ID, "TASK-1", "Title", userId, ACTOR_ID));
+        order.verify(eventPublisher)
+                .publishEvent(new TaskUnassigned(TASK_ID, "TASK-1", "Title", previousId, ACTOR_ID));
         order.verifyNoMoreInteractions();
     }
 
@@ -772,8 +787,10 @@ class TaskServiceTest {
 
         taskService.assign(TASK_ID, userId);
 
-        verify(eventPublisher).publishEvent(new TaskAssigned(TASK_ID, "TASK-1", "Title", userId, null));
-        verify(eventPublisher).publishEvent(new TaskUnassigned(TASK_ID, "TASK-1", "Title", deletedId, null));
+        verify(eventPublisher)
+                .publishEvent(new TaskAssigned(TASK_ID, "TASK-1", "Title", userId, null));
+        verify(eventPublisher)
+                .publishEvent(new TaskUnassigned(TASK_ID, "TASK-1", "Title", deletedId, null));
     }
 
     @Test
@@ -786,7 +803,8 @@ class TaskServiceTest {
         taskService.changeStatus(TASK_ID, TaskStatus.CANCELLED);
 
         assertThat(publishedEvent(TaskCancelled.class))
-                .isEqualTo(new TaskCancelled(TASK_ID, "TASK-1", "Title", assigneeId, null, ACTOR_ID));
+                .isEqualTo(
+                        new TaskCancelled(TASK_ID, "TASK-1", "Title", assigneeId, null, ACTOR_ID));
     }
 
     @Test
@@ -833,7 +851,14 @@ class TaskServiceTest {
         taskService.cancel(TASK_ID, "no longer needed");
 
         assertThat(publishedEvent(TaskCancelled.class))
-                .isEqualTo(new TaskCancelled(TASK_ID, "TASK-1", "Title", assigneeId, "no longer needed", ACTOR_ID));
+                .isEqualTo(
+                        new TaskCancelled(
+                                TASK_ID,
+                                "TASK-1",
+                                "Title",
+                                assigneeId,
+                                "no longer needed",
+                                ACTOR_ID));
     }
 
     @Test

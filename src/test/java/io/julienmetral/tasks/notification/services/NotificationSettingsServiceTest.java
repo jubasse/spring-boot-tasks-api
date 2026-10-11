@@ -1,5 +1,13 @@
 package io.julienmetral.tasks.notification.services;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
@@ -7,6 +15,11 @@ import io.julienmetral.tasks.notification.dtos.NotificationSettingsDto;
 import io.julienmetral.tasks.notification.entities.NotificationSettings;
 import io.julienmetral.tasks.notification.entities.TaskNotificationType;
 import io.julienmetral.tasks.notification.repositories.NotificationSettingsRepository;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -17,20 +30,6 @@ import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.Optional;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
-
 @ExtendWith(MockitoExtension.class)
 class NotificationSettingsServiceTest {
 
@@ -38,17 +37,13 @@ class NotificationSettingsServiceTest {
 
     private static final UUID USER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
-    @Mock
-    private NotificationSettingsRepository settingsRepository;
+    @Mock private NotificationSettingsRepository settingsRepository;
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
-    @Spy
-    private Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+    @Spy private Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 
-    @InjectMocks
-    private NotificationSettingsService service;
+    @InjectMocks private NotificationSettingsService service;
 
     private static User user() {
         User user = new User();
@@ -117,13 +112,17 @@ class NotificationSettingsServiceTest {
         User user = user();
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
         when(settingsRepository.findById(USER_ID)).thenReturn(Optional.empty());
-        when(settingsRepository.save(any(NotificationSettings.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(settingsRepository.save(any(NotificationSettings.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
 
-        NotificationSettings result = service.update(
-                USER_ID, new NotificationSettingsDto(false, true, false, true, false, true, false, true)
-        );
+        NotificationSettings result =
+                service.update(
+                        USER_ID,
+                        new NotificationSettingsDto(
+                                false, true, false, true, false, true, false, true));
 
-        ArgumentCaptor<NotificationSettings> captor = ArgumentCaptor.forClass(NotificationSettings.class);
+        ArgumentCaptor<NotificationSettings> captor =
+                ArgumentCaptor.forClass(NotificationSettings.class);
         verify(settingsRepository).save(captor.capture());
         NotificationSettings saved = captor.getValue();
         assertThat(result).isSameAs(saved);
@@ -150,9 +149,11 @@ class NotificationSettingsServiceTest {
         when(settingsRepository.findById(USER_ID)).thenReturn(Optional.of(existing));
         when(settingsRepository.save(existing)).thenReturn(existing);
 
-        NotificationSettings result = service.update(
-                USER_ID, new NotificationSettingsDto(true, false, true, false, true, false, true, false)
-        );
+        NotificationSettings result =
+                service.update(
+                        USER_ID,
+                        new NotificationSettingsDto(
+                                true, false, true, false, true, false, true, false));
 
         assertThat(result).isSameAs(existing);
         assertThat(existing.isTaskAssigned()).isTrue();
@@ -174,7 +175,11 @@ class NotificationSettingsServiceTest {
         when(settingsRepository.findById(USER_ID)).thenReturn(Optional.empty());
         when(settingsRepository.save(any(NotificationSettings.class))).thenReturn(persisted);
 
-        assertThat(service.update(USER_ID, new NotificationSettingsDto(true, true, true, true, true, true, true, true)))
+        assertThat(
+                        service.update(
+                                USER_ID,
+                                new NotificationSettingsDto(
+                                        true, true, true, true, true, true, true, true)))
                 .isSameAs(persisted);
     }
 
@@ -182,7 +187,12 @@ class NotificationSettingsServiceTest {
     void updateThrowsWhenUserDoesNotExist() {
         when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.update(USER_ID, new NotificationSettingsDto(true, true, true, true, true, true, true, true)))
+        assertThatThrownBy(
+                        () ->
+                                service.update(
+                                        USER_ID,
+                                        new NotificationSettingsDto(
+                                                true, true, true, true, true, true, true, true)))
                 .isInstanceOf(UserNotFoundException.class)
                 .hasMessageContaining(USER_ID.toString());
         verifyNoInteractions(settingsRepository);
@@ -199,8 +209,8 @@ class NotificationSettingsServiceTest {
 
     @Test
     void isEnabledReturnsTheStoredSwitchOfEachType() {
-        // stored(): assigned off, unassigned on, cancelled off, deleted on, commented off, mentioned on,
-        // due soon off, overdue on
+        // stored(): assigned off, unassigned on, cancelled off, deleted on, commented off,
+        // mentioned on, due soon off, overdue on
         when(settingsRepository.findById(USER_ID)).thenReturn(Optional.of(stored(user())));
 
         assertThat(service.isEnabled(USER_ID, TaskNotificationType.ASSIGNED)).isFalse();

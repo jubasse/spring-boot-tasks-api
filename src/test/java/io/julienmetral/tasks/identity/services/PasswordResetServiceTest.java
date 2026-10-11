@@ -1,33 +1,5 @@
 package io.julienmetral.tasks.identity.services;
 
-import io.julienmetral.tasks.identity.entities.PasswordResetToken;
-import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserProfile;
-import io.julienmetral.tasks.identity.events.AccountStateChanged;
-import io.julienmetral.tasks.identity.exceptions.InvalidPasswordResetTokenException;
-import io.julienmetral.tasks.identity.mail.PasswordResetProperties;
-import io.julienmetral.tasks.identity.mail.PasswordResetRequested;
-import io.julienmetral.tasks.identity.repositories.PasswordResetTokenRepository;
-import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
-import io.julienmetral.tasks.identity.security.OpaqueTokens;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.InOrder;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.security.crypto.password.PasswordEncoder;
-
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.Optional;
-import java.util.UUID;
-
 import static io.julienmetral.tasks.support.UserProfiles.reference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -38,6 +10,33 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+
+import io.julienmetral.tasks.identity.entities.PasswordResetToken;
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserProfile;
+import io.julienmetral.tasks.identity.events.AccountStateChanged;
+import io.julienmetral.tasks.identity.exceptions.InvalidPasswordResetTokenException;
+import io.julienmetral.tasks.identity.mail.PasswordResetProperties;
+import io.julienmetral.tasks.identity.mail.PasswordResetRequested;
+import io.julienmetral.tasks.identity.repositories.PasswordResetTokenRepository;
+import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
+import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.identity.security.OpaqueTokens;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 @ExtendWith(MockitoExtension.class)
 class PasswordResetServiceTest {
@@ -56,38 +55,32 @@ class PasswordResetServiceTest {
 
     private static final UUID USER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
-    @Mock
-    private PasswordResetTokenRepository tokenRepository;
+    @Mock private PasswordResetTokenRepository tokenRepository;
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
-    @Mock
-    private UserProfileRepository userProfileRepository;
+    @Mock private UserProfileRepository userProfileRepository;
 
-    @Mock
-    private PasswordEncoder passwordEncoder;
+    @Mock private PasswordEncoder passwordEncoder;
 
-    @Mock
-    private RefreshTokenService refreshTokenService;
+    @Mock private RefreshTokenService refreshTokenService;
 
-    @Mock
-    private ApplicationEventPublisher eventPublisher;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     private PasswordResetService service;
 
     @BeforeEach
     void setUp() {
-        service = new PasswordResetService(
-                tokenRepository,
-                userRepository,
-                userProfileRepository,
-                passwordEncoder,
-                refreshTokenService,
-                new PasswordResetProperties(TTL, "https://app.example.com/reset-password"),
-                eventPublisher,
-                Clock.fixed(NOW, ZoneOffset.UTC)
-        );
+        service =
+                new PasswordResetService(
+                        tokenRepository,
+                        userRepository,
+                        userProfileRepository,
+                        passwordEncoder,
+                        refreshTokenService,
+                        new PasswordResetProperties(TTL, "https://app.example.com/reset-password"),
+                        eventPublisher,
+                        Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     private static User user() {
@@ -108,7 +101,8 @@ class PasswordResetServiceTest {
         token.setExpiresAt(expiresAt);
         token.setUsedAt(usedAt);
 
-        when(tokenRepository.findByTokenHash(OpaqueTokens.hash(RAW_TOKEN))).thenReturn(Optional.of(token));
+        when(tokenRepository.findByTokenHash(OpaqueTokens.hash(RAW_TOKEN)))
+                .thenReturn(Optional.of(token));
 
         return token;
     }
@@ -126,7 +120,8 @@ class PasswordResetServiceTest {
 
     @Test
     void requestForEnabledUserReplacesPendingTokensStoresHashAndPublishesEvent() {
-        when(userRepository.findByEmailIgnoreCase("jane@example.com")).thenReturn(Optional.of(user()));
+        when(userRepository.findByEmailIgnoreCase("jane@example.com"))
+                .thenReturn(Optional.of(user()));
         UserProfile reference = reference(USER_ID);
         when(userProfileRepository.getReferenceById(USER_ID)).thenReturn(reference);
 
@@ -135,10 +130,12 @@ class PasswordResetServiceTest {
         InOrder order = inOrder(tokenRepository, eventPublisher);
         order.verify(tokenRepository).deleteUnusedForUser(USER_ID);
 
-        ArgumentCaptor<PasswordResetToken> saved = ArgumentCaptor.forClass(PasswordResetToken.class);
+        ArgumentCaptor<PasswordResetToken> saved =
+                ArgumentCaptor.forClass(PasswordResetToken.class);
         order.verify(tokenRepository).save(saved.capture());
 
-        ArgumentCaptor<PasswordResetRequested> event = ArgumentCaptor.forClass(PasswordResetRequested.class);
+        ArgumentCaptor<PasswordResetRequested> event =
+                ArgumentCaptor.forClass(PasswordResetRequested.class);
         order.verify(eventPublisher).publishEvent(event.capture());
 
         PasswordResetToken token = saved.getValue();
@@ -161,7 +158,8 @@ class PasswordResetServiceTest {
 
     @Test
     void requestForUnknownEmailDoesNothing() {
-        when(userRepository.findByEmailIgnoreCase("nobody@example.com")).thenReturn(Optional.empty());
+        when(userRepository.findByEmailIgnoreCase("nobody@example.com"))
+                .thenReturn(Optional.empty());
 
         service.request("nobody@example.com");
 
@@ -172,7 +170,8 @@ class PasswordResetServiceTest {
     void requestForDisabledUserDoesNothing() {
         User user = user();
         user.setEnabled(false);
-        when(userRepository.findByEmailIgnoreCase("jane@example.com")).thenReturn(Optional.of(user));
+        when(userRepository.findByEmailIgnoreCase("jane@example.com"))
+                .thenReturn(Optional.of(user));
 
         service.request("jane@example.com");
 

@@ -1,5 +1,8 @@
 package io.julienmetral.tasks.media.services;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import io.julienmetral.tasks.TestcontainersConfiguration;
 import io.julienmetral.tasks.config.StorageProperties;
 import io.julienmetral.tasks.identity.entities.User;
@@ -9,15 +12,6 @@ import io.julienmetral.tasks.media.exceptions.InfectedMediaException;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.support.IntegrationTest;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.S3Object;
-
-import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -31,38 +25,37 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import javax.imageio.ImageIO;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.S3Object;
 
 @IntegrationTest
 class AntivirusScanningTests {
 
-    private static final byte[] EICAR = "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
-            .getBytes(StandardCharsets.US_ASCII);
+    private static final byte[] EICAR =
+            "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
+                    .getBytes(StandardCharsets.US_ASCII);
 
     private static final String EICAR_THREAT = TestcontainersConfiguration.EICAR_THREAT;
 
-    @Autowired
-    private MediaService mediaService;
+    @Autowired private MediaService mediaService;
 
-    @Autowired
-    private VirusScanner virusScanner;
+    @Autowired private VirusScanner virusScanner;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    @Autowired private PasswordEncoder passwordEncoder;
 
-    @Autowired
-    private S3Client s3Client;
+    @Autowired private S3Client s3Client;
 
-    @Autowired
-    private StorageProperties storageProperties;
+    @Autowired private StorageProperties storageProperties;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     @Test
     void contextScansWithClamAv() {
@@ -74,11 +67,13 @@ class AntivirusScanningTests {
         User uploader = createUser();
         Set<String> keysBefore = objectKeys(MediaUsage.TASK_ATTACHMENT);
 
-        assertThatThrownBy(() -> mediaService.store(
-                new MockMultipartFile("file", "notes.txt", "text/plain", EICAR),
-                MediaUsage.TASK_ATTACHMENT,
-                uploader.getId()
-        ))
+        assertThatThrownBy(
+                        () ->
+                                mediaService.store(
+                                        new MockMultipartFile(
+                                                "file", "notes.txt", "text/plain", EICAR),
+                                        MediaUsage.TASK_ATTACHMENT,
+                                        uploader.getId()))
                 .isInstanceOf(InfectedMediaException.class)
                 .hasMessage("The file was rejected by the antivirus: " + EICAR_THREAT);
 
@@ -92,11 +87,13 @@ class AntivirusScanningTests {
         byte[] zip = zip("docs/readme.txt", uniqueText(), "docs/eicar.com", EICAR);
         Set<String> keysBefore = objectKeys(MediaUsage.TASK_ATTACHMENT);
 
-        assertThatThrownBy(() -> mediaService.store(
-                new MockMultipartFile("file", "docs.zip", "application/zip", zip),
-                MediaUsage.TASK_ATTACHMENT,
-                uploader.getId()
-        ))
+        assertThatThrownBy(
+                        () ->
+                                mediaService.store(
+                                        new MockMultipartFile(
+                                                "file", "docs.zip", "application/zip", zip),
+                                        MediaUsage.TASK_ATTACHMENT,
+                                        uploader.getId()))
                 .isInstanceOf(InfectedMediaException.class)
                 .hasMessage("The file was rejected by the antivirus: " + EICAR_THREAT);
 
@@ -109,11 +106,11 @@ class AntivirusScanningTests {
         User uploader = createUser();
         byte[] text = uniqueText();
 
-        Media stored = mediaService.store(
-                new MockMultipartFile("file", "notes.txt", "text/plain", text),
-                MediaUsage.TASK_ATTACHMENT,
-                uploader.getId()
-        );
+        Media stored =
+                mediaService.store(
+                        new MockMultipartFile("file", "notes.txt", "text/plain", text),
+                        MediaUsage.TASK_ATTACHMENT,
+                        uploader.getId());
 
         assertThat(stored.getContentType()).isEqualTo("text/plain");
         assertThat(mediaCountUploadedBy(uploader)).isOne();
@@ -125,11 +122,11 @@ class AntivirusScanningTests {
         User uploader = createUser();
         byte[] zip = zip("a.txt", uniqueText(), "b.txt", uniqueText());
 
-        Media stored = mediaService.store(
-                new MockMultipartFile("file", "docs.zip", "application/zip", zip),
-                MediaUsage.TASK_ATTACHMENT,
-                uploader.getId()
-        );
+        Media stored =
+                mediaService.store(
+                        new MockMultipartFile("file", "docs.zip", "application/zip", zip),
+                        MediaUsage.TASK_ATTACHMENT,
+                        uploader.getId());
 
         assertThat(stored.getContentType()).isEqualTo("application/zip");
         assertThat(objectBytes(stored.getStorageKey())).isEqualTo(zip);
@@ -140,11 +137,11 @@ class AntivirusScanningTests {
         User uploader = createUser();
         byte[] png = uniquePng();
 
-        Media stored = mediaService.store(
-                new MockMultipartFile("file", "me.png", "image/png", png),
-                MediaUsage.AVATAR,
-                uploader.getId()
-        );
+        Media stored =
+                mediaService.store(
+                        new MockMultipartFile("file", "me.png", "image/png", png),
+                        MediaUsage.AVATAR,
+                        uploader.getId());
 
         assertThat(stored.getContentType()).isEqualTo("image/png");
         assertThat(mediaCountUploadedBy(uploader)).isOne();
@@ -185,22 +182,23 @@ class AntivirusScanningTests {
         return jdbcTemplate.queryForObject(
                 "select count(*) from media where uploaded_by_id = ?",
                 Integer.class,
-                uploader.getId()
-        );
+                uploader.getId());
     }
 
     private Set<String> objectKeys(MediaUsage usage) {
         return s3Client
-                .listObjectsV2Paginator(request -> request
-                        .bucket(storageProperties.bucket())
-                        .prefix(usage.storagePrefix() + "/"))
+                .listObjectsV2Paginator(
+                        request ->
+                                request.bucket(storageProperties.bucket())
+                                        .prefix(usage.storagePrefix() + "/"))
                 .contents()
                 .stream()
                 .map(S3Object::key)
                 .collect(Collectors.toSet());
     }
 
-    // Other test classes share the bucket, so a new key alone proves nothing: compare contents instead
+    // Other test classes share the bucket, so a new key alone proves nothing: compare contents
+    // instead
     private void assertNoNewObjectHolds(byte[] content, Set<String> keysBefore) {
         objectKeys(MediaUsage.TASK_ATTACHMENT).stream()
                 .filter(key -> !keysBefore.contains(key))
@@ -208,15 +206,18 @@ class AntivirusScanningTests {
     }
 
     private byte[] objectBytes(String key) {
-        return s3Client.getObjectAsBytes(request -> request.bucket(storageProperties.bucket()).key(key))
+        return s3Client.getObjectAsBytes(
+                        request -> request.bucket(storageProperties.bucket()).key(key))
                 .asByteArray();
     }
 
     private static byte[] uniqueText() {
-        return ("Meeting notes " + UUID.randomUUID() + "\nNothing to see here.\n").getBytes(StandardCharsets.UTF_8);
+        return ("Meeting notes " + UUID.randomUUID() + "\nNothing to see here.\n")
+                .getBytes(StandardCharsets.UTF_8);
     }
 
-    private static byte[] zip(String firstName, byte[] firstContent, String secondName, byte[] secondContent) {
+    private static byte[] zip(
+            String firstName, byte[] firstContent, String secondName, byte[] secondContent) {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
 
         try (ZipOutputStream zip = new ZipOutputStream(output)) {

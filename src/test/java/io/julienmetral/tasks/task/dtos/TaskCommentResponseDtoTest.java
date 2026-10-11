@@ -1,18 +1,5 @@
 package io.julienmetral.tasks.task.dtos;
 
-import io.julienmetral.tasks.identity.dtos.UserProfileResponseDto;
-import io.julienmetral.tasks.identity.entities.UserProfile;
-import io.julienmetral.tasks.identity.entities.UserStatus;
-import io.julienmetral.tasks.media.model.Media;
-import io.julienmetral.tasks.media.services.MediaUrls;
-import io.julienmetral.tasks.task.entities.TaskAttachment;
-import io.julienmetral.tasks.task.entities.TaskComment;
-import org.junit.jupiter.api.Test;
-
-import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
-
 import static io.julienmetral.tasks.support.UserProfiles.active;
 import static io.julienmetral.tasks.support.UserProfiles.profile;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -20,6 +7,18 @@ import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+
+import io.julienmetral.tasks.identity.dtos.UserProfileResponseDto;
+import io.julienmetral.tasks.identity.entities.UserProfile;
+import io.julienmetral.tasks.identity.entities.UserStatus;
+import io.julienmetral.tasks.media.model.Media;
+import io.julienmetral.tasks.media.services.MediaUrls;
+import io.julienmetral.tasks.task.entities.TaskAttachment;
+import io.julienmetral.tasks.task.entities.TaskComment;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
 
 class TaskCommentResponseDtoTest {
 
@@ -33,7 +32,8 @@ class TaskCommentResponseDtoTest {
 
     TaskCommentResponseDtoTest() {
         when(mediaUrls.avatarOf(any(UserProfile.class)))
-                .thenAnswer(invocation -> identiconUrl(invocation.<UserProfile>getArgument(0).getId()));
+                .thenAnswer(
+                        invocation -> identiconUrl(invocation.<UserProfile>getArgument(0).getId()));
         comment.setId(commentId);
         comment.setAuthor(active(authorId, "Ada"));
         comment.setBody("Ping <@" + authorId + ">");
@@ -64,7 +64,9 @@ class TaskCommentResponseDtoTest {
         assertThat(dto.id()).isEqualTo(commentId);
         assertThat(dto.body()).isEqualTo("Ping <@" + authorId + ">");
         assertThat(dto.author())
-                .isEqualTo(new UserProfileResponseDto(authorId, "Ada", UserStatus.ACTIVE, identiconUrl(authorId)));
+                .isEqualTo(
+                        new UserProfileResponseDto(
+                                authorId, "Ada", UserStatus.ACTIVE, identiconUrl(authorId)));
         assertThat(dto.createdAt()).isEqualTo(CREATED_AT);
         assertThat(dto.editedAt()).isEqualTo(EDITED_AT);
     }
@@ -89,7 +91,9 @@ class TaskCommentResponseDtoTest {
         TaskCommentResponseDto dto = new TaskCommentResponseDto(comment, mediaUrls);
 
         assertThat(dto.author())
-                .isEqualTo(new UserProfileResponseDto(authorId, "Ada", UserStatus.DELETED, identiconUrl(authorId)));
+                .isEqualTo(
+                        new UserProfileResponseDto(
+                                authorId, "Ada", UserStatus.DELETED, identiconUrl(authorId)));
     }
 
     @Test
@@ -118,8 +122,10 @@ class TaskCommentResponseDtoTest {
 
         TaskCommentResponseDto dto = new TaskCommentResponseDto(comment, mediaUrls);
 
-        assertThat(dto.mentions()).containsExactly(
-                new UserProfileResponseDto(disabledId, "Dan", UserStatus.DISABLED, identiconUrl(disabledId)));
+        assertThat(dto.mentions())
+                .containsExactly(
+                        new UserProfileResponseDto(
+                                disabledId, "Dan", UserStatus.DISABLED, identiconUrl(disabledId)));
     }
 
     @Test
@@ -131,13 +137,21 @@ class TaskCommentResponseDtoTest {
         TaskCommentResponseDto dto = new TaskCommentResponseDto(comment, mediaUrls);
 
         assertThat(dto.attachments())
-                .extracting(TaskAttachmentResponseDto::id, TaskAttachmentResponseDto::filename,
-                        TaskAttachmentResponseDto::commentId, TaskAttachmentResponseDto::downloadUrl)
+                .extracting(
+                        TaskAttachmentResponseDto::id,
+                        TaskAttachmentResponseDto::filename,
+                        TaskAttachmentResponseDto::commentId,
+                        TaskAttachmentResponseDto::downloadUrl)
                 .containsExactly(
                         tuple(
-                                first.getId(), "first.pdf", commentId, "https://storage.example/first.pdf"),
+                                first.getId(),
+                                "first.pdf",
+                                commentId,
+                                "https://storage.example/first.pdf"),
                         tuple(
-                                second.getId(), "second.png", commentId, "https://storage.example/second.png")
-                );
+                                second.getId(),
+                                "second.png",
+                                commentId,
+                                "https://storage.example/second.png"));
     }
 }

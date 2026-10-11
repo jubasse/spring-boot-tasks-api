@@ -1,14 +1,21 @@
 package io.julienmetral.tasks.notification.entities;
 
 import io.julienmetral.tasks.identity.entities.User;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ForeignKey;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapsId;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.Table;
+import java.time.Instant;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
-
-import java.time.Instant;
-import java.util.UUID;
 
 /** Email notification preferences of one user. Users without a row get {@link #defaults(User)}. */
 @Entity
@@ -24,10 +31,7 @@ public class NotificationSettings {
 
     @MapsId
     @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(
-            name = "user_id",
-            foreignKey = @ForeignKey(name = "notification_settings_userFK")
-    )
+    @JoinColumn(name = "user_id", foreignKey = @ForeignKey(name = "notification_settings_userFK"))
     private User user;
 
     @ColumnDefault("true")
@@ -67,9 +71,10 @@ public class NotificationSettings {
 
     /**
      * Every notification enabled; not persisted until the user changes something.
-     * <p>
-     * {@code userId} stays null on purpose: {@code @MapsId} derives it from {@code user} on insert. A preset id
-     * would make Spring Data treat the entity as existing and call {@code merge} instead of {@code persist}.
+     *
+     * <p>{@code userId} stays null on purpose: {@code @MapsId} derives it from {@code user} on
+     * insert. A preset id would make Spring Data treat the entity as existing and call {@code
+     * merge} instead of {@code persist}.
      */
     public static NotificationSettings defaults(User user) {
         NotificationSettings settings = new NotificationSettings();

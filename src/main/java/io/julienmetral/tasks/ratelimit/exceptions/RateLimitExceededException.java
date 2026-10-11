@@ -1,8 +1,7 @@
 package io.julienmetral.tasks.ratelimit.exceptions;
 
-import lombok.Getter;
-
 import java.time.Duration;
+import lombok.Getter;
 
 @Getter
 public class RateLimitExceededException extends RuntimeException {
@@ -24,6 +23,8 @@ public class RateLimitExceededException extends RuntimeException {
     }
 
     private static String message(long seconds) {
-        return "Too many requests, try again in " + seconds + (seconds == 1 ? " second" : " seconds");
+        return "Too many requests, try again in "
+                + seconds
+                + (seconds == 1 ? " second" : " seconds");
     }
 }

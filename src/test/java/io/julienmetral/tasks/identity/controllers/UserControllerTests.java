@@ -1,25 +1,5 @@
 package io.julienmetral.tasks.identity.controllers;
 
-import com.jayway.jsonpath.JsonPath;
-import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserRole;
-import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
-import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.support.IntegrationTest;
-import org.junit.jupiter.api.Test;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.request.RequestPostProcessor;
-
-import java.sql.Timestamp;
-import java.util.EnumSet;
-import java.util.UUID;
-
 import static io.julienmetral.tasks.support.Problems.typedProblem;
 import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,72 +16,84 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.jayway.jsonpath.JsonPath;
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserRole;
+import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
+import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.support.IntegrationTest;
+import java.sql.Timestamp;
+import java.util.EnumSet;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
+
 @IntegrationTest
 class UserControllerTests {
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
-    @Autowired
-    private UserProfileRepository userProfileRepository;
+    @Autowired private UserProfileRepository userProfileRepository;
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    @Autowired private PasswordEncoder passwordEncoder;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     @Test
     void signUpCreatesUserAndReturnsLocationAndBody() throws Exception {
         String email = uniqueEmail();
 
-        String location = mockMvc.perform(
-                        post("/api/v1/users")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(signUpBody(email, "password123", "  Alice  "))
-                )
-                .andExpect(status().isCreated())
-                .andExpect(header().string("Location", notNullValue()))
-                .andExpect(jsonPath("$.id").isNotEmpty())
-                .andExpect(jsonPath("$.email").value(email))
-                .andExpect(jsonPath("$.displayName").value("Alice"))
-                .andExpect(jsonPath("$.enabled").value(true))
-                .andExpect(jsonPath("$.roles", hasSize(1)))
-                .andExpect(jsonPath("$.roles[0]").value("USER"))
-                .andExpect(jsonPath("$.emailVerifiedAt").doesNotExist())
-                .andExpect(jsonPath("$.lastLoginAt").doesNotExist())
-                .andExpect(jsonPath("$.createdAt").isNotEmpty())
-                .andExpect(jsonPath("$.updatedAt").isNotEmpty())
-                .andExpect(jsonPath("$.password").doesNotExist())
-                .andExpect(jsonPath("$.passwordHash").doesNotExist())
-                .andReturn()
-                .getResponse()
-                .getHeader("Location");
+        String location =
+                mockMvc.perform(
+                                post("/api/v1/users")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(signUpBody(email, "password123", "  Alice  ")))
+                        .andExpect(status().isCreated())
+                        .andExpect(header().string("Location", notNullValue()))
+                        .andExpect(jsonPath("$.id").isNotEmpty())
+                        .andExpect(jsonPath("$.email").value(email))
+                        .andExpect(jsonPath("$.displayName").value("Alice"))
+                        .andExpect(jsonPath("$.enabled").value(true))
+                        .andExpect(jsonPath("$.roles", hasSize(1)))
+                        .andExpect(jsonPath("$.roles[0]").value("USER"))
+                        .andExpect(jsonPath("$.emailVerifiedAt").doesNotExist())
+                        .andExpect(jsonPath("$.lastLoginAt").doesNotExist())
+                        .andExpect(jsonPath("$.createdAt").isNotEmpty())
+                        .andExpect(jsonPath("$.updatedAt").isNotEmpty())
+                        .andExpect(jsonPath("$.password").doesNotExist())
+                        .andExpect(jsonPath("$.passwordHash").doesNotExist())
+                        .andReturn()
+                        .getResponse()
+                        .getHeader("Location");
 
         assertThat(location).startsWith("/api/v1/users/");
         UUID id = idFromLocation(location);
 
         User saved = userRepository.findById(id).orElseThrow();
         assertThat(saved.getEmail()).isEqualTo(email);
-        assertThat(saved.getPasswordHash())
-                .isNotEqualTo("password123")
-                .startsWith("{argon2id}");
+        assertThat(saved.getPasswordHash()).isNotEqualTo("password123").startsWith("{argon2id}");
     }
 
     @Test
     void signUpResponsePointsToTheIdenticonOfTheNewUser() throws Exception {
-        MockHttpServletResponse response = mockMvc.perform(
-                        post("/api/v1/users")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(signUpBody(uniqueEmail(), "password123", "Alice"))
-                )
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.avatarPending").value(false))
-                .andReturn()
-                .getResponse();
+        MockHttpServletResponse response =
+                mockMvc.perform(
+                                post("/api/v1/users")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(signUpBody(uniqueEmail(), "password123", "Alice")))
+                        .andExpect(status().isCreated())
+                        .andExpect(jsonPath("$.avatarPending").value(false))
+                        .andReturn()
+                        .getResponse();
         UUID id = idFromLocation(response.getHeader("Location"));
 
         assertThat(JsonPath.<String>read(response.getContentAsString(), "$.avatarUrl"))
@@ -115,8 +107,7 @@ class UserControllerTests {
         mockMvc.perform(
                         post("/api/v1/users")
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content(signUpBody(email.toUpperCase(), "password123", "Bob"))
-                )
+                                .content(signUpBody(email.toUpperCase(), "password123", "Bob")))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.email").value(email));
     }
@@ -126,11 +117,12 @@ class UserControllerTests {
         mockMvc.perform(
                         post("/api/v1/users")
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
+                                .content(
+                                        """
                                         {"email": "%s", "password": "password123", "displayName": "Mallory",
                                          "roles": ["ADMIN"], "enabled": false}
-                                        """.formatted(uniqueEmail()))
-                )
+                                        """
+                                                .formatted(uniqueEmail())))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.roles", hasSize(1)))
                 .andExpect(jsonPath("$.roles[0]").value("USER"))
@@ -146,8 +138,7 @@ class UserControllerTests {
                         post("/api/v1/users")
                                 .with(as(user, UserRole.USER))
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content(signUpBody(uniqueEmail(), "password123", "Carol"))
-                )
+                                .content(signUpBody(uniqueEmail(), "password123", "Carol")))
                 .andExpect(status().isCreated());
     }
 
@@ -156,8 +147,7 @@ class UserControllerTests {
         mockMvc.perform(
                         post("/api/v1/users")
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content(signUpBody(uniqueEmail(), "p".repeat(128), "Dave"))
-                )
+                                .content(signUpBody(uniqueEmail(), "p".repeat(128), "Dave")))
                 .andExpect(status().isCreated());
     }
 
@@ -169,8 +159,7 @@ class UserControllerTests {
         mockMvc.perform(
                         post("/api/v1/users")
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content(signUpBody(email, "password456", "Second"))
-                )
+                                .content(signUpBody(email, "password456", "Second")))
                 .andExpect(typedProblem(409, "email-taken", "Email already in use"));
     }
 
@@ -182,17 +171,15 @@ class UserControllerTests {
         mockMvc.perform(
                         post("/api/v1/users")
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content(signUpBody(email.toUpperCase(), "password456", "Second"))
-                )
+                                .content(signUpBody(email.toUpperCase(), "password456", "Second")))
                 .andExpect(status().isConflict());
 
         assertThat(
-                jdbcTemplate.queryForObject(
-                        "select count(*) from users where lower(email) = ?",
-                        Long.class,
-                        email
-                )
-        ).isEqualTo(1L);
+                        jdbcTemplate.queryForObject(
+                                "select count(*) from users where lower(email) = ?",
+                                Long.class,
+                                email))
+                .isEqualTo(1L);
     }
 
     @Test
@@ -208,8 +195,7 @@ class UserControllerTests {
         mockMvc.perform(
                         post("/api/v1/users")
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content(signUpBody(email.toUpperCase(), "password123", "Again"))
-                )
+                                .content(signUpBody(email.toUpperCase(), "password123", "Again")))
                 .andExpect(typedProblem(409, "email-taken", "Email already in use"));
     }
 
@@ -238,7 +224,9 @@ class UserControllerTests {
     void adminReadingUnknownUserGetsNotFound() throws Exception {
         User admin = createUser(UserRole.ADMIN);
 
-        mockMvc.perform(get("/api/v1/users/{id}", UUID.randomUUID()).with(as(admin, UserRole.ADMIN)))
+        mockMvc.perform(
+                        get("/api/v1/users/{id}", UUID.randomUUID())
+                                .with(as(admin, UserRole.ADMIN)))
                 .andExpect(untypedProblem(404, "Not Found"))
                 .andExpect(jsonPath("$.detail").value(startsWith("User not found")));
     }
@@ -251,10 +239,10 @@ class UserControllerTests {
                         patch("/api/v1/users/{id}", user.getId())
                                 .with(as(user, UserRole.USER))
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
+                                .content(
+                                        """
                                         {"displayName": "  Renamed  "}
-                                        """)
-                )
+                                        """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(user.getId().toString()))
                 .andExpect(jsonPath("$.displayName").value("Renamed"));
@@ -272,10 +260,10 @@ class UserControllerTests {
                         patch("/api/v1/users/{id}", other.getId())
                                 .with(as(admin, UserRole.ADMIN))
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
+                                .content(
+                                        """
                                         {"displayName": "Set by admin"}
-                                        """)
-                )
+                                        """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.displayName").value("Set by admin"));
     }
@@ -288,10 +276,10 @@ class UserControllerTests {
                         patch("/api/v1/users/{id}", UUID.randomUUID())
                                 .with(as(admin, UserRole.ADMIN))
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
+                                .content(
+                                        """
                                         {"displayName": "Nobody"}
-                                        """)
-                )
+                                        """))
                 .andExpect(status().isNotFound());
     }
 
@@ -303,8 +291,7 @@ class UserControllerTests {
                         patch("/api/v1/users/{id}", user.getId())
                                 .with(as(user, UserRole.USER))
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("{}")
-                )
+                                .content("{}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.displayName").value(user.getDisplayName()));
     }
@@ -317,10 +304,10 @@ class UserControllerTests {
                         patch("/api/v1/users/{id}", user.getId())
                                 .with(as(user, UserRole.USER))
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
+                                .content(
+                                        """
                                         {"displayName": "   "}
-                                        """)
-                )
+                                        """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.displayName").value(user.getDisplayName()));
     }
@@ -330,14 +317,18 @@ class UserControllerTests {
         User admin = createUser(UserRole.ADMIN);
         User other = createUser(UserRole.USER);
 
-        mockMvc.perform(post("/api/v1/users/{id}/disable", other.getId()).with(as(admin, UserRole.ADMIN)))
+        mockMvc.perform(
+                        post("/api/v1/users/{id}/disable", other.getId())
+                                .with(as(admin, UserRole.ADMIN)))
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(get("/api/v1/users/{id}", other.getId()).with(as(admin, UserRole.ADMIN)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.enabled").value(false));
 
-        mockMvc.perform(post("/api/v1/users/{id}/enable", other.getId()).with(as(admin, UserRole.ADMIN)))
+        mockMvc.perform(
+                        post("/api/v1/users/{id}/enable", other.getId())
+                                .with(as(admin, UserRole.ADMIN)))
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(get("/api/v1/users/{id}", other.getId()).with(as(admin, UserRole.ADMIN)))
@@ -350,11 +341,17 @@ class UserControllerTests {
         User admin = createUser(UserRole.ADMIN);
         User other = createUser(UserRole.USER);
 
-        mockMvc.perform(post("/api/v1/users/{id}/enable", other.getId()).with(as(admin, UserRole.ADMIN)))
+        mockMvc.perform(
+                        post("/api/v1/users/{id}/enable", other.getId())
+                                .with(as(admin, UserRole.ADMIN)))
                 .andExpect(status().isNoContent());
-        mockMvc.perform(post("/api/v1/users/{id}/disable", other.getId()).with(as(admin, UserRole.ADMIN)))
+        mockMvc.perform(
+                        post("/api/v1/users/{id}/disable", other.getId())
+                                .with(as(admin, UserRole.ADMIN)))
                 .andExpect(status().isNoContent());
-        mockMvc.perform(post("/api/v1/users/{id}/disable", other.getId()).with(as(admin, UserRole.ADMIN)))
+        mockMvc.perform(
+                        post("/api/v1/users/{id}/disable", other.getId())
+                                .with(as(admin, UserRole.ADMIN)))
                 .andExpect(status().isNoContent());
 
         assertThat(userRepository.findById(other.getId()).orElseThrow().isEnabled()).isFalse();
@@ -364,9 +361,13 @@ class UserControllerTests {
     void adminEnablingOrDisablingUnknownUserGetsNotFound() throws Exception {
         User admin = createUser(UserRole.ADMIN);
 
-        mockMvc.perform(post("/api/v1/users/{id}/enable", UUID.randomUUID()).with(as(admin, UserRole.ADMIN)))
+        mockMvc.perform(
+                        post("/api/v1/users/{id}/enable", UUID.randomUUID())
+                                .with(as(admin, UserRole.ADMIN)))
                 .andExpect(status().isNotFound());
-        mockMvc.perform(post("/api/v1/users/{id}/disable", UUID.randomUUID()).with(as(admin, UserRole.ADMIN)))
+        mockMvc.perform(
+                        post("/api/v1/users/{id}/disable", UUID.randomUUID())
+                                .with(as(admin, UserRole.ADMIN)))
                 .andExpect(status().isNotFound());
     }
 
@@ -383,11 +384,11 @@ class UserControllerTests {
 
         assertThat(userRepository.findById(other.getId())).isEmpty();
 
-        Timestamp deletedAt = jdbcTemplate.queryForObject(
-                "select deleted_at from users where id = ?",
-                Timestamp.class,
-                other.getId()
-        );
+        Timestamp deletedAt =
+                jdbcTemplate.queryForObject(
+                        "select deleted_at from users where id = ?",
+                        Timestamp.class,
+                        other.getId());
         assertThat(deletedAt).isNotNull();
     }
 
@@ -413,16 +414,18 @@ class UserControllerTests {
 
         mockMvc.perform(delete("/api/v1/users/{id}", other.getId()).with(as(admin, UserRole.ADMIN)))
                 .andExpect(status().isNotFound());
-        mockMvc.perform(post("/api/v1/users/{id}/enable", other.getId()).with(as(admin, UserRole.ADMIN)))
+        mockMvc.perform(
+                        post("/api/v1/users/{id}/enable", other.getId())
+                                .with(as(admin, UserRole.ADMIN)))
                 .andExpect(status().isNotFound());
         mockMvc.perform(
                         patch("/api/v1/users/{id}", other.getId())
                                 .with(as(admin, UserRole.ADMIN))
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
+                                .content(
+                                        """
                                         {"displayName": "Ghost"}
-                                        """)
-                )
+                                        """))
                 .andExpect(status().isNotFound());
     }
 
@@ -430,20 +433,22 @@ class UserControllerTests {
     void adminDeletingUnknownUserGetsNotFound() throws Exception {
         User admin = createUser(UserRole.ADMIN);
 
-        mockMvc.perform(delete("/api/v1/users/{id}", UUID.randomUUID()).with(as(admin, UserRole.ADMIN)))
+        mockMvc.perform(
+                        delete("/api/v1/users/{id}", UUID.randomUUID())
+                                .with(as(admin, UserRole.ADMIN)))
                 .andExpect(status().isNotFound());
     }
 
     private UUID signUp(String email, String password, String displayName) throws Exception {
-        String location = mockMvc.perform(
-                        post("/api/v1/users")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(signUpBody(email, password, displayName))
-                )
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getHeader("Location");
+        String location =
+                mockMvc.perform(
+                                post("/api/v1/users")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(signUpBody(email, password, displayName)))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getHeader("Location");
 
         return idFromLocation(location);
     }
@@ -451,7 +456,8 @@ class UserControllerTests {
     private static String signUpBody(String email, String password, String displayName) {
         return """
                 {"email": "%s", "password": "%s", "displayName": "%s"}
-                """.formatted(email, password, displayName);
+                """
+                .formatted(email, password, displayName);
     }
 
     private static UUID idFromLocation(String location) {
@@ -470,8 +476,7 @@ class UserControllerTests {
     }
 
     private RequestPostProcessor as(User user, UserRole role) {
-        return jwt()
-                .jwt(token -> token.claim("uid", user.getId().toString()))
+        return jwt().jwt(token -> token.claim("uid", user.getId().toString()))
                 .authorities(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
 

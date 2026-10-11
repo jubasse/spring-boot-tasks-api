@@ -1,14 +1,12 @@
 package io.julienmetral.tasks.task.services;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
+
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.task.entities.TaskReminderKind;
 import io.julienmetral.tasks.task.events.TaskDueSoon;
 import io.julienmetral.tasks.task.events.TaskOverdue;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.test.context.event.ApplicationEvents;
-import org.springframework.test.context.event.RecordApplicationEvents;
-
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -17,15 +15,15 @@ import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.tuple;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 
 @RecordApplicationEvents
 class TaskReminderTests extends AbstractTaskReminderTests {
 
-    @Autowired
-    private ApplicationEvents events;
+    @Autowired private ApplicationEvents events;
 
     @Test
     void taskDueWithinTheLeadTimeIsRemindedDueSoonOnce() throws Exception {
@@ -35,9 +33,14 @@ class TaskReminderTests extends AbstractTaskReminderTests {
         TaskReminderReport first = reminderService.sendDueReminders();
 
         assertThat(first.dueSoon()).isGreaterThanOrEqualTo(1);
-        assertThat(dueSoonEventsFor(task)).containsExactly(new TaskDueSoon(
-                task.id(), task.reference(), TITLE, NOW.plus(Duration.ofHours(12)), assignee.getId()
-        ));
+        assertThat(dueSoonEventsFor(task))
+                .containsExactly(
+                        new TaskDueSoon(
+                                task.id(),
+                                task.reference(),
+                                TITLE,
+                                NOW.plus(Duration.ofHours(12)),
+                                assignee.getId()));
         assertThat(overdueEventsFor(task)).isEmpty();
 
         reminderService.sendDueReminders();
@@ -66,7 +69,8 @@ class TaskReminderTests extends AbstractTaskReminderTests {
 
     @Test
     void taskDueFarInTheFutureIsNotReminded() throws Exception {
-        CreatedTask task = createTask(createAdmin(), createAssignee(), NOW.plus(Duration.ofDays(30)));
+        CreatedTask task =
+                createTask(createAdmin(), createAssignee(), NOW.plus(Duration.ofDays(30)));
 
         reminderService.sendDueReminders();
 
@@ -102,9 +106,10 @@ class TaskReminderTests extends AbstractTaskReminderTests {
         TaskReminderReport first = reminderService.sendDueReminders();
 
         assertThat(first.overdue()).isGreaterThanOrEqualTo(1);
-        assertThat(overdueEventsFor(task)).containsExactly(new TaskOverdue(
-                task.id(), task.reference(), TITLE, dueAt, assignee.getId()
-        ));
+        assertThat(overdueEventsFor(task))
+                .containsExactly(
+                        new TaskOverdue(
+                                task.id(), task.reference(), TITLE, dueAt, assignee.getId()));
         assertThat(dueSoonEventsFor(task)).isEmpty();
 
         reminderService.sendDueReminders();
@@ -115,7 +120,8 @@ class TaskReminderTests extends AbstractTaskReminderTests {
 
     @Test
     void taskPastDueJustInsideTheLookbackIsRemindedOverdue() throws Exception {
-        CreatedTask task = createTask(createAdmin(), createAssignee(), overdueStart().plusSeconds(1));
+        CreatedTask task =
+                createTask(createAdmin(), createAssignee(), overdueStart().plusSeconds(1));
 
         reminderService.sendDueReminders();
 
@@ -133,7 +139,9 @@ class TaskReminderTests extends AbstractTaskReminderTests {
 
     @Test
     void taskPastDueBeforeTheLookbackIsNotReminded() throws Exception {
-        CreatedTask task = createTask(createAdmin(), createAssignee(), overdueStart().minus(Duration.ofDays(1)));
+        CreatedTask task =
+                createTask(
+                        createAdmin(), createAssignee(), overdueStart().minus(Duration.ofDays(1)));
 
         reminderService.sendDueReminders();
 
@@ -150,7 +158,8 @@ class TaskReminderTests extends AbstractTaskReminderTests {
         reminderService.sendDueReminders();
         reminderService.sendDueReminders();
 
-        assertThat(kindsOf(task)).containsExactly(TaskReminderKind.DUE_SOON, TaskReminderKind.OVERDUE);
+        assertThat(kindsOf(task))
+                .containsExactly(TaskReminderKind.DUE_SOON, TaskReminderKind.OVERDUE);
         assertThat(dueSoonEventsFor(task)).hasSize(1);
         assertThat(overdueEventsFor(task)).hasSize(1);
     }
@@ -287,8 +296,7 @@ class TaskReminderTests extends AbstractTaskReminderTests {
                 .extracting(ReminderRow::kind, ReminderRow::dueAt)
                 .containsExactly(
                         tuple(TaskReminderKind.DUE_SOON, firstDueAt),
-                        tuple(TaskReminderKind.DUE_SOON, postponedDueAt)
-                );
+                        tuple(TaskReminderKind.DUE_SOON, postponedDueAt));
         assertThat(dueSoonEventsFor(task))
                 .extracting(TaskDueSoon::dueAt)
                 .containsExactly(firstDueAt, postponedDueAt);
@@ -368,9 +376,9 @@ class TaskReminderTests extends AbstractTaskReminderTests {
 
         reminderService.sendDueReminders();
 
-        assertThat(remindersOf(task)).containsExactly(
-                new ReminderRow(TaskReminderKind.OVERDUE, dueAt, assignee.getId(), NOW)
-        );
+        assertThat(remindersOf(task))
+                .containsExactly(
+                        new ReminderRow(TaskReminderKind.OVERDUE, dueAt, assignee.getId(), NOW));
     }
 
     @Test
@@ -385,20 +393,25 @@ class TaskReminderTests extends AbstractTaskReminderTests {
 
         reminderService.sendDueReminders();
 
-        assertThat(remindersOf(ofDisabled)).extracting(ReminderRow::recipientId).containsExactly(disabled.getId());
-        assertThat(remindersOf(ofDeleted)).extracting(ReminderRow::recipientId).containsExactly(deleted.getId());
+        assertThat(remindersOf(ofDisabled))
+                .extracting(ReminderRow::recipientId)
+                .containsExactly(disabled.getId());
+        assertThat(remindersOf(ofDeleted))
+                .extracting(ReminderRow::recipientId)
+                .containsExactly(deleted.getId());
     }
 
     @Test
     void concurrentRunsRecordEachReminderOnce() throws Exception {
-        CreatedTask task = createTask(createAdmin(), createAssignee(), NOW.plus(Duration.ofHours(1)));
+        CreatedTask task =
+                createTask(createAdmin(), createAssignee(), NOW.plus(Duration.ofHours(1)));
         CyclicBarrier start = new CyclicBarrier(2);
 
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
-            List<CompletableFuture<TaskReminderReport>> runs = List.of(
-                    CompletableFuture.supplyAsync(() -> runAfter(start), executor),
-                    CompletableFuture.supplyAsync(() -> runAfter(start), executor)
-            );
+            List<CompletableFuture<TaskReminderReport>> runs =
+                    List.of(
+                            CompletableFuture.supplyAsync(() -> runAfter(start), executor),
+                            CompletableFuture.supplyAsync(() -> runAfter(start), executor));
 
             runs.forEach(CompletableFuture::join);
         }
@@ -408,12 +421,15 @@ class TaskReminderTests extends AbstractTaskReminderTests {
 
     @Test
     void rolledBackRunRecordsNothingAndTheNextRunReminds() throws Exception {
-        CreatedTask task = createTask(createAdmin(), createAssignee(), NOW.plus(Duration.ofHours(1)));
+        CreatedTask task =
+                createTask(createAdmin(), createAssignee(), NOW.plus(Duration.ofHours(1)));
 
-        transactionTemplate.executeWithoutResult(status -> {
-            assertThat(reminderService.sendDueReminders().dueSoon()).isGreaterThanOrEqualTo(1);
-            status.setRollbackOnly();
-        });
+        transactionTemplate.executeWithoutResult(
+                status -> {
+                    assertThat(reminderService.sendDueReminders().dueSoon())
+                            .isGreaterThanOrEqualTo(1);
+                    status.setRollbackOnly();
+                });
 
         assertThat(remindersOf(task)).isEmpty();
 
@@ -423,11 +439,15 @@ class TaskReminderTests extends AbstractTaskReminderTests {
     }
 
     private List<TaskDueSoon> dueSoonEventsFor(CreatedTask task) {
-        return events.stream(TaskDueSoon.class).filter(event -> event.taskId().equals(task.id())).toList();
+        return events.stream(TaskDueSoon.class)
+                .filter(event -> event.taskId().equals(task.id()))
+                .toList();
     }
 
     private List<TaskOverdue> overdueEventsFor(CreatedTask task) {
-        return events.stream(TaskOverdue.class).filter(event -> event.taskId().equals(task.id())).toList();
+        return events.stream(TaskOverdue.class)
+                .filter(event -> event.taskId().equals(task.id()))
+                .toList();
     }
 
     private List<TaskReminderKind> kindsOf(CreatedTask task) {

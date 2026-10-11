@@ -1,15 +1,14 @@
 package io.julienmetral.tasks.realtime.sse;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.julienmetral.tasks.realtime.RealtimeProperties;
 import io.julienmetral.tasks.support.TestClock;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 class NotificationReplayBufferTest {
 
@@ -27,9 +26,17 @@ class NotificationReplayBufferTest {
     @BeforeEach
     void createBuffer() {
         clock.set(NOW);
-        buffer = new NotificationReplayBuffer(new RealtimeProperties.Streams(
-                Duration.ofSeconds(20), Duration.ofMinutes(15), 5, Duration.ofSeconds(3),
-                REPLAY_WINDOW, REPLAY_SIZE, 100), clock);
+        buffer =
+                new NotificationReplayBuffer(
+                        new RealtimeProperties.Streams(
+                                Duration.ofSeconds(20),
+                                Duration.ofMinutes(15),
+                                5,
+                                Duration.ofSeconds(3),
+                                REPLAY_WINDOW,
+                                REPLAY_SIZE,
+                                100),
+                        clock);
     }
 
     @Test
@@ -38,8 +45,8 @@ class NotificationReplayBufferTest {
         StreamEvent second = add(ALICE);
         StreamEvent third = add(ALICE);
 
-        assertThat(buffer.eventsAfter(first.id(), ALICE)).hasValueSatisfying(missed ->
-                assertThat(missed).containsExactly(second, third));
+        assertThat(buffer.eventsAfter(first.id(), ALICE))
+                .hasValueSatisfying(missed -> assertThat(missed).containsExactly(second, third));
     }
 
     @Test
@@ -49,8 +56,8 @@ class NotificationReplayBufferTest {
         StreamEvent forAlice = add(ALICE);
         add(BOB);
 
-        assertThat(buffer.eventsAfter(first.id(), ALICE)).hasValueSatisfying(missed ->
-                assertThat(missed).containsExactly(forAlice));
+        assertThat(buffer.eventsAfter(first.id(), ALICE))
+                .hasValueSatisfying(missed -> assertThat(missed).containsExactly(forAlice));
     }
 
     @Test
@@ -58,7 +65,8 @@ class NotificationReplayBufferTest {
         add(ALICE);
         StreamEvent latest = add(ALICE);
 
-        assertThat(buffer.eventsAfter(latest.id(), ALICE)).hasValueSatisfying(missed -> assertThat(missed).isEmpty());
+        assertThat(buffer.eventsAfter(latest.id(), ALICE))
+                .hasValueSatisfying(missed -> assertThat(missed).isEmpty());
     }
 
     @Test
@@ -82,8 +90,8 @@ class NotificationReplayBufferTest {
         StreamEvent next = add(ALICE);
         clock.advance(REPLAY_WINDOW);
 
-        assertThat(buffer.eventsAfter(old.id(), ALICE)).hasValueSatisfying(missed ->
-                assertThat(missed).containsExactly(next));
+        assertThat(buffer.eventsAfter(old.id(), ALICE))
+                .hasValueSatisfying(missed -> assertThat(missed).containsExactly(next));
     }
 
     @Test
@@ -95,8 +103,8 @@ class NotificationReplayBufferTest {
         add(ALICE);
 
         assertThat(buffer.eventsAfter(dropped.id(), ALICE)).isEmpty();
-        assertThat(buffer.eventsAfter(oldestKept.id(), ALICE)).hasValueSatisfying(missed ->
-                assertThat(missed).hasSize(REPLAY_SIZE - 1));
+        assertThat(buffer.eventsAfter(oldestKept.id(), ALICE))
+                .hasValueSatisfying(missed -> assertThat(missed).hasSize(REPLAY_SIZE - 1));
     }
 
     @Test

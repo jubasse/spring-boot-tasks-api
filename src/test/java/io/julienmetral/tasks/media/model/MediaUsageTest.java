@@ -1,10 +1,10 @@
 package io.julienmetral.tasks.media.model;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 class MediaUsageTest {
 
@@ -15,7 +15,14 @@ class MediaUsageTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"image/gif", "image/svg+xml", "application/pdf", "application/zip", "text/html"})
+    @ValueSource(
+            strings = {
+                "image/gif",
+                "image/svg+xml",
+                "application/pdf",
+                "application/zip",
+                "text/html"
+            })
     void avatarRejectsEverythingElse(String contentType) {
         assertThat(MediaUsage.AVATAR.allows(contentType)).isFalse();
     }
@@ -27,49 +34,58 @@ class MediaUsageTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"image/gif", "image/svg+xml", "application/pdf", "application/zip", "text/html"})
+    @ValueSource(
+            strings = {
+                "image/gif",
+                "image/svg+xml",
+                "application/pdf",
+                "application/zip",
+                "text/html"
+            })
     void avatarUploadRejectsEverythingElse(String contentType) {
         assertThat(MediaUsage.AVATAR_UPLOAD.allows(contentType)).isFalse();
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {
-            "image/jpeg",
-            "image/png",
-            "image/gif",
-            "image/webp",
-            "application/pdf",
-            "text/plain",
-            "text/csv",
-            "text/markdown",
-            "application/rtf",
-            "application/msword",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/vnd.oasis.opendocument.text",
-            "application/vnd.ms-excel",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "application/vnd.oasis.opendocument.spreadsheet",
-            "application/vnd.ms-powerpoint",
-            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            "application/vnd.oasis.opendocument.presentation",
-            "application/zip"
-    })
+    @ValueSource(
+            strings = {
+                "image/jpeg",
+                "image/png",
+                "image/gif",
+                "image/webp",
+                "application/pdf",
+                "text/plain",
+                "text/csv",
+                "text/markdown",
+                "application/rtf",
+                "application/msword",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/vnd.oasis.opendocument.text",
+                "application/vnd.ms-excel",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "application/vnd.oasis.opendocument.spreadsheet",
+                "application/vnd.ms-powerpoint",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "application/vnd.oasis.opendocument.presentation",
+                "application/zip"
+            })
     void taskAttachmentAllowsImagesDocumentsAndArchives(String contentType) {
         assertThat(MediaUsage.TASK_ATTACHMENT.allows(contentType)).isTrue();
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {
-            "text/html",
-            "image/svg+xml",
-            "application/javascript",
-            "application/x-msdownload",
-            "application/x-sh",
-            "application/octet-stream",
-            "application/x-tika-msoffice",
-            "IMAGE/PNG",
-            ""
-    })
+    @ValueSource(
+            strings = {
+                "text/html",
+                "image/svg+xml",
+                "application/javascript",
+                "application/x-msdownload",
+                "application/x-sh",
+                "application/octet-stream",
+                "application/x-tika-msoffice",
+                "IMAGE/PNG",
+                ""
+            })
     void taskAttachmentRejectsActiveContentExecutablesAndUnknownTypes(String contentType) {
         assertThat(MediaUsage.TASK_ATTACHMENT.allows(contentType)).isFalse();
     }
@@ -81,7 +97,14 @@ class MediaUsageTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"text/plain", "text/html", "application/pdf", "image/png", "application/octet-stream"})
+    @ValueSource(
+            strings = {
+                "text/plain",
+                "text/html",
+                "application/pdf",
+                "image/png",
+                "application/octet-stream"
+            })
     void exportRejectsEverythingElse(String contentType) {
         assertThat(MediaUsage.EXPORT.allows(contentType)).isFalse();
     }

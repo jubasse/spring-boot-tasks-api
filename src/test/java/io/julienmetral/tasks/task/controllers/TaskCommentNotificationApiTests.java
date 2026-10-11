@@ -1,28 +1,28 @@
 package io.julienmetral.tasks.task.controllers;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 
-import java.time.Duration;
-import java.time.Instant;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 /**
- * Comment and mention emails, end to end: comments go through the API, and the emails sent after commit are read back
- * from the Mailpit container.
+ * Comment and mention emails, end to end: comments go through the API, and the emails sent after
+ * commit are read back from the Mailpit container.
  */
 class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
 
-    // Mail is dispatched asynchronously after commit: "nothing sent" can only be checked after a grace period
+    // Mail is dispatched asynchronously after commit: "nothing sent" can only be checked after a
+    // grace period
     private static final Duration NO_MAIL_GRACE_PERIOD = Duration.ofMillis(800);
 
     @Value("${mailpit.api-url}")
@@ -37,7 +37,10 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
         UUID taskId = createTask(admin, assignee);
         String reference = referenceOf(taskId);
 
-        addComment(asUser(author), taskId, "Please review this with " + mention(mentioned) + " today.");
+        addComment(
+                asUser(author),
+                taskId,
+                "Please review this with " + mention(mentioned) + " today.");
 
         String text = awaitTextWithSubject(assignee, commentSubject(reference));
 
@@ -58,14 +61,25 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
         UUID taskId = createTask(admin, null);
         String reference = referenceOf(taskId);
 
-        addComment(asUser(author), taskId, mention(mentioned) + " and " + mention(other) + ", see above.");
+        addComment(
+                asUser(author),
+                taskId,
+                mention(mentioned) + " and " + mention(other) + ", see above.");
 
         String text = awaitTextWithSubject(mentioned, mentionSubject(author, reference));
 
         assertThat(text)
                 .contains("Hello " + mentioned.getDisplayName() + ",")
-                .contains(author.getDisplayName() + " mentioned you in a comment on the task " + reference)
-                .contains("@" + mentioned.getDisplayName() + " and @" + other.getDisplayName() + ", see above.")
+                .contains(
+                        author.getDisplayName()
+                                + " mentioned you in a comment on the task "
+                                + reference)
+                .contains(
+                        "@"
+                                + mentioned.getDisplayName()
+                                + " and @"
+                                + other.getDisplayName()
+                                + ", see above.")
                 .doesNotContain("<@");
         awaitTextWithSubject(other, mentionSubject(author, reference));
     }
@@ -93,7 +107,10 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
         UUID taskId = createTask(admin, assignee);
         String reference = referenceOf(taskId);
 
-        addComment(asUser(assignee), taskId, "Done, " + mention(mentioned) + " and " + mention(assignee));
+        addComment(
+                asUser(assignee),
+                taskId,
+                "Done, " + mention(mentioned) + " and " + mention(assignee));
 
         awaitTextWithSubject(mentioned, mentionSubject(assignee, reference));
         waitForAsyncDispatch();
@@ -184,7 +201,8 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
 
         awaitTextWithSubject(assignee, commentSubject(referenceOf(taskId)));
         waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, mentionSubject(author, referenceOf(taskId)))).isZero();
+        assertThat(countWithSubject(assignee, mentionSubject(author, referenceOf(taskId))))
+                .isZero();
     }
 
     @Test
@@ -235,11 +253,16 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
         awaitTextWithSubject(first, mentionSubject(author, reference));
         awaitTextWithSubject(assignee, commentSubject(reference));
 
-        editComment(asUser(author), taskId, commentId, "For " + mention(first) + " and " + mention(second))
+        editComment(
+                        asUser(author),
+                        taskId,
+                        commentId,
+                        "For " + mention(first) + " and " + mention(second))
                 .andExpect(status().isOk());
 
         String text = awaitTextWithSubject(second, mentionSubject(author, reference));
-        assertThat(text).contains("For @" + first.getDisplayName() + " and @" + second.getDisplayName());
+        assertThat(text)
+                .contains("For @" + first.getDisplayName() + " and @" + second.getDisplayName());
         waitForAsyncDispatch();
         assertThat(countWithSubject(first, mentionSubject(author, reference))).isOne();
         assertThat(countWithSubject(assignee, commentSubject(reference))).isOne();
@@ -295,20 +318,22 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
 
         String text = awaitTextWithSubject(assignee, commentSubject(referenceOf(taskId)));
 
-        assertThat(text)
-                .contains(head + "...")
-                .doesNotContain("TAIL-THAT-IS-CUT");
+        assertThat(text).contains(head + "...").doesNotContain("TAIL-THAT-IS-CUT");
     }
 
-    private void updateSettings(User user, boolean taskCommented, boolean taskMentioned) throws Exception {
-        mockMvc.perform(put("/api/v1/users/{id}/notification-settings", user.getId())
-                        .with(asUser(user))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+    private void updateSettings(User user, boolean taskCommented, boolean taskMentioned)
+            throws Exception {
+        mockMvc.perform(
+                        put("/api/v1/users/{id}/notification-settings", user.getId())
+                                .with(asUser(user))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
                                 {"taskAssigned": true, "taskUnassigned": true, "taskCancelled": true,
                                  "taskDeleted": true, "taskCommented": %s, "taskMentioned": %s,
                                  "taskDueSoon": true, "taskOverdue": true}
-                                """.formatted(taskCommented, taskMentioned)))
+                                """
+                                                .formatted(taskCommented, taskMentioned)))
                 .andExpect(status().isOk());
     }
 
@@ -330,8 +355,12 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
         return searchBySubject(recipient, subject).path("messages_count").asInt();
     }
 
-    /** Plain-text body of the latest email with this subject, waiting up to 5 seconds for the async dispatch. */
-    private String awaitTextWithSubject(User recipient, String subject) throws InterruptedException {
+    /**
+     * Plain-text body of the latest email with this subject, waiting up to 5 seconds for the async
+     * dispatch.
+     */
+    private String awaitTextWithSubject(User recipient, String subject)
+            throws InterruptedException {
         Instant deadline = Instant.now().plusSeconds(5);
 
         while (true) {
@@ -347,7 +376,8 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
             }
 
             if (Instant.now().isAfter(deadline)) {
-                throw new AssertionError("No email \"" + subject + "\" received by " + recipient.getEmail());
+                throw new AssertionError(
+                        "No email \"" + subject + "\" received by " + recipient.getEmail());
             }
 
             Thread.sleep(100);
@@ -357,16 +387,16 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
     private JsonNode searchBySubject(User recipient, String subject) {
         return readMailpit(
                 "/api/v1/search?query={query}",
-                "to:\"" + recipient.getEmail() + "\" subject:\"" + subject + "\""
-        );
+                "to:\"" + recipient.getEmail() + "\" subject:\"" + subject + "\"");
     }
 
     private JsonNode readMailpit(String uri, Object... variables) {
-        String body = RestClient.create(mailpitApiUrl)
-                .get()
-                .uri(uri, variables)
-                .retrieve()
-                .body(String.class);
+        String body =
+                RestClient.create(mailpitApiUrl)
+                        .get()
+                        .uri(uri, variables)
+                        .retrieve()
+                        .body(String.class);
 
         return json(body);
     }

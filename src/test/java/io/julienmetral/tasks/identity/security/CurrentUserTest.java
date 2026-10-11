@@ -1,15 +1,14 @@
 package io.julienmetral.tasks.identity.security;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
-
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 class CurrentUserTest {
 
@@ -21,9 +20,8 @@ class CurrentUserTest {
     }
 
     static JwtAuthenticationToken jwtAuth(String uid) {
-        Jwt.Builder builder = Jwt.withTokenValue("token")
-                .header("alg", "HS256")
-                .subject("jane@example.com");
+        Jwt.Builder builder =
+                Jwt.withTokenValue("token").header("alg", "HS256").subject("jane@example.com");
         if (uid != null) {
             builder.claim("uid", uid);
         }
@@ -37,7 +35,9 @@ class CurrentUserTest {
 
     @Test
     void nonJwtAuthenticationYieldsEmpty() {
-        var auth = UsernamePasswordAuthenticationToken.authenticated("jane", null, java.util.List.of());
+        var auth =
+                UsernamePasswordAuthenticationToken.authenticated(
+                        "jane", null, java.util.List.of());
 
         assertThat(currentUser.getId(auth)).isEmpty();
     }

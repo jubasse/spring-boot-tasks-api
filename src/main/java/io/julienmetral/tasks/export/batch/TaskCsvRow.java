@@ -18,18 +18,38 @@ record TaskCsvRow(
         Instant completedAt,
         Instant archivedAt,
         Instant createdAt,
-        Instant updatedAt
-) {
+        Instant updatedAt) {
 
-    static final List<String> HEADER = List.of(
-            "id", "reference", "title", "description", "status", "priority", "assignee", "created_by",
-            "due_at", "completed_at", "archived_at", "created_at", "updated_at"
-    );
+    static final List<String> HEADER =
+            List.of(
+                    "id",
+                    "reference",
+                    "title",
+                    "description",
+                    "status",
+                    "priority",
+                    "assignee",
+                    "created_by",
+                    "due_at",
+                    "completed_at",
+                    "archived_at",
+                    "created_at",
+                    "updated_at");
 
     List<Object> values() {
         return Arrays.asList(
-                id, reference, title, description, status, priority, assignee, createdBy,
-                dueAt, completedAt, archivedAt, createdAt, updatedAt
-        );
+                id,
+                reference,
+                title,
+                description,
+                status,
+                priority,
+                assignee,
+                createdBy,
+                dueAt,
+                completedAt,
+                archivedAt,
+                createdAt,
+                updatedAt);
     }
 }

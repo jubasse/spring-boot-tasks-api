@@ -1,11 +1,27 @@
 package io.julienmetral.tasks.identity.services;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
 import io.julienmetral.tasks.support.TestClock;
+import java.sql.Timestamp;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,28 +35,10 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.sql.Timestamp;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 /**
- * The retention run looks at every user in the shared database, so the clock is pinned far in the future and the
- * dates of this class's users are set relative to it with JDBC. Tests assert on their own users only, never on
- * the counts of the report.
+ * The retention run looks at every user in the shared database, so the clock is pinned far in the
+ * future and the dates of this class's users are set relative to it with JDBC. Tests assert on
+ * their own users only, never on the counts of the report.
  */
 @IntegrationTest
 class UserRetentionTests {
@@ -49,43 +47,34 @@ class UserRetentionTests {
 
     private static final String PASSWORD = "password123";
 
-    @Autowired
-    private UserRetentionService retentionService;
+    @Autowired private UserRetentionService retentionService;
 
-    @Autowired
-    private UserService userService;
+    @Autowired private UserService userService;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    @Autowired private PasswordEncoder passwordEncoder;
 
-    @Autowired
-    private TestClock clock;
+    @Autowired private TestClock clock;
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
-    @Autowired
-    private JsonMapper jsonMapper;
+    @Autowired private JsonMapper jsonMapper;
 
-    @Autowired
-    private Mailpit mailpit;
+    @Autowired private Mailpit mailpit;
 
     @BeforeEach
     void resetClockAndSilenceOtherUsers() {
         clock.set(NOW);
 
-        // Users left by other test classes are all "inactive" in 2100: without this, every run would email each of
-        // them, flooding the mail queue and Mailpit. Warned at NOW, they are neither warned again nor deleted.
+        // Users left by other test classes are all "inactive" in 2100: without this, every run
+        // would email each of them, flooding the mail queue and Mailpit. Warned at NOW, they are
+        // neither warned again nor deleted.
         jdbcTemplate.update(
                 "UPDATE users SET inactivity_warned_at = ? WHERE deleted_at IS NULL AND inactivity_warned_at IS NULL",
-                Timestamp.from(NOW)
-        );
+                Timestamp.from(NOW));
     }
 
     // Erasure of deleted users
@@ -145,8 +134,9 @@ class UserRetentionTests {
         UUID pendingAvatar = insertMedia(user);
         jdbcTemplate.update(
                 "UPDATE user_profiles SET avatar_media_id = ?, pending_avatar_media_id = ? WHERE id = ?",
-                avatar, pendingAvatar, user.getId()
-        );
+                avatar,
+                pendingAvatar,
+                user.getId());
         userService.delete(user.getId());
         setDate(user, "deleted_at", NOW.minus(Duration.ofDays(31)));
 
@@ -155,7 +145,8 @@ class UserRetentionTests {
         Map<String, Object> profile = profileRow(user);
         assertThat(profile.get("avatar_media_id")).isNull();
         assertThat(profile.get("pending_avatar_media_id")).isNull();
-        // The media rows are left to the media cleanup, which purges them once nothing references them
+        // The media rows are left to the media cleanup, which purges them once nothing references
+        // them
         assertThat(mediaRows(avatar)).isOne();
         assertThat(mediaRows(pendingAvatar)).isOne();
     }
@@ -165,15 +156,17 @@ class UserRetentionTests {
         User admin = createUser(UserRole.ADMIN);
         User assignee = createUser(UserRole.USER);
         UUID taskId = createTask(admin, assignee);
-        mockMvc.perform(post("/api/v1/tasks/{id}/comments", taskId)
-                        .with(as(assignee, UserRole.USER))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"body\": \"Started on it\"}"))
+        mockMvc.perform(
+                        post("/api/v1/tasks/{id}/comments", taskId)
+                                .with(as(assignee, UserRole.USER))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"body\": \"Started on it\"}"))
                 .andExpect(status().isCreated());
-        mockMvc.perform(patch("/api/v1/tasks/{id}/status", taskId)
-                        .with(as(assignee, UserRole.USER))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\": \"IN_PROGRESS\"}"))
+        mockMvc.perform(
+                        patch("/api/v1/tasks/{id}/status", taskId)
+                                .with(as(assignee, UserRole.USER))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"status\": \"IN_PROGRESS\"}"))
                 .andExpect(status().isOk());
 
         userService.delete(assignee.getId());
@@ -192,11 +185,17 @@ class UserRetentionTests {
         assertIsDeletedUser(comments.get(0).path("author"), assignee);
 
         List<JsonNode> actions = new ArrayList<>();
-        getJson(admin, "/api/v1/tasks/" + taskId + "/events").path("content").forEach(event -> {
-            if (event.path("actor").path("id").asString().equals(assignee.getId().toString())) {
-                actions.add(event);
-            }
-        });
+        getJson(admin, "/api/v1/tasks/" + taskId + "/events")
+                .path("content")
+                .forEach(
+                        event -> {
+                            if (event.path("actor")
+                                    .path("id")
+                                    .asString()
+                                    .equals(assignee.getId().toString())) {
+                                actions.add(event);
+                            }
+                        });
         assertThat(actions).isNotEmpty();
         actions.forEach(event -> assertIsDeletedUser(event.path("actor"), assignee));
     }
@@ -386,9 +385,12 @@ class UserRetentionTests {
         setDate(user, "last_active_at", Instant.parse("2020-01-01T00:00:00Z"));
         setDate(user, "inactivity_warned_at", Instant.parse("2022-01-01T00:00:00Z"));
 
-        mockMvc.perform(post("/api/v1/auth/refresh")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonMapper.writeValueAsString(Map.of("refreshToken", refreshToken))))
+        mockMvc.perform(
+                        post("/api/v1/auth/refresh")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        jsonMapper.writeValueAsString(
+                                                Map.of("refreshToken", refreshToken))))
                 .andExpect(status().isOk());
 
         assertThat(instant(userRow(user).get("last_active_at"))).isEqualTo(NOW);
@@ -398,7 +400,8 @@ class UserRetentionTests {
     // Deletion for inactivity
 
     @Test
-    void accountWarnedMoreThanThirtyDaysAgoAndStillInactiveIsDeletedAndSignedOut() throws Exception {
+    void accountWarnedMoreThanThirtyDaysAgoAndStillInactiveIsDeletedAndSignedOut()
+            throws Exception {
         User user = createUser(UserRole.USER);
         login(user.getEmail()).andExpect(status().isOk());
         login(user.getEmail()).andExpect(status().isOk());
@@ -480,33 +483,43 @@ class UserRetentionTests {
         user.setEmail(uniqueEmail());
         user.setPasswordHash(passwordEncoder.encode(PASSWORD));
         user.setEmailVerifiedAt(Instant.now());
-        user.setDisplayName("Retained " + role + " " + UUID.randomUUID().toString().substring(0, 6));
+        user.setDisplayName(
+                "Retained " + role + " " + UUID.randomUUID().toString().substring(0, 6));
         user.setRoles(EnumSet.of(UserRole.USER, role));
 
         return userRepository.saveAndFlush(user);
     }
 
     private UUID createTask(User admin, User assignee) throws Exception {
-        String body = mockMvc.perform(post("/api/v1/tasks")
-                        .with(as(admin, UserRole.ADMIN))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+        String body =
+                mockMvc.perform(
+                                post("/api/v1/tasks")
+                                        .with(as(admin, UserRole.ADMIN))
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                """
                                 {"reference": "RET-%s", "title": "Retention", "priority": "HIGH", "assignedTo": "%s"}
-                                """.formatted(UUID.randomUUID().toString().substring(0, 8), assignee.getId())))
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+                                """
+                                                        .formatted(
+                                                                UUID.randomUUID()
+                                                                        .toString()
+                                                                        .substring(0, 8),
+                                                                assignee.getId())))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
         return UUID.fromString(jsonMapper.readTree(body).get("id").asString());
     }
 
     private JsonNode getJson(User caller, String uri) throws Exception {
-        String body = mockMvc.perform(get(uri).with(as(caller, UserRole.ADMIN)))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String body =
+                mockMvc.perform(get(uri).with(as(caller, UserRole.ADMIN)))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
         return jsonMapper.readTree(body);
     }
@@ -515,40 +528,56 @@ class UserRetentionTests {
         assertThat(preview.path("id").asString()).isEqualTo(user.getId().toString());
         assertThat(preview.path("displayName").asString()).isEqualTo("Deleted user");
         assertThat(preview.path("status").asString()).isEqualTo("DELETED");
-        assertThat(preview.path("avatarUrl").asString()).endsWith("/api/v1/identicons/" + user.getId());
+        assertThat(preview.path("avatarUrl").asString())
+                .endsWith("/api/v1/identicons/" + user.getId());
     }
 
     private ResultActions login(String email) throws Exception {
-        return mockMvc.perform(post("/api/v1/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(jsonMapper.writeValueAsString(Map.of("email", email, "password", PASSWORD))));
+        return mockMvc.perform(
+                post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                jsonMapper.writeValueAsString(
+                                        Map.of("email", email, "password", PASSWORD))));
     }
 
     private String refreshTokenOf(ResultActions login) throws Exception {
-        return jsonMapper.readTree(login.andReturn().getResponse().getContentAsString())
+        return jsonMapper
+                .readTree(login.andReturn().getResponse().getContentAsString())
                 .get("refreshToken")
                 .asString();
     }
 
     private ResultActions signUp(String email) throws Exception {
-        return mockMvc.perform(post("/api/v1/users")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(jsonMapper.writeValueAsString(
-                        Map.of("email", email, "password", PASSWORD, "displayName", "Signed up again"))));
+        return mockMvc.perform(
+                post("/api/v1/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                jsonMapper.writeValueAsString(
+                                        Map.of(
+                                                "email",
+                                                email,
+                                                "password",
+                                                PASSWORD,
+                                                "displayName",
+                                                "Signed up again"))));
     }
 
     private void requestPasswordReset(String email) throws Exception {
-        mockMvc.perform(post("/api/v1/auth/password-reset/request")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonMapper.writeValueAsString(Map.of("email", email))))
+        mockMvc.perform(
+                        post("/api/v1/auth/password-reset/request")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(jsonMapper.writeValueAsString(Map.of("email", email))))
                 .andExpect(status().isAccepted());
     }
 
     private void updateNotificationSettings(User user) throws Exception {
-        mockMvc.perform(put("/api/v1/users/{id}/notification-settings", user.getId())
-                        .with(as(user, UserRole.USER))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+        mockMvc.perform(
+                        put("/api/v1/users/{id}/notification-settings", user.getId())
+                                .with(as(user, UserRole.USER))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
                                 {"taskAssigned": false, "taskUnassigned": true, "taskCancelled": true,
                                  "taskDeleted": true, "taskCommented": true, "taskMentioned": true,
                                  "taskDueSoon": true, "taskOverdue": true}
@@ -557,13 +586,15 @@ class UserRetentionTests {
     }
 
     private static RequestPostProcessor as(User user, UserRole role) {
-        return jwt()
-                .jwt(token -> token.claim("uid", user.getId().toString()))
+        return jwt().jwt(token -> token.claim("uid", user.getId().toString()))
                 .authorities(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
 
     private void setDate(User user, String column, Instant value) {
-        jdbcTemplate.update("UPDATE users SET " + column + " = ? WHERE id = ?", Timestamp.from(value), user.getId());
+        jdbcTemplate.update(
+                "UPDATE users SET " + column + " = ? WHERE id = ?",
+                Timestamp.from(value),
+                user.getId());
     }
 
     private Map<String, Object> userRow(User user) {
@@ -575,7 +606,8 @@ class UserRetentionTests {
     }
 
     private int accountRows(User user) {
-        return jdbcTemplate.queryForObject("SELECT count(*) FROM users WHERE id = ?", Integer.class, user.getId());
+        return jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM users WHERE id = ?", Integer.class, user.getId());
     }
 
     private UUID insertMedia(User uploader) {
@@ -589,12 +621,12 @@ class UserRetentionTests {
                         """,
                 UUID.class,
                 "avatar/" + UUID.randomUUID(),
-                uploader.getId()
-        );
+                uploader.getId());
     }
 
     private int mediaRows(UUID mediaId) {
-        return jdbcTemplate.queryForObject("SELECT count(*) FROM media WHERE id = ?", Integer.class, mediaId);
+        return jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM media WHERE id = ?", Integer.class, mediaId);
     }
 
     private Instant warnedAt(User user) {
@@ -606,7 +638,9 @@ class UserRetentionTests {
     }
 
     private int rowsOf(User user, String table) {
-        return jdbcTemplate.queryForObject("SELECT count(*) FROM " + table + " WHERE user_id = ?", Integer.class,
+        return jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM " + table + " WHERE user_id = ?",
+                Integer.class,
                 user.getId());
     }
 
@@ -614,8 +648,7 @@ class UserRetentionTests {
         return jdbcTemplate.queryForObject(
                 "SELECT count(*) FROM refresh_tokens WHERE user_id = ? AND revoked_at IS NULL",
                 Integer.class,
-                user.getId()
-        );
+                user.getId());
     }
 
     private static Instant instant(Object timestamp) {
@@ -626,7 +659,8 @@ class UserRetentionTests {
         return "retention-" + UUID.randomUUID() + "@example.com";
     }
 
-    // Mail is dispatched asynchronously after commit: "nothing sent" can only be checked after a grace period
+    // Mail is dispatched asynchronously after commit: "nothing sent" can only be checked after a
+    // grace period
     private static void waitForAsyncDispatch() throws InterruptedException {
         Thread.sleep(Duration.ofMillis(800));
     }

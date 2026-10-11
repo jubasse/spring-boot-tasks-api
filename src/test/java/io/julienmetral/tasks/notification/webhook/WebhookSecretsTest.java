@@ -1,16 +1,15 @@
 package io.julienmetral.tasks.notification.webhook;
 
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Base64;
 import java.util.HashSet;
 import java.util.Set;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class WebhookSecretsTest {
 
@@ -87,7 +86,8 @@ class WebhookSecretsTest {
         String encrypted = secrets.encrypt(secrets.generate());
         WebhookSecrets otherKey = new WebhookSecrets(key(32, 2));
 
-        assertThatThrownBy(() -> otherKey.decrypt(encrypted)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> otherKey.decrypt(encrypted))
+                .isInstanceOf(IllegalStateException.class);
     }
 
     @Test
@@ -115,10 +115,11 @@ class WebhookSecretsTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {
-            "not base64 at all, but long enough to hold 32 bytes",
-            "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-    })
+    @ValueSource(
+            strings = {
+                "not base64 at all, but long enough to hold 32 bytes",
+                "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+            })
     void keyThatIsNotBase64IsRefusedWithHowToGenerateOne(String notBase64) {
         assertRefused(notBase64);
     }
@@ -149,7 +150,8 @@ class WebhookSecretsTest {
         bytes[bytes.length / 2] ^= 1;
         String tampered = "v1:" + Base64.getEncoder().encodeToString(bytes);
 
-        assertThatThrownBy(() -> secrets.decrypt(tampered)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> secrets.decrypt(tampered))
+                .isInstanceOf(IllegalStateException.class);
     }
 
     @Test
@@ -159,7 +161,10 @@ class WebhookSecretsTest {
         byte[] truncated = new byte[bytes.length - 1];
         System.arraycopy(bytes, 0, truncated, 0, truncated.length);
 
-        assertThatThrownBy(() -> secrets.decrypt("v1:" + Base64.getEncoder().encodeToString(truncated)))
+        assertThatThrownBy(
+                        () ->
+                                secrets.decrypt(
+                                        "v1:" + Base64.getEncoder().encodeToString(truncated)))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -186,7 +191,9 @@ class WebhookSecretsTest {
 
     @Test
     void cannotDecryptATamperedValue() {
-        byte[] bytes = Base64.getDecoder().decode(secrets.encrypt(secrets.generate()).substring("v1:".length()));
+        byte[] bytes =
+                Base64.getDecoder()
+                        .decode(secrets.encrypt(secrets.generate()).substring("v1:".length()));
         bytes[bytes.length / 2] ^= 1;
 
         assertThat(secrets.canDecrypt("v1:" + Base64.getEncoder().encodeToString(bytes))).isFalse();

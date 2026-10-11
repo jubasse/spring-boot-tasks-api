@@ -591,5 +591,6 @@ The label matches only this project's test containers.
 
 - Branches follow Git flow: `features/<name>` is merged into `develop` through a pull request, and releases go through `release/<version>` to `main`.
 - Commits follow Conventional Commits (`feat`, `fix`, `test`, `docs`, ...), and production code and its tests go in separate commits.
+- Code is formatted by google-java-format (AOSP style, 100 columns): run `./mvnw spotless:apply` before committing, or the build fails. To keep `git blame` past the one-off reformat, run once `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
 - [AGENTS.md](AGENTS.md) holds the detailed conventions: architecture rules, the traps to avoid, how to write comments, and how to test.
 - [docs/cartography.md](docs/cartography.md) maps where things are: packages, the project's own annotations and test helpers, and what to update when adding an endpoint, a job or a setting.

@@ -5,6 +5,9 @@ import io.julienmetral.tasks.export.batch.PersonalDataJob;
 import io.julienmetral.tasks.export.batch.PublishExport;
 import io.julienmetral.tasks.export.entities.DataExport;
 import io.julienmetral.tasks.export.entities.DataExportType;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.JobExecution;
@@ -16,10 +19,6 @@ import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
-
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
 
 @Slf4j
 @Service
@@ -36,25 +35,24 @@ public class DataExportRunner {
             JobRepository jobRepository,
             @Qualifier(CsvExportJobs.TASKS_JOB) Job tasksCsvExport,
             @Qualifier(CsvExportJobs.USERS_JOB) Job usersCsvExport,
-            @Qualifier(PersonalDataJob.JOB) Job personalDataExport
-    ) {
+            @Qualifier(PersonalDataJob.JOB) Job personalDataExport) {
         this.exportService = exportService;
         this.jobOperator = jobOperator;
         this.jobRepository = jobRepository;
-        this.jobs = Map.of(
-                DataExportType.TASKS_CSV, tasksCsvExport,
-                DataExportType.USERS_CSV, usersCsvExport,
-                DataExportType.PERSONAL_DATA, personalDataExport
-        );
+        this.jobs =
+                Map.of(
+                        DataExportType.TASKS_CSV, tasksCsvExport,
+                        DataExportType.USERS_CSV, usersCsvExport,
+                        DataExportType.PERSONAL_DATA, personalDataExport);
     }
 
     /**
-     * Runs the export's job on this thread once this instance has claimed the export; a duplicate message, or an
-     * export another instance runs, does nothing. Called outside any transaction: Spring Batch refuses to start a job
-     * inside one, and every step commits on its own.
-     * <p>
-     * A run interrupted on an instance that stopped is left STARTED in Batch's tables: it is recovered first, so the
-     * job instance restarts rather than being refused as already running.
+     * Runs the export's job on this thread once this instance has claimed the export; a duplicate
+     * message, or an export another instance runs, does nothing. Called outside any transaction:
+     * Spring Batch refuses to start a job inside one, and every step commits on its own.
+     *
+     * <p>A run interrupted on an instance that stopped is left STARTED in Batch's tables: it is
+     * recovered first, so the job instance restarts rather than being refused as already running.
      */
     public void run(UUID exportId) {
         Optional<DataExport> claimed = exportService.claim(exportId);
@@ -65,9 +63,10 @@ public class DataExportRunner {
         }
 
         Job job = jobs.get(claimed.get().getType());
-        JobParameters parameters = new JobParametersBuilder()
-                .addString(PublishExport.EXPORT_ID, exportId.toString())
-                .toJobParameters();
+        JobParameters parameters =
+                new JobParametersBuilder()
+                        .addString(PublishExport.EXPORT_ID, exportId.toString())
+                        .toJobParameters();
 
         recoverInterruptedRuns(job, parameters);
 

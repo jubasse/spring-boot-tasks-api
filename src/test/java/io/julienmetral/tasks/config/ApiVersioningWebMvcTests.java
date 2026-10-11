@@ -1,29 +1,5 @@
 package io.julienmetral.tasks.config;
 
-import io.julienmetral.tasks.identity.controllers.IdenticonController;
-import io.julienmetral.tasks.identity.dtos.AuthResponseDto;
-import io.julienmetral.tasks.identity.repositories.AccountState;
-import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.identity.services.AuthService;
-import io.julienmetral.tasks.support.WebLayerTest;
-import io.julienmetral.tasks.task.entities.Task;
-import io.julienmetral.tasks.task.services.TaskService;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.test.web.servlet.MockMvc;
-
-import java.time.Instant;
-import java.util.Optional;
-import java.util.UUID;
-
 import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static io.julienmetral.tasks.support.Problems.withoutJavaTypeNames;
 import static io.julienmetral.tasks.support.WebCallers.everyAccountIsActive;
@@ -42,28 +18,49 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.julienmetral.tasks.identity.controllers.IdenticonController;
+import io.julienmetral.tasks.identity.dtos.AuthResponseDto;
+import io.julienmetral.tasks.identity.repositories.AccountState;
+import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.identity.services.AuthService;
+import io.julienmetral.tasks.support.WebLayerTest;
+import io.julienmetral.tasks.task.entities.Task;
+import io.julienmetral.tasks.task.services.TaskService;
+import java.time.Instant;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.test.web.servlet.MockMvc;
+
 @WebLayerTest
 class ApiVersioningWebMvcTests {
 
-    private static final String UNSUPPORTED_VERSION = "This API version is not supported: use /api/v1";
+    private static final String UNSUPPORTED_VERSION =
+            "This API version is not supported: use /api/v1";
 
     private static final String NO_ENDPOINT = "No endpoint matches this path";
 
     private static final String NEW_TASK = "{\"reference\": \"T-1\", \"title\": \"Task\"}";
 
-    private static final String CREDENTIALS = "{\"email\": \"alice@example.com\", \"password\": \"password123\"}";
+    private static final String CREDENTIALS =
+            "{\"email\": \"alice@example.com\", \"password\": \"password123\"}";
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private TaskService taskService;
+    @Autowired private TaskService taskService;
 
-    @Autowired
-    private AuthService authService;
+    @Autowired private AuthService authService;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
     @Nested
     class CurrentVersion {
@@ -87,21 +84,30 @@ class ApiVersioningWebMvcTests {
             UUID id = UUID.randomUUID();
             when(taskService.create(any())).thenReturn(task(id));
 
-            mockMvc.perform(post("/api/v1/tasks")
-                            .with(user(UUID.randomUUID()))
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(NEW_TASK))
+            mockMvc.perform(
+                            post("/api/v1/tasks")
+                                    .with(user(UUID.randomUUID()))
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content(NEW_TASK))
                     .andExpect(status().isCreated())
                     .andExpect(header().string(HttpHeaders.LOCATION, "/api/v1/tasks/" + id));
         }
 
         @Test
         void loginUnderVersionOneIsPublic() throws Exception {
-            when(authService.login(any())).thenReturn(new AuthResponseDto(
-                    "access", "Bearer", Instant.parse("2030-01-01T00:15:00Z"),
-                    "refresh", Instant.parse("2030-01-31T00:00:00Z")));
+            when(authService.login(any()))
+                    .thenReturn(
+                            new AuthResponseDto(
+                                    "access",
+                                    "Bearer",
+                                    Instant.parse("2030-01-01T00:15:00Z"),
+                                    "refresh",
+                                    Instant.parse("2030-01-31T00:00:00Z")));
 
-            mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content(CREDENTIALS))
+            mockMvc.perform(
+                            post("/api/v1/auth/login")
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content(CREDENTIALS))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.accessToken").value("access"));
         }
@@ -144,25 +150,30 @@ class ApiVersioningWebMvcTests {
 
         @ParameterizedTest
         @ValueSource(strings = {"v2", "v0", "v1.5", "vx", "v"})
-        void unsupportedOrMalformedVersionIsAnUntypedBadRequestPointingToVersionOne(String version) throws Exception {
+        void unsupportedOrMalformedVersionIsAnUntypedBadRequestPointingToVersionOne(String version)
+                throws Exception {
             mockMvc.perform(get("/api/{version}/tasks", version).with(user(UUID.randomUUID())))
                     .andExpect(untypedProblem(400, "Bad Request"))
                     .andExpect(jsonPath("$.detail").value(UNSUPPORTED_VERSION))
                     .andExpect(withoutJavaTypeNames())
-                    .andExpect(content().string(allOf(
-                            not(containsString("Invalid API version")),
-                            not(containsString("format")),
-                            not(containsString("segment")))));
+                    .andExpect(
+                            content()
+                                    .string(
+                                            allOf(
+                                                    not(containsString("Invalid API version")),
+                                                    not(containsString("format")),
+                                                    not(containsString("segment")))));
 
             verifyNoInteractions(taskService);
         }
 
         @Test
         void unsupportedVersionIsRefusedBeforeTheBodyIsValidated() throws Exception {
-            mockMvc.perform(post("/api/v2/tasks")
-                            .with(user(UUID.randomUUID()))
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("{}"))
+            mockMvc.perform(
+                            post("/api/v2/tasks")
+                                    .with(user(UUID.randomUUID()))
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content("{}"))
                     .andExpect(untypedProblem(400, "Bad Request"))
                     .andExpect(jsonPath("$.detail").value(UNSUPPORTED_VERSION))
                     .andExpect(jsonPath("$.errors").doesNotExist());
@@ -171,7 +182,8 @@ class ApiVersioningWebMvcTests {
         }
 
         @Test
-        void anonymousRequestToAnUnsupportedVersionIsUnauthorizedBeforeTheVersionIsChecked() throws Exception {
+        void anonymousRequestToAnUnsupportedVersionIsUnauthorizedBeforeTheVersionIsChecked()
+                throws Exception {
             mockMvc.perform(get("/api/v2/tasks"))
                     .andExpect(status().isUnauthorized())
                     .andExpect(content().string(""));
@@ -179,7 +191,10 @@ class ApiVersioningWebMvcTests {
 
         @Test
         void publicEndpointIsPublicUnderVersionOneOnly() throws Exception {
-            mockMvc.perform(post("/api/v2/auth/login").contentType(MediaType.APPLICATION_JSON).content(CREDENTIALS))
+            mockMvc.perform(
+                            post("/api/v2/auth/login")
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content(CREDENTIALS))
                     .andExpect(status().isUnauthorized());
 
             verifyNoInteractions(authService);
@@ -197,7 +212,8 @@ class ApiVersioningWebMvcTests {
         @ParameterizedTest
         @ValueSource(strings = {"v1.0", "v1.0.0", "v01", "vv1"})
         void doesNotLetAnUnverifiedAccountIntoTasks(String version) throws Exception {
-            when(userRepository.findAccountStateById(any())).thenReturn(Optional.of(new AccountState(true, null)));
+            when(userRepository.findAccountStateById(any()))
+                    .thenReturn(Optional.of(new AccountState(true, null)));
 
             mockMvc.perform(get("/api/{version}/tasks", version).with(user(UUID.randomUUID())))
                     .andExpect(status().is4xxClientError());
@@ -208,7 +224,10 @@ class ApiVersioningWebMvcTests {
         @Test
         void doesNotLetADisabledAccountIntoTasks() throws Exception {
             when(userRepository.findAccountStateById(any()))
-                    .thenReturn(Optional.of(new AccountState(false, Instant.parse("2026-01-01T00:00:00Z"))));
+                    .thenReturn(
+                            Optional.of(
+                                    new AccountState(
+                                            false, Instant.parse("2026-01-01T00:00:00Z"))));
 
             mockMvc.perform(get("/api/v1.0/tasks").with(user(UUID.randomUUID())))
                     .andExpect(status().is4xxClientError());
@@ -226,7 +245,15 @@ class ApiVersioningWebMvcTests {
         }
 
         @ParameterizedTest
-        @ValueSource(strings = {"/api/tasks", "/api/v1/unknown", "/api/v2/unknown", "/api/V1/tasks", "/api/", "/api"})
+        @ValueSource(
+                strings = {
+                    "/api/tasks",
+                    "/api/v1/unknown",
+                    "/api/v2/unknown",
+                    "/api/V1/tasks",
+                    "/api/",
+                    "/api"
+                })
         void apiPathThatMapsNothingIsAnUntypedNotFound(String path) throws Exception {
             mockMvc.perform(get(path).with(user(UUID.randomUUID())))
                     .andExpect(untypedProblem(404, "Not Found"))

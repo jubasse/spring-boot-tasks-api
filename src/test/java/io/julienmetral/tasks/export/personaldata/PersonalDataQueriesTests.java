@@ -1,20 +1,19 @@
 package io.julienmetral.tasks.export.personaldata;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.julienmetral.tasks.notification.webhook.WebhookUrls;
 import io.julienmetral.tasks.support.JdbcSliceTest;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.JdbcTemplate;
-
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 @JdbcSliceTest
 class PersonalDataQueriesTests {
@@ -29,11 +28,9 @@ class PersonalDataQueriesTests {
 
     private static final String SLACK_URL = "v1:encrypted-slack-url-with-its-token";
 
-    @Autowired
-    private PersonalDataQueries queries;
+    @Autowired private PersonalDataQueries queries;
 
-    @Autowired
-    private JdbcTemplate jdbc;
+    @Autowired private JdbcTemplate jdbc;
 
     private UUID owner;
 
@@ -46,8 +43,11 @@ class PersonalDataQueriesTests {
         owner = insertUser("owner-" + UUID.randomUUID() + "@example.com", "Owner Zoé", VERIFIED_AT);
         otherEmail = "other-" + UUID.randomUUID() + "@example.com";
         other = insertUser(otherEmail, "Other Łukasz", VERIFIED_AT);
-        jdbc.update("INSERT INTO user_roles (user_id, role) VALUES (?, 'USER'), (?, 'ADMIN'), (?, 'USER')",
-                owner, owner, other);
+        jdbc.update(
+                "INSERT INTO user_roles (user_id, role) VALUES (?, 'USER'), (?, 'ADMIN'), (?, 'USER')",
+                owner,
+                owner,
+                other);
     }
 
     // Account
@@ -56,9 +56,19 @@ class PersonalDataQueriesTests {
     void accountHoldsItsFieldsWithTimesAsInstantsAndNoPasswordHash() {
         Map<String, Object> account = queries.account(owner);
 
-        assertThat(account).containsOnlyKeys(
-                "id", "email", "display_name", "status", "roles", "email_verified_at", "last_login_at",
-                "last_active_at", "inactivity_warned_at", "created_at", "has_profile_photo");
+        assertThat(account)
+                .containsOnlyKeys(
+                        "id",
+                        "email",
+                        "display_name",
+                        "status",
+                        "roles",
+                        "email_verified_at",
+                        "last_login_at",
+                        "last_active_at",
+                        "inactivity_warned_at",
+                        "created_at",
+                        "has_profile_photo");
         assertThat(account)
                 .containsEntry("id", owner)
                 .containsEntry("display_name", "Owner Zoé")
@@ -77,7 +87,8 @@ class PersonalDataQueriesTests {
 
     @Test
     void accountSoftDeletedIsStillExported() {
-        jdbc.update("UPDATE users SET deleted_at = ? WHERE id = ?", Timestamp.from(DELETED_AT), owner);
+        jdbc.update(
+                "UPDATE users SET deleted_at = ? WHERE id = ?", Timestamp.from(DELETED_AT), owner);
 
         assertThat(queries.account(owner)).containsEntry("id", owner);
     }
@@ -86,10 +97,12 @@ class PersonalDataQueriesTests {
 
     @Test
     void profilePhotoIsTheStoredObjectOfTheProcessedPhoto() {
-        UUID photo = insertMedia(owner, "AVATAR", "avatar/" + UUID.randomUUID(), "image/png", "me.png");
+        UUID photo =
+                insertMedia(owner, "AVATAR", "avatar/" + UUID.randomUUID(), "image/png", "me.png");
         jdbc.update("UPDATE user_profiles SET avatar_media_id = ? WHERE id = ?", photo, owner);
 
-        assertThat(queries.profilePhoto(owner)).containsOnlyKeys("storage_key", "content_type")
+        assertThat(queries.profilePhoto(owner))
+                .containsOnlyKeys("storage_key", "content_type")
                 .containsEntry("storage_key", storageKeyOf(photo))
                 .containsEntry("content_type", "image/png");
         assertThat(queries.account(owner)).containsEntry("has_profile_photo", true);
@@ -97,8 +110,17 @@ class PersonalDataQueriesTests {
 
     @Test
     void accountWithoutPhotoOrWithAPhotoStillPendingHasNone() {
-        UUID pending = insertMedia(owner, "AVATAR_UPLOAD", "avatar-upload/" + UUID.randomUUID(), "image/png", "me.png");
-        jdbc.update("UPDATE user_profiles SET pending_avatar_media_id = ? WHERE id = ?", pending, owner);
+        UUID pending =
+                insertMedia(
+                        owner,
+                        "AVATAR_UPLOAD",
+                        "avatar-upload/" + UUID.randomUUID(),
+                        "image/png",
+                        "me.png");
+        jdbc.update(
+                "UPDATE user_profiles SET pending_avatar_media_id = ? WHERE id = ?",
+                pending,
+                owner);
 
         assertThat(queries.profilePhoto(owner)).isNull();
     }
@@ -107,16 +129,27 @@ class PersonalDataQueriesTests {
 
     @Test
     void notificationSettingsAreTheSwitchesOfTheAccount() {
-        jdbc.update("""
+        jdbc.update(
+                """
                 INSERT INTO notification_settings (user_id, task_assigned, task_unassigned, task_cancelled,
                                                    task_deleted, task_commented, task_mentioned, task_due_soon,
                                                    task_overdue, updated_at)
                 VALUES (?, false, true, true, true, true, false, true, true, ?)
-                """, owner, Timestamp.from(CREATED_AT));
+                """,
+                owner,
+                Timestamp.from(CREATED_AT));
 
         assertThat(queries.notificationSettings(owner))
-                .containsOnlyKeys("task_assigned", "task_unassigned", "task_cancelled", "task_deleted",
-                        "task_commented", "task_mentioned", "task_due_soon", "task_overdue", "updated_at")
+                .containsOnlyKeys(
+                        "task_assigned",
+                        "task_unassigned",
+                        "task_cancelled",
+                        "task_deleted",
+                        "task_commented",
+                        "task_mentioned",
+                        "task_due_soon",
+                        "task_overdue",
+                        "updated_at")
                 .containsEntry("task_assigned", false)
                 .containsEntry("task_mentioned", false)
                 .containsEntry("task_overdue", true)
@@ -132,8 +165,13 @@ class PersonalDataQueriesTests {
 
     @Test
     void webhooksShowTheirUrlAndEventsAsTheApiNamesThemButNeitherSecretNorSlackUrl() {
-        UUID webhook = insertWebhook(owner, "WEBHOOK", "https://hooks.example.com/tasks", "TASK_DUE_SOON",
-                "TASK_ASSIGNED");
+        UUID webhook =
+                insertWebhook(
+                        owner,
+                        "WEBHOOK",
+                        "https://hooks.example.com/tasks",
+                        "TASK_DUE_SOON",
+                        "TASK_ASSIGNED");
         UUID slack = insertWebhook(owner, "SLACK", SLACK_URL, "TASK_OVERDUE");
         insertWebhook(other, "WEBHOOK", "https://hooks.example.com/other", "TASK_ASSIGNED");
 
@@ -141,7 +179,14 @@ class PersonalDataQueriesTests {
 
         assertThat(webhooks).extracting(row -> row.get("id")).containsExactly(webhook, slack);
         assertThat(webhooks.getFirst())
-                .containsOnlyKeys("id", "kind", "url", "events", "disabled_at", "disabled_reason", "created_at",
+                .containsOnlyKeys(
+                        "id",
+                        "kind",
+                        "url",
+                        "events",
+                        "disabled_at",
+                        "disabled_reason",
+                        "created_at",
                         "updated_at")
                 .containsEntry("url", "https://hooks.example.com/tasks")
                 .containsEntry("events", "task.assigned task.due_soon");
@@ -163,7 +208,8 @@ class PersonalDataQueriesTests {
 
         List<Map<String, Object>> tasks = queries.tasks(owner);
 
-        assertThat(tasks).extracting(row -> row.get("id"))
+        assertThat(tasks)
+                .extracting(row -> row.get("id"))
                 .containsExactlyInAnyOrder(created, assigned, deleted)
                 .doesNotContain(someoneElses);
         assertThat(rowWithId(tasks, created))
@@ -189,30 +235,58 @@ class PersonalDataQueriesTests {
 
         List<Map<String, Object>> comments = queries.comments(owner);
 
-        assertThat(comments).singleElement().satisfies(comment -> assertThat(comment)
-                .containsOnlyKeys("id", "task_reference", "body", "created_at", "edited_at")
-                .containsEntry("id", mine)
-                .containsEntry("task_reference", referenceOf(task))
-                .containsEntry("body", "My comment")
-                .containsEntry("created_at", CREATED_AT));
+        assertThat(comments)
+                .singleElement()
+                .satisfies(
+                        comment ->
+                                assertThat(comment)
+                                        .containsOnlyKeys(
+                                                "id",
+                                                "task_reference",
+                                                "body",
+                                                "created_at",
+                                                "edited_at")
+                                        .containsEntry("id", mine)
+                                        .containsEntry("task_reference", referenceOf(task))
+                                        .containsEntry("body", "My comment")
+                                        .containsEntry("created_at", CREATED_AT));
     }
 
     @Test
     void attachmentsAreTheFilesTheAccountUploadedWithoutTheirStorageKey() {
         UUID task = insertTask("With files", other, other, null);
-        UUID mine = insertMedia(owner, "TASK_ATTACHMENT", "task-attachment/" + UUID.randomUUID(), "application/pdf",
-                "invoice.pdf");
-        UUID theirs = insertMedia(other, "TASK_ATTACHMENT", "task-attachment/" + UUID.randomUUID(), "application/pdf",
-                "theirs.pdf");
+        UUID mine =
+                insertMedia(
+                        owner,
+                        "TASK_ATTACHMENT",
+                        "task-attachment/" + UUID.randomUUID(),
+                        "application/pdf",
+                        "invoice.pdf");
+        UUID theirs =
+                insertMedia(
+                        other,
+                        "TASK_ATTACHMENT",
+                        "task-attachment/" + UUID.randomUUID(),
+                        "application/pdf",
+                        "theirs.pdf");
         attach(task, mine);
         attach(task, theirs);
 
-        assertThat(queries.attachments(owner)).singleElement().satisfies(attachment -> assertThat(attachment)
-                .containsOnlyKeys("id", "task_reference", "original_filename", "content_type", "size_bytes",
-                        "created_at")
-                .containsEntry("id", mine)
-                .containsEntry("task_reference", referenceOf(task))
-                .containsEntry("original_filename", "invoice.pdf"));
+        assertThat(queries.attachments(owner))
+                .singleElement()
+                .satisfies(
+                        attachment ->
+                                assertThat(attachment)
+                                        .containsOnlyKeys(
+                                                "id",
+                                                "task_reference",
+                                                "original_filename",
+                                                "content_type",
+                                                "size_bytes",
+                                                "created_at")
+                                        .containsEntry("id", mine)
+                                        .containsEntry("task_reference", referenceOf(task))
+                                        .containsEntry("original_filename", "invoice.pdf"));
     }
 
     @Test
@@ -221,11 +295,16 @@ class PersonalDataQueriesTests {
         insertEvent(task, owner, "STATUS_CHANGED");
         insertEvent(task, other, "ARCHIVED");
 
-        assertThat(queries.history(owner)).singleElement().satisfies(event -> assertThat(event)
-                .containsOnlyKeys("id", "task_reference", "type", "occurred_at")
-                .containsEntry("task_reference", referenceOf(task))
-                .containsEntry("type", "STATUS_CHANGED")
-                .containsEntry("occurred_at", CREATED_AT));
+        assertThat(queries.history(owner))
+                .singleElement()
+                .satisfies(
+                        event ->
+                                assertThat(event)
+                                        .containsOnlyKeys(
+                                                "id", "task_reference", "type", "occurred_at")
+                                        .containsEntry("task_reference", referenceOf(task))
+                                        .containsEntry("type", "STATUS_CHANGED")
+                                        .containsEntry("occurred_at", CREATED_AT));
     }
 
     // Sessions
@@ -248,9 +327,11 @@ class PersonalDataQueriesTests {
 
     @Test
     void revokedSessionShowsWhenItWasRevoked() {
-        insertRefreshToken(owner, UUID.randomUUID(), CREATED_AT, CREATED_AT.plusSeconds(900), DELETED_AT);
+        insertRefreshToken(
+                owner, UUID.randomUUID(), CREATED_AT, CREATED_AT.plusSeconds(900), DELETED_AT);
 
-        assertThat(queries.sessions(owner)).singleElement()
+        assertThat(queries.sessions(owner))
+                .singleElement()
                 .satisfies(session -> assertThat(session).containsEntry("revoked_at", DELETED_AT));
     }
 
@@ -266,12 +347,20 @@ class PersonalDataQueriesTests {
 
         List<Map<String, Object>> mentions = queries.mentions(owner);
 
-        assertThat(mentions).singleElement().satisfies(row -> assertThat(row)
-                .containsOnlyKeys("comment_id", "task_reference", "author", "created_at")
-                .containsEntry("comment_id", comment)
-                .containsEntry("task_reference", referenceOf(task))
-                .containsEntry("author", "Other Łukasz")
-                .containsEntry("created_at", CREATED_AT));
+        assertThat(mentions)
+                .singleElement()
+                .satisfies(
+                        row ->
+                                assertThat(row)
+                                        .containsOnlyKeys(
+                                                "comment_id",
+                                                "task_reference",
+                                                "author",
+                                                "created_at")
+                                        .containsEntry("comment_id", comment)
+                                        .containsEntry("task_reference", referenceOf(task))
+                                        .containsEntry("author", "Other Łukasz")
+                                        .containsEntry("created_at", CREATED_AT));
         assertThat(valuesOf(mentions)).noneMatch(value -> value.contains("thoughts"));
     }
 
@@ -283,36 +372,62 @@ class PersonalDataQueriesTests {
         insertReminder(task, owner, "DUE_SOON", CREATED_AT.plusSeconds(3600), CREATED_AT);
         insertReminder(task, other, "OVERDUE", CREATED_AT.plusSeconds(7200), CREATED_AT);
 
-        assertThat(queries.reminders(owner)).singleElement().satisfies(row -> assertThat(row)
-                .containsOnlyKeys("task_reference", "kind", "due_at", "sent_at")
-                .containsEntry("task_reference", referenceOf(task))
-                .containsEntry("kind", "DUE_SOON")
-                .containsEntry("due_at", CREATED_AT.plusSeconds(3600))
-                .containsEntry("sent_at", CREATED_AT));
+        assertThat(queries.reminders(owner))
+                .singleElement()
+                .satisfies(
+                        row ->
+                                assertThat(row)
+                                        .containsOnlyKeys(
+                                                "task_reference", "kind", "due_at", "sent_at")
+                                        .containsEntry("task_reference", referenceOf(task))
+                                        .containsEntry("kind", "DUE_SOON")
+                                        .containsEntry("due_at", CREATED_AT.plusSeconds(3600))
+                                        .containsEntry("sent_at", CREATED_AT));
     }
 
     // Webhook deliveries
 
     @Test
     void webhookDeliveriesAreThoseOfTheAccountsEndpointsWithTheApisEventNamesButNoPayload() {
-        UUID endpoint = insertWebhook(owner, "WEBHOOK", "https://hooks.example.com/tasks", "TASK_ASSIGNED");
-        UUID othersEndpoint = insertWebhook(other, "WEBHOOK", "https://hooks.example.com/other", "TASK_ASSIGNED");
-        UUID delivery = insertWebhookDelivery(
-                endpoint, "TASK_ASSIGNED", "DELIVERED", 1, 200, CREATED_AT, "{\"secret-detail\": true}");
-        insertWebhookDelivery(othersEndpoint, "TASK_ASSIGNED", "DELIVERED", 1, 200, CREATED_AT, "{}");
+        UUID endpoint =
+                insertWebhook(owner, "WEBHOOK", "https://hooks.example.com/tasks", "TASK_ASSIGNED");
+        UUID othersEndpoint =
+                insertWebhook(other, "WEBHOOK", "https://hooks.example.com/other", "TASK_ASSIGNED");
+        UUID delivery =
+                insertWebhookDelivery(
+                        endpoint,
+                        "TASK_ASSIGNED",
+                        "DELIVERED",
+                        1,
+                        200,
+                        CREATED_AT,
+                        "{\"secret-detail\": true}");
+        insertWebhookDelivery(
+                othersEndpoint, "TASK_ASSIGNED", "DELIVERED", 1, 200, CREATED_AT, "{}");
 
         List<Map<String, Object>> deliveries = queries.webhookDeliveries(owner);
 
-        assertThat(deliveries).singleElement().satisfies(row -> assertThat(row)
-                .containsOnlyKeys("id", "endpoint_id", "event", "status", "attempts", "last_status_code",
-                        "created_at", "delivered_at")
-                .containsEntry("id", delivery)
-                .containsEntry("endpoint_id", endpoint)
-                .containsEntry("event", "task.assigned")
-                .containsEntry("status", "DELIVERED")
-                .containsEntry("attempts", 1)
-                .containsEntry("last_status_code", 200)
-                .containsEntry("created_at", CREATED_AT));
+        assertThat(deliveries)
+                .singleElement()
+                .satisfies(
+                        row ->
+                                assertThat(row)
+                                        .containsOnlyKeys(
+                                                "id",
+                                                "endpoint_id",
+                                                "event",
+                                                "status",
+                                                "attempts",
+                                                "last_status_code",
+                                                "created_at",
+                                                "delivered_at")
+                                        .containsEntry("id", delivery)
+                                        .containsEntry("endpoint_id", endpoint)
+                                        .containsEntry("event", "task.assigned")
+                                        .containsEntry("status", "DELIVERED")
+                                        .containsEntry("attempts", 1)
+                                        .containsEntry("last_status_code", 200)
+                                        .containsEntry("created_at", CREATED_AT));
         assertThat(valuesOf(deliveries)).noneMatch(value -> value.contains("secret-detail"));
     }
 
@@ -321,10 +436,21 @@ class PersonalDataQueriesTests {
         UUID mine = insertExport(owner);
         insertExport(other);
 
-        assertThat(queries.exports(owner)).singleElement().satisfies(export -> assertThat(export)
-                .containsOnlyKeys("id", "type", "status", "row_count", "created_at", "completed_at", "expires_at")
-                .containsEntry("id", mine)
-                .containsEntry("type", "PERSONAL_DATA"));
+        assertThat(queries.exports(owner))
+                .singleElement()
+                .satisfies(
+                        export ->
+                                assertThat(export)
+                                        .containsOnlyKeys(
+                                                "id",
+                                                "type",
+                                                "status",
+                                                "row_count",
+                                                "created_at",
+                                                "completed_at",
+                                                "expires_at")
+                                        .containsEntry("id", mine)
+                                        .containsEntry("type", "PERSONAL_DATA"));
     }
 
     // Across every section
@@ -354,39 +480,52 @@ class PersonalDataQueriesTests {
     }
 
     private UUID insertUser(String email, String displayName, Instant verifiedAt) {
-        UUID id = jdbc.queryForObject(
-                """
+        UUID id =
+                jdbc.queryForObject(
+                        """
                         INSERT INTO user_profiles (display_name, status, created_at, updated_at)
                         VALUES (?, 'ACTIVE', ?, ?)
                         RETURNING id
                         """,
-                UUID.class,
-                displayName, Timestamp.from(CREATED_AT), Timestamp.from(CREATED_AT)
-        );
+                        UUID.class,
+                        displayName,
+                        Timestamp.from(CREATED_AT),
+                        Timestamp.from(CREATED_AT));
         jdbc.update(
                 """
                         INSERT INTO users (id, email, password_hash, enabled, email_verified_at, created_at, updated_at)
                         VALUES (?, ?, '$argon2id$v=19$m=16384,t=2,p=1$c2FsdA$aGFzaA', true, ?, ?, ?)
                         """,
-                id, email, Timestamp.from(verifiedAt), Timestamp.from(CREATED_AT), Timestamp.from(CREATED_AT)
-        );
+                id,
+                email,
+                Timestamp.from(verifiedAt),
+                Timestamp.from(CREATED_AT),
+                Timestamp.from(CREATED_AT));
         return id;
     }
 
     private UUID insertWebhook(UUID user, String kind, String url, String... events) {
-        UUID id = jdbc.queryForObject(
-                """
+        UUID id =
+                jdbc.queryForObject(
+                        """
                         INSERT INTO webhook_endpoints (user_id, kind, url, secret, previous_secret, created_at,
                                                        updated_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?)
                         RETURNING id
                         """,
-                UUID.class,
-                user, kind, url, WEBHOOK_SECRET, WEBHOOK_SECRET + "-previous", Timestamp.from(CREATED_AT),
-                Timestamp.from(CREATED_AT)
-        );
+                        UUID.class,
+                        user,
+                        kind,
+                        url,
+                        WEBHOOK_SECRET,
+                        WEBHOOK_SECRET + "-previous",
+                        Timestamp.from(CREATED_AT),
+                        Timestamp.from(CREATED_AT));
         for (String event : events) {
-            jdbc.update("INSERT INTO webhook_endpoint_events (endpoint_id, event) VALUES (?, ?)", id, event);
+            jdbc.update(
+                    "INSERT INTO webhook_endpoint_events (endpoint_id, event) VALUES (?, ?)",
+                    id,
+                    event);
         }
         return id;
     }
@@ -400,21 +539,27 @@ class PersonalDataQueriesTests {
                         RETURNING id
                         """,
                 UUID.class,
-                "PDQ-" + UUID.randomUUID().toString().substring(0, 8), title, creator, assignee,
-                Timestamp.from(CREATED_AT), Timestamp.from(CREATED_AT),
-                deletedAt == null ? null : Timestamp.from(deletedAt)
-        );
+                "PDQ-" + UUID.randomUUID().toString().substring(0, 8),
+                title,
+                creator,
+                assignee,
+                Timestamp.from(CREATED_AT),
+                Timestamp.from(CREATED_AT),
+                deletedAt == null ? null : Timestamp.from(deletedAt));
     }
 
     private UUID insertComment(UUID task, UUID author, String body) {
         return jdbc.queryForObject(
                 "INSERT INTO task_comments (task_id, author_id, body, created_at) VALUES (?, ?, ?, ?) RETURNING id",
                 UUID.class,
-                task, author, body, Timestamp.from(CREATED_AT)
-        );
+                task,
+                author,
+                body,
+                Timestamp.from(CREATED_AT));
     }
 
-    private UUID insertMedia(UUID uploader, String usage, String storageKey, String contentType, String filename) {
+    private UUID insertMedia(
+            UUID uploader, String usage, String storageKey, String contentType, String filename) {
         return jdbc.queryForObject(
                 """
                         INSERT INTO media (storage_key, usage, original_filename, content_type, size_bytes, sha256,
@@ -423,13 +568,20 @@ class PersonalDataQueriesTests {
                         RETURNING id
                         """,
                 UUID.class,
-                storageKey, usage, filename, contentType, uploader, Timestamp.from(CREATED_AT)
-        );
+                storageKey,
+                usage,
+                filename,
+                contentType,
+                uploader,
+                Timestamp.from(CREATED_AT));
     }
 
     private void attach(UUID task, UUID media) {
-        jdbc.update("INSERT INTO task_attachments (task_id, media_id, created_at) VALUES (?, ?, ?)",
-                task, media, Timestamp.from(CREATED_AT));
+        jdbc.update(
+                "INSERT INTO task_attachments (task_id, media_id, created_at) VALUES (?, ?, ?)",
+                task,
+                media,
+                Timestamp.from(CREATED_AT));
     }
 
     private void insertEvent(UUID task, UUID actor, String type) {
@@ -438,11 +590,14 @@ class PersonalDataQueriesTests {
                         INSERT INTO task_events (task_id, actor_id, type, payload, occurred_at)
                         VALUES (?, ?, ?, '{"detail": "kept in the task history"}'::jsonb, ?)
                         """,
-                task, actor, type, Timestamp.from(CREATED_AT)
-        );
+                task,
+                actor,
+                type,
+                Timestamp.from(CREATED_AT));
     }
 
-    private UUID insertRefreshToken(UUID user, UUID familyId, Instant createdAt, Instant expiresAt, Instant revokedAt) {
+    private UUID insertRefreshToken(
+            UUID user, UUID familyId, Instant createdAt, Instant expiresAt, Instant revokedAt) {
         String tokenHash = UUID.randomUUID().toString().replace("-", "").repeat(2).substring(0, 64);
         return jdbc.queryForObject(
                 """
@@ -452,24 +607,40 @@ class PersonalDataQueriesTests {
                         RETURNING id
                         """,
                 UUID.class,
-                user, tokenHash, familyId, Timestamp.from(createdAt), Timestamp.from(expiresAt),
-                revokedAt == null ? null : Timestamp.from(revokedAt)
-        );
+                user,
+                tokenHash,
+                familyId,
+                Timestamp.from(createdAt),
+                Timestamp.from(expiresAt),
+                revokedAt == null ? null : Timestamp.from(revokedAt));
     }
 
     private void mention(UUID comment, UUID user) {
-        jdbc.update("INSERT INTO task_comment_mentions (comment_id, user_id) VALUES (?, ?)", comment, user);
+        jdbc.update(
+                "INSERT INTO task_comment_mentions (comment_id, user_id) VALUES (?, ?)",
+                comment,
+                user);
     }
 
-    private void insertReminder(UUID task, UUID recipient, String kind, Instant dueAt, Instant sentAt) {
+    private void insertReminder(
+            UUID task, UUID recipient, String kind, Instant dueAt, Instant sentAt) {
         jdbc.update(
                 "INSERT INTO task_reminders (task_id, recipient_id, kind, due_at, sent_at) VALUES (?, ?, ?, ?, ?)",
-                task, recipient, kind, Timestamp.from(dueAt), Timestamp.from(sentAt)
-        );
+                task,
+                recipient,
+                kind,
+                Timestamp.from(dueAt),
+                Timestamp.from(sentAt));
     }
 
-    private UUID insertWebhookDelivery(UUID endpoint, String event, String status, int attempts,
-            Integer lastStatusCode, Instant createdAt, String payload) {
+    private UUID insertWebhookDelivery(
+            UUID endpoint,
+            String event,
+            String status,
+            int attempts,
+            Integer lastStatusCode,
+            Instant createdAt,
+            String payload) {
         return jdbc.queryForObject(
                 """
                         INSERT INTO webhook_deliveries (endpoint_id, event, payload, status, attempts,
@@ -478,9 +649,14 @@ class PersonalDataQueriesTests {
                         RETURNING id
                         """,
                 UUID.class,
-                endpoint, event, payload, status, attempts, lastStatusCode, Timestamp.from(createdAt),
-                Timestamp.from(createdAt)
-        );
+                endpoint,
+                event,
+                payload,
+                status,
+                attempts,
+                lastStatusCode,
+                Timestamp.from(createdAt),
+                Timestamp.from(createdAt));
     }
 
     private UUID insertExport(UUID owner) {
@@ -491,8 +667,8 @@ class PersonalDataQueriesTests {
                         RETURNING id
                         """,
                 UUID.class,
-                owner, Timestamp.from(CREATED_AT)
-        );
+                owner,
+                Timestamp.from(CREATED_AT));
     }
 
     private String referenceOf(UUID task) {
@@ -500,7 +676,8 @@ class PersonalDataQueriesTests {
     }
 
     private String storageKeyOf(UUID media) {
-        return jdbc.queryForObject("SELECT storage_key FROM media WHERE id = ?", String.class, media);
+        return jdbc.queryForObject(
+                "SELECT storage_key FROM media WHERE id = ?", String.class, media);
     }
 
     private static Map<String, Object> rowWithId(List<Map<String, Object>> rows, UUID id) {
@@ -508,9 +685,6 @@ class PersonalDataQueriesTests {
     }
 
     private static List<String> valuesOf(List<Map<String, Object>> rows) {
-        return rows.stream()
-                .flatMap(row -> row.values().stream())
-                .map(String::valueOf)
-                .toList();
+        return rows.stream().flatMap(row -> row.values().stream()).map(String::valueOf).toList();
     }
 }

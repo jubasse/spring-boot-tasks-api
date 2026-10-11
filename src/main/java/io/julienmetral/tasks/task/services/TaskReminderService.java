@@ -6,14 +6,13 @@ import io.julienmetral.tasks.task.events.TaskDueSoon;
 import io.julienmetral.tasks.task.events.TaskOverdue;
 import io.julienmetral.tasks.task.repositories.TaskReminderQueries;
 import io.julienmetral.tasks.task.repositories.TaskReminderQueries.Reminder;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.Clock;
-import java.time.Instant;
-import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -25,27 +24,48 @@ public class TaskReminderService {
     private final Clock clock;
 
     /**
-     * Publishes {@link TaskDueSoon} for open tasks due within the lead time and {@link TaskOverdue} for those that
-     * passed their due date within the lookback, each once per due date and assignee. The sent reminders are
-     * recorded in the same transaction, and the emails go after commit: a failed run sends nothing and the next one
-     * retries. {@link TaskReminderJob}'s scheduler lock keeps it to one instance at a time; a second run would only
-     * find the reminders already recorded.
+     * Publishes {@link TaskDueSoon} for open tasks due within the lead time and {@link TaskOverdue}
+     * for those that passed their due date within the lookback, each once per due date and
+     * assignee. The sent reminders are recorded in the same transaction, and the emails go after
+     * commit: a failed run sends nothing and the next one retries. {@link TaskReminderJob}'s
+     * scheduler lock keeps it to one instance at a time; a second run would only find the reminders
+     * already recorded.
      */
     @Transactional
     public TaskReminderReport sendDueReminders() {
         Instant now = clock.instant();
 
-        List<Reminder> dueSoon = queries.recordReminders(
-                TaskReminderKind.DUE_SOON, now, now.plus(properties.dueSoonLeadTime()), now);
-        List<Reminder> overdue = queries.recordReminders(
-                TaskReminderKind.OVERDUE, now.minus(properties.overdueLookback()), now, now);
+        List<Reminder> dueSoon =
+                queries.recordReminders(
+                        TaskReminderKind.DUE_SOON,
+                        now,
+                        now.plus(properties.dueSoonLeadTime()),
+                        now);
+        List<Reminder> overdue =
+                queries.recordReminders(
+                        TaskReminderKind.OVERDUE,
+                        now.minus(properties.overdueLookback()),
+                        now,
+                        now);
 
-        dueSoon.forEach(reminder -> eventPublisher.publishEvent(new TaskDueSoon(
-                reminder.taskId(), reminder.reference(), reminder.title(), reminder.dueAt(), reminder.recipientId()
-        )));
-        overdue.forEach(reminder -> eventPublisher.publishEvent(new TaskOverdue(
-                reminder.taskId(), reminder.reference(), reminder.title(), reminder.dueAt(), reminder.recipientId()
-        )));
+        dueSoon.forEach(
+                reminder ->
+                        eventPublisher.publishEvent(
+                                new TaskDueSoon(
+                                        reminder.taskId(),
+                                        reminder.reference(),
+                                        reminder.title(),
+                                        reminder.dueAt(),
+                                        reminder.recipientId())));
+        overdue.forEach(
+                reminder ->
+                        eventPublisher.publishEvent(
+                                new TaskOverdue(
+                                        reminder.taskId(),
+                                        reminder.reference(),
+                                        reminder.title(),
+                                        reminder.dueAt(),
+                                        reminder.recipientId())));
 
         return new TaskReminderReport(dueSoon.size(), overdue.size());
     }

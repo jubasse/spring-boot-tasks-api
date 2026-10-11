@@ -1,10 +1,9 @@
 package io.julienmetral.tasks.task.services;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.task.entities.TaskReminderKind;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-
 import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.CompletableFuture;
@@ -12,19 +11,19 @@ import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
 
 /**
- * End-to-end tests of the reminder emails: the run is called directly, and the emails sent after its commit are read
- * back from the Mailpit container.
+ * End-to-end tests of the reminder emails: the run is called directly, and the emails sent after
+ * its commit are read back from the Mailpit container.
  */
 class TaskReminderEmailTests extends AbstractTaskReminderTests {
 
     @Test
     void dueSoonReminderEmailsTheAssigneeWithReferenceTitleAndUtcDueDate() throws Exception {
         User assignee = createAssignee();
-        CreatedTask task = createTask(createAdmin(), assignee, NOW.plus(Duration.ofHours(12).plusMinutes(30)));
+        CreatedTask task =
+                createTask(createAdmin(), assignee, NOW.plus(Duration.ofHours(12).plusMinutes(30)));
 
         reminderService.sendDueReminders();
 
@@ -32,14 +31,20 @@ class TaskReminderEmailTests extends AbstractTaskReminderTests {
 
         assertThat(text)
                 .contains("Hello " + assignee.getDisplayName() + ",")
-                .contains("The task " + task.reference() + ": \"" + TITLE + "\" is due on 2100-01-01 12:30 UTC.")
+                .contains(
+                        "The task "
+                                + task.reference()
+                                + ": \""
+                                + TITLE
+                                + "\" is due on 2100-01-01 12:30 UTC.")
                 .contains("notification settings");
     }
 
     @Test
     void overdueReminderEmailsTheAssigneeWithReferenceTitleAndUtcDueDate() throws Exception {
         User assignee = createAssignee();
-        CreatedTask task = createTask(createAdmin(), assignee, NOW.minus(Duration.ofDays(2).plusHours(3)));
+        CreatedTask task =
+                createTask(createAdmin(), assignee, NOW.minus(Duration.ofDays(2).plusHours(3)));
 
         reminderService.sendDueReminders();
 
@@ -47,8 +52,12 @@ class TaskReminderEmailTests extends AbstractTaskReminderTests {
 
         assertThat(text)
                 .contains("Hello " + assignee.getDisplayName() + ",")
-                .contains("The task " + task.reference() + ": \"" + TITLE
-                        + "\" was due on 2099-12-29 21:00 UTC and is not done yet.")
+                .contains(
+                        "The task "
+                                + task.reference()
+                                + ": \""
+                                + TITLE
+                                + "\" was due on 2099-12-29 21:00 UTC and is not done yet.")
                 .contains("notification settings");
     }
 
@@ -98,7 +107,9 @@ class TaskReminderEmailTests extends AbstractTaskReminderTests {
 
         reminderService.sendDueReminders();
 
-        assertThat(remindersOf(task)).extracting(ReminderRow::kind).containsExactly(TaskReminderKind.DUE_SOON);
+        assertThat(remindersOf(task))
+                .extracting(ReminderRow::kind)
+                .containsExactly(TaskReminderKind.DUE_SOON);
         enable(assignee);
         reminderService.sendDueReminders();
 
@@ -114,7 +125,9 @@ class TaskReminderEmailTests extends AbstractTaskReminderTests {
 
         reminderService.sendDueReminders();
 
-        assertThat(remindersOf(task)).extracting(ReminderRow::kind).containsExactly(TaskReminderKind.OVERDUE);
+        assertThat(remindersOf(task))
+                .extracting(ReminderRow::kind)
+                .containsExactly(TaskReminderKind.OVERDUE);
         waitForAsyncDispatch();
         assertThat(countWithSubject(assignee, overdueSubject(task))).isZero();
     }
@@ -128,7 +141,9 @@ class TaskReminderEmailTests extends AbstractTaskReminderTests {
 
         reminderService.sendDueReminders();
 
-        assertThat(remindersOf(task)).extracting(ReminderRow::recipientId).containsExactly(assignee.getId());
+        assertThat(remindersOf(task))
+                .extracting(ReminderRow::recipientId)
+                .containsExactly(assignee.getId());
         waitForAsyncDispatch();
         assertThat(countWithSubject(assignee, dueSoonSubject(task))).isZero();
     }
@@ -141,7 +156,9 @@ class TaskReminderEmailTests extends AbstractTaskReminderTests {
 
         reminderService.sendDueReminders();
 
-        assertThat(remindersOf(task)).extracting(ReminderRow::kind).containsExactly(TaskReminderKind.DUE_SOON);
+        assertThat(remindersOf(task))
+                .extracting(ReminderRow::kind)
+                .containsExactly(TaskReminderKind.DUE_SOON);
         updateReminderSettings(assignee, true, true);
         reminderService.sendDueReminders();
 
@@ -157,7 +174,9 @@ class TaskReminderEmailTests extends AbstractTaskReminderTests {
 
         reminderService.sendDueReminders();
 
-        assertThat(remindersOf(task)).extracting(ReminderRow::kind).containsExactly(TaskReminderKind.OVERDUE);
+        assertThat(remindersOf(task))
+                .extracting(ReminderRow::kind)
+                .containsExactly(TaskReminderKind.OVERDUE);
         waitForAsyncDispatch();
         assertThat(countWithSubject(assignee, overdueSubject(task))).isZero();
     }
@@ -182,10 +201,11 @@ class TaskReminderEmailTests extends AbstractTaskReminderTests {
         User assignee = createAssignee();
         CreatedTask task = createTask(createAdmin(), assignee, NOW.plus(Duration.ofHours(2)));
 
-        transactionTemplate.executeWithoutResult(status -> {
-            reminderService.sendDueReminders();
-            status.setRollbackOnly();
-        });
+        transactionTemplate.executeWithoutResult(
+                status -> {
+                    reminderService.sendDueReminders();
+                    status.setRollbackOnly();
+                });
 
         waitForAsyncDispatch();
         assertThat(countWithSubject(assignee, dueSoonSubject(task))).isZero();
@@ -202,8 +222,10 @@ class TaskReminderEmailTests extends AbstractTaskReminderTests {
         CyclicBarrier start = new CyclicBarrier(2);
 
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
-            CompletableFuture<?> first = CompletableFuture.runAsync(() -> runAfter(start), executor);
-            CompletableFuture<?> second = CompletableFuture.runAsync(() -> runAfter(start), executor);
+            CompletableFuture<?> first =
+                    CompletableFuture.runAsync(() -> runAfter(start), executor);
+            CompletableFuture<?> second =
+                    CompletableFuture.runAsync(() -> runAfter(start), executor);
             CompletableFuture.allOf(first, second).get(30, TimeUnit.SECONDS);
         }
 
@@ -220,7 +242,8 @@ class TaskReminderEmailTests extends AbstractTaskReminderTests {
 
         reminderService.sendDueReminders();
 
-        assertThat(awaitTextWithSubject(assignee, dueSoonSubject(task))).contains("is due on 2100-01-01 07:05 UTC.");
+        assertThat(awaitTextWithSubject(assignee, dueSoonSubject(task)))
+                .contains("is due on 2100-01-01 07:05 UTC.");
     }
 
     private void runAfter(CyclicBarrier start) {

@@ -1,9 +1,22 @@
 package io.julienmetral.tasks.identity.controllers;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import io.julienmetral.tasks.identity.services.EmailVerificationService;
 import io.julienmetral.tasks.identity.services.UserService;
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -14,49 +27,28 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 /**
- * {@code user_profiles.status} is a copy of the account state: after every transition made through the API, it must
- * match what {@code users} says.
+ * {@code user_profiles.status} is a copy of the account state: after every transition made through
+ * the API, it must match what {@code users} says.
  */
 @IntegrationTest
 class UserProfileStatusApiTests {
 
     private static final String PASSWORD = "password123";
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private Mailpit mailpit;
+    @Autowired private Mailpit mailpit;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
-    @Autowired
-    private JsonMapper jsonMapper;
+    @Autowired private JsonMapper jsonMapper;
 
-    @Autowired
-    private EmailVerificationService emailVerificationService;
+    @Autowired private EmailVerificationService emailVerificationService;
 
-    @Autowired
-    private UserService userService;
+    @Autowired private UserService userService;
 
-    @Autowired
-    private TransactionTemplate transactionTemplate;
+    @Autowired private TransactionTemplate transactionTemplate;
 
     @Test
     void signUpCreatesAnUnverifiedProfileSharingTheAccountId() throws Exception {
@@ -90,16 +82,23 @@ class UserProfileStatusApiTests {
         UUID id = signUp(email, "Reset");
         mailpit.latestTextTo(email);
 
-        mockMvc.perform(post("/api/v1/auth/password-reset/request")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonMapper.writeValueAsString(Map.of("email", email))))
+        mockMvc.perform(
+                        post("/api/v1/auth/password-reset/request")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(jsonMapper.writeValueAsString(Map.of("email", email))))
                 .andExpect(status().isAccepted());
         String token = awaitSecondEmailToken(email);
 
-        mockMvc.perform(post("/api/v1/auth/password-reset/confirm")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonMapper.writeValueAsString(
-                                Map.of("token", token, "newPassword", "brand-new-password"))))
+        mockMvc.perform(
+                        post("/api/v1/auth/password-reset/confirm")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        jsonMapper.writeValueAsString(
+                                                Map.of(
+                                                        "token",
+                                                        token,
+                                                        "newPassword",
+                                                        "brand-new-password"))))
                 .andExpect(status().isNoContent());
 
         assertThat(profileStatus(id)).isEqualTo("ACTIVE");
@@ -170,10 +169,11 @@ class UserProfileStatusApiTests {
         UUID id = signUp(email, "Before");
         verifyEmail(email);
 
-        mockMvc.perform(patch("/api/v1/users/{id}", id)
-                        .with(admin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"displayName\": \"After\"}"))
+        mockMvc.perform(
+                        patch("/api/v1/users/{id}", id)
+                                .with(admin())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"displayName\": \"After\"}"))
                 .andExpect(status().isOk());
 
         assertThat(profileRow(id).get("display_name")).isEqualTo("After");
@@ -188,19 +188,25 @@ class UserProfileStatusApiTests {
         CountDownLatch verificationLoaded = new CountDownLatch(1);
         CountDownLatch disableStarting = new CountDownLatch(1);
 
-        // The verification holds its transaction, and so the account's row lock, while the disable starts
-        CompletableFuture<Void> verification = CompletableFuture.runAsync(() ->
-                transactionTemplate.executeWithoutResult(status -> {
-                    emailVerificationService.verify(token);
-                    verificationLoaded.countDown();
-                    await(disableStarting);
-                    pause();
-                }));
+        // The verification holds its transaction, and so the account's row lock, while the disable
+        // starts
+        CompletableFuture<Void> verification =
+                CompletableFuture.runAsync(
+                        () ->
+                                transactionTemplate.executeWithoutResult(
+                                        status -> {
+                                            emailVerificationService.verify(token);
+                                            verificationLoaded.countDown();
+                                            await(disableStarting);
+                                            pause();
+                                        }));
         assertThat(verificationLoaded.await(10, TimeUnit.SECONDS)).isTrue();
-        CompletableFuture<Void> disable = CompletableFuture.runAsync(() -> {
-            disableStarting.countDown();
-            userService.disable(id);
-        });
+        CompletableFuture<Void> disable =
+                CompletableFuture.runAsync(
+                        () -> {
+                            disableStarting.countDown();
+                            userService.disable(id);
+                        });
         verification.get(10, TimeUnit.SECONDS);
         disable.get(10, TimeUnit.SECONDS);
 
@@ -228,10 +234,10 @@ class UserProfileStatusApiTests {
     }
 
     private void assertProfileStatusMatchesAccount(UUID id) {
-        Map<String, Object> account = jdbcTemplate.queryForMap(
-                "SELECT enabled, email_verified_at, deleted_at FROM users WHERE id = ?",
-                id
-        );
+        Map<String, Object> account =
+                jdbcTemplate.queryForMap(
+                        "SELECT enabled, email_verified_at, deleted_at FROM users WHERE id = ?",
+                        id);
         String expected;
 
         if (account.get("deleted_at") != null) {
@@ -248,23 +254,37 @@ class UserProfileStatusApiTests {
     }
 
     private UUID signUp(String email, String displayName) throws Exception {
-        String location = mockMvc.perform(post("/api/v1/users")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonMapper.writeValueAsString(
-                                Map.of("email", email, "password", PASSWORD, "displayName", displayName))))
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getHeader("Location");
+        String location =
+                mockMvc.perform(
+                                post("/api/v1/users")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                jsonMapper.writeValueAsString(
+                                                        Map.of(
+                                                                "email",
+                                                                email,
+                                                                "password",
+                                                                PASSWORD,
+                                                                "displayName",
+                                                                displayName))))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getHeader("Location");
 
         return UUID.fromString(location.substring(location.lastIndexOf('/') + 1));
     }
 
     private void verifyEmail(String email) throws Exception {
-        mockMvc.perform(post("/api/v1/auth/verify-email")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonMapper.writeValueAsString(
-                                Map.of("token", mailpit.latestVerificationTokenFor(email)))))
+        mockMvc.perform(
+                        post("/api/v1/auth/verify-email")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        jsonMapper.writeValueAsString(
+                                                Map.of(
+                                                        "token",
+                                                        mailpit.latestVerificationTokenFor(
+                                                                email)))))
                 .andExpect(status().isNoContent());
     }
 
@@ -282,13 +302,11 @@ class UserProfileStatusApiTests {
     }
 
     private void adminPost(String uri, UUID id) throws Exception {
-        mockMvc.perform(post(uri, id).with(admin()))
-                .andExpect(status().isNoContent());
+        mockMvc.perform(post(uri, id).with(admin())).andExpect(status().isNoContent());
     }
 
     private static SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor admin() {
-        return SecurityMockMvcRequestPostProcessors
-                .jwt()
+        return SecurityMockMvcRequestPostProcessors.jwt()
                 .jwt(jwt -> jwt.claim("uid", UUID.randomUUID().toString()))
                 .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"));
     }
@@ -298,7 +316,8 @@ class UserProfileStatusApiTests {
     }
 
     private String profileStatus(UUID id) {
-        return jdbcTemplate.queryForObject("SELECT status FROM user_profiles WHERE id = ?", String.class, id);
+        return jdbcTemplate.queryForObject(
+                "SELECT status FROM user_profiles WHERE id = ?", String.class, id);
     }
 
     private static String uniqueEmail() {

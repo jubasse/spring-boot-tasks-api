@@ -1,7 +1,7 @@
 package io.julienmetral.tasks.task.services;
 
-import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.identity.entities.UserProfile;
+import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
 import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.identity.services.ProfilesForDisplay;
@@ -16,14 +16,6 @@ import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TooManyCommentAttachmentsException;
 import io.julienmetral.tasks.task.repositories.TaskCommentRepository;
 import io.julienmetral.tasks.task.repositories.TaskRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
-
 import java.time.Clock;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -33,12 +25,20 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @RequiredArgsConstructor
 public class TaskCommentService {
 
-    // spring.servlet.multipart.max-request-size also caps the total size of the files of one comment
+    // spring.servlet.multipart.max-request-size also caps the total size of the files of one
+    // comment
     public static final int MAX_FILES = 5;
 
     private final TaskRepository taskRepository;
@@ -51,8 +51,8 @@ public class TaskCommentService {
     private final Clock clock;
 
     /**
-     * Posts a comment; each file becomes a task attachment linked to it. Publishes {@link TaskCommentAdded} and, when
-     * the body mentions anyone, {@link UsersMentionedInComment}.
+     * Posts a comment; each file becomes a task attachment linked to it. Publishes {@link
+     * TaskCommentAdded} and, when the body mentions anyone, {@link UsersMentionedInComment}.
      *
      * @throws InvalidMentionException when a mentioned user does not exist or is not active
      */
@@ -81,10 +81,16 @@ public class TaskCommentService {
             saved.getAttachments().add(attachmentService.add(task, saved, file));
         }
 
-        eventPublisher.publishEvent(new TaskCommentAdded(
-                task.getId(), task.getReference(), task.getTitle(), saved.getId(), body,
-                task.currentAssigneeId(), actorId(), mentionedIds
-        ));
+        eventPublisher.publishEvent(
+                new TaskCommentAdded(
+                        task.getId(),
+                        task.getReference(),
+                        task.getTitle(),
+                        saved.getId(),
+                        body,
+                        task.currentAssigneeId(),
+                        actorId(),
+                        mentionedIds));
 
         publishMentions(task, saved, mentionedIds);
 
@@ -110,8 +116,9 @@ public class TaskCommentService {
     }
 
     /**
-     * Replaces the body. Users mentioned before keep their mention even if they are no longer active; only users
-     * mentioned for the first time are validated and receive {@link UsersMentionedInComment}.
+     * Replaces the body. Users mentioned before keep their mention even if they are no longer
+     * active; only users mentioned for the first time are validated and receive {@link
+     * UsersMentionedInComment}.
      */
     @Transactional
     public TaskComment edit(UUID taskId, UUID commentId, String body) {
@@ -123,10 +130,10 @@ public class TaskCommentService {
         }
 
         Set<UUID> mentionedIds = CommentMentions.parse(body);
-        Set<UserProfile> kept = comment.getMentions()
-                .stream()
-                .filter(user -> mentionedIds.contains(user.getId()))
-                .collect(Collectors.toSet());
+        Set<UserProfile> kept =
+                comment.getMentions().stream()
+                        .filter(user -> mentionedIds.contains(user.getId()))
+                        .collect(Collectors.toSet());
         Set<UUID> newIds = new LinkedHashSet<>(mentionedIds);
 
         kept.forEach(user -> newIds.remove(user.getId()));
@@ -165,10 +172,9 @@ public class TaskCommentService {
             return Set.of();
         }
 
-        Map<UUID, UserProfile> users = userProfileRepository
-                .findAllById(ids)
-                .stream()
-                .collect(Collectors.toMap(UserProfile::getId, Function.identity()));
+        Map<UUID, UserProfile> users =
+                userProfileRepository.findAllById(ids).stream()
+                        .collect(Collectors.toMap(UserProfile::getId, Function.identity()));
 
         Set<UserProfile> mentionable = new HashSet<>();
 
@@ -196,10 +202,15 @@ public class TaskCommentService {
             return;
         }
 
-        eventPublisher.publishEvent(new UsersMentionedInComment(
-                task.getId(), task.getReference(), task.getTitle(), comment.getId(), comment.getBody(),
-                actorId(), Set.copyOf(mentionedIds)
-        ));
+        eventPublisher.publishEvent(
+                new UsersMentionedInComment(
+                        task.getId(),
+                        task.getReference(),
+                        task.getTitle(),
+                        comment.getId(),
+                        comment.getBody(),
+                        actorId(),
+                        Set.copyOf(mentionedIds)));
     }
 
     private UUID actorId() {
@@ -209,9 +220,7 @@ public class TaskCommentService {
     }
 
     private Task getTask(UUID taskId) {
-        return taskRepository
-                .findById(taskId)
-                .orElseThrow(() -> new TaskNotFoundException(taskId));
+        return taskRepository.findById(taskId).orElseThrow(() -> new TaskNotFoundException(taskId));
     }
 
     private TaskComment getComment(UUID taskId, UUID commentId) {
@@ -220,8 +229,9 @@ public class TaskCommentService {
                 .orElseThrow(() -> new TaskCommentNotFoundException(commentId));
     }
 
-    // The response shows the author, the mentioned users and the files. With default_batch_fetch_size, the first
-    // comment's collections load those of the whole page in a few IN queries.
+    // The response shows the author, the mentioned users and the files. With
+    // default_batch_fetch_size, the first comment's collections load those of the whole page in a
+    // few IN queries.
     private static TaskComment withDetailsLoaded(TaskComment comment) {
         ProfilesForDisplay.load(comment.getAuthor());
         comment.getMentions().forEach(ProfilesForDisplay::load);

@@ -1,0 +1,22 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# google-java-format, AOSP style: what ./mvnw spotless:apply writes
+[*.java]
+indent_style = space
+indent_size = 4
+max_line_length = 100
+ij_java_class_count_to_use_import_on_demand = 999
+ij_java_names_count_to_use_import_on_demand = 999
+
+[pom.xml]
+indent_style = tab
+
+[*.{yaml,yml,json}]
+indent_style = space
+indent_size = 2

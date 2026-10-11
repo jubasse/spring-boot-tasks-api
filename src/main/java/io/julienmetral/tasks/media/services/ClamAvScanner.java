@@ -1,7 +1,6 @@
 package io.julienmetral.tasks.media.services;
 
 import io.julienmetral.tasks.media.exceptions.AntivirusUnavailableException;
-
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -13,9 +12,9 @@ import java.time.Duration;
 import java.util.Optional;
 
 /**
- * Streams content to clamd with its INSTREAM command: {@code zINSTREAM\0}, then chunks each prefixed by their length
- * as a 4-byte big-endian integer, then a zero length. clamd answers {@code stream: OK}, {@code stream: <name> FOUND}
- * or an error line, terminated by a null byte.
+ * Streams content to clamd with its INSTREAM command: {@code zINSTREAM\0}, then chunks each
+ * prefixed by their length as a 4-byte big-endian integer, then a zero length. clamd answers {@code
+ * stream: OK}, {@code stream: <name> FOUND} or an error line, terminated by a null byte.
  */
 public class ClamAvScanner implements VirusScanner {
 
@@ -49,8 +48,9 @@ public class ClamAvScanner implements VirusScanner {
             socket.connect(new InetSocketAddress(host, port), timeoutMillis);
             socket.setSoTimeout(timeoutMillis);
 
-            // setSoTimeout only bounds reads: a clamd that accepts but stops reading would block the write forever
-            // (reproduced with a 16 MB file). Closing the socket at the deadline makes the blocked write fail.
+            // setSoTimeout only bounds reads: a clamd that accepts but stops reading would block
+            // the write forever (reproduced with a 16 MB file). Closing the socket at the deadline
+            // makes the blocked write fail.
             Thread deadline = Thread.ofVirtual().start(() -> closeAfterTimeout(socket));
 
             try {

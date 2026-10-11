@@ -1,8 +1,17 @@
 package io.julienmetral.tasks.config;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+
 import io.julienmetral.tasks.config.RateLimitProperties.Limit;
 import io.julienmetral.tasks.ratelimit.repositories.RateLimitQueries;
 import io.julienmetral.tasks.ratelimit.services.RateLimitCleanupJob;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.time.Clock;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -12,108 +21,134 @@ import org.springframework.scheduling.annotation.ScheduledAnnotationBeanPostProc
 import org.springframework.scheduling.config.CronTask;
 import org.springframework.scheduling.config.ScheduledTask;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.time.Clock;
-import java.time.Duration;
-import java.util.List;
-import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-
 class RateLimitConfigurationTest {
 
     // A cron that never fires while a test context is open
     private static final String YEARLY_CRON = "0 0 0 1 1 *";
 
     // Each limit differs from the others, so a limit bound to the wrong key fails the test
-    private static final Map<String, String> VALID = Map.ofEntries(
-            Map.entry("rate-limit.purge-cron", YEARLY_CRON),
-            Map.entry("rate-limit.login-per-ip.requests", "1"),
-            Map.entry("rate-limit.login-per-ip.window", "1m"),
-            Map.entry("rate-limit.login-per-email.requests", "2"),
-            Map.entry("rate-limit.login-per-email.window", "2m"),
-            Map.entry("rate-limit.sign-up-per-ip.requests", "3"),
-            Map.entry("rate-limit.sign-up-per-ip.window", "3m"),
-            Map.entry("rate-limit.password-reset-per-ip.requests", "4"),
-            Map.entry("rate-limit.password-reset-per-ip.window", "4m"),
-            Map.entry("rate-limit.password-reset-per-email.requests", "5"),
-            Map.entry("rate-limit.password-reset-per-email.window", "5m"),
-            Map.entry("rate-limit.verification-resend-per-user.requests", "6"),
-            Map.entry("rate-limit.verification-resend-per-user.window", "6m"),
-            Map.entry("rate-limit.webhook-test-per-user.requests", "7"),
-            Map.entry("rate-limit.webhook-test-per-user.window", "7m")
-    );
+    private static final Map<String, String> VALID =
+            Map.ofEntries(
+                    Map.entry("rate-limit.purge-cron", YEARLY_CRON),
+                    Map.entry("rate-limit.login-per-ip.requests", "1"),
+                    Map.entry("rate-limit.login-per-ip.window", "1m"),
+                    Map.entry("rate-limit.login-per-email.requests", "2"),
+                    Map.entry("rate-limit.login-per-email.window", "2m"),
+                    Map.entry("rate-limit.sign-up-per-ip.requests", "3"),
+                    Map.entry("rate-limit.sign-up-per-ip.window", "3m"),
+                    Map.entry("rate-limit.password-reset-per-ip.requests", "4"),
+                    Map.entry("rate-limit.password-reset-per-ip.window", "4m"),
+                    Map.entry("rate-limit.password-reset-per-email.requests", "5"),
+                    Map.entry("rate-limit.password-reset-per-email.window", "5m"),
+                    Map.entry("rate-limit.verification-resend-per-user.requests", "6"),
+                    Map.entry("rate-limit.verification-resend-per-user.window", "6m"),
+                    Map.entry("rate-limit.webhook-test-per-user.requests", "7"),
+                    Map.entry("rate-limit.webhook-test-per-user.window", "7m"));
 
-    private final ApplicationContextRunner runner = new ApplicationContextRunner()
-            .withUserConfiguration(RateLimitConfiguration.class);
+    private final ApplicationContextRunner runner =
+            new ApplicationContextRunner().withUserConfiguration(RateLimitConfiguration.class);
 
-    private final ApplicationContextRunner configured = runner.withPropertyValues(validPropertiesWithout(null));
+    private final ApplicationContextRunner configured =
+            runner.withPropertyValues(validPropertiesWithout(null));
 
     @Test
     void bindsEachNestedLimit() {
-        configured.run(context -> {
-            assertThat(context).hasNotFailed();
-            RateLimitProperties properties = context.getBean(RateLimitProperties.class);
-            assertThat(properties.purgeCron()).isEqualTo(YEARLY_CRON);
-            assertThat(properties.loginPerIp()).isEqualTo(new Limit(1, Duration.ofMinutes(1)));
-            assertThat(properties.loginPerEmail()).isEqualTo(new Limit(2, Duration.ofMinutes(2)));
-            assertThat(properties.signUpPerIp()).isEqualTo(new Limit(3, Duration.ofMinutes(3)));
-            assertThat(properties.passwordResetPerIp()).isEqualTo(new Limit(4, Duration.ofMinutes(4)));
-            assertThat(properties.passwordResetPerEmail()).isEqualTo(new Limit(5, Duration.ofMinutes(5)));
-            assertThat(properties.verificationResendPerUser()).isEqualTo(new Limit(6, Duration.ofMinutes(6)));
-            assertThat(properties.webhookTestPerUser()).isEqualTo(new Limit(7, Duration.ofMinutes(7)));
-        });
+        configured.run(
+                context -> {
+                    assertThat(context).hasNotFailed();
+                    RateLimitProperties properties = context.getBean(RateLimitProperties.class);
+                    assertThat(properties.purgeCron()).isEqualTo(YEARLY_CRON);
+                    assertThat(properties.loginPerIp())
+                            .isEqualTo(new Limit(1, Duration.ofMinutes(1)));
+                    assertThat(properties.loginPerEmail())
+                            .isEqualTo(new Limit(2, Duration.ofMinutes(2)));
+                    assertThat(properties.signUpPerIp())
+                            .isEqualTo(new Limit(3, Duration.ofMinutes(3)));
+                    assertThat(properties.passwordResetPerIp())
+                            .isEqualTo(new Limit(4, Duration.ofMinutes(4)));
+                    assertThat(properties.passwordResetPerEmail())
+                            .isEqualTo(new Limit(5, Duration.ofMinutes(5)));
+                    assertThat(properties.verificationResendPerUser())
+                            .isEqualTo(new Limit(6, Duration.ofMinutes(6)));
+                    assertThat(properties.webhookTestPerUser())
+                            .isEqualTo(new Limit(7, Duration.ofMinutes(7)));
+                });
     }
 
     @Test
     void missingEnabledTurnsTheLimitsOn() {
-        configured.run(context -> assertThat(context.getBean(RateLimitProperties.class).enabled()).isTrue());
+        configured.run(
+                context ->
+                        assertThat(context.getBean(RateLimitProperties.class).enabled()).isTrue());
     }
 
     @Test
     void limitsCanBeTurnedOff() {
-        configured.withPropertyValues("rate-limit.enabled=false")
-                .run(context -> assertThat(context.getBean(RateLimitProperties.class).enabled()).isFalse());
+        configured
+                .withPropertyValues("rate-limit.enabled=false")
+                .run(
+                        context ->
+                                assertThat(context.getBean(RateLimitProperties.class).enabled())
+                                        .isFalse());
     }
 
     @Test
     void missingPurgeSwitchKeepsTheCleanupJob() {
-        withCleanupJob(configured).run(context -> {
-            assertThat(context).hasSingleBean(RateLimitCleanupJob.class);
-            assertThat(context.getBean(RateLimitProperties.class).purgeEnabled()).isTrue();
-        });
+        withCleanupJob(configured)
+                .run(
+                        context -> {
+                            assertThat(context).hasSingleBean(RateLimitCleanupJob.class);
+                            assertThat(context.getBean(RateLimitProperties.class).purgeEnabled())
+                                    .isTrue();
+                        });
     }
 
     @Test
     void disabledPurgeRemovesTheCleanupJob() {
-        withCleanupJob(configured).withPropertyValues("rate-limit.purge-enabled=false").run(context -> {
-            assertThat(context).doesNotHaveBean(RateLimitCleanupJob.class);
-            assertThat(context.getBean(RateLimitProperties.class).purgeEnabled()).isFalse();
-        });
+        withCleanupJob(configured)
+                .withPropertyValues("rate-limit.purge-enabled=false")
+                .run(
+                        context -> {
+                            assertThat(context).doesNotHaveBean(RateLimitCleanupJob.class);
+                            assertThat(context.getBean(RateLimitProperties.class).purgeEnabled())
+                                    .isFalse();
+                        });
     }
 
     @Test
     void applicationYamlShipsTheDocumentedDefaults() {
-        runner.withInitializer(context -> context.getEnvironment().getPropertySources()
-                        .addLast(mainApplicationYaml()))
-                .run(context -> {
-                    assertThat(context).hasNotFailed();
-                    RateLimitProperties properties = context.getBean(RateLimitProperties.class);
-                    assertThat(properties.enabled()).isTrue();
-                    assertThat(properties.purgeEnabled()).isTrue();
-                    assertThat(properties.purgeCron()).isEqualTo("0 20 * * * *");
-                    assertThat(properties.loginPerIp()).isEqualTo(new Limit(30, Duration.ofMinutes(1)));
-                    assertThat(properties.loginPerEmail()).isEqualTo(new Limit(10, Duration.ofMinutes(15)));
-                    assertThat(properties.signUpPerIp()).isEqualTo(new Limit(20, Duration.ofHours(1)));
-                    assertThat(properties.passwordResetPerIp()).isEqualTo(new Limit(20, Duration.ofHours(1)));
-                    assertThat(properties.passwordResetPerEmail()).isEqualTo(new Limit(3, Duration.ofHours(1)));
-                    assertThat(properties.verificationResendPerUser()).isEqualTo(new Limit(3, Duration.ofHours(1)));
-                    assertThat(properties.webhookTestPerUser()).isEqualTo(new Limit(10, Duration.ofHours(1)));
-                    assertThat(context.getEnvironment().getProperty("server.forward-headers-strategy"))
-                            .isEqualTo("none");
-                });
+        runner.withInitializer(
+                        context ->
+                                context.getEnvironment()
+                                        .getPropertySources()
+                                        .addLast(mainApplicationYaml()))
+                .run(
+                        context -> {
+                            assertThat(context).hasNotFailed();
+                            RateLimitProperties properties =
+                                    context.getBean(RateLimitProperties.class);
+                            assertThat(properties.enabled()).isTrue();
+                            assertThat(properties.purgeEnabled()).isTrue();
+                            assertThat(properties.purgeCron()).isEqualTo("0 20 * * * *");
+                            assertThat(properties.loginPerIp())
+                                    .isEqualTo(new Limit(30, Duration.ofMinutes(1)));
+                            assertThat(properties.loginPerEmail())
+                                    .isEqualTo(new Limit(10, Duration.ofMinutes(15)));
+                            assertThat(properties.signUpPerIp())
+                                    .isEqualTo(new Limit(20, Duration.ofHours(1)));
+                            assertThat(properties.passwordResetPerIp())
+                                    .isEqualTo(new Limit(20, Duration.ofHours(1)));
+                            assertThat(properties.passwordResetPerEmail())
+                                    .isEqualTo(new Limit(3, Duration.ofHours(1)));
+                            assertThat(properties.verificationResendPerUser())
+                                    .isEqualTo(new Limit(3, Duration.ofHours(1)));
+                            assertThat(properties.webhookTestPerUser())
+                                    .isEqualTo(new Limit(10, Duration.ofHours(1)));
+                            assertThat(
+                                            context.getEnvironment()
+                                                    .getProperty("server.forward-headers-strategy"))
+                                    .isEqualTo("none");
+                        });
     }
 
     @Test
@@ -122,7 +157,8 @@ class RateLimitConfigurationTest {
                 .withUserConfiguration(SchedulingConfiguration.class, RateLimitCleanupJob.class)
                 .withBean(RateLimitQueries.class, () -> mock(RateLimitQueries.class))
                 .withBean(Clock.class, Clock::systemUTC)
-                // SchedulingConfiguration also validates the media cleanup, task reminder and user retention properties
+                // SchedulingConfiguration also validates the media cleanup, task reminder and user
+                // retention properties
                 .withPropertyValues(
                         "media.cleanup.enabled=false",
                         "media.cleanup.cron=" + YEARLY_CRON,
@@ -136,58 +172,84 @@ class RateLimitConfigurationTest {
                         "identity.retention.cron=" + YEARLY_CRON,
                         "identity.retention.anonymize-after=30d",
                         "identity.retention.inactivity-period=730d",
-                        "identity.retention.deletion-notice=30d"
-                )
-                .run(context -> {
-                    assertThat(context).hasNotFailed();
-                    List<String> crons = context.getBean(ScheduledAnnotationBeanPostProcessor.class)
-                            .getScheduledTasks().stream()
-                            .map(ScheduledTask::getTask)
-                            .filter(CronTask.class::isInstance)
-                            .map(task -> ((CronTask) task).getExpression())
-                            .toList();
-                    assertThat(crons).containsExactly(YEARLY_CRON);
-                });
+                        "identity.retention.deletion-notice=30d")
+                .run(
+                        context -> {
+                            assertThat(context).hasNotFailed();
+                            List<String> crons =
+                                    context
+                                            .getBean(ScheduledAnnotationBeanPostProcessor.class)
+                                            .getScheduledTasks()
+                                            .stream()
+                                            .map(ScheduledTask::getTask)
+                                            .filter(CronTask.class::isInstance)
+                                            .map(task -> ((CronTask) task).getExpression())
+                                            .toList();
+                            assertThat(crons).containsExactly(YEARLY_CRON);
+                        });
     }
 
     @Test
     void blankPurgeCronFailsStartup() {
-        configured.withPropertyValues("rate-limit.purge-cron= ")
-                .run(context -> assertThat(context).getFailure()
-                        .hasStackTraceContaining("NotBlank.rate-limit.purgeCron"));
+        configured
+                .withPropertyValues("rate-limit.purge-cron= ")
+                .run(
+                        context ->
+                                assertThat(context)
+                                        .getFailure()
+                                        .hasStackTraceContaining("NotBlank.rate-limit.purgeCron"));
     }
 
     @Test
     void missingLimitFailsStartup() {
         runner.withPropertyValues(validPropertiesWithout("rate-limit.sign-up-per-ip."))
-                .run(context -> assertThat(context).getFailure()
-                        .hasStackTraceContaining("NotNull.rate-limit.signUpPerIp"));
+                .run(
+                        context ->
+                                assertThat(context)
+                                        .getFailure()
+                                        .hasStackTraceContaining("NotNull.rate-limit.signUpPerIp"));
     }
 
     @Test
     void zeroRequestsFailsStartup() {
-        configured.withPropertyValues("rate-limit.login-per-email.requests=0")
-                .run(context -> assertThat(context).getFailure()
-                        .hasStackTraceContaining("Positive.rate-limit.loginPerEmail.requests"));
+        configured
+                .withPropertyValues("rate-limit.login-per-email.requests=0")
+                .run(
+                        context ->
+                                assertThat(context)
+                                        .getFailure()
+                                        .hasStackTraceContaining(
+                                                "Positive.rate-limit.loginPerEmail.requests"));
     }
 
     @Test
     void limitWithoutRequestsFailsStartup() {
-        runner.withPropertyValues(validPropertiesWithout("rate-limit.password-reset-per-email.requests"))
-                .run(context -> assertThat(context).getFailure()
-                        .hasStackTraceContaining("Positive.rate-limit.passwordResetPerEmail.requests"));
+        runner.withPropertyValues(
+                        validPropertiesWithout("rate-limit.password-reset-per-email.requests"))
+                .run(
+                        context ->
+                                assertThat(context)
+                                        .getFailure()
+                                        .hasStackTraceContaining(
+                                                "Positive.rate-limit.passwordResetPerEmail.requests"));
     }
 
     @Test
     void limitWithoutWindowFailsStartup() {
-        runner.withPropertyValues(validPropertiesWithout("rate-limit.verification-resend-per-user.window"))
-                .run(context -> assertThat(context).getFailure()
-                        .hasStackTraceContaining("NotNull.rate-limit.verificationResendPerUser.window"));
+        runner.withPropertyValues(
+                        validPropertiesWithout("rate-limit.verification-resend-per-user.window"))
+                .run(
+                        context ->
+                                assertThat(context)
+                                        .getFailure()
+                                        .hasStackTraceContaining(
+                                                "NotNull.rate-limit.verificationResendPerUser.window"));
     }
 
     @Test
     void zeroWindowFailsStartup() {
-        configured.withPropertyValues("rate-limit.login-per-ip.window=0s")
+        configured
+                .withPropertyValues("rate-limit.login-per-ip.window=0s")
                 .run(context -> assertThat(context).hasFailed());
     }
 
@@ -197,7 +259,10 @@ class RateLimitConfigurationTest {
                 .withBean(Clock.class, Clock::systemUTC);
     }
 
-    /** Every valid property, except those whose key starts with {@code keyPrefix} when it is not null. */
+    /**
+     * Every valid property, except those whose key starts with {@code keyPrefix} when it is not
+     * null.
+     */
     private static String[] validPropertiesWithout(String keyPrefix) {
         return VALID.entrySet().stream()
                 .filter(entry -> keyPrefix == null || !entry.getKey().startsWith(keyPrefix))

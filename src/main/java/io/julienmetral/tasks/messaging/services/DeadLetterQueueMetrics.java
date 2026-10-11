@@ -3,15 +3,15 @@ package io.julienmetral.tasks.messaging.services;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.MeterBinder;
+import java.util.List;
 import org.springframework.amqp.AmqpException;
 import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.core.QueueInformation;
 
-import java.util.List;
-
 /**
- * Messages waiting in each dead-letter queue, asked to RabbitMQ on every scrape: anything above 0 is a message that
- * failed all its retries and needs a look. Reported as NaN while the broker cannot be asked.
+ * Messages waiting in each dead-letter queue, asked to RabbitMQ on every scrape: anything above 0
+ * is a message that failed all its retries and needs a look. Reported as NaN while the broker
+ * cannot be asked.
  */
 public class DeadLetterQueueMetrics implements MeterBinder {
 

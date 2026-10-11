@@ -1,13 +1,12 @@
 package io.julienmetral.tasks.export.batch;
 
 import io.julienmetral.tasks.export.services.DataExportService;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.job.JobExecution;
 import org.springframework.batch.core.listener.JobExecutionListener;
 import org.springframework.stereotype.Component;
-
-import java.util.UUID;
 
 /** Deletes the run's local file whatever happened, and records a failed run on its export. */
 @Component
@@ -18,7 +17,8 @@ class DataExportJobListener implements JobExecutionListener {
 
     @Override
     public void afterJob(JobExecution execution) {
-        UUID exportId = UUID.fromString(execution.getJobParameters().getString(PublishExport.EXPORT_ID));
+        UUID exportId =
+                UUID.fromString(execution.getJobParameters().getString(PublishExport.EXPORT_ID));
 
         ExportFiles.deleteAll(exportId);
 

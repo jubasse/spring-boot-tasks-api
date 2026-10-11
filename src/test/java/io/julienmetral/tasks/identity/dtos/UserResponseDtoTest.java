@@ -1,18 +1,17 @@
 package io.julienmetral.tasks.identity.dtos;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.services.MediaUrls;
-import org.junit.jupiter.api.Test;
-
 import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import org.junit.jupiter.api.Test;
 
 class UserResponseDtoTest {
 

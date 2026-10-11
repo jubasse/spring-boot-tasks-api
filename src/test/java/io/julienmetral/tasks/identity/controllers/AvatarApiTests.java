@@ -1,23 +1,9 @@
 package io.julienmetral.tasks.identity.controllers;
 
-import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserRole;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
-import org.springframework.http.MediaType;
-import tools.jackson.databind.JsonNode;
-
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
-
 import static io.julienmetral.tasks.support.Presigning.waitForTheNextSecond;
-import static io.julienmetral.tasks.support.ProfilePhotos.givePhoto;
 import static io.julienmetral.tasks.support.Problems.typedProblem;
 import static io.julienmetral.tasks.support.Problems.untypedProblem;
+import static io.julienmetral.tasks.support.ProfilePhotos.givePhoto;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.startsWith;
@@ -27,6 +13,19 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserRole;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.http.MediaType;
+import tools.jackson.databind.JsonNode;
 
 class AvatarApiTests extends AbstractAvatarApiTests {
 
@@ -79,7 +78,9 @@ class AvatarApiTests extends AbstractAvatarApiTests {
     void uploadForUnknownUserReturnsNotFound() throws Exception {
         User admin = createUser(UserRole.ADMIN);
 
-        mockMvc.perform(avatarUpload(UUID.randomUUID(), "photo.png", opaquePng()).with(asAdmin(admin)))
+        mockMvc.perform(
+                        avatarUpload(UUID.randomUUID(), "photo.png", opaquePng())
+                                .with(asAdmin(admin)))
                 .andExpect(status().isNotFound());
 
         assertThat(mediaCountUploadedBy(admin)).isZero();
@@ -102,8 +103,9 @@ class AvatarApiTests extends AbstractAvatarApiTests {
     @Test
     void pdfUploadReturnsUnsupportedMediaType() throws Exception {
         User user = createUser(UserRole.USER);
-        byte[] pdf = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n"
-                .getBytes(StandardCharsets.US_ASCII);
+        byte[] pdf =
+                "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n"
+                        .getBytes(StandardCharsets.US_ASCII);
 
         uploadAvatar(user, asUser(user), "photo.png", pdf)
                 .andExpect(untypedProblem(415, "Unsupported Media Type"))
@@ -121,7 +123,9 @@ class AvatarApiTests extends AbstractAvatarApiTests {
 
         uploadAvatar(user, asUser(user), "photo.png", oversized)
                 .andExpect(untypedProblem(413, "Content Too Large"))
-                .andExpect(jsonPath("$.detail").value(startsWith("The file exceeds the maximum size")));
+                .andExpect(
+                        jsonPath("$.detail")
+                                .value(startsWith("The file exceeds the maximum size")));
 
         assertThat(mediaCountUploadedBy(user)).isZero();
     }
@@ -153,11 +157,7 @@ class AvatarApiTests extends AbstractAvatarApiTests {
     }
 
     @ParameterizedTest
-    @CsvSource({
-            "50000, 50000",
-            "10001, 10",
-            "7000, 7000"
-    })
+    @CsvSource({"50000, 50000", "10001, 10", "7000, 7000"})
     void imageDeclaringTooManyPixelsReturnsUnprocessable(int width, int height) throws Exception {
         User user = createUser(UserRole.USER);
         byte[] bomb = pngHeaderOnly(width, height);
@@ -263,11 +263,12 @@ class AvatarApiTests extends AbstractAvatarApiTests {
         uploadOwnAvatar(user, opaquePng());
         String key = avatarStorageKey(user);
 
-        String body = mockMvc.perform(get(USERS + "/{id}", user.getId()).with(asUser(user)))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String body =
+                mockMvc.perform(get(USERS + "/{id}", user.getId()).with(asUser(user)))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
         String avatarUrl = json(body).get("avatarUrl").asString();
 
@@ -286,11 +287,12 @@ class AvatarApiTests extends AbstractAvatarApiTests {
 
         String fromUser = userJson(user).get("avatarUrl").asString();
         waitForTheNextSecond();
-        String task = mockMvc.perform(get("/api/v1/tasks/{id}", taskId).with(asAdmin(admin)))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String task =
+                mockMvc.perform(get("/api/v1/tasks/{id}", taskId).with(asAdmin(admin)))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
         String fromTask = json(task).get("assignedTo").get("avatarUrl").asString();
 
         assertThat(fromUser).doesNotContain("/identicons/");
@@ -391,14 +393,15 @@ class AvatarApiTests extends AbstractAvatarApiTests {
 
         UUID taskId = createTask(admin, assignee);
 
-        String task = mockMvc.perform(get("/api/v1/tasks/{id}", taskId).with(asAdmin(admin)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.assignedTo.id").value(assignee.getId().toString()))
-                .andExpect(jsonPath("$.assignedTo.avatarUrl", containsString(assigneeKey)))
-                .andExpect(jsonPath("$.createdBy.avatarUrl", containsString(adminKey)))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String task =
+                mockMvc.perform(get("/api/v1/tasks/{id}", taskId).with(asAdmin(admin)))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.assignedTo.id").value(assignee.getId().toString()))
+                        .andExpect(jsonPath("$.assignedTo.avatarUrl", containsString(assigneeKey)))
+                        .andExpect(jsonPath("$.createdBy.avatarUrl", containsString(adminKey)))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
         mockMvc.perform(get("/api/v1/tasks/{taskId}/events", taskId).with(asAdmin(admin)))
                 .andExpect(status().isOk())
@@ -430,19 +433,25 @@ class AvatarApiTests extends AbstractAvatarApiTests {
     }
 
     private UUID createTask(User admin, User assignee) throws Exception {
-        String body = mockMvc.perform(
-                        post("/api/v1/tasks")
-                                .with(asAdmin(admin))
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
+        String body =
+                mockMvc.perform(
+                                post("/api/v1/tasks")
+                                        .with(asAdmin(admin))
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                """
                                         {"reference": "A-%s", "title": "Task", "description": "Avatar previews",
                                          "priority": "LOW", "dueAt": "2030-01-01T10:00:00Z", "assignedTo": "%s"}
-                                        """.formatted(UUID.randomUUID().toString().substring(0, 8), assignee.getId()))
-                )
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+                                        """
+                                                        .formatted(
+                                                                UUID.randomUUID()
+                                                                        .toString()
+                                                                        .substring(0, 8),
+                                                                assignee.getId())))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
         return UUID.fromString(json(body).get("id").asString());
     }

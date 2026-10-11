@@ -3,6 +3,12 @@ package io.julienmetral.tasks.realtime.stomp;
 import io.julienmetral.tasks.identity.entities.UserStatus;
 import io.julienmetral.tasks.identity.repositories.AccountState;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import java.io.IOException;
+import java.time.Instant;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledFuture;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Lazy;
@@ -13,38 +19,33 @@ import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.WebSocketHandlerDecorator;
 
-import java.io.IOException;
-import java.time.Instant;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ScheduledFuture;
-
 /**
- * The WebSocket sessions of this instance and their users, so that a session ends with its access token, and as soon
- * as its account is no longer active: once connected, a session is never authenticated again.
+ * The WebSocket sessions of this instance and their users, so that a session ends with its access
+ * token, and as soon as its account is no longer active: once connected, a session is never
+ * authenticated again.
  */
 @Slf4j
 @Component
 public class StompSessions {
 
-    private record Connected(UUID userId, ScheduledFuture<?> expiry) {
-    }
+    private record Connected(UUID userId, ScheduledFuture<?> expiry) {}
 
     // Policy violation: the client must not reconnect with the same credentials
-    private static final CloseStatus TOKEN_EXPIRED = CloseStatus.POLICY_VIOLATION.withReason("Access token expired");
-    private static final CloseStatus ACCOUNT_CLOSED = CloseStatus.POLICY_VIOLATION.withReason("Account not active");
+    private static final CloseStatus TOKEN_EXPIRED =
+            CloseStatus.POLICY_VIOLATION.withReason("Access token expired");
+    private static final CloseStatus ACCOUNT_CLOSED =
+            CloseStatus.POLICY_VIOLATION.withReason("Account not active");
 
     private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, Connected> connected = new ConcurrentHashMap<>();
     private final UserRepository userRepository;
     private final TaskScheduler scheduler;
 
-    // Lazy: the broker's scheduler is built by the configuration that reads this class through StompConfiguration
+    // Lazy: the broker's scheduler is built by the configuration that reads this class through
+    // StompConfiguration
     public StompSessions(
             UserRepository userRepository,
-            @Lazy @Qualifier("messageBrokerTaskScheduler") TaskScheduler scheduler
-    ) {
+            @Lazy @Qualifier("messageBrokerTaskScheduler") TaskScheduler scheduler) {
         this.userRepository = userRepository;
         this.scheduler = scheduler;
     }
@@ -58,7 +59,8 @@ public class StompSessions {
             }
 
             @Override
-            public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
+            public void afterConnectionClosed(WebSocketSession session, CloseStatus status)
+                    throws Exception {
                 sessions.remove(session.getId());
                 forget(session.getId());
                 super.afterConnectionClosed(session, status);
@@ -66,9 +68,13 @@ public class StompSessions {
         };
     }
 
-    /** Called on the CONNECT frame, once its token is verified: the session ends when the token expires. */
+    /**
+     * Called on the CONNECT frame, once its token is verified: the session ends when the token
+     * expires.
+     */
     void connected(String sessionId, UUID userId, Instant tokenExpiresAt) {
-        ScheduledFuture<?> expiry = scheduler.schedule(() -> close(sessionId, TOKEN_EXPIRED), tokenExpiresAt);
+        ScheduledFuture<?> expiry =
+                scheduler.schedule(() -> close(sessionId, TOKEN_EXPIRED), tokenExpiresAt);
         Connected previous = connected.put(sessionId, new Connected(userId, expiry));
 
         if (previous != null) {
@@ -77,14 +83,16 @@ public class StompSessions {
     }
 
     public void closeIfNoLongerActive(UUID userId) {
-        boolean hasSessions = connected.values().stream().anyMatch(session -> session.userId().equals(userId));
+        boolean hasSessions =
+                connected.values().stream().anyMatch(session -> session.userId().equals(userId));
 
         if (hasSessions && !isActive(userId)) {
-            connected.forEach((sessionId, session) -> {
-                if (session.userId().equals(userId)) {
-                    close(sessionId, ACCOUNT_CLOSED);
-                }
-            });
+            connected.forEach(
+                    (sessionId, session) -> {
+                        if (session.userId().equals(userId)) {
+                            close(sessionId, ACCOUNT_CLOSED);
+                        }
+                    });
         }
     }
 
@@ -111,8 +119,10 @@ public class StompSessions {
     }
 
     private boolean isActive(UUID userId) {
-        return userRepository.findAccountStateById(userId)
-                .map(AccountState::status)
-                .orElse(UserStatus.DELETED) == UserStatus.ACTIVE;
+        return userRepository
+                        .findAccountStateById(userId)
+                        .map(AccountState::status)
+                        .orElse(UserStatus.DELETED)
+                == UserStatus.ACTIVE;
     }
 }

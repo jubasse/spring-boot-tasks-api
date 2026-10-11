@@ -1,5 +1,11 @@
 package io.julienmetral.tasks.realtime.messaging;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.identity.events.AccountStateChanged;
 import io.julienmetral.tasks.messaging.services.Outbox;
 import io.julienmetral.tasks.notification.entities.WebhookEvent;
@@ -7,6 +13,11 @@ import io.julienmetral.tasks.notification.events.TaskNotificationCreated;
 import io.julienmetral.tasks.task.entities.TaskEventType;
 import io.julienmetral.tasks.task.events.TaskDeleted;
 import io.julienmetral.tasks.task.events.TaskEventRecorded;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,18 +30,6 @@ import org.springframework.transaction.support.SimpleTransactionStatus;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.Map;
-import java.util.UUID;
-
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
-
 @ExtendWith(MockitoExtension.class)
 class RealtimeBroadcastsTest {
 
@@ -40,18 +39,19 @@ class RealtimeBroadcastsTest {
 
     private static final UUID TASK_ID = UUID.fromString("00000000-0000-0000-0000-0000000000b1");
 
-    @Mock
-    private Outbox outbox;
+    @Mock private Outbox outbox;
 
-    @Mock
-    private PlatformTransactionManager transactionManager;
+    @Mock private PlatformTransactionManager transactionManager;
 
     private RealtimeBroadcasts broadcasts;
 
     @BeforeEach
     void createBroadcasts() {
-        broadcasts = new RealtimeBroadcasts(outbox, new TransactionTemplate(transactionManager),
-                Clock.fixed(NOW, ZoneOffset.UTC));
+        broadcasts =
+                new RealtimeBroadcasts(
+                        outbox,
+                        new TransactionTemplate(transactionManager),
+                        Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @AfterEach
@@ -63,9 +63,13 @@ class RealtimeBroadcastsTest {
     void taskNotificationIsBroadcastToEveryInstanceWithItsTypeTheTimeAndItsData() {
         Map<String, Object> data = Map.of("task", Map.of("reference", "OPS-12"));
 
-        broadcasts.onTaskNotification(new TaskNotificationCreated(WebhookEvent.TASK_DUE_SOON, USER_ID, data));
+        broadcasts.onTaskNotification(
+                new TaskNotificationCreated(WebhookEvent.TASK_DUE_SOON, USER_ID, data));
 
-        verify(outbox).broadcast("tasks.realtime", new UserNotification(USER_ID, "task.due_soon", NOW, data));
+        verify(outbox)
+                .broadcast(
+                        "tasks.realtime",
+                        new UserNotification(USER_ID, "task.due_soon", NOW, data));
     }
 
     @Test
@@ -74,18 +78,25 @@ class RealtimeBroadcastsTest {
         Instant occurredAt = Instant.parse("2026-03-04T05:00:00Z");
 
         broadcasts.onTaskEventRecorded(
-                new TaskEventRecorded(TASK_ID, eventId, TaskEventType.COMMENT_ADDED, USER_ID, occurredAt));
+                new TaskEventRecorded(
+                        TASK_ID, eventId, TaskEventType.COMMENT_ADDED, USER_ID, occurredAt));
 
-        verify(outbox).broadcast("tasks.realtime",
-                new TaskRoomEvent(TASK_ID, eventId, "COMMENT_ADDED", USER_ID, occurredAt));
+        verify(outbox)
+                .broadcast(
+                        "tasks.realtime",
+                        new TaskRoomEvent(TASK_ID, eventId, "COMMENT_ADDED", USER_ID, occurredAt));
         verifyNoInteractions(transactionManager);
     }
 
     @Test
     void deletedTaskIsBroadcastToItsRoomWithoutAHistoryRowAtTheCurrentTime() {
-        broadcasts.onTaskDeleted(new TaskDeleted(TASK_ID, "OPS-12", "Rotate the keys", UUID.randomUUID(), USER_ID));
+        broadcasts.onTaskDeleted(
+                new TaskDeleted(TASK_ID, "OPS-12", "Rotate the keys", UUID.randomUUID(), USER_ID));
 
-        verify(outbox).broadcast("tasks.realtime", new TaskRoomEvent(TASK_ID, null, "DELETED", USER_ID, NOW));
+        verify(outbox)
+                .broadcast(
+                        "tasks.realtime",
+                        new TaskRoomEvent(TASK_ID, null, "DELETED", USER_ID, NOW));
         verifyNoInteractions(transactionManager);
     }
 

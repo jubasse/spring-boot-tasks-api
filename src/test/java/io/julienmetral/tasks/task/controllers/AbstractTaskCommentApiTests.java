@@ -1,19 +1,5 @@
 package io.julienmetral.tasks.task.controllers;
 
-import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.media.model.MediaUsage;
-import org.springframework.http.MediaType;
-import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.test.web.servlet.ResultActions;
-import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
-import org.springframework.test.web.servlet.request.RequestPostProcessor;
-import software.amazon.awssdk.services.s3.model.S3Object;
-
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.stream.Collectors;
-
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -21,7 +7,23 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Fixtures for the task comment API: posting as JSON or multipart, editing, deleting, and reading the rows back. */
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.media.model.MediaUsage;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import software.amazon.awssdk.services.s3.model.S3Object;
+
+/**
+ * Fixtures for the task comment API: posting as JSON or multipart, editing, deleting, and reading
+ * the rows back.
+ */
 abstract class AbstractTaskCommentApiTests extends AbstractTaskAttachmentApiTests {
 
     protected static String commentsOf(UUID taskId) {
@@ -36,19 +38,18 @@ abstract class AbstractTaskCommentApiTests extends AbstractTaskAttachmentApiTest
         return "<@" + user.getId() + ">";
     }
 
-    protected ResultActions postComment(RequestPostProcessor caller, UUID taskId, String body) throws Exception {
-        return mockMvc.perform(post(commentsOf(taskId))
-                .with(caller)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(bodyJson(body)));
+    protected ResultActions postComment(RequestPostProcessor caller, UUID taskId, String body)
+            throws Exception {
+        return mockMvc.perform(
+                post(commentsOf(taskId))
+                        .with(caller)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bodyJson(body)));
     }
 
     protected ResultActions postComment(
-            RequestPostProcessor caller,
-            UUID taskId,
-            String body,
-            MockMultipartFile... files
-    ) throws Exception {
+            RequestPostProcessor caller, UUID taskId, String body, MockMultipartFile... files)
+            throws Exception {
         MockMultipartHttpServletRequestBuilder request = multipart(commentsOf(taskId));
 
         for (MockMultipartFile file : files) {
@@ -63,33 +64,40 @@ abstract class AbstractTaskCommentApiTests extends AbstractTaskAttachmentApiTest
     }
 
     /** Posts a comment as JSON and returns its id. */
-    protected UUID addComment(RequestPostProcessor caller, UUID taskId, String body) throws Exception {
+    protected UUID addComment(RequestPostProcessor caller, UUID taskId, String body)
+            throws Exception {
         return idOf(postComment(caller, taskId, body).andExpect(status().isCreated()));
     }
 
     /** Posts a comment with files and returns its id. */
-    protected UUID addComment(RequestPostProcessor caller, UUID taskId, String body, MockMultipartFile... files)
+    protected UUID addComment(
+            RequestPostProcessor caller, UUID taskId, String body, MockMultipartFile... files)
             throws Exception {
         return idOf(postComment(caller, taskId, body, files).andExpect(status().isCreated()));
     }
 
-    protected ResultActions listComments(RequestPostProcessor caller, UUID taskId, String query) throws Exception {
+    protected ResultActions listComments(RequestPostProcessor caller, UUID taskId, String query)
+            throws Exception {
         return mockMvc.perform(get(commentsOf(taskId) + query).with(caller));
     }
 
-    protected ResultActions findComment(RequestPostProcessor caller, UUID taskId, UUID commentId) throws Exception {
+    protected ResultActions findComment(RequestPostProcessor caller, UUID taskId, UUID commentId)
+            throws Exception {
         return mockMvc.perform(get(comment(taskId, commentId)).with(caller));
     }
 
-    protected ResultActions editComment(RequestPostProcessor caller, UUID taskId, UUID commentId, String body)
+    protected ResultActions editComment(
+            RequestPostProcessor caller, UUID taskId, UUID commentId, String body)
             throws Exception {
-        return mockMvc.perform(patch(comment(taskId, commentId))
-                .with(caller)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(bodyJson(body)));
+        return mockMvc.perform(
+                patch(comment(taskId, commentId))
+                        .with(caller)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bodyJson(body)));
     }
 
-    protected ResultActions deleteComment(RequestPostProcessor caller, UUID taskId, UUID commentId) throws Exception {
+    protected ResultActions deleteComment(RequestPostProcessor caller, UUID taskId, UUID commentId)
+            throws Exception {
         return mockMvc.perform(delete(comment(taskId, commentId)).with(caller));
     }
 
@@ -110,63 +118,62 @@ abstract class AbstractTaskCommentApiTests extends AbstractTaskAttachmentApiTest
     }
 
     protected UUID idOf(ResultActions result) throws Exception {
-        return UUID.fromString(json(result.andReturn().getResponse().getContentAsString()).get("id").asString());
+        return UUID.fromString(
+                json(result.andReturn().getResponse().getContentAsString()).get("id").asString());
     }
 
     protected int commentCount(UUID taskId) {
         return jdbcTemplate.queryForObject(
-                "select count(*) from task_comments where task_id = ?",
-                Integer.class,
-                taskId
-        );
+                "select count(*) from task_comments where task_id = ?", Integer.class, taskId);
     }
 
     protected boolean commentExists(UUID commentId) {
         return jdbcTemplate.queryForObject(
                 "select exists (select 1 from task_comments where id = ?)",
                 Boolean.class,
-                commentId
-        );
+                commentId);
     }
 
     protected String bodyOf(UUID commentId) {
-        return jdbcTemplate.queryForObject("select body from task_comments where id = ?", String.class, commentId);
+        return jdbcTemplate.queryForObject(
+                "select body from task_comments where id = ?", String.class, commentId);
     }
 
     protected Set<UUID> mentionRowsOf(UUID commentId) {
-        return Set.copyOf(jdbcTemplate.queryForList(
-                "select user_id from task_comment_mentions where comment_id = ?",
-                UUID.class,
-                commentId
-        ));
+        return Set.copyOf(
+                jdbcTemplate.queryForList(
+                        "select user_id from task_comment_mentions where comment_id = ?",
+                        UUID.class,
+                        commentId));
     }
 
     protected Set<UUID> attachmentIdsOfComment(UUID commentId) {
-        return Set.copyOf(jdbcTemplate.queryForList(
-                "select id from task_attachments where comment_id = ?",
-                UUID.class,
-                commentId
-        ));
+        return Set.copyOf(
+                jdbcTemplate.queryForList(
+                        "select id from task_attachments where comment_id = ?",
+                        UUID.class,
+                        commentId));
     }
 
     protected boolean mediaExistsWithKey(String storageKey) {
         return jdbcTemplate.queryForObject(
                 "select exists (select 1 from media where storage_key = ?)",
                 Boolean.class,
-                storageKey
-        );
+                storageKey);
     }
 
     protected String referenceOf(UUID taskId) {
-        return jdbcTemplate.queryForObject("select reference from tasks where id = ?", String.class, taskId);
+        return jdbcTemplate.queryForObject(
+                "select reference from tasks where id = ?", String.class, taskId);
     }
 
     /** Every task attachment object currently in the bucket. */
     protected Set<String> storedAttachmentKeys() {
         return s3Client
-                .listObjectsV2Paginator(request -> request
-                        .bucket(storageProperties.bucket())
-                        .prefix(MediaUsage.TASK_ATTACHMENT.storagePrefix() + "/"))
+                .listObjectsV2Paginator(
+                        request ->
+                                request.bucket(storageProperties.bucket())
+                                        .prefix(MediaUsage.TASK_ATTACHMENT.storagePrefix() + "/"))
                 .contents()
                 .stream()
                 .map(S3Object::key)

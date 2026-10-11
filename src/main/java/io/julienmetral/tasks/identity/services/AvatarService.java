@@ -13,16 +13,15 @@ import io.julienmetral.tasks.media.model.ProcessedImage;
 import io.julienmetral.tasks.media.services.AvatarImageProcessor;
 import io.julienmetral.tasks.media.services.MediaService;
 import io.julienmetral.tasks.messaging.services.Outbox;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.util.Objects;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.util.Objects;
-import java.util.UUID;
 
 @Slf4j
 @Service
@@ -36,17 +35,21 @@ public class AvatarService {
     private final Outbox outbox;
 
     /**
-     * Checks the photo (size, type, antivirus, then dimensions from its header) and stores it as uploaded, as the
-     * user's pending photo. Writes {@link AvatarUploaded} to the outbox: the worker produces the square version after
-     * commit (see {@link #process}). A newer upload replaces a pending one; the current photo stays until then.
+     * Checks the photo (size, type, antivirus, then dimensions from its header) and stores it as
+     * uploaded, as the user's pending photo. Writes {@link AvatarUploaded} to the outbox: the
+     * worker produces the square version after commit (see {@link #process}). A newer upload
+     * replaces a pending one; the current photo stays until then.
      */
     @Transactional
     public User update(UUID userId, MultipartFile file) {
         User user = getUser(userId);
 
-        Media upload = mediaService.store(file, MediaUsage.AVATAR_UPLOAD, currentUser.getId().orElse(null));
+        Media upload =
+                mediaService.store(
+                        file, MediaUsage.AVATAR_UPLOAD, currentUser.getId().orElse(null));
 
-        // After the type check, so a PDF gets 415 rather than "unreadable image"; a rollback deletes the upload
+        // After the type check, so a PDF gets 415 rather than "unreadable image"; a rollback
+        // deletes the upload
         imageProcessor.checkDimensions(bytes(file));
 
         replacePendingAvatar(user, upload);
@@ -60,10 +63,10 @@ public class AvatarService {
     }
 
     /**
-     * Run by the worker: re-encodes the pending upload into the profile photo, replaces the current one and deletes
-     * the upload. Does nothing when the upload is no longer the user's pending one (replaced, removed, or the user
-     * was deleted), so a redelivered or stale message is harmless. An image that cannot be decoded is dropped with a
-     * warning instead of being retried.
+     * Run by the worker: re-encodes the pending upload into the profile photo, replaces the current
+     * one and deletes the upload. Does nothing when the upload is no longer the user's pending one
+     * (replaced, removed, or the user was deleted), so a redelivered or stale message is harmless.
+     * An image that cannot be decoded is dropped with a warning instead of being retried.
      */
     @Transactional
     public void process(UUID userId, UUID uploadId) {
@@ -84,19 +87,23 @@ public class AvatarService {
         try {
             image = imageProcessor.process(mediaService.read(upload));
         } catch (InvalidImageException exception) {
-            log.warn("Dropped the profile photo {} of user {}: {}", uploadId, userId, exception.getMessage());
+            log.warn(
+                    "Dropped the profile photo {} of user {}: {}",
+                    uploadId,
+                    userId,
+                    exception.getMessage());
             return;
         }
 
-        // Not store: the upload was scanned, and scanning the re-encoded pixels again dead-lettered good photos
-        // whenever clamd was down
-        Media avatar = mediaService.storeGenerated(
-                image.content(),
-                "avatar." + image.extension(),
-                image.contentType(),
-                MediaUsage.AVATAR,
-                upload.getUploadedBy() == null ? null : upload.getUploadedBy().getId()
-        );
+        // Not store: the upload was scanned, and scanning the re-encoded pixels again dead-lettered
+        // good photos whenever clamd was down
+        Media avatar =
+                mediaService.storeGenerated(
+                        image.content(),
+                        "avatar." + image.extension(),
+                        image.contentType(),
+                        MediaUsage.AVATAR,
+                        upload.getUploadedBy() == null ? null : upload.getUploadedBy().getId());
 
         replaceAvatar(user, avatar);
     }
@@ -132,8 +139,9 @@ public class AvatarService {
         }
     }
 
-    // Every photo change locks the user row first: the upload request and the worker both update it and delete media
-    // rows, and without a common first lock they deadlocked (Postgres 40P01) or read a pending upload already replaced
+    // Every photo change locks the user row first: the upload request and the worker both update it
+    // and delete media rows, and without a common first lock they deadlocked (Postgres 40P01) or
+    // read a pending upload already replaced
     private User getUser(UUID userId) {
         return userRepository
                 .findByIdForUpdate(userId)

@@ -2,13 +2,11 @@ package io.julienmetral.tasks.support;
 
 import io.julienmetral.tasks.identity.entities.UserProfile;
 import io.julienmetral.tasks.identity.entities.UserStatus;
-
 import java.util.UUID;
 
 public final class UserProfiles {
 
-    private UserProfiles() {
-    }
+    private UserProfiles() {}
 
     public static UserProfile reference(UUID id) {
         return profile(id, null, UserStatus.ACTIVE);

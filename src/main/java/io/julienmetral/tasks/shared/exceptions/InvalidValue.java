@@ -2,8 +2,6 @@ package io.julienmetral.tasks.shared.exceptions;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonValue;
-import tools.jackson.core.JacksonException;
-
 import java.lang.reflect.Method;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -15,18 +13,22 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import tools.jackson.core.JacksonException;
 
 /**
- * One invalid value of a request, as an item of the {@code errors} member of a {@link ProblemType#VALIDATION_ERROR}
- * problem, in the shape of RFC 9457's example. {@code pointer} is a JSON Pointer into the JSON body;
- * {@code parameter} names a query, path, form or multipart parameter. Exactly one of them is set.
+ * One invalid value of a request, as an item of the {@code errors} member of a {@link
+ * ProblemType#VALIDATION_ERROR} problem, in the shape of RFC 9457's example. {@code pointer} is a
+ * JSON Pointer into the JSON body; {@code parameter} names a query, path, form or multipart
+ * parameter. Exactly one of them is set.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record InvalidValue(String detail, String pointer, String parameter) {
 
-    static final Comparator<InvalidValue> ORDER = Comparator
-            .comparing((InvalidValue value) -> value.pointer() != null ? value.pointer() : value.parameter())
-            .thenComparing(InvalidValue::detail);
+    static final Comparator<InvalidValue> ORDER =
+            Comparator.comparing(
+                            (InvalidValue value) ->
+                                    value.pointer() != null ? value.pointer() : value.parameter())
+                    .thenComparing(InvalidValue::detail);
 
     static InvalidValue inBody(String detail, List<String> path) {
         return new InvalidValue(detail, pointer(path), null);
@@ -45,20 +47,22 @@ public record InvalidValue(String detail, String pointer, String parameter) {
 
     static List<String> jsonPath(JacksonException exception) {
         return exception.getPath().stream()
-                .map(reference -> reference.getPropertyName() != null
-                        ? reference.getPropertyName()
-                        : String.valueOf(reference.getIndex()))
+                .map(
+                        reference ->
+                                reference.getPropertyName() != null
+                                        ? reference.getPropertyName()
+                                        : String.valueOf(reference.getIndex()))
                 .toList();
     }
 
     /**
-     * What a value of this type must look like, in the client's terms: a Java type name or a parser message would
-     * reveal the implementation without helping the client.
+     * What a value of this type must look like, in the client's terms: a Java type name or a parser
+     * message would reveal the implementation without helping the client.
      */
     /**
-     * Like {@link #expected}, for a value of the JSON body: an enum lists the names its JSON uses, which a
-     * {@code @JsonValue} method can make differ from its constant names ({@code task.assigned} for
-     * {@code TASK_ASSIGNED}).
+     * Like {@link #expected}, for a value of the JSON body: an enum lists the names its JSON uses,
+     * which a {@code @JsonValue} method can make differ from its constant names ({@code
+     * task.assigned} for {@code TASK_ASSIGNED}).
      */
     static String expectedInJson(Class<?> type) {
         if (type != null && type.isEnum()) {
@@ -102,7 +106,9 @@ public record InvalidValue(String detail, String pointer, String parameter) {
         if (type.isPrimitive() || Number.class.isAssignableFrom(type)) {
             return "must be a number";
         }
-        if (type == Instant.class || type == OffsetDateTime.class || type == ZonedDateTime.class
+        if (type == Instant.class
+                || type == OffsetDateTime.class
+                || type == ZonedDateTime.class
                 || type == LocalDateTime.class) {
             return "must be an ISO 8601 date and time";
         }
@@ -112,8 +118,9 @@ public record InvalidValue(String detail, String pointer, String parameter) {
         return "has an invalid value";
     }
 
-    // RFC 6901 escapes "~" and "/" inside a token; the "#" prefix is the URI fragment form RFC 9457's example uses,
-    // and "#" alone points to the whole body (an error on the object rather than one of its fields)
+    // RFC 6901 escapes "~" and "/" inside a token; the "#" prefix is the URI fragment form RFC
+    // 9457's example uses, and "#" alone points to the whole body (an error on the object rather
+    // than one of its fields)
     private static String pointer(List<String> path) {
         if (path.isEmpty()) {
             return "#";

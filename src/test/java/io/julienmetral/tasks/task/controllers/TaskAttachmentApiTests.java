@@ -1,17 +1,5 @@
 package io.julienmetral.tasks.task.controllers;
 
-import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserRole;
-import org.junit.jupiter.api.Test;
-import org.springframework.http.ContentDisposition;
-import org.springframework.mock.web.MockHttpServletResponse;
-import tools.jackson.databind.JsonNode;
-
-import java.net.http.HttpResponse;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.UUID;
-
 import static io.julienmetral.tasks.support.Problems.untypedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
@@ -22,7 +10,21 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Uploading, listing, reading, downloading and removing task attachments, and the history they leave. */
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserRole;
+import java.net.http.HttpResponse;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.ContentDisposition;
+import org.springframework.mock.web.MockHttpServletResponse;
+import tools.jackson.databind.JsonNode;
+
+/**
+ * Uploading, listing, reading, downloading and removing task attachments, and the history they
+ * leave.
+ */
 class TaskAttachmentApiTests extends AbstractTaskAttachmentApiTests {
 
     @Test
@@ -33,26 +35,33 @@ class TaskAttachmentApiTests extends AbstractTaskAttachmentApiTests {
         byte[] pdf = uniquePdf();
         Instant before = Instant.now();
 
-        MockHttpServletResponse response = upload(asUser(assignee), taskId, "report.pdf", "application/pdf", pdf)
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.filename").value("report.pdf"))
-                .andExpect(jsonPath("$.contentType").value("application/pdf"))
-                .andExpect(jsonPath("$.sizeBytes").value(pdf.length))
-                .andExpect(jsonPath("$.uploadedBy.id").value(assignee.getId().toString()))
-                .andExpect(jsonPath("$.uploadedBy.displayName").value(assignee.getDisplayName()))
-                .andExpect(jsonPath("$.uploadedBy.status").value("ACTIVE"))
-                .andExpect(jsonPath("$.uploadedBy.avatarUrl")
-                        .value("http://localhost/api/v1/identicons/" + assignee.getId()))
-                .andExpect(jsonPath("$.commentId").value(nullValue()))
-                .andExpect(jsonPath("$.downloadUrl").isNotEmpty())
-                .andReturn()
-                .getResponse();
+        MockHttpServletResponse response =
+                upload(asUser(assignee), taskId, "report.pdf", "application/pdf", pdf)
+                        .andExpect(status().isCreated())
+                        .andExpect(jsonPath("$.filename").value("report.pdf"))
+                        .andExpect(jsonPath("$.contentType").value("application/pdf"))
+                        .andExpect(jsonPath("$.sizeBytes").value(pdf.length))
+                        .andExpect(jsonPath("$.uploadedBy.id").value(assignee.getId().toString()))
+                        .andExpect(
+                                jsonPath("$.uploadedBy.displayName")
+                                        .value(assignee.getDisplayName()))
+                        .andExpect(jsonPath("$.uploadedBy.status").value("ACTIVE"))
+                        .andExpect(
+                                jsonPath("$.uploadedBy.avatarUrl")
+                                        .value(
+                                                "http://localhost/api/v1/identicons/"
+                                                        + assignee.getId()))
+                        .andExpect(jsonPath("$.commentId").value(nullValue()))
+                        .andExpect(jsonPath("$.downloadUrl").isNotEmpty())
+                        .andReturn()
+                        .getResponse();
 
         JsonNode body = json(response.getContentAsString());
         UUID attachmentId = UUID.fromString(body.get("id").asString());
 
         assertThat(response.getHeader("Location")).isEqualTo(attachment(taskId, attachmentId));
-        assertThat(Instant.parse(body.get("createdAt").asString())).isBetween(before, Instant.now());
+        assertThat(Instant.parse(body.get("createdAt").asString()))
+                .isBetween(before, Instant.now());
         assertThat(storageKeyOf(attachmentId)).matches("task-attachment/[0-9a-f-]{36}");
         assertThat(objectBytes(storageKeyOf(attachmentId))).isEqualTo(pdf);
     }
@@ -64,22 +73,26 @@ class TaskAttachmentApiTests extends AbstractTaskAttachmentApiTests {
         byte[] pdf = uniquePdf();
         String filename = "Compte rendu réunion 東京.pdf";
 
-        String body = upload(asAdmin(admin), taskId, filename, "application/pdf", pdf)
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.filename").value(filename))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String body =
+                upload(asAdmin(admin), taskId, filename, "application/pdf", pdf)
+                        .andExpect(status().isCreated())
+                        .andExpect(jsonPath("$.filename").value(filename))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
         HttpResponse<byte[]> download = download(json(body).get("downloadUrl").asString());
 
         assertThat(download.body()).isEqualTo(pdf);
         assertThat(download.headers().firstValue("Content-Type")).hasValue("application/pdf");
-        assertThat(ContentDisposition.parse(download.headers().firstValue("Content-Disposition").orElseThrow()))
-                .satisfies(disposition -> {
-                    assertThat(disposition.isAttachment()).isTrue();
-                    assertThat(disposition.getFilename()).isEqualTo(filename);
-                });
+        assertThat(
+                        ContentDisposition.parse(
+                                download.headers().firstValue("Content-Disposition").orElseThrow()))
+                .satisfies(
+                        disposition -> {
+                            assertThat(disposition.isAttachment()).isTrue();
+                            assertThat(disposition.getFilename()).isEqualTo(filename);
+                        });
     }
 
     @Test
@@ -88,12 +101,13 @@ class TaskAttachmentApiTests extends AbstractTaskAttachmentApiTests {
         UUID taskId = createTask(admin, null);
         byte[] docx = uniqueDocx();
 
-        String body = upload(asAdmin(admin), taskId, "letter.docx", docx)
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.contentType").value(DOCX))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String body =
+                upload(asAdmin(admin), taskId, "letter.docx", docx)
+                        .andExpect(status().isCreated())
+                        .andExpect(jsonPath("$.contentType").value(DOCX))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
         HttpResponse<byte[]> download = download(json(body).get("downloadUrl").asString());
 
@@ -107,12 +121,13 @@ class TaskAttachmentApiTests extends AbstractTaskAttachmentApiTests {
         UUID taskId = createTask(admin, null);
         byte[] odt = uniqueOdt();
 
-        String body = upload(asAdmin(admin), taskId, "letter.odt", "application/zip", odt)
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.contentType").value(ODT))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String body =
+                upload(asAdmin(admin), taskId, "letter.odt", "application/zip", odt)
+                        .andExpect(status().isCreated())
+                        .andExpect(jsonPath("$.contentType").value(ODT))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
         HttpResponse<byte[]> download = download(json(body).get("downloadUrl").asString());
 
@@ -182,27 +197,32 @@ class TaskAttachmentApiTests extends AbstractTaskAttachmentApiTests {
         UUID taskId = createTask(admin, null);
         byte[] text = uniqueText();
 
-        String created = upload(asAdmin(admin), taskId, "notes.txt", "text/plain", text)
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String created =
+                upload(asAdmin(admin), taskId, "notes.txt", "text/plain", text)
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
         UUID attachmentId = UUID.fromString(json(created).get("id").asString());
 
-        String found = find(asAdmin(admin), taskId, attachmentId)
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(attachmentId.toString()))
-                .andExpect(jsonPath("$.filename").value("notes.txt"))
-                .andExpect(jsonPath("$.contentType").value("text/plain"))
-                .andExpect(jsonPath("$.sizeBytes").value(text.length))
-                .andExpect(jsonPath("$.uploadedBy.id").value(admin.getId().toString()))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String found =
+                find(asAdmin(admin), taskId, attachmentId)
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.id").value(attachmentId.toString()))
+                        .andExpect(jsonPath("$.filename").value("notes.txt"))
+                        .andExpect(jsonPath("$.contentType").value("text/plain"))
+                        .andExpect(jsonPath("$.sizeBytes").value(text.length))
+                        .andExpect(jsonPath("$.uploadedBy.id").value(admin.getId().toString()))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
-        // Postgres rounds the timestamp to the microsecond, the upload response carries the unrounded value
+        // Postgres rounds the timestamp to the microsecond, the upload response carries the
+        // unrounded value
         assertThat(Instant.parse(json(found).get("createdAt").asString()))
-                .isCloseTo(Instant.parse(json(created).get("createdAt").asString()), within(1, ChronoUnit.MICROS));
+                .isCloseTo(
+                        Instant.parse(json(created).get("createdAt").asString()),
+                        within(1, ChronoUnit.MICROS));
 
         HttpResponse<byte[]> download = download(json(found).get("downloadUrl").asString());
 
@@ -261,14 +281,10 @@ class TaskAttachmentApiTests extends AbstractTaskAttachmentApiTests {
         mockMvc.perform(delete(TASKS + "/" + taskId).with(asAdmin(admin)))
                 .andExpect(status().isNoContent());
 
-        upload(asAdmin(admin), taskId, "late.pdf", uniquePdf())
-                .andExpect(status().isNotFound());
-        list(asAdmin(admin), taskId)
-                .andExpect(status().isNotFound());
-        find(asAdmin(admin), taskId, attachmentId)
-                .andExpect(status().isNotFound());
-        remove(asAdmin(admin), taskId, attachmentId)
-                .andExpect(status().isNotFound());
+        upload(asAdmin(admin), taskId, "late.pdf", uniquePdf()).andExpect(status().isNotFound());
+        list(asAdmin(admin), taskId).andExpect(status().isNotFound());
+        find(asAdmin(admin), taskId, attachmentId).andExpect(status().isNotFound());
+        remove(asAdmin(admin), taskId, attachmentId).andExpect(status().isNotFound());
     }
 
     @Test
@@ -282,7 +298,8 @@ class TaskAttachmentApiTests extends AbstractTaskAttachmentApiTests {
         JsonNode latest = eventsThroughApi(admin, taskId).get(0);
         assertThat(latest.get("type").asString()).isEqualTo("ATTACHMENT_ADDED");
         assertThat(latest.get("actor").get("id").asString()).isEqualTo(assignee.getId().toString());
-        assertThat(latest.get("payload").get("attachmentId").asString()).isEqualTo(attachmentId.toString());
+        assertThat(latest.get("payload").get("attachmentId").asString())
+                .isEqualTo(attachmentId.toString());
         assertThat(latest.get("payload").get("filename").asString()).isEqualTo("plan été.pdf");
     }
 
@@ -293,16 +310,13 @@ class TaskAttachmentApiTests extends AbstractTaskAttachmentApiTests {
         UUID attachmentId = uploadPdf(asAdmin(admin), taskId, "report.pdf");
         String storageKey = storageKeyOf(attachmentId);
 
-        remove(asAdmin(admin), taskId, attachmentId)
-                .andExpect(status().isNoContent());
+        remove(asAdmin(admin), taskId, attachmentId).andExpect(status().isNoContent());
 
         assertThat(attachmentCount(taskId)).isZero();
         assertThat(mediaCountUploadedBy(admin)).isZero();
         assertObjectMissing(storageKey);
-        find(asAdmin(admin), taskId, attachmentId)
-                .andExpect(status().isNotFound());
-        list(asAdmin(admin), taskId)
-                .andExpect(jsonPath("$", hasSize(0)));
+        find(asAdmin(admin), taskId, attachmentId).andExpect(status().isNotFound());
+        list(asAdmin(admin), taskId).andExpect(jsonPath("$", hasSize(0)));
     }
 
     @Test
@@ -313,8 +327,7 @@ class TaskAttachmentApiTests extends AbstractTaskAttachmentApiTests {
         UUID kept = uploadPdf(asAdmin(admin), taskId, "kept.pdf");
         String keptKey = storageKeyOf(kept);
 
-        remove(asAdmin(admin), taskId, removed)
-                .andExpect(status().isNoContent());
+        remove(asAdmin(admin), taskId, removed).andExpect(status().isNoContent());
 
         list(asAdmin(admin), taskId)
                 .andExpect(jsonPath("$", hasSize(1)))
@@ -329,14 +342,15 @@ class TaskAttachmentApiTests extends AbstractTaskAttachmentApiTests {
         UUID taskId = createTask(admin, null);
         UUID attachmentId = uploadPdf(asAdmin(admin), taskId, "report.pdf");
 
-        remove(asAdmin(otherAdmin), taskId, attachmentId)
-                .andExpect(status().isNoContent());
+        remove(asAdmin(otherAdmin), taskId, attachmentId).andExpect(status().isNoContent());
 
         JsonNode events = eventsThroughApi(admin, taskId);
         JsonNode latest = events.get(0);
         assertThat(latest.get("type").asString()).isEqualTo("ATTACHMENT_REMOVED");
-        assertThat(latest.get("actor").get("id").asString()).isEqualTo(otherAdmin.getId().toString());
-        assertThat(latest.get("payload").get("attachmentId").asString()).isEqualTo(attachmentId.toString());
+        assertThat(latest.get("actor").get("id").asString())
+                .isEqualTo(otherAdmin.getId().toString());
+        assertThat(latest.get("payload").get("attachmentId").asString())
+                .isEqualTo(attachmentId.toString());
         assertThat(latest.get("payload").get("filename").asString()).isEqualTo("report.pdf");
         assertThat(events.get(1).get("type").asString()).isEqualTo("ATTACHMENT_ADDED");
     }

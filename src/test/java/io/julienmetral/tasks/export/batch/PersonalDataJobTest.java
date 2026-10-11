@@ -1,11 +1,36 @@
 package io.julienmetral.tasks.export.batch;
 
+import static io.julienmetral.tasks.support.UserProfiles.reference;
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.export.entities.DataExport;
 import io.julienmetral.tasks.export.exceptions.DataExportNotFoundException;
 import io.julienmetral.tasks.export.personaldata.PersonalDataPdf;
 import io.julienmetral.tasks.export.personaldata.PersonalDataQueries;
 import io.julienmetral.tasks.export.services.DataExportService;
 import io.julienmetral.tasks.media.services.ObjectStorage;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,32 +56,6 @@ import org.springframework.transaction.PlatformTransactionManager;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
-
-import static io.julienmetral.tasks.support.UserProfiles.reference;
-import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
-
 @ExtendWith(MockitoExtension.class)
 class PersonalDataJobTest {
 
@@ -70,36 +69,39 @@ class PersonalDataJobTest {
 
     private final JsonMapper jsonMapper = JsonMapper.builder().build();
 
-    @Mock
-    private JobRepository jobRepository;
+    @Mock private JobRepository jobRepository;
 
-    @Mock
-    private PlatformTransactionManager transactionManager;
+    @Mock private PlatformTransactionManager transactionManager;
 
-    @Mock
-    private DataExportService exportService;
+    @Mock private DataExportService exportService;
 
-    @Mock
-    private DataExportJobListener jobListener;
+    @Mock private DataExportJobListener jobListener;
 
-    @Mock
-    private DataExportLeaseRenewal leaseRenewal;
+    @Mock private DataExportLeaseRenewal leaseRenewal;
 
-    @Mock
-    private PersonalDataQueries queries;
+    @Mock private PersonalDataQueries queries;
 
-    @Mock
-    private PersonalDataPdf pdf;
+    @Mock private PersonalDataPdf pdf;
 
-    @Mock
-    private ObjectStorage objectStorage;
+    @Mock private ObjectStorage objectStorage;
 
     private SimpleJob job;
 
     @BeforeEach
     void buildTheJob() {
-        Job built = new PersonalDataJob(jobRepository, transactionManager, exportService, jobListener, leaseRenewal,
-                queries, pdf, objectStorage, jsonMapper, Clock.fixed(NOW, ZoneOffset.UTC)).personalDataExport();
+        Job built =
+                new PersonalDataJob(
+                                jobRepository,
+                                transactionManager,
+                                exportService,
+                                jobListener,
+                                leaseRenewal,
+                                queries,
+                                pdf,
+                                objectStorage,
+                                jsonMapper,
+                                Clock.fixed(NOW, ZoneOffset.UTC))
+                        .personalDataExport();
         job = (SimpleJob) built;
     }
 
@@ -109,15 +111,18 @@ class PersonalDataJobTest {
     }
 
     private RepeatStatus runStep(String name) throws Exception {
-        JobExecution execution = new JobExecution(
-                1L,
-                new JobInstance(1L, PersonalDataJob.JOB),
-                new JobParametersBuilder().addString(PublishExport.EXPORT_ID, exportId.toString()).toJobParameters()
-        );
+        JobExecution execution =
+                new JobExecution(
+                        1L,
+                        new JobInstance(1L, PersonalDataJob.JOB),
+                        new JobParametersBuilder()
+                                .addString(PublishExport.EXPORT_ID, exportId.toString())
+                                .toJobParameters());
         StepExecution step = new StepExecution(2L, name, execution);
         execution.addStepExecution(step);
 
-        return ((TaskletStep) job.getStep(name)).getTasklet()
+        return ((TaskletStep) job.getStep(name))
+                .getTasklet()
                 .execute(new StepContribution(step), new ChunkContext(new StepContext(step)));
     }
 
@@ -135,20 +140,30 @@ class PersonalDataJobTest {
     }
 
     private void jsonAndPdfWritten() throws IOException {
-        Files.writeString(ExportFiles.of(exportId, "my-data.json"), "{\"format\":\"tasks-api-personal-data\"}");
+        Files.writeString(
+                ExportFiles.of(exportId, "my-data.json"),
+                "{\"format\":\"tasks-api-personal-data\"}");
         Files.writeString(ExportFiles.of(exportId, "my-data.pdf"), "%PDF-1.7 personal data");
     }
 
     @Test
     void jobWritesTheJsonThenThePdfThenPublishesAndRunsEveryStepAgainOnARestart() {
         assertThat(job.getName()).isEqualTo(PersonalDataJob.JOB);
-        assertThat(job.getStepNames()).containsExactly("personalDataJson", "personalDataPdf", "personalDataPublish");
-        assertThat(job.getStepNames()).allSatisfy(name ->
-                assertThat(((TaskletStep) job.getStep(name)).isAllowStartIfComplete()).as(name).isTrue());
+        assertThat(job.getStepNames())
+                .containsExactly("personalDataJson", "personalDataPdf", "personalDataPublish");
+        assertThat(job.getStepNames())
+                .allSatisfy(
+                        name ->
+                                assertThat(
+                                                ((TaskletStep) job.getStep(name))
+                                                        .isAllowStartIfComplete())
+                                        .as(name)
+                                        .isTrue());
     }
 
     @Test
-    void jsonStepWritesEverySectionOfTheOwnerAfterTheFormatItsVersionAndTheExportDate() throws Exception {
+    void jsonStepWritesEverySectionOfTheOwnerAfterTheFormatItsVersionAndTheExportDate()
+            throws Exception {
         ownedByTheOwner();
         Map<String, Object> account = new LinkedHashMap<>();
         account.put("id", OWNER_ID);
@@ -156,21 +171,36 @@ class PersonalDataJobTest {
         account.put("created_at", Instant.parse("2030-01-01T08:00:00Z"));
         when(queries.account(OWNER_ID)).thenReturn(account);
         when(queries.notificationSettings(OWNER_ID)).thenReturn(null);
-        when(queries.tasks(OWNER_ID)).thenReturn(List.of(Map.of("reference", "T-1", "title", "Été")));
+        when(queries.tasks(OWNER_ID))
+                .thenReturn(List.of(Map.of("reference", "T-1", "title", "Été")));
         when(queries.exports(OWNER_ID)).thenReturn(List.of(Map.of("type", "PERSONAL_DATA")));
 
         assertThat(runStep("personalDataJson")).isEqualTo(RepeatStatus.FINISHED);
 
         JsonNode json = jsonMapper.readTree(ExportFiles.of(exportId, "my-data.json").toFile());
-        assertThat(json.propertyNames()).containsExactly(
-                "format", "version", "exported_at", "account", "notification_settings", "sessions", "webhooks",
-                "webhook_deliveries", "tasks", "comments", "mentions", "reminders", "attachments", "history",
-                "exports");
+        assertThat(json.propertyNames())
+                .containsExactly(
+                        "format",
+                        "version",
+                        "exported_at",
+                        "account",
+                        "notification_settings",
+                        "sessions",
+                        "webhooks",
+                        "webhook_deliveries",
+                        "tasks",
+                        "comments",
+                        "mentions",
+                        "reminders",
+                        "attachments",
+                        "history",
+                        "exports");
         assertThat(json.path("format").asString()).isEqualTo("tasks-api-personal-data");
         assertThat(json.path("version").asInt()).isEqualTo(1);
         assertThat(json.path("exported_at").asString()).isEqualTo("2030-03-04T23:30:00Z");
         assertThat(json.path("account").path("id").asString()).isEqualTo(OWNER_ID.toString());
-        assertThat(json.path("account").path("created_at").asString()).isEqualTo("2030-01-01T08:00:00Z");
+        assertThat(json.path("account").path("created_at").asString())
+                .isEqualTo("2030-01-01T08:00:00Z");
         assertThat(json.path("notification_settings").isNull()).isTrue();
         assertThat(json.path("webhooks").isEmpty()).isTrue();
         assertThat(json.path("tasks").path(0).path("title").asString()).isEqualTo("Été");
@@ -186,14 +216,17 @@ class PersonalDataJobTest {
 
     @Test
     void jsonStepOfAnExportThatIsGoneFails() {
-        assertThatThrownBy(() -> runStep("personalDataJson")).isInstanceOf(DataExportNotFoundException.class);
+        assertThatThrownBy(() -> runStep("personalDataJson"))
+                .isInstanceOf(DataExportNotFoundException.class);
 
         verifyNoInteractions(queries);
     }
 
     @Test
     void pdfStepRendersTheJsonTheStepBeforeWrote() throws Exception {
-        Files.writeString(ExportFiles.of(exportId, "my-data.json"), """
+        Files.writeString(
+                ExportFiles.of(exportId, "my-data.json"),
+                """
                 {"format": "tasks-api-personal-data", "version": 1, "tasks": [{"reference": "T-1"}]}
                 """);
 
@@ -209,7 +242,8 @@ class PersonalDataJobTest {
     }
 
     @Test
-    void publishStepArchivesTheJsonThePdfAndTheProfilePhotoThenCompletesTheExportWithoutRowCount() throws Exception {
+    void publishStepArchivesTheJsonThePdfAndTheProfilePhotoThenCompletesTheExportWithoutRowCount()
+            throws Exception {
         ownedByTheOwner();
         jsonAndPdfWritten();
         hasProfilePhoto("image/png");
@@ -217,17 +251,24 @@ class PersonalDataJobTest {
         runStep("personalDataPublish");
 
         Path archive = ExportFiles.of(exportId, "export.zip");
-        verify(exportService).complete(eq(exportId), eq(archive), eq("my-data-2030-03-04.zip"),
-                eq("application/zip"), isNull());
-        assertThat(entriesOf(archive)).containsExactly(
-                Map.entry("my-data.json", "{\"format\":\"tasks-api-personal-data\"}"),
-                Map.entry("my-data.pdf", "%PDF-1.7 personal data"),
-                Map.entry("profile-photo.png", new String(PHOTO, UTF_8)));
+        verify(exportService)
+                .complete(
+                        eq(exportId),
+                        eq(archive),
+                        eq("my-data-2030-03-04.zip"),
+                        eq("application/zip"),
+                        isNull());
+        assertThat(entriesOf(archive))
+                .containsExactly(
+                        Map.entry("my-data.json", "{\"format\":\"tasks-api-personal-data\"}"),
+                        Map.entry("my-data.pdf", "%PDF-1.7 personal data"),
+                        Map.entry("profile-photo.png", new String(PHOTO, UTF_8)));
     }
 
     @ParameterizedTest
     @CsvSource({"image/jpeg, jpg", "image/png, png", "image/webp, webp"})
-    void profilePhotoKeepsTheExtensionOfItsType(String contentType, String extension) throws Exception {
+    void profilePhotoKeepsTheExtensionOfItsType(String contentType, String extension)
+            throws Exception {
         ownedByTheOwner();
         jsonAndPdfWritten();
         hasProfilePhoto(contentType);
@@ -254,7 +295,8 @@ class PersonalDataJobTest {
     private static Map<String, String> entriesOf(Path archive) throws IOException {
         Map<String, String> entries = new LinkedHashMap<>();
 
-        try (InputStream file = Files.newInputStream(archive); ZipInputStream zip = new ZipInputStream(file)) {
+        try (InputStream file = Files.newInputStream(archive);
+                ZipInputStream zip = new ZipInputStream(file)) {
             for (ZipEntry entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
                 entries.put(entry.getName(), new String(zip.readAllBytes(), UTF_8));
             }

@@ -1,28 +1,27 @@
 package io.julienmetral.tasks.media.services;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.model.MediaCleanupReport;
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.TestClock;
+import java.time.Duration;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import java.time.Duration;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
- * RustFS cannot backdate an object, so this class moves the clock forward instead: every object created here is
- * already past the orphan grace period. Media rows are dated by that same clock, so the tests backdate them.
+ * RustFS cannot backdate an object, so this class moves the clock forward instead: every object
+ * created here is already past the orphan grace period. Media rows are dated by that same clock, so
+ * the tests backdate them.
  */
 @IntegrationTest
 class MediaCleanupOrphanObjectTests extends AbstractMediaCleanupTests {
 
-    @Autowired
-    private TestClock clock;
+    @Autowired private TestClock clock;
 
     @BeforeEach
     void moveTheClockPastTheGracePeriod() {
@@ -101,11 +100,13 @@ class MediaCleanupOrphanObjectTests extends AbstractMediaCleanupTests {
     void orphanObjectDeletionWaitsForTheCommit() {
         String key = putObjectWithoutMediaRow();
 
-        transactionTemplate.executeWithoutResult(status -> {
-            assertThat(cleanupService.cleanUp().deletedOrphanObjects()).isGreaterThanOrEqualTo(1);
-            assertThat(objectExists(key)).isTrue();
-            status.setRollbackOnly();
-        });
+        transactionTemplate.executeWithoutResult(
+                status -> {
+                    assertThat(cleanupService.cleanUp().deletedOrphanObjects())
+                            .isGreaterThanOrEqualTo(1);
+                    assertThat(objectExists(key)).isTrue();
+                    status.setRollbackOnly();
+                });
 
         assertThat(objectExists(key)).isTrue();
 

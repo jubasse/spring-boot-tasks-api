@@ -1,23 +1,21 @@
 package io.julienmetral.tasks.export.batch;
 
-import org.springframework.util.FileSystemUtils;
-
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.UUID;
+import org.springframework.util.FileSystemUtils;
 
 /**
- * The local directory where a run writes its files before storing the result: one per export, deleted when the job
- * ends. Local on purpose: a run resumed on another instance writes them again.
+ * The local directory where a run writes its files before storing the result: one per export,
+ * deleted when the job ends. Local on purpose: a run resumed on another instance writes them again.
  */
 public final class ExportFiles {
 
     private static final Path DIRECTORY = Path.of(System.getProperty("java.io.tmpdir"), "exports");
 
-    private ExportFiles() {
-    }
+    private ExportFiles() {}
 
     public static Path of(UUID exportId, String name) {
         Path directory = DIRECTORY.resolve(exportId.toString());

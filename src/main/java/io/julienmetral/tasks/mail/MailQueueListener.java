@@ -18,10 +18,11 @@ class MailQueueListener {
 
     /**
      * Sends one queued email. An SMTP failure is thrown, so the listener retries with backoff
-     * ({@code spring.rabbitmq.listener.simple.retry}) and then dead-letters the message. A message that can never be
-     * built is dead-lettered at once.
-     * <p>
-     * Delivery is at least once: a crash between the SMTP send and the acknowledgement sends the email twice.
+     * ({@code spring.rabbitmq.listener.simple.retry}) and then dead-letters the message. A message
+     * that can never be built is dead-lettered at once.
+     *
+     * <p>Delivery is at least once: a crash between the SMTP send and the acknowledgement sends the
+     * email twice.
      */
     @RabbitListener(queues = MailQueues.SEND)
     void send(MailMessage message) {
@@ -35,7 +36,8 @@ class MailQueueListener {
         try {
             mailSender.send(mail);
         } catch (MailParseException | MailPreparationException exception) {
-            throw new AmqpRejectAndDontRequeueException("Invalid email \"" + message.subject() + "\"", exception);
+            throw new AmqpRejectAndDontRequeueException(
+                    "Invalid email \"" + message.subject() + "\"", exception);
         }
     }
 }

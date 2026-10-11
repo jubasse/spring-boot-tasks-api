@@ -1,40 +1,37 @@
 package io.julienmetral.tasks.task.repositories;
 
+import static io.julienmetral.tasks.task.entities.TaskReminderKind.DUE_SOON;
+import static io.julienmetral.tasks.task.entities.TaskReminderKind.OVERDUE;
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.julienmetral.tasks.support.JdbcSliceTest;
 import io.julienmetral.tasks.task.entities.TaskStatus;
 import io.julienmetral.tasks.task.repositories.TaskReminderQueries.Reminder;
+import java.sql.Timestamp;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import java.sql.Timestamp;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
-
-import static io.julienmetral.tasks.task.entities.TaskReminderKind.DUE_SOON;
-import static io.julienmetral.tasks.task.entities.TaskReminderKind.OVERDUE;
-import static org.assertj.core.api.Assertions.assertThat;
-
 @JdbcSliceTest
 class TaskReminderQueriesTests {
 
-    // Every due date sits in 2000, before anything the other test contexts write to the shared database: the windows
-    // below reach only this class's tasks
+    // Every due date sits in 2000, before anything the other test contexts write to the shared
+    // database: the windows below reach only this class's tasks
     private static final Instant NOW = Instant.parse("2000-06-01T12:00:00Z");
 
     private static final Duration LEAD_TIME = Duration.ofHours(24);
 
     private static final Duration LOOKBACK = Duration.ofDays(7);
 
-    @Autowired
-    private TaskReminderQueries queries;
+    @Autowired private TaskReminderQueries queries;
 
-    @Autowired
-    private JdbcTemplate jdbc;
+    @Autowired private JdbcTemplate jdbc;
 
     @Test
     void recordingAReminderReturnsItAndStoresItAsSent() {
@@ -44,7 +41,8 @@ class TaskReminderQueriesTests {
 
         List<Reminder> reminders = dueSoonAt(NOW);
 
-        assertThat(reminders).contains(new Reminder(task, referenceOf(task), "Reminded task", dueAt, assignee));
+        assertThat(reminders)
+                .contains(new Reminder(task, referenceOf(task), "Reminded task", dueAt, assignee));
         assertThat(jdbc.queryForMap("SELECT * FROM task_reminders WHERE task_id = ?", task))
                 .containsEntry("recipient_id", assignee)
                 .containsEntry("kind", "DUE_SOON")
@@ -62,8 +60,12 @@ class TaskReminderQueriesTests {
         List<UUID> dueSoon = taskIds(dueSoonAt(NOW));
         List<UUID> overdue = taskIds(overdueAt(NOW));
 
-        assertThat(dueSoon).contains(dueAtTheEndOfTheLeadTime).doesNotContain(dueNow, dueAfterTheLeadTime);
-        assertThat(overdue).contains(dueNow).doesNotContain(dueAtTheEndOfTheLeadTime, dueAfterTheLeadTime);
+        assertThat(dueSoon)
+                .contains(dueAtTheEndOfTheLeadTime)
+                .doesNotContain(dueNow, dueAfterTheLeadTime);
+        assertThat(overdue)
+                .contains(dueNow)
+                .doesNotContain(dueAtTheEndOfTheLeadTime, dueAfterTheLeadTime);
     }
 
     @Test
@@ -72,7 +74,9 @@ class TaskReminderQueriesTests {
         UUID dueAtTheLookbackStart = insertTask(assignee, NOW.minus(LOOKBACK));
         UUID dueJustAfter = insertTask(assignee, NOW.minus(LOOKBACK).plusSeconds(1));
 
-        assertThat(taskIds(overdueAt(NOW))).contains(dueJustAfter).doesNotContain(dueAtTheLookbackStart);
+        assertThat(taskIds(overdueAt(NOW)))
+                .contains(dueJustAfter)
+                .doesNotContain(dueAtTheLookbackStart);
     }
 
     @Test
@@ -120,12 +124,18 @@ class TaskReminderQueriesTests {
         dueSoonAt(NOW);
 
         assertThat(taskIds(overdueAt(dueAt.plus(Duration.ofMinutes(15))))).contains(task);
-        assertThat(jdbc.queryForList("SELECT kind FROM task_reminders WHERE task_id = ?", String.class, task))
+        assertThat(
+                        jdbc.queryForList(
+                                "SELECT kind FROM task_reminders WHERE task_id = ?",
+                                String.class,
+                                task))
                 .containsExactlyInAnyOrder("DUE_SOON", "OVERDUE");
     }
 
     @ParameterizedTest
-    @EnumSource(value = TaskStatus.class, names = {"DONE", "CANCELLED", "ARCHIVED"})
+    @EnumSource(
+            value = TaskStatus.class,
+            names = {"DONE", "CANCELLED", "ARCHIVED"})
     void closedTaskIsNotReminded(TaskStatus status) {
         UUID task = insertTask(insertProfile(), NOW.plus(Duration.ofHours(1)));
         jdbc.update("UPDATE tasks SET status = ? WHERE id = ?", status.name(), task);
@@ -134,7 +144,10 @@ class TaskReminderQueriesTests {
     }
 
     @ParameterizedTest
-    @EnumSource(value = TaskStatus.class, names = {"DONE", "CANCELLED", "ARCHIVED"}, mode = EnumSource.Mode.EXCLUDE)
+    @EnumSource(
+            value = TaskStatus.class,
+            names = {"DONE", "CANCELLED", "ARCHIVED"},
+            mode = EnumSource.Mode.EXCLUDE)
     void openTaskIsReminded(TaskStatus status) {
         UUID task = insertTask(insertProfile(), NOW.plus(Duration.ofHours(1)));
         jdbc.update("UPDATE tasks SET status = ? WHERE id = ?", status.name(), task);
@@ -184,8 +197,8 @@ class TaskReminderQueriesTests {
                         RETURNING id
                         """,
                 UUID.class,
-                Timestamp.from(NOW), Timestamp.from(NOW)
-        );
+                Timestamp.from(NOW),
+                Timestamp.from(NOW));
     }
 
     private UUID insertTask(UUID assignee, Instant dueAt) {
@@ -201,8 +214,11 @@ class TaskReminderQueriesTests {
                         RETURNING id
                         """,
                 UUID.class,
-                Timestamp.from(NOW), Timestamp.from(NOW), reference, assignee, Timestamp.from(dueAt)
-        );
+                Timestamp.from(NOW),
+                Timestamp.from(NOW),
+                reference,
+                assignee,
+                Timestamp.from(dueAt));
     }
 
     private String referenceOf(UUID task) {
@@ -210,7 +226,8 @@ class TaskReminderQueriesTests {
     }
 
     private int remindersOf(UUID task) {
-        return jdbc.queryForObject("SELECT count(*) FROM task_reminders WHERE task_id = ?", Integer.class, task);
+        return jdbc.queryForObject(
+                "SELECT count(*) FROM task_reminders WHERE task_id = ?", Integer.class, task);
     }
 
     private static List<UUID> taskIds(List<Reminder> reminders) {

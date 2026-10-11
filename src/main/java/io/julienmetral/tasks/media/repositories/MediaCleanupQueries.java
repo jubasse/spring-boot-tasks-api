@@ -1,10 +1,5 @@
 package io.julienmetral.tasks.media.repositories;
 
-import lombok.RequiredArgsConstructor;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.stereotype.Repository;
-
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Collection;
@@ -12,10 +7,14 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.stereotype.Repository;
 
 /**
- * Native SQL on purpose: soft-deleted tasks and users are invisible to JPA (@SoftDelete), and the cleanup is about
- * exactly those rows.
+ * Native SQL on purpose: soft-deleted tasks and users are invisible to JPA (@SoftDelete), and the
+ * cleanup is about exactly those rows.
  */
 @Repository
 @RequiredArgsConstructor
@@ -23,7 +22,9 @@ public class MediaCleanupQueries {
 
     private final NamedParameterJdbcTemplate jdbc;
 
-    /** @return the media ids that were attached */
+    /**
+     * @return the media ids that were attached
+     */
     public List<UUID> detachAttachmentsOfTasksDeletedBefore(Instant cutoff) {
         return jdbc.queryForList(
                 """
@@ -33,11 +34,12 @@ public class MediaCleanupQueries {
                         RETURNING ta.media_id
                         """,
                 cutoff(cutoff),
-                UUID.class
-        );
+                UUID.class);
     }
 
-    /** @return the media ids that were profile photos, processed or still waiting for the worker */
+    /**
+     * @return the media ids that were profile photos, processed or still waiting for the worker
+     */
     public List<UUID> detachAvatarsOfUsersDeletedBefore(Instant cutoff) {
         return jdbc.queryForList(
                 """
@@ -59,11 +61,12 @@ public class MediaCleanupQueries {
                         SELECT pending_avatar_media_id FROM updated WHERE pending_avatar_media_id IS NOT NULL
                         """,
                 cutoff(cutoff),
-                UUID.class
-        );
+                UUID.class);
     }
 
-    /** @return the storage keys of the deleted rows */
+    /**
+     * @return the storage keys of the deleted rows
+     */
     public List<String> deleteUnreferencedMediaCreatedBefore(Instant cutoff) {
         return jdbc.queryForList(
                 """
@@ -76,8 +79,7 @@ public class MediaCleanupQueries {
                         RETURNING m.storage_key
                         """,
                 cutoff(cutoff),
-                String.class
-        );
+                String.class);
     }
 
     public Set<String> existingStorageKeys(Collection<String> keys) {
@@ -85,11 +87,13 @@ public class MediaCleanupQueries {
             return Set.of();
         }
 
-        return jdbc.queryForList(
-                "SELECT storage_key FROM media WHERE storage_key IN (:keys)",
-                new MapSqlParameterSource("keys", keys),
-                String.class
-        ).stream().collect(Collectors.toSet());
+        return jdbc
+                .queryForList(
+                        "SELECT storage_key FROM media WHERE storage_key IN (:keys)",
+                        new MapSqlParameterSource("keys", keys),
+                        String.class)
+                .stream()
+                .collect(Collectors.toSet());
     }
 
     private static MapSqlParameterSource cutoff(Instant cutoff) {

@@ -17,7 +17,10 @@ public class TaskReminderJob {
     private final TaskReminderService reminderService;
 
     @Scheduled(cron = "${task.reminders.cron}")
-    @SchedulerLock(name = ScheduledJobLocks.TASK_REMINDERS, lockAtMostFor = "PT14M", lockAtLeastFor = "PT30S")
+    @SchedulerLock(
+            name = ScheduledJobLocks.TASK_REMINDERS,
+            lockAtMostFor = "PT14M",
+            lockAtLeastFor = "PT30S")
     public void run() {
         TaskReminderReport report = reminderService.sendDueReminders();
 

@@ -1,25 +1,22 @@
 package io.julienmetral.tasks.task.repositories;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import io.julienmetral.tasks.support.RepositoryTest;
 import io.julienmetral.tasks.task.entities.Task;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.dao.DataIntegrityViolationException;
 
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 @RepositoryTest
 class TaskRepositoryTests {
 
-    @Autowired
-    private TaskRepository taskRepository;
+    @Autowired private TaskRepository taskRepository;
 
-    @Autowired
-    private TestEntityManager entityManager;
+    @Autowired private TestEntityManager entityManager;
 
     @Test
     void existsByReferenceIncludingDeletedSeesASoftDeletedTaskThatDerivedQueriesIgnore() {

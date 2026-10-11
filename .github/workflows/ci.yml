@@ -39,6 +39,10 @@ jobs:
           java-version: "25"
           cache: maven
 
+      # Seconds instead of a full test run to learn that a file is not formatted; ./mvnw spotless:apply fixes it
+      - name: Check formatting
+        run: ./mvnw --batch-mode --no-transfer-progress spotless:check
+
       # Unit and integration tests; Testcontainers uses the runner's Docker daemon. Reuse is on, as on developer
       # machines, so that every test context shares one database here too and an isolation defect shows in both.
       - name: Build and test

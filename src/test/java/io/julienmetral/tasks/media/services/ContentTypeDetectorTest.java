@@ -1,12 +1,11 @@
 package io.julienmetral.tasks.media.services;
 
-import io.julienmetral.tasks.media.model.MediaUsage;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.MethodSource;
+import static java.nio.charset.StandardCharsets.US_ASCII;
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.params.provider.Arguments.arguments;
 
-import javax.imageio.ImageIO;
+import io.julienmetral.tasks.media.model.MediaUsage;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -18,16 +17,16 @@ import java.util.stream.Stream;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
-
-import static java.nio.charset.StandardCharsets.US_ASCII;
-import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.params.provider.Arguments.arguments;
+import javax.imageio.ImageIO;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class ContentTypeDetectorTest {
 
     private static final byte[] OLE2_SIGNATURE = {
-            (byte) 0xD0, (byte) 0xCF, 0x11, (byte) 0xE0, (byte) 0xA1, (byte) 0xB1, 0x1A, (byte) 0xE1
+        (byte) 0xD0, (byte) 0xCF, 0x11, (byte) 0xE0, (byte) 0xA1, (byte) 0xB1, 0x1A, (byte) 0xE1
     };
 
     private final ContentTypeDetector detector = new ContentTypeDetector();
@@ -41,31 +40,44 @@ class ContentTypeDetectorTest {
                 arguments("report.pdf", pdf(), "application/pdf"),
                 arguments("notes.txt", text("Meeting notes\nSecond line\n"), "text/plain"),
                 arguments("data.csv", text("name,count\nalpha,1\nbeta,2\n"), "text/csv"),
-                arguments("letter.rtf", text("{\\rtf1\\ansi\\deff0 {\\fonttbl {\\f0 Times;}} Hello}"),
+                arguments(
+                        "letter.rtf",
+                        text("{\\rtf1\\ansi\\deff0 {\\fonttbl {\\f0 Times;}} Hello}"),
                         "application/rtf"),
                 arguments("letter.doc", ole2(), "application/msword"),
                 arguments("budget.xls", ole2(), "application/vnd.ms-excel"),
                 arguments("slides.ppt", ole2(), "application/vnd.ms-powerpoint"),
-                arguments("letter.docx", ooxml("word/document.xml"),
+                arguments(
+                        "letter.docx",
+                        ooxml("word/document.xml"),
                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-                arguments("budget.xlsx", ooxml("xl/workbook.xml"),
+                arguments(
+                        "budget.xlsx",
+                        ooxml("xl/workbook.xml"),
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
-                arguments("slides.pptx", ooxml("ppt/presentation.xml"),
+                arguments(
+                        "slides.pptx",
+                        ooxml("ppt/presentation.xml"),
                         "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
-                arguments("letter.odt", odf("application/vnd.oasis.opendocument.text"),
+                arguments(
+                        "letter.odt",
+                        odf("application/vnd.oasis.opendocument.text"),
                         "application/vnd.oasis.opendocument.text"),
-                arguments("budget.ods", odf("application/vnd.oasis.opendocument.spreadsheet"),
+                arguments(
+                        "budget.ods",
+                        odf("application/vnd.oasis.opendocument.spreadsheet"),
                         "application/vnd.oasis.opendocument.spreadsheet"),
-                arguments("slides.odp", odf("application/vnd.oasis.opendocument.presentation"),
+                arguments(
+                        "slides.odp",
+                        odf("application/vnd.oasis.opendocument.presentation"),
                         "application/vnd.oasis.opendocument.presentation"),
-                arguments("archive.zip", zip(), "application/zip")
-        );
+                arguments("archive.zip", zip(), "application/zip"));
     }
 
     @ParameterizedTest(name = "{0} is detected as {2}")
     @MethodSource("taskAttachmentSamples")
-    void everyAcceptedAttachmentTypeIsDetectedFromItsBytes(String filename, byte[] content, String expected)
-            throws IOException {
+    void everyAcceptedAttachmentTypeIsDetectedFromItsBytes(
+            String filename, byte[] content, String expected) throws IOException {
         String detected = detect(content, filename);
 
         assertThat(detected).isEqualTo(expected);
@@ -116,8 +128,10 @@ class ContentTypeDetectorTest {
 
     @Test
     void svgNamedAsPngIsNotAcceptedForAnyUsage() throws IOException {
-        byte[] svg = text("<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\">"
-                + "<script>alert(1)</script></svg>");
+        byte[] svg =
+                text(
+                        "<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\">"
+                                + "<script>alert(1)</script></svg>");
 
         String detected = detect(svg, "avatar.png");
 
@@ -137,7 +151,8 @@ class ContentTypeDetectorTest {
     @Test
     void plainZipNamedAsDocxIsTrustedAsWordDocument() throws IOException {
         assertThat(detect(zip(), "letter.docx"))
-                .isEqualTo("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+                .isEqualTo(
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     }
 
     @Test
@@ -158,7 +173,9 @@ class ContentTypeDetectorTest {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
 
         try {
-            assertThat(ImageIO.write(image, format, out)).as("ImageIO writer for " + format).isTrue();
+            assertThat(ImageIO.write(image, format, out))
+                    .as("ImageIO writer for " + format)
+                    .isTrue();
         } catch (IOException exception) {
             throw new UncheckedIOException(exception);
         }
@@ -169,8 +186,7 @@ class ContentTypeDetectorTest {
     private static byte[] webp() {
         byte[] frame = new byte[10];
 
-        return ByteBuffer
-                .allocate(12 + 8 + frame.length)
+        return ByteBuffer.allocate(12 + 8 + frame.length)
                 .order(ByteOrder.LITTLE_ENDIAN)
                 .put("RIFF".getBytes(US_ASCII))
                 .putInt(4 + 8 + frame.length)
@@ -182,7 +198,8 @@ class ContentTypeDetectorTest {
     }
 
     private static byte[] pdf() {
-        return text("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n");
+        return text(
+                "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n");
     }
 
     private static byte[] ole2() {
@@ -201,21 +218,20 @@ class ContentTypeDetectorTest {
     }
 
     private static byte[] ooxml(String mainPart) {
-        String contentTypes = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-                + "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"/>";
+        String contentTypes =
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                        + "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"/>";
 
         return zipOf(
                 new Entry("[Content_Types].xml", contentTypes, false),
                 new Entry("_rels/.rels", "<Relationships/>", false),
-                new Entry(mainPart, "<document/>", false)
-        );
+                new Entry(mainPart, "<document/>", false));
     }
 
     private static byte[] odf(String mimetype) {
         return zipOf(
                 new Entry("mimetype", mimetype, true),
-                new Entry("content.xml", "<office:document-content/>", false)
-        );
+                new Entry("content.xml", "<office:document-content/>", false));
     }
 
     private static byte[] zip() {
@@ -226,8 +242,7 @@ class ContentTypeDetectorTest {
         return content.getBytes(UTF_8);
     }
 
-    private record Entry(String name, String content, boolean stored) {
-    }
+    private record Entry(String name, String content, boolean stored) {}
 
     private static byte[] zipOf(Entry... entries) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();

@@ -9,17 +9,16 @@ import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
 import io.julienmetral.tasks.identity.mail.EmailVerificationProperties;
 import io.julienmetral.tasks.identity.mail.EmailVerificationRequested;
 import io.julienmetral.tasks.identity.repositories.EmailVerificationTokenRepository;
-import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.repositories.UserProfileRepository;
+import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.security.OpaqueTokens;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.Clock;
-import java.time.Instant;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -55,25 +54,25 @@ public class EmailVerificationService {
                         user.getEmail(),
                         user.getDisplayName(),
                         value,
-                        token.getExpiresAt()
-                )
-        );
+                        token.getExpiresAt()));
     }
 
     @Transactional
     public void verify(String rawToken) {
         Instant now = clock.instant();
 
-        EmailVerificationToken token = tokenRepository
-                .findByTokenHash(OpaqueTokens.hash(rawToken))
-                .filter(candidate -> candidate.getUsedAt() == null)
-                .filter(candidate -> candidate.getExpiresAt().isAfter(now))
-                .orElseThrow(InvalidEmailVerificationTokenException::new);
+        EmailVerificationToken token =
+                tokenRepository
+                        .findByTokenHash(OpaqueTokens.hash(rawToken))
+                        .filter(candidate -> candidate.getUsedAt() == null)
+                        .filter(candidate -> candidate.getExpiresAt().isAfter(now))
+                        .orElseThrow(InvalidEmailVerificationTokenException::new);
 
         // findById skips soft-deleted users
-        User user = userRepository
-                .findByIdForUpdate(token.getUser().getId())
-                .orElseThrow(InvalidEmailVerificationTokenException::new);
+        User user =
+                userRepository
+                        .findByIdForUpdate(token.getUser().getId())
+                        .orElseThrow(InvalidEmailVerificationTokenException::new);
 
         token.setUsedAt(now);
 
@@ -85,9 +84,10 @@ public class EmailVerificationService {
 
     @Transactional
     public void resend(UUID userId) {
-        User user = userRepository
-                .findById(userId)
-                .orElseThrow(() -> new UserNotFoundException(userId));
+        User user =
+                userRepository
+                        .findById(userId)
+                        .orElseThrow(() -> new UserNotFoundException(userId));
 
         if (user.getEmailVerifiedAt() != null) {
             throw new EmailAlreadyVerifiedException();

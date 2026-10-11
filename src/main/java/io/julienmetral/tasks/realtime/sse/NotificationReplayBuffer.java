@@ -1,7 +1,6 @@
 package io.julienmetral.tasks.realtime.sse;
 
 import io.julienmetral.tasks.realtime.RealtimeProperties;
-
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayDeque;
@@ -12,15 +11,14 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * The notifications this instance relayed recently, for a client that reconnects with the id of the last one it
- * received. Every instance receives every notification, so a client may reconnect to another instance. The order is
- * the order of arrival here, which can differ slightly between instances: a replay may repeat an event, and clients
- * drop the ids they already have.
+ * The notifications this instance relayed recently, for a client that reconnects with the id of the
+ * last one it received. Every instance receives every notification, so a client may reconnect to
+ * another instance. The order is the order of arrival here, which can differ slightly between
+ * instances: a replay may repeat an event, and clients drop the ids they already have.
  */
 class NotificationReplayBuffer {
 
-    private record Entry(UUID recipientId, Instant receivedAt, StreamEvent event) {
-    }
+    private record Entry(UUID recipientId, Instant receivedAt, StreamEvent event) {}
 
     private final ArrayDeque<Entry> entries = new ArrayDeque<>();
     private final RealtimeProperties.Streams properties;
@@ -37,8 +35,9 @@ class NotificationReplayBuffer {
     }
 
     /**
-     * @return the recipient's events that arrived after {@code lastEventId}, or empty when this instance no longer
-     * holds that id (too old, or never seen): the client must then reload what it shows
+     * @return the recipient's events that arrived after {@code lastEventId}, or empty when this
+     *     instance no longer holds that id (too old, or never seen): the client must then reload
+     *     what it shows
      */
     synchronized Optional<List<StreamEvent>> eventsAfter(String lastEventId, UUID recipientId) {
         dropExpired();
@@ -49,11 +48,12 @@ class NotificationReplayBuffer {
             if (lastEventId.equals(iterator.next().event().id())) {
                 List<StreamEvent> missed = new ArrayList<>();
 
-                iterator.forEachRemaining(entry -> {
-                    if (entry.recipientId().equals(recipientId)) {
-                        missed.add(entry.event());
-                    }
-                });
+                iterator.forEachRemaining(
+                        entry -> {
+                            if (entry.recipientId().equals(recipientId)) {
+                                missed.add(entry.event());
+                            }
+                        });
 
                 return Optional.of(missed);
             }
@@ -70,7 +70,8 @@ class NotificationReplayBuffer {
         Instant oldest = clock.instant().minus(properties.replayWindow());
 
         while (!entries.isEmpty()
-                && (entries.size() > properties.replaySize() || entries.peekFirst().receivedAt().isBefore(oldest))) {
+                && (entries.size() > properties.replaySize()
+                        || entries.peekFirst().receivedAt().isBefore(oldest))) {
             entries.removeFirst();
         }
     }

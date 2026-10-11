@@ -1,13 +1,12 @@
 package io.julienmetral.tasks.identity.repositories;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserStatus;
+import java.time.Instant;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-
-import java.time.Instant;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 class AccountStateTest {
 
@@ -15,12 +14,13 @@ class AccountStateTest {
 
     @ParameterizedTest
     @CsvSource({
-            "true, true, ACTIVE",
-            "true, false, UNVERIFIED",
-            "false, true, DISABLED",
-            "false, false, DISABLED"
+        "true, true, ACTIVE",
+        "true, false, UNVERIFIED",
+        "false, true, DISABLED",
+        "false, false, DISABLED"
     })
-    void statusIsTheOneTheLoadedAccountWouldHave(boolean enabled, boolean verified, UserStatus expected) {
+    void statusIsTheOneTheLoadedAccountWouldHave(
+            boolean enabled, boolean verified, UserStatus expected) {
         Instant emailVerifiedAt = verified ? VERIFIED_AT : null;
         User account = new User();
         account.setEnabled(enabled);

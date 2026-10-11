@@ -1,11 +1,30 @@
 package io.julienmetral.tasks.realtime.controllers;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.TestClock;
 import io.julienmetral.tasks.task.events.TaskAssigned;
+import java.io.UncheckedIOException;
+import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,29 +42,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.io.UnsupportedEncodingException;
-import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.awaitility.Awaitility.await;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 /**
- * Notification streams end to end: a change commits its broadcast through the outbox, RabbitMQ copies it to this
- * instance's queue, and the listener hands it to the recipient's stream, read here while the response stays open.
+ * Notification streams end to end: a change commits its broadcast through the outbox, RabbitMQ
+ * copies it to this instance's queue, and the listener hands it to the recipient's stream, read
+ * here while the response stays open.
  */
 @IntegrationTest
 class NotificationStreamApiTests {
@@ -58,35 +58,25 @@ class NotificationStreamApiTests {
 
     private static final Duration DELIVERY_TIMEOUT = Duration.ofSeconds(10);
 
-    private record SseEvent(String id, String name, String data) {
-    }
+    private record SseEvent(String id, String name, String data) {}
 
-    private record CreatedTask(UUID id, String reference) {
-    }
+    private record CreatedTask(UUID id, String reference) {}
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    @Autowired private PasswordEncoder passwordEncoder;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
-    @Autowired
-    private JsonMapper jsonMapper;
+    @Autowired private JsonMapper jsonMapper;
 
-    @Autowired
-    private TransactionTemplate transactionTemplate;
+    @Autowired private TransactionTemplate transactionTemplate;
 
-    @Autowired
-    private ApplicationEventPublisher eventPublisher;
+    @Autowired private ApplicationEventPublisher eventPublisher;
 
-    @Autowired
-    private TestClock clock;
+    @Autowired private TestClock clock;
 
     private final List<MvcResult> openStreams = new ArrayList<>();
 
@@ -97,7 +87,8 @@ class NotificationStreamApiTests {
     }
 
     @Test
-    void assignmentByAnotherUserReachesTheAssigneesStreamAsTheWebhookPayloadUnderTheOutboxRowId() throws Exception {
+    void assignmentByAnotherUserReachesTheAssigneesStreamAsTheWebhookPayloadUnderTheOutboxRowId()
+            throws Exception {
         clock.set(Instant.parse("2026-06-01T10:00:00Z"));
         User admin = createUser(UserRole.ADMIN);
         User assignee = createUser(UserRole.USER);
@@ -110,14 +101,28 @@ class NotificationStreamApiTests {
         assertThat(event.name()).isEqualTo("task.assigned");
         JsonNode data = jsonMapper.readTree(event.data());
         assertThat(data.propertyNames()).containsExactly("type", "timestamp", "data");
-        assertThat(data).isEqualTo(jsonMapper.valueToTree(Map.of(
-                "type", "task.assigned",
-                "timestamp", "2026-06-01T10:00:00Z",
-                "data", Map.of(
-                        "task", Map.of("id", task.id().toString(), "reference", task.reference(), "title", TITLE),
-                        "actor", Map.of("id", admin.getId().toString(), "displayName", admin.getDisplayName())
-                )
-        )));
+        assertThat(data)
+                .isEqualTo(
+                        jsonMapper.valueToTree(
+                                Map.of(
+                                        "type", "task.assigned",
+                                        "timestamp", "2026-06-01T10:00:00Z",
+                                        "data",
+                                                Map.of(
+                                                        "task",
+                                                                Map.of(
+                                                                        "id",
+                                                                        task.id().toString(),
+                                                                        "reference",
+                                                                        task.reference(),
+                                                                        "title",
+                                                                        TITLE),
+                                                        "actor",
+                                                                Map.of(
+                                                                        "id",
+                                                                        admin.getId().toString(),
+                                                                        "displayName",
+                                                                        admin.getDisplayName())))));
         assertThat(data.get("data").propertyNames()).containsExactly("task", "actor");
     }
 
@@ -137,7 +142,9 @@ class NotificationStreamApiTests {
         CreatedTask assignedByAnother = createTask(createUser(UserRole.ADMIN), admin);
 
         SseEvent event = awaitEvents(stream, 1).getFirst();
-        assertThat(event.data()).contains(assignedByAnother.reference()).doesNotContain(own.reference());
+        assertThat(event.data())
+                .contains(assignedByAnother.reference())
+                .doesNotContain(own.reference());
         assertThat(broadcastRowIdsFor(admin)).hasSize(1);
     }
 
@@ -147,11 +154,17 @@ class NotificationStreamApiTests {
         User assignee = createUser(UserRole.USER);
         MvcResult stream = openStream(assignee);
         String rolledBack = "RB-" + UUID.randomUUID();
-        transactionTemplate.executeWithoutResult(transaction -> {
-            eventPublisher.publishEvent(new TaskAssigned(UUID.randomUUID(), rolledBack, TITLE, assignee.getId(),
-                    actor.getId()));
-            transaction.setRollbackOnly();
-        });
+        transactionTemplate.executeWithoutResult(
+                transaction -> {
+                    eventPublisher.publishEvent(
+                            new TaskAssigned(
+                                    UUID.randomUUID(),
+                                    rolledBack,
+                                    TITLE,
+                                    assignee.getId(),
+                                    actor.getId()));
+                    transaction.setRollbackOnly();
+                });
 
         CreatedTask committed = createTask(actor, assignee);
 
@@ -165,7 +178,9 @@ class NotificationStreamApiTests {
         User user = createUser(UserRole.USER);
         MvcResult stream = openStream(user);
 
-        mockMvc.perform(post("/api/v1/users/{id}/disable", user.getId()).with(as(createUser(UserRole.ADMIN), UserRole.ADMIN)))
+        mockMvc.perform(
+                        post("/api/v1/users/{id}/disable", user.getId())
+                                .with(as(createUser(UserRole.ADMIN), UserRole.ADMIN)))
                 .andExpect(status().isNoContent());
 
         stream.getAsyncResult(DELIVERY_TIMEOUT.toMillis());
@@ -225,11 +240,16 @@ class NotificationStreamApiTests {
     private MockHttpServletRequestBuilder streamRequest(User user) {
         return get(STREAM)
                 .accept(MediaType.TEXT_EVENT_STREAM)
-                .with(jwt()
-                        .jwt(token -> token
-                                .claim("uid", user.getId().toString())
-                                .expiresAt(clock.instant().plus(Duration.ofMinutes(15))))
-                        .authorities(new SimpleGrantedAuthority("ROLE_USER")));
+                .with(
+                        jwt().jwt(
+                                        token ->
+                                                token.claim("uid", user.getId().toString())
+                                                        .expiresAt(
+                                                                clock.instant()
+                                                                        .plus(
+                                                                                Duration.ofMinutes(
+                                                                                        15))))
+                                .authorities(new SimpleGrantedAuthority("ROLE_USER")));
     }
 
     private static void disconnect(MvcResult stream) {
@@ -241,7 +261,8 @@ class NotificationStreamApiTests {
     }
 
     private static List<SseEvent> awaitEvents(MvcResult stream, int count) {
-        return await().atMost(DELIVERY_TIMEOUT).pollInterval(Duration.ofMillis(50))
+        return await().atMost(DELIVERY_TIMEOUT)
+                .pollInterval(Duration.ofMillis(50))
                 .until(() -> events(stream), events -> events.size() >= count);
     }
 
@@ -286,8 +307,7 @@ class NotificationStreamApiTests {
         return jdbcTemplate.queryForList(
                 "SELECT id FROM outbox_messages WHERE exchange = 'tasks.realtime' AND payload ->> 'recipientId' = ?",
                 UUID.class,
-                recipient.getId().toString()
-        );
+                recipient.getId().toString());
     }
 
     private UUID broadcastRowIdFor(User recipient) {
@@ -299,16 +319,26 @@ class NotificationStreamApiTests {
     private CreatedTask createTask(User creator, User assignee) throws Exception {
         String reference = "RT-" + UUID.randomUUID().toString().substring(0, 8);
 
-        String created = mockMvc.perform(post(TASKS)
-                        .with(as(creator, UserRole.ADMIN))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+        String created =
+                mockMvc.perform(
+                                post(TASKS)
+                                        .with(as(creator, UserRole.ADMIN))
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                """
                                 {"reference": "%s", "title": "%s", "assignedTo": "%s"}
-                                """.formatted(reference, TITLE, assignee.getId())))
-                .andExpect(status().isCreated())
-                .andReturn().getResponse().getContentAsString();
+                                """
+                                                        .formatted(
+                                                                reference,
+                                                                TITLE,
+                                                                assignee.getId())))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
-        return new CreatedTask(UUID.fromString(jsonMapper.readTree(created).get("id").asString()), reference);
+        return new CreatedTask(
+                UUID.fromString(jsonMapper.readTree(created).get("id").asString()), reference);
     }
 
     private User createUser(UserRole role) {
@@ -317,15 +347,15 @@ class NotificationStreamApiTests {
         user.setEmail("notification-stream-" + UUID.randomUUID() + "@example.com");
         user.setPasswordHash(passwordEncoder.encode("password"));
         user.setEmailVerifiedAt(Instant.now());
-        user.setDisplayName("Streamer " + role + " " + UUID.randomUUID().toString().substring(0, 6));
+        user.setDisplayName(
+                "Streamer " + role + " " + UUID.randomUUID().toString().substring(0, 6));
         user.setRoles(EnumSet.of(UserRole.USER, role));
 
         return userRepository.saveAndFlush(user);
     }
 
     private static RequestPostProcessor as(User user, UserRole role) {
-        return jwt()
-                .jwt(token -> token.claim("uid", user.getId().toString()))
+        return jwt().jwt(token -> token.claim("uid", user.getId().toString()))
                 .authorities(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
 }

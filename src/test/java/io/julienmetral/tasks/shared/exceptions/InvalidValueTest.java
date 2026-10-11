@@ -1,11 +1,8 @@
 package io.julienmetral.tasks.shared.exceptions;
 
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.MethodSource;
-import tools.jackson.databind.exc.MismatchedInputException;
-import tools.jackson.databind.json.JsonMapper;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
+import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -17,10 +14,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Stream;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.catchThrowableOfType;
-import static org.junit.jupiter.params.provider.Arguments.arguments;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import tools.jackson.databind.exc.MismatchedInputException;
+import tools.jackson.databind.json.JsonMapper;
 
 class InvalidValueTest {
 
@@ -28,12 +27,14 @@ class InvalidValueTest {
 
     @Test
     void propertyPathSplitsIndexesAndNestedFieldsIntoPointerTokens() {
-        assertThat(InvalidValue.propertyPath("items[0].name")).containsExactly("items", "0", "name");
+        assertThat(InvalidValue.propertyPath("items[0].name"))
+                .containsExactly("items", "0", "name");
     }
 
     @Test
     void propertyPathKeepsAMapKeyAsOneToken() {
-        assertThat(InvalidValue.propertyPath("labels[colour].value")).containsExactly("labels", "colour", "value");
+        assertThat(InvalidValue.propertyPath("labels[colour].value"))
+                .containsExactly("labels", "colour", "value");
     }
 
     @Test
@@ -43,7 +44,9 @@ class InvalidValueTest {
 
     @Test
     void bodyValueHasAJsonPointerAndNoParameter() {
-        InvalidValue value = InvalidValue.inBody("must not be blank", InvalidValue.propertyPath("items[0].name"));
+        InvalidValue value =
+                InvalidValue.inBody(
+                        "must not be blank", InvalidValue.propertyPath("items[0].name"));
 
         assertThat(value).isEqualTo(new InvalidValue("must not be blank", "#/items/0/name", null));
     }
@@ -55,12 +58,14 @@ class InvalidValueTest {
 
     @Test
     void tildeAndSlashInATokenAreEscapedAsRfc6901Asks() {
-        assertThat(InvalidValue.inBody("invalid", List.of("a/b", "c~d")).pointer()).isEqualTo("#/a~1b/c~0d");
+        assertThat(InvalidValue.inBody("invalid", List.of("a/b", "c~d")).pointer())
+                .isEqualTo("#/a~1b/c~0d");
     }
 
     @Test
     void tildeIsEscapedBeforeSlashSoAnEscapeIsNeverEscapedTwice() {
-        assertThat(InvalidValue.inBody("invalid", List.of("~1", "/")).pointer()).isEqualTo("#/~01/~1");
+        assertThat(InvalidValue.inBody("invalid", List.of("~1", "/")).pointer())
+                .isEqualTo("#/~01/~1");
     }
 
     @Test
@@ -71,17 +76,20 @@ class InvalidValueTest {
 
     @Test
     void jsonPathOfAMismatchWalksThroughArraysAndObjects() {
-        MismatchedInputException mismatch = mismatch(
-                "{\"lines\": [{\"quantity\": 1}, {\"quantity\": \"many\"}]}", Order.class);
+        MismatchedInputException mismatch =
+                mismatch("{\"lines\": [{\"quantity\": 1}, {\"quantity\": \"many\"}]}", Order.class);
 
         assertThat(InvalidValue.jsonPath(mismatch)).containsExactly("lines", "1", "quantity");
     }
 
     @Test
     void jsonPathOfAMismatchUnderAMapKeyBecomesAnEscapedPointer() {
-        MismatchedInputException mismatch = mismatch("{\"counts\": {\"a/b\": \"many\"}}", Counts.class);
+        MismatchedInputException mismatch =
+                mismatch("{\"counts\": {\"a/b\": \"many\"}}", Counts.class);
 
-        assertThat(InvalidValue.inBody("must be a number", InvalidValue.jsonPath(mismatch)).pointer())
+        assertThat(
+                        InvalidValue.inBody("must be a number", InvalidValue.jsonPath(mismatch))
+                                .pointer())
                 .isEqualTo("#/counts/a~1b");
     }
 
@@ -108,8 +116,7 @@ class InvalidValueTest {
                 arguments(LocalDateTime.class, "must be an ISO 8601 date and time"),
                 arguments(LocalDate.class, "must be an ISO 8601 date"),
                 arguments(String.class, "has an invalid value"),
-                arguments(Map.class, "has an invalid value")
-        );
+                arguments(Map.class, "has an invalid value"));
     }
 
     @Test
@@ -119,37 +126,42 @@ class InvalidValueTest {
 
     @Test
     void valuesAreOrderedByLocationThenDetail() {
-        List<InvalidValue> sorted = Stream.of(
-                new InvalidValue("size must be between 8 and 128", "#/password", null),
-                new InvalidValue("must be a UUID", null, "id"),
-                new InvalidValue("must not be blank", "#/password", null),
-                new InvalidValue("must not be blank", "#/displayName", null)
-        ).sorted(InvalidValue.ORDER).toList();
+        List<InvalidValue> sorted =
+                Stream.of(
+                                new InvalidValue(
+                                        "size must be between 8 and 128", "#/password", null),
+                                new InvalidValue("must be a UUID", null, "id"),
+                                new InvalidValue("must not be blank", "#/password", null),
+                                new InvalidValue("must not be blank", "#/displayName", null))
+                        .sorted(InvalidValue.ORDER)
+                        .toList();
 
-        assertThat(sorted).containsExactly(
-                new InvalidValue("must not be blank", "#/displayName", null),
-                new InvalidValue("must not be blank", "#/password", null),
-                new InvalidValue("size must be between 8 and 128", "#/password", null),
-                new InvalidValue("must be a UUID", null, "id")
-        );
+        assertThat(sorted)
+                .containsExactly(
+                        new InvalidValue("must not be blank", "#/displayName", null),
+                        new InvalidValue("must not be blank", "#/password", null),
+                        new InvalidValue("size must be between 8 and 128", "#/password", null),
+                        new InvalidValue("must be a UUID", null, "id"));
     }
 
     private MismatchedInputException mismatch(String json, Class<?> type) {
-        MismatchedInputException mismatch = catchThrowableOfType(
-                MismatchedInputException.class, () -> jsonMapper.readValue(json, type));
+        MismatchedInputException mismatch =
+                catchThrowableOfType(
+                        MismatchedInputException.class, () -> jsonMapper.readValue(json, type));
 
         assertThat(mismatch).isNotNull();
         return mismatch;
     }
 
-    enum Colour { RED, GREEN, BLUE }
-
-    record Order(List<Line> lines) {
+    enum Colour {
+        RED,
+        GREEN,
+        BLUE
     }
 
-    record Line(int quantity) {
-    }
+    record Order(List<Line> lines) {}
 
-    record Counts(Map<String, Integer> counts) {
-    }
+    record Line(int quantity) {}
+
+    record Counts(Map<String, Integer> counts) {}
 }

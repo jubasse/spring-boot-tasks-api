@@ -18,6 +18,9 @@ import io.julienmetral.tasks.shared.security.AllowedRolesOrSelfOnly;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.net.URI;
+import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
@@ -36,35 +39,32 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.net.URI;
-import java.util.List;
-import java.util.UUID;
-
 @RestController
 @RequestMapping("/users/{id}/webhooks")
 @RequiredArgsConstructor
 @Tag(
         name = "Webhooks",
-        description = "HTTPS endpoints of an account that receive its task notifications, signed with the Standard "
-                + "Webhooks scheme."
-)
+        description =
+                "HTTPS endpoints of an account that receive its task notifications, signed with the Standard "
+                        + "Webhooks scheme.")
 public class WebhookEndpointController {
 
     private final WebhookEndpointService webhookService;
 
-    @Operation(summary = "Declare a webhook", description = "The response carries the signing secret, shown only once.")
+    @Operation(
+            summary = "Declare a webhook",
+            description = "The response carries the signing secret, shown only once.")
     @ResponseStatus(HttpStatus.CREATED)
     @DocumentedProblems({ProblemType.WEBHOOK_URL_NOT_ALLOWED, ProblemType.WEBHOOK_LIMIT_REACHED})
     @PostMapping
     @AllowedRolesOrSelfOnly(UserRole.ADMIN)
     public ResponseEntity<NewWebhookEndpointDto> createWebhook(
-            @PathVariable UUID id,
-            @Valid @RequestBody CreateWebhookEndpointDto dto
-    ) {
+            @PathVariable UUID id, @Valid @RequestBody CreateWebhookEndpointDto dto) {
         CreatedWebhookEndpoint created = webhookService.create(id, dto);
 
-        return ResponseEntity
-                .created(URI.create("/api/v1/users/" + id + "/webhooks/" + created.endpoint().getId()))
+        return ResponseEntity.created(
+                        URI.create(
+                                "/api/v1/users/" + id + "/webhooks/" + created.endpoint().getId()))
                 .body(new NewWebhookEndpointDto(created.endpoint(), created.secret()));
     }
 
@@ -78,7 +78,8 @@ public class WebhookEndpointController {
     @Operation(summary = "Get a webhook")
     @GetMapping("/{webhookId}")
     @AllowedRolesOrSelfOnly(UserRole.ADMIN)
-    public WebhookEndpointResponseDto getWebhook(@PathVariable UUID id, @PathVariable UUID webhookId) {
+    public WebhookEndpointResponseDto getWebhook(
+            @PathVariable UUID id, @PathVariable UUID webhookId) {
         return new WebhookEndpointResponseDto(webhookService.get(id, webhookId));
     }
 
@@ -89,8 +90,7 @@ public class WebhookEndpointController {
     public WebhookEndpointResponseDto updateWebhook(
             @PathVariable UUID id,
             @PathVariable UUID webhookId,
-            @Valid @RequestBody UpdateWebhookEndpointDto dto
-    ) {
+            @Valid @RequestBody UpdateWebhookEndpointDto dto) {
         return new WebhookEndpointResponseDto(webhookService.update(id, webhookId, dto));
     }
 
@@ -108,36 +108,37 @@ public class WebhookEndpointController {
     public PagedModel<WebhookDeliveryResponseDto> listWebhookDeliveries(
             @PathVariable UUID id,
             @PathVariable UUID webhookId,
-            // The id breaks ties: a comment mentioning the assignee creates two deliveries at the same instant
-            @ParameterObject @PageableDefault(sort = {"createdAt", "id"}, direction = Sort.Direction.DESC)
-            Pageable pageable
-    ) {
+            // The id breaks ties: a comment mentioning the assignee creates two deliveries at the
+            // same instant
+            @ParameterObject
+                    @PageableDefault(
+                            sort = {"createdAt", "id"},
+                            direction = Sort.Direction.DESC)
+                    Pageable pageable) {
         return new PagedModel<>(
-                webhookService.findDeliveries(id, webhookId, pageable).map(WebhookDeliveryResponseDto::new)
-        );
+                webhookService
+                        .findDeliveries(id, webhookId, pageable)
+                        .map(WebhookDeliveryResponseDto::new));
     }
 
     @Operation(
             summary = "Start a delivery over",
-            description = "The delivery is sent again with the full retry schedule and the same webhook-id, "
-                    + "whether it failed or was delivered."
-    )
+            description =
+                    "The delivery is sent again with the full retry schedule and the same webhook-id, "
+                            + "whether it failed or was delivered.")
     @ResponseStatus(HttpStatus.ACCEPTED)
     @PostMapping("/{webhookId}/deliveries/{deliveryId}/redeliver")
     @AllowedRolesOrSelfOnly(UserRole.ADMIN)
     public WebhookDeliveryResponseDto redeliverWebhookDelivery(
-            @PathVariable UUID id,
-            @PathVariable UUID webhookId,
-            @PathVariable UUID deliveryId
-    ) {
+            @PathVariable UUID id, @PathVariable UUID webhookId, @PathVariable UUID deliveryId) {
         return new WebhookDeliveryResponseDto(webhookService.redeliver(id, webhookId, deliveryId));
     }
 
     @Operation(
             summary = "Send a test event to a webhook",
-            description = "Sends a signed webhook.test event at once, even to a paused webhook, and returns how the "
-                    + "receiver answered. Nothing is recorded."
-    )
+            description =
+                    "Sends a signed webhook.test event at once, even to a paused webhook, and returns how the "
+                            + "receiver answered. Nothing is recorded.")
     @RateLimited
     @PostMapping("/{webhookId}/test")
     @AllowedRolesOrSelfOnly(UserRole.ADMIN)
@@ -147,13 +148,14 @@ public class WebhookEndpointController {
 
     @Operation(
             summary = "Replace a webhook's signing secret",
-            description = "The previous secret keeps signing deliveries, next to the new one, until "
-                    + "previousSecretExpiresAt."
-    )
+            description =
+                    "The previous secret keeps signing deliveries, next to the new one, until "
+                            + "previousSecretExpiresAt.")
     @DocumentedProblems(ProblemType.WEBHOOK_NOT_SIGNED)
     @PostMapping("/{webhookId}/secret")
     @AllowedRolesOrSelfOnly(UserRole.ADMIN)
-    public WebhookSecretDto rotateWebhookSecret(@PathVariable UUID id, @PathVariable UUID webhookId) {
+    public WebhookSecretDto rotateWebhookSecret(
+            @PathVariable UUID id, @PathVariable UUID webhookId) {
         RotatedWebhookSecret rotated = webhookService.rotateSecret(id, webhookId);
 
         return new WebhookSecretDto(rotated.secret(), rotated.previousSecretExpiresAt());

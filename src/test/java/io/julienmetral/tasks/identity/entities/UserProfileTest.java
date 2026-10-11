@@ -1,11 +1,11 @@
 package io.julienmetral.tasks.identity.entities;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.julienmetral.tasks.media.model.Media;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 class UserProfileTest {
 
@@ -22,7 +22,9 @@ class UserProfileTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = UserStatus.class, names = {"ACTIVE", "UNVERIFIED"})
+    @EnumSource(
+            value = UserStatus.class,
+            names = {"ACTIVE", "UNVERIFIED"})
     void photoIsVisibleWhileTheAccountIsEnabled(UserStatus status) {
         Media avatar = new Media();
 
@@ -30,7 +32,9 @@ class UserProfileTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = UserStatus.class, names = {"DISABLED", "DELETED"})
+    @EnumSource(
+            value = UserStatus.class,
+            names = {"DISABLED", "DELETED"})
     void photoIsHiddenWhileTheAccountIsDisabledOrDeleted(UserStatus status) {
         UserProfile profile = profileWithAvatar(status, new Media());
 

@@ -12,8 +12,7 @@ public record NotificationSettingsDto(
         @NotNull Boolean taskCommented,
         @NotNull Boolean taskMentioned,
         @NotNull Boolean taskDueSoon,
-        @NotNull Boolean taskOverdue
-) {
+        @NotNull Boolean taskOverdue) {
 
     public NotificationSettingsDto(NotificationSettings settings) {
         this(
@@ -24,7 +23,6 @@ public record NotificationSettingsDto(
                 settings.isTaskCommented(),
                 settings.isTaskMentioned(),
                 settings.isTaskDueSoon(),
-                settings.isTaskOverdue()
-        );
+                settings.isTaskOverdue());
     }
 }

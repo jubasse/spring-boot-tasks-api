@@ -15,22 +15,21 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.time.Instant;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
 
-import java.time.Instant;
-import java.util.UUID;
-
 @Entity
 @Table(
         name = "data_exports",
         indexes = @Index(name = "data_exports_owner_idIDX", columnList = "owner_id, created_at"),
         // Explicit: a @OneToOne would add an implicit unique constraint under a generated name
-        uniqueConstraints = @UniqueConstraint(name = "data_exports_media_idUQ", columnNames = "media_id")
-)
+        uniqueConstraints =
+                @UniqueConstraint(name = "data_exports_media_idUQ", columnNames = "media_id"))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -47,8 +46,7 @@ public class DataExport {
             name = "owner_id",
             nullable = false,
             updatable = false,
-            foreignKey = @ForeignKey(name = "data_exports_ownerFK")
-    )
+            foreignKey = @ForeignKey(name = "data_exports_ownerFK"))
     private UserProfile owner;
 
     @Enumerated(EnumType.STRING)
@@ -59,8 +57,7 @@ public class DataExport {
     @Column(name = "status", nullable = false, length = 20)
     private DataExportStatus status;
 
-    @Embedded
-    private TaskExportFilters taskFilters;
+    @Embedded private TaskExportFilters taskFilters;
 
     // The produced file, until it expires
     @ManyToOne(fetch = FetchType.LAZY)
@@ -77,8 +74,9 @@ public class DataExport {
     @Column(name = "failure", length = 100)
     private String failure;
 
-    // While queued: when its run message is sent again, in case it was lost. While running: when the run counts as
-    // interrupted, if the instance running it stopped; the run renews it as it goes
+    // While queued: when its run message is sent again, in case it was lost. While running: when
+    // the run counts as interrupted, if the instance running it stopped; the run renews it as it
+    // goes
     @Column(name = "lease_until")
     private Instant leaseUntil;
 

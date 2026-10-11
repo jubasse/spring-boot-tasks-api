@@ -1,13 +1,12 @@
 package io.julienmetral.tasks.notification.entities;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.julienmetral.tasks.identity.entities.User;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
-
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 class NotificationSettingsTest {
 
@@ -36,7 +35,8 @@ class NotificationSettingsTest {
         NotificationSettings settings = NotificationSettings.defaults(user);
 
         assertThat(settings.getUser()).isSameAs(user);
-        // Left null so that Spring Data persists the entity; @MapsId derives it from the user on insert
+        // Left null so that Spring Data persists the entity; @MapsId derives it from the user on
+        // insert
         assertThat(settings.getUserId()).isNull();
         assertThat(settings.isTaskAssigned()).isTrue();
         assertThat(settings.isTaskUnassigned()).isTrue();

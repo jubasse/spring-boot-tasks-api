@@ -1,5 +1,14 @@
 package io.julienmetral.tasks.identity.controllers;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import io.julienmetral.tasks.config.StorageProperties;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
@@ -7,27 +16,6 @@ import io.julienmetral.tasks.identity.messaging.AvatarQueues;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.support.IntegrationTest;
-import org.springframework.amqp.rabbit.listener.AbstractMessageListenerContainer;
-import org.springframework.amqp.core.MessageListenerContainer;
-import org.springframework.amqp.rabbit.listener.RabbitListenerEndpointRegistry;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpMethod;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.ResultActions;
-import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
-import org.springframework.test.web.servlet.request.RequestPostProcessor;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
-import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
-import software.amazon.awssdk.services.s3.model.S3Object;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
-
-import javax.imageio.ImageIO;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
@@ -50,19 +38,31 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.zip.CRC32;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.awaitility.Awaitility.await;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import javax.imageio.ImageIO;
+import org.springframework.amqp.core.MessageListenerContainer;
+import org.springframework.amqp.rabbit.listener.AbstractMessageListenerContainer;
+import org.springframework.amqp.rabbit.listener.RabbitListenerEndpointRegistry;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpMethod;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
+import software.amazon.awssdk.services.s3.model.S3Object;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Shared fixtures for the profile photo API tests: active users created in the database, uploads through the API
- * processed by the RabbitMQ worker, and direct access to the stored objects and their {@code media} rows.
+ * Shared fixtures for the profile photo API tests: active users created in the database, uploads
+ * through the API processed by the RabbitMQ worker, and direct access to the stored objects and
+ * their {@code media} rows.
  */
 @IntegrationTest
 abstract class AbstractAvatarApiTests {
@@ -75,29 +75,21 @@ abstract class AbstractAvatarApiTests {
 
     static final byte[] PNG_SIGNATURE = {(byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
 
-    @Autowired
-    protected MockMvc mockMvc;
+    @Autowired protected MockMvc mockMvc;
 
-    @Autowired
-    protected UserRepository userRepository;
+    @Autowired protected UserRepository userRepository;
 
-    @Autowired
-    protected PasswordEncoder passwordEncoder;
+    @Autowired protected PasswordEncoder passwordEncoder;
 
-    @Autowired
-    protected JdbcTemplate jdbcTemplate;
+    @Autowired protected JdbcTemplate jdbcTemplate;
 
-    @Autowired
-    protected S3Client s3Client;
+    @Autowired protected S3Client s3Client;
 
-    @Autowired
-    protected StorageProperties storageProperties;
+    @Autowired protected StorageProperties storageProperties;
 
-    @Autowired
-    protected JsonMapper jsonMapper;
+    @Autowired protected JsonMapper jsonMapper;
 
-    @Autowired
-    protected RabbitListenerEndpointRegistry listenerRegistry;
+    @Autowired protected RabbitListenerEndpointRegistry listenerRegistry;
 
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
@@ -114,8 +106,7 @@ abstract class AbstractAvatarApiTests {
     }
 
     protected RequestPostProcessor as(User user, UserRole role) {
-        return jwt()
-                .jwt(token -> token.claim("uid", user.getId().toString()))
+        return jwt().jwt(token -> token.claim("uid", user.getId().toString()))
                 .authorities(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
 
@@ -127,22 +118,28 @@ abstract class AbstractAvatarApiTests {
         return as(admin, UserRole.ADMIN);
     }
 
-    protected MockMultipartHttpServletRequestBuilder avatarUpload(UUID userId, String filename, byte[] content) {
+    protected MockMultipartHttpServletRequestBuilder avatarUpload(
+            UUID userId, String filename, byte[] content) {
         return multipart(HttpMethod.PUT, AVATAR, userId)
                 .file(new MockMultipartFile("file", filename, "application/octet-stream", content));
     }
 
-    protected ResultActions uploadAvatar(User target, RequestPostProcessor caller, String filename, byte[] content)
+    protected ResultActions uploadAvatar(
+            User target, RequestPostProcessor caller, String filename, byte[] content)
             throws Exception {
         return mockMvc.perform(avatarUpload(target.getId(), filename, content).with(caller));
     }
 
-    /** Uploads a photo for the user as themselves, waits for the worker and returns the resulting avatar URL. */
+    /**
+     * Uploads a photo for the user as themselves, waits for the worker and returns the resulting
+     * avatar URL.
+     */
     protected String uploadOwnAvatar(User user, byte[] image) throws Exception {
         return uploadAndAwaitAvatar(user, asUser(user), "me.png", image);
     }
 
-    protected String uploadAndAwaitAvatar(User target, RequestPostProcessor caller, String filename, byte[] content)
+    protected String uploadAndAwaitAvatar(
+            User target, RequestPostProcessor caller, String filename, byte[] content)
             throws Exception {
         uploadAvatar(target, caller, filename, content)
                 .andExpect(status().isAccepted())
@@ -154,8 +151,9 @@ abstract class AbstractAvatarApiTests {
     }
 
     /**
-     * Uploads with the worker stopped, so the pending upload can be observed before it is processed, and returns
-     * its storage key. The worker is restarted before returning and then consumes the message.
+     * Uploads with the worker stopped, so the pending upload can be observed before it is
+     * processed, and returns its storage key. The worker is restarted before returning and then
+     * consumes the message.
      */
     protected String uploadWhileWorkerIsPaused(User user, byte[] image) throws Exception {
         MessageListenerContainer worker = avatarWorker();
@@ -173,29 +171,30 @@ abstract class AbstractAvatarApiTests {
     }
 
     protected MessageListenerContainer avatarWorker() {
-        return listenerRegistry
-                .getListenerContainers()
-                .stream()
-                .filter(container -> container instanceof AbstractMessageListenerContainer listener
-                        && List.of(listener.getQueueNames()).contains(AvatarQueues.PROCESS))
+        return listenerRegistry.getListenerContainers().stream()
+                .filter(
+                        container ->
+                                container instanceof AbstractMessageListenerContainer listener
+                                        && List.of(listener.getQueueNames())
+                                                .contains(AvatarQueues.PROCESS))
                 .findFirst()
                 .orElseThrow();
     }
 
     // The worker runs after the upload's commit, on a listener thread
     protected void awaitProcessed(User user) {
-        await()
-                .atMost(WORKER_TIMEOUT)
+        await().atMost(WORKER_TIMEOUT)
                 .pollInterval(Duration.ofMillis(50))
                 .until(() -> pendingAvatarStorageKey(user) == null);
     }
 
     protected JsonNode userJson(User user) throws Exception {
-        String body = mockMvc.perform(get(USERS + "/{id}", user.getId()).with(asUser(user)))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String body =
+                mockMvc.perform(get(USERS + "/{id}", user.getId()).with(asUser(user)))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
         return json(body);
     }
@@ -204,59 +203,54 @@ abstract class AbstractAvatarApiTests {
         return jsonMapper.readTree(body);
     }
 
-    /** The identicon URL as MockMvc requests see it: their default host is {@code http://localhost}. */
+    /**
+     * The identicon URL as MockMvc requests see it: their default host is {@code http://localhost}.
+     */
     protected static String identiconUrl(User user) {
         return "http://localhost/api/v1/identicons/" + user.getId();
     }
 
     /** Storage key of the user's current avatar, or null without one. */
     protected String avatarStorageKey(User user) {
-        List<String> keys = jdbcTemplate.queryForList(
-                "select m.storage_key from user_profiles p join media m on m.id = p.avatar_media_id where p.id = ?",
-                String.class,
-                user.getId()
-        );
+        List<String> keys =
+                jdbcTemplate.queryForList(
+                        "select m.storage_key from user_profiles p join media m on m.id = p.avatar_media_id where p.id = ?",
+                        String.class,
+                        user.getId());
 
         return keys.isEmpty() ? null : keys.getFirst();
     }
 
     /** Storage key of the upload waiting for the worker, or null without one. */
     protected String pendingAvatarStorageKey(User user) {
-        List<String> keys = jdbcTemplate.queryForList(
-                """
+        List<String> keys =
+                jdbcTemplate.queryForList(
+                        """
                         select m.storage_key
                         from user_profiles p join media m on m.id = p.pending_avatar_media_id
                         where p.id = ?
                         """,
-                String.class,
-                user.getId()
-        );
+                        String.class,
+                        user.getId());
 
         return keys.isEmpty() ? null : keys.getFirst();
     }
 
     protected int mediaRowCount(String storageKey) {
         return jdbcTemplate.queryForObject(
-                "select count(*) from media where storage_key = ?",
-                Integer.class,
-                storageKey
-        );
+                "select count(*) from media where storage_key = ?", Integer.class, storageKey);
     }
 
     protected int mediaCountUploadedBy(User user) {
         return jdbcTemplate.queryForObject(
-                "select count(*) from media where uploaded_by_id = ?",
-                Integer.class,
-                user.getId()
-        );
+                "select count(*) from media where uploaded_by_id = ?", Integer.class, user.getId());
     }
 
     protected int avatarUploadCountUploadedBy(User user) {
         return jdbcTemplate.queryForObject(
                 "select count(*) from media where uploaded_by_id = ? and usage = 'AVATAR_UPLOAD'",
                 Integer.class,
-                user.getId()
-        );
+                user.getId());
     }
 
     protected HeadObjectResponse headObject(String key) {
@@ -264,8 +258,8 @@ abstract class AbstractAvatarApiTests {
     }
 
     protected byte[] objectBytes(String key) {
-        return s3Client
-                .getObjectAsBytes(request -> request.bucket(storageProperties.bucket()).key(key))
+        return s3Client.getObjectAsBytes(
+                        request -> request.bucket(storageProperties.bucket()).key(key))
                 .asByteArray();
     }
 
@@ -273,26 +267,28 @@ abstract class AbstractAvatarApiTests {
         assertThatThrownBy(() -> headObject(key)).isInstanceOf(NoSuchKeyException.class);
     }
 
-    // The worker deletes objects once its transaction has committed, just after the row change becomes visible
+    // The worker deletes objects once its transaction has committed, just after the row change
+    // becomes visible
     protected void awaitObjectMissing(String key) {
-        await()
-                .atMost(WORKER_TIMEOUT)
+        await().atMost(WORKER_TIMEOUT)
                 .pollInterval(Duration.ofMillis(50))
                 .untilAsserted(() -> assertObjectMissing(key));
     }
 
     protected Set<String> avatarUploadObjectKeys() {
         return s3Client
-                .listObjectsV2Paginator(request -> request
-                        .bucket(storageProperties.bucket())
-                        .prefix(MediaUsage.AVATAR_UPLOAD.storagePrefix() + "/"))
+                .listObjectsV2Paginator(
+                        request ->
+                                request.bucket(storageProperties.bucket())
+                                        .prefix(MediaUsage.AVATAR_UPLOAD.storagePrefix() + "/"))
                 .contents()
                 .stream()
                 .map(S3Object::key)
                 .collect(Collectors.toSet());
     }
 
-    // Other test classes share the bucket, so a new key alone proves nothing: compare contents instead
+    // Other test classes share the bucket, so a new key alone proves nothing: compare contents
+    // instead
     protected void assertNoNewAvatarUploadHolds(byte[] content, Set<String> keysBefore) {
         avatarUploadObjectKeys().stream()
                 .filter(key -> !keysBefore.contains(key))
@@ -341,14 +337,15 @@ abstract class AbstractAvatarApiTests {
 
     /** A valid PNG signature and IHDR chunk declaring the given size, with no pixel data at all. */
     protected static byte[] pngHeaderOnly(int width, int height) {
-        ByteBuffer ihdr = ByteBuffer.allocate(13)
-                .putInt(width)
-                .putInt(height)
-                .put((byte) 8)
-                .put((byte) 2)
-                .put((byte) 0)
-                .put((byte) 0)
-                .put((byte) 0);
+        ByteBuffer ihdr =
+                ByteBuffer.allocate(13)
+                        .putInt(width)
+                        .putInt(height)
+                        .put((byte) 8)
+                        .put((byte) 2)
+                        .put((byte) 0)
+                        .put((byte) 0)
+                        .put((byte) 0);
 
         return concat(PNG_SIGNATURE, chunk("IHDR", ihdr.array()), chunk("IEND", new byte[0]));
     }

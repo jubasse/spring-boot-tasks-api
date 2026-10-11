@@ -1,5 +1,15 @@
 package io.julienmetral.tasks.realtime.sse;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.identity.repositories.AccountState;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.realtime.RealtimeProperties;
@@ -7,6 +17,14 @@ import io.julienmetral.tasks.realtime.exceptions.TooManyNotificationStreamsExcep
 import io.julienmetral.tasks.realtime.messaging.UserNotification;
 import io.julienmetral.tasks.support.TestClock;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,25 +40,6 @@ import org.springframework.util.unit.DataSize;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
-
-import java.time.Duration;
-import java.time.Instant;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Stream;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.awaitility.Awaitility.await;
-import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class NotificationStreamsTest {
@@ -61,9 +60,11 @@ class NotificationStreamsTest {
 
     private static final UUID BOB = UUID.fromString("00000000-0000-0000-0000-000000000002");
 
-    private static final AccountState ACTIVE = new AccountState(true, Instant.parse("2026-01-01T00:00:00Z"));
+    private static final AccountState ACTIVE =
+            new AccountState(true, Instant.parse("2026-01-01T00:00:00Z"));
 
-    private static final AccountState DISABLED = new AccountState(false, Instant.parse("2026-01-01T00:00:00Z"));
+    private static final AccountState DISABLED =
+            new AccountState(false, Instant.parse("2026-01-01T00:00:00Z"));
 
     private static final AccountState UNVERIFIED = new AccountState(true, null);
 
@@ -75,32 +76,35 @@ class NotificationStreamsTest {
 
     private final JsonMapper jsonMapper = JsonMapper.builder().build();
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
     private NotificationStreams streams;
 
     @BeforeEach
     void createStreams() {
         clock.set(NOW);
-        streams = new NotificationStreams(
-                new RealtimeProperties(10_000, new RealtimeProperties.Streams(
-                        // No heartbeat during a test
-                        Duration.ofMinutes(10),
-                        MAX_DURATION,
-                        MAX_PER_USER,
-                        RECONNECT_DELAY,
-                        Duration.ofMinutes(5),
-                        100,
-                        BUFFER_SIZE
-                ), new RealtimeProperties.Rooms(
-                        List.of(), Duration.ofSeconds(10), DataSize.ofKilobytes(16), Duration.ofSeconds(10)
-                )),
-                userRepository,
-                jsonMapper,
-                clock,
-                meterRegistry
-        );
+        streams =
+                new NotificationStreams(
+                        new RealtimeProperties(
+                                10_000,
+                                new RealtimeProperties.Streams(
+                                        // No heartbeat during a test
+                                        Duration.ofMinutes(10),
+                                        MAX_DURATION,
+                                        MAX_PER_USER,
+                                        RECONNECT_DELAY,
+                                        Duration.ofMinutes(5),
+                                        100,
+                                        BUFFER_SIZE),
+                                new RealtimeProperties.Rooms(
+                                        List.of(),
+                                        Duration.ofSeconds(10),
+                                        DataSize.ofKilobytes(16),
+                                        Duration.ofSeconds(10))),
+                        userRepository,
+                        jsonMapper,
+                        clock,
+                        meterRegistry);
     }
 
     @AfterEach
@@ -166,18 +170,26 @@ class NotificationStreamsTest {
         SseClient client = open(ALICE, null);
         UUID eventId = UUID.randomUUID();
 
-        streams.deliver(eventId, new UserNotification(ALICE, "task.assigned", Instant.parse("2026-03-04T05:00:00Z"),
-                Map.of("task", Map.of("reference", "OPS-12"))));
+        streams.deliver(
+                eventId,
+                new UserNotification(
+                        ALICE,
+                        "task.assigned",
+                        Instant.parse("2026-03-04T05:00:00Z"),
+                        Map.of("task", Map.of("reference", "OPS-12"))));
 
         String event = awaitBlocks(client, 2).get(1);
         assertThat(event).startsWith("id:" + eventId + "\nevent:task.assigned\ndata:");
-        JsonNode data = jsonMapper.readTree(event.substring(event.indexOf("data:") + "data:".length()));
+        JsonNode data =
+                jsonMapper.readTree(event.substring(event.indexOf("data:") + "data:".length()));
         assertThat(data.propertyNames()).containsExactly("type", "timestamp", "data");
-        assertThat(data).isEqualTo(jsonMapper.valueToTree(Map.of(
-                "type", "task.assigned",
-                "timestamp", "2026-03-04T05:00:00Z",
-                "data", Map.of("task", Map.of("reference", "OPS-12"))
-        )));
+        assertThat(data)
+                .isEqualTo(
+                        jsonMapper.valueToTree(
+                                Map.of(
+                                        "type", "task.assigned",
+                                        "timestamp", "2026-03-04T05:00:00Z",
+                                        "data", Map.of("task", Map.of("reference", "OPS-12")))));
     }
 
     @Test
@@ -248,16 +260,17 @@ class NotificationStreamsTest {
         return Stream.of(
                 Arguments.of("disabled", Optional.of(DISABLED)),
                 Arguments.of("unverified", Optional.of(UNVERIFIED)),
-                Arguments.of("deleted", Optional.empty())
-        );
+                Arguments.of("deleted", Optional.empty()));
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("inactiveAccounts")
-    void inactiveAccountCannotOpenAStreamAndLeavesNoneOpen(String state, Optional<AccountState> account) {
+    void inactiveAccountCannotOpenAStreamAndLeavesNoneOpen(
+            String state, Optional<AccountState> account) {
         when(userRepository.findAccountStateById(ALICE)).thenReturn(account);
 
-        assertThatExceptionOfType(AccessDeniedException.class).isThrownBy(() -> streams.open(ALICE, TOKEN_EXPIRY, null));
+        assertThatExceptionOfType(AccessDeniedException.class)
+                .isThrownBy(() -> streams.open(ALICE, TOKEN_EXPIRY, null));
 
         assertThat(openStreams()).isZero();
     }
@@ -266,11 +279,13 @@ class NotificationStreamsTest {
     void failedAccountReadLeavesNoStreamRegistered() {
         accountIs(BOB, ACTIVE);
         open(BOB, null);
-        DataAccessResourceFailureException databaseDown = new DataAccessResourceFailureException("Database down");
+        DataAccessResourceFailureException databaseDown =
+                new DataAccessResourceFailureException("Database down");
         doThrow(databaseDown).when(userRepository).findAccountStateById(ALICE);
 
         for (int attempt = 0; attempt < MAX_PER_USER; attempt++) {
-            assertThatThrownBy(() -> streams.open(ALICE, TOKEN_EXPIRY, null)).isSameAs(databaseDown);
+            assertThatThrownBy(() -> streams.open(ALICE, TOKEN_EXPIRY, null))
+                    .isSameAs(databaseDown);
         }
 
         assertThat(openStreams()).isEqualTo(1);
@@ -283,14 +298,18 @@ class NotificationStreamsTest {
     @Test
     void disablingBroadcastWhileTheStreamOpensClosesIt() {
         AtomicInteger reads = new AtomicInteger();
-        when(userRepository.findAccountStateById(ALICE)).thenAnswer(invocation -> {
-            if (reads.getAndIncrement() == 0) {
-                // open() read the account just before the disabling committed, whose broadcast arrives now
-                streams.closeIfNoLongerActive(ALICE);
-                return Optional.of(ACTIVE);
-            }
-            return Optional.of(DISABLED);
-        });
+        when(userRepository.findAccountStateById(ALICE))
+                .thenAnswer(
+                        invocation -> {
+                            if (reads.getAndIncrement() == 0) {
+                                // open() read the account just before the disabling committed,
+                                // whose broadcast
+                                // arrives now
+                                streams.closeIfNoLongerActive(ALICE);
+                                return Optional.of(ACTIVE);
+                            }
+                            return Optional.of(DISABLED);
+                        });
 
         SseClient client = open(ALICE, null);
 
@@ -358,12 +377,15 @@ class NotificationStreamsTest {
 
         try {
             deliver(ALICE);
-            assertThat(response.awaitBlockedWrite(WRITE_TIMEOUT)).as("the writer blocked in a write").isTrue();
+            assertThat(response.awaitBlockedWrite(WRITE_TIMEOUT))
+                    .as("the writer blocked in a write")
+                    .isTrue();
             for (int i = 0; i < BUFFER_SIZE; i++) {
                 deliver(ALICE);
             }
 
-            // Completing the response waits for the blocked write: the listener handing out the event must not
+            // Completing the response waits for the blocked write: the listener handing out the
+            // event must not
             assertTimeoutPreemptively(Duration.ofSeconds(2), () -> deliver(ALICE));
             assertThat(openStreams()).isZero();
         } finally {
@@ -387,7 +409,8 @@ class NotificationStreamsTest {
 
         List<String> blocks = awaitEvent(client, live);
         assertThat(blocks.getFirst()).startsWith("retry:");
-        assertThat(eventIds(blocks)).containsExactly(firstMissed.toString(), secondMissed.toString(), live.toString());
+        assertThat(eventIds(blocks))
+                .containsExactly(firstMissed.toString(), secondMissed.toString(), live.toString());
         assertThat(client.content()).doesNotContain("event:resync");
     }
 
@@ -401,7 +424,8 @@ class NotificationStreamsTest {
         SseClient client = open(ALICE, received.toString());
         UUID live = deliver(ALICE);
 
-        assertThat(eventIds(awaitEvent(client, live))).containsExactly(missed.toString(), live.toString());
+        assertThat(eventIds(awaitEvent(client, live)))
+                .containsExactly(missed.toString(), live.toString());
     }
 
     @Test
@@ -438,7 +462,8 @@ class NotificationStreamsTest {
     void replayThatLeavesRoomInTheStreamBufferIsSentWhole() {
         accountIs(ALICE, ACTIVE);
         UUID received = deliver(ALICE);
-        List<String> missed = Stream.generate(() -> deliver(ALICE).toString()).limit(BUFFER_SIZE - 2).toList();
+        List<String> missed =
+                Stream.generate(() -> deliver(ALICE).toString()).limit(BUFFER_SIZE - 2).toList();
 
         SseClient client = open(ALICE, received.toString());
 
@@ -471,8 +496,10 @@ class NotificationStreamsTest {
 
         streams.resyncAll();
 
-        assertThat(awaitBlocks(alice, 2).get(1)).isEqualTo("event:resync\ndata:{\"type\":\"resync\"}");
-        assertThat(awaitBlocks(bob, 2).get(1)).isEqualTo("event:resync\ndata:{\"type\":\"resync\"}");
+        assertThat(awaitBlocks(alice, 2).get(1))
+                .isEqualTo("event:resync\ndata:{\"type\":\"resync\"}");
+        assertThat(awaitBlocks(bob, 2).get(1))
+                .isEqualTo("event:resync\ndata:{\"type\":\"resync\"}");
     }
 
     @Test
@@ -545,13 +572,15 @@ class NotificationStreamsTest {
     }
 
     private static List<String> awaitBlocks(SseClient client, int count) {
-        return await().atMost(WRITE_TIMEOUT).until(client::blocks, blocks -> blocks.size() >= count);
+        return await().atMost(WRITE_TIMEOUT)
+                .until(client::blocks, blocks -> blocks.size() >= count);
     }
 
-    // The stream's buffer is written in order: once the event sent last is there, everything before it is too
+    // The stream's buffer is written in order: once the event sent last is there, everything before
+    // it is too
     private static List<String> awaitEvent(SseClient client, UUID eventId) {
-        return await().atMost(WRITE_TIMEOUT).until(client::blocks,
-                blocks -> eventIds(blocks).contains(eventId.toString()));
+        return await().atMost(WRITE_TIMEOUT)
+                .until(client::blocks, blocks -> eventIds(blocks).contains(eventId.toString()));
     }
 
     private static List<String> eventIds(List<String> blocks) {

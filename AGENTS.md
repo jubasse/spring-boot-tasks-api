@@ -342,6 +342,10 @@ A pull request that changes a behaviour also updates the documents that describe
 - **`docs/cartography.md`**: a new package, annotation, test helper or registry (`CartographyTest` catches the first three).
 - **`README.md`** for what users and operators see (endpoints, settings, deployment), **`docs/problems.md`** for problem types, **`docs/openapi.json`** for the API, and this file for a new rule or trap.
 
+## Layout
+
+google-java-format, AOSP style (4 spaces, 100 columns), through Spotless: run `./mvnw spotless:apply` before committing; `spotless:check` fails `verify` and a CI step on unformatted code, an unused import or a wildcard import. `.editorconfig` gives IDEs the same settings. Warning: google-java-format splits a `//` comment line over 100 columns without joining it to the next one; write comments within 100 columns, or rewrap the paragraph. The formatter version is pinned in `pom.xml` (1.37.0 fails inside Spotless 3.10.4). `.git-blame-ignore-revs` lists the reformat commit.
+
 ## Comments and Javadoc: the why and the failure, never the what
 
 **Name first, comment second.** A precise name for a class, method or variable removes the need for the paragraph above it, and a long name is the cheap side of that trade.

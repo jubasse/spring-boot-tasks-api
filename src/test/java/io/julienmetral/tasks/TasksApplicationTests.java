@@ -6,8 +6,6 @@ import org.junit.jupiter.api.Test;
 @IntegrationTest
 class TasksApplicationTests {
 
-	@Test
-	void contextLoads() {
-	}
-
+    @Test
+    void contextLoads() {}
 }

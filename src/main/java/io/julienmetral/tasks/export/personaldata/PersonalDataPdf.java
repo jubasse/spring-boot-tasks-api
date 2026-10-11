@@ -6,12 +6,6 @@ import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import com.openhtmltopdf.slf4j.Slf4jLogger;
 import com.openhtmltopdf.util.XRLog;
 import io.julienmetral.tasks.export.ExportProperties;
-import org.springframework.stereotype.Component;
-import org.thymeleaf.TemplateEngine;
-import org.thymeleaf.context.Context;
-import org.thymeleaf.templatemode.TemplateMode;
-import org.thymeleaf.templateresolver.ClassLoaderTemplateResolver;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -19,24 +13,31 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Map;
+import org.springframework.stereotype.Component;
+import org.thymeleaf.TemplateEngine;
+import org.thymeleaf.context.Context;
+import org.thymeleaf.templatemode.TemplateMode;
+import org.thymeleaf.templateresolver.ClassLoaderTemplateResolver;
 
 /**
- * The readable half of a personal data export: a Thymeleaf template rendered to XHTML, then to PDF by openhtmltopdf.
- * <p>
- * The renderer fetches nothing: every external resource is refused, before and after its URI is resolved, and the
- * fonts come from the jar. A template that referenced a URL would otherwise have the server fetch it. Every value is
- * written with {@code th:text}, which escapes it, so no text of a task or comment becomes markup.
- * <p>
- * Noto Sans is embedded (SIL Open Font License, {@code fonts/OFL.txt}): the PDF standard fonts cover Western
- * European letters only.
+ * The readable half of a personal data export: a Thymeleaf template rendered to XHTML, then to PDF
+ * by openhtmltopdf.
+ *
+ * <p>The renderer fetches nothing: every external resource is refused, before and after its URI is
+ * resolved, and the fonts come from the jar. A template that referenced a URL would otherwise have
+ * the server fetch it. Every value is written with {@code th:text}, which escapes it, so no text of
+ * a task or comment becomes markup.
+ *
+ * <p>Noto Sans is embedded (SIL Open Font License, {@code fonts/OFL.txt}): the PDF standard fonts
+ * cover Western European letters only.
  */
 @Component
 public class PersonalDataPdf {
 
     private static final String FONT = "Noto Sans";
 
-    // openhtmltopdf logs through its own logger, straight to the console: in the prod profile's structured logs, its
-    // lines came out as plain text
+    // openhtmltopdf logs through its own logger, straight to the console: in the prod profile's
+    // structured logs, its lines came out as plain text
     static {
         XRLog.setLoggerImpl(new Slf4jLogger());
     }
@@ -56,7 +57,10 @@ public class PersonalDataPdf {
         templates.setTemplateResolver(resolver);
     }
 
-    /** @param data the content of {@code my-data.json}; each section of the PDF shows at most its first rows */
+    /**
+     * @param data the content of {@code my-data.json}; each section of the PDF shows at most its
+     *     first rows
+     */
     public void render(Map<String, Object> data, Path output) throws IOException {
         Context context = new Context(Locale.ENGLISH);
         context.setVariable("data", data);

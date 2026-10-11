@@ -1,6 +1,20 @@
 package io.julienmetral.tasks.realtime.stomp;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.RETURNS_SELF;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.realtime.RealtimeProperties;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -38,21 +52,6 @@ import org.springframework.web.socket.config.annotation.WebSocketTransportRegist
 import org.springframework.web.socket.handler.WebSocketHandlerDecoratorFactory;
 import org.springframework.web.socket.messaging.StompSubProtocolErrorHandler;
 
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.RETURNS_SELF;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 @ExtendWith(MockitoExtension.class)
 class StompConfigurationTest {
 
@@ -60,22 +59,18 @@ class StompConfigurationTest {
 
     private static final UUID TASK_ID = UUID.fromString("00000000-0000-0000-0000-0000000000b1");
 
-    private static final List<String> ALLOWED_ORIGINS = List.of("https://app.example.com", "https://*.example.org");
+    private static final List<String> ALLOWED_ORIGINS =
+            List.of("https://app.example.com", "https://*.example.org");
 
-    @Mock
-    private StompAuthentication stompAuthentication;
+    @Mock private StompAuthentication stompAuthentication;
 
-    @Mock
-    private TaskRoomAuthorization taskRoomAuthorization;
+    @Mock private TaskRoomAuthorization taskRoomAuthorization;
 
-    @Mock
-    private StompSessions stompSessions;
+    @Mock private StompSessions stompSessions;
 
-    @Mock
-    private TaskScheduler brokerScheduler;
+    @Mock private TaskScheduler brokerScheduler;
 
-    @Captor
-    private ArgumentCaptor<MessageAuthorizationContext<?>> roomContext;
+    @Captor private ArgumentCaptor<MessageAuthorizationContext<?>> roomContext;
 
     private final List<Message<?>> delivered = new ArrayList<>();
 
@@ -106,7 +101,9 @@ class StompConfigurationTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = StompCommand.class, names = {"UNSUBSCRIBE", "DISCONNECT"})
+    @EnumSource(
+            value = StompCommand.class,
+            names = {"UNSUBSCRIBE", "DISCONNECT"})
     void unsubscribeAndDisconnectNeedNoUser(StompCommand command) {
         ExecutorSubscribableChannel inbound = inboundChannel();
 
@@ -129,43 +126,56 @@ class StompConfigurationTest {
     @Test
     void subscriptionToATaskRoomIsDecidedByTheRoomAuthorizationWithTheTaskIdOfTheDestination() {
         ExecutorSubscribableChannel inbound = inboundChannel();
-        when(taskRoomAuthorization.authorize(any(), any())).thenReturn(new AuthorizationDecision(true));
+        when(taskRoomAuthorization.authorize(any(), any()))
+                .thenReturn(new AuthorizationDecision(true));
 
         inbound.send(frame(StompCommand.SUBSCRIBE, "/topic/tasks/" + TASK_ID, user()));
 
         assertThat(delivered).hasSize(1);
         verify(taskRoomAuthorization).authorize(any(), roomContext.capture());
-        assertThat(roomContext.getValue().getVariables()).containsEntry("taskId", TASK_ID.toString());
+        assertThat(roomContext.getValue().getVariables())
+                .containsEntry("taskId", TASK_ID.toString());
     }
 
     @Test
     void subscriptionTheRoomAuthorizationRefusesIsRefused() {
         ExecutorSubscribableChannel inbound = inboundChannel();
-        when(taskRoomAuthorization.authorize(any(), any())).thenReturn(new AuthorizationDecision(false));
+        when(taskRoomAuthorization.authorize(any(), any()))
+                .thenReturn(new AuthorizationDecision(false));
 
         assertRefused(inbound, frame(StompCommand.SUBSCRIBE, "/topic/tasks/" + TASK_ID, user()));
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {
-            "/topic/other",
-            "/topic/tasks",
-            "/topic/tasks/00000000-0000-0000-0000-0000000000b1/comments",
-            "/queue/tasks/00000000-0000-0000-0000-0000000000b1",
-            "/user/queue/errors"
-    })
+    @ValueSource(
+            strings = {
+                "/topic/other",
+                "/topic/tasks",
+                "/topic/tasks/00000000-0000-0000-0000-0000000000b1/comments",
+                "/queue/tasks/00000000-0000-0000-0000-0000000000b1",
+                "/user/queue/errors"
+            })
     void subscriptionOutsideTheTaskRoomsIsRefused(String destination) {
         ExecutorSubscribableChannel inbound = inboundChannel();
-        lenient().when(taskRoomAuthorization.authorize(any(), any())).thenReturn(new AuthorizationDecision(true));
+        lenient()
+                .when(taskRoomAuthorization.authorize(any(), any()))
+                .thenReturn(new AuthorizationDecision(true));
 
         assertRefused(inbound, frame(StompCommand.SUBSCRIBE, destination, user()));
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/topic/tasks/00000000-0000-0000-0000-0000000000b1", "/app/tasks", "/user/queue/errors"})
+    @ValueSource(
+            strings = {
+                "/topic/tasks/00000000-0000-0000-0000-0000000000b1",
+                "/app/tasks",
+                "/user/queue/errors"
+            })
     void frameSentToADestinationIsRefusedEvenWhereTheUserMaySubscribe(String destination) {
         ExecutorSubscribableChannel inbound = inboundChannel();
-        lenient().when(taskRoomAuthorization.authorize(any(), any())).thenReturn(new AuthorizationDecision(true));
+        lenient()
+                .when(taskRoomAuthorization.authorize(any(), any()))
+                .thenReturn(new AuthorizationDecision(true));
 
         assertRefused(inbound, frame(StompCommand.SEND, destination, user()));
     }
@@ -173,11 +183,14 @@ class StompConfigurationTest {
     @Test
     void refusalAnswersAnErrorFrameWithTheReasonTheChannelWrapped() {
         Message<byte[]> connect = frame(StompCommand.CONNECT, null, null);
-        MessageDeliveryException wrapped = new MessageDeliveryException(
-                connect, "Failed to send message to ExecutorSubscribableChannel[clientInboundChannel]",
-                new BadCredentialsException("Invalid access token"));
+        MessageDeliveryException wrapped =
+                new MessageDeliveryException(
+                        connect,
+                        "Failed to send message to ExecutorSubscribableChannel[clientInboundChannel]",
+                        new BadCredentialsException("Invalid access token"));
 
-        Message<byte[]> error = errorHandler(ALLOWED_ORIGINS).handleClientMessageProcessingError(connect, wrapped);
+        Message<byte[]> error =
+                errorHandler(ALLOWED_ORIGINS).handleClientMessageProcessingError(connect, wrapped);
 
         StompHeaderAccessor headers = StompHeaderAccessor.wrap(error);
         assertThat(headers.getCommand()).isEqualTo(StompCommand.ERROR);
@@ -189,7 +202,8 @@ class StompConfigurationTest {
         Message<byte[]> connect = frame(StompCommand.CONNECT, null, null);
         MessageDeliveryException failure = new MessageDeliveryException(connect, "No subscriber");
 
-        Message<byte[]> error = errorHandler(ALLOWED_ORIGINS).handleClientMessageProcessingError(connect, failure);
+        Message<byte[]> error =
+                errorHandler(ALLOWED_ORIGINS).handleClientMessageProcessingError(connect, failure);
 
         assertThat(StompHeaderAccessor.wrap(error).getMessage()).isEqualTo("No subscriber");
     }
@@ -198,8 +212,12 @@ class StompConfigurationTest {
     void otherFailureKeepsItsOwnMessage() {
         Message<byte[]> connect = frame(StompCommand.CONNECT, null, null);
 
-        Message<byte[]> error = errorHandler(ALLOWED_ORIGINS).handleClientMessageProcessingError(
-                connect, new IllegalStateException("Frame too large", new RuntimeException("hidden")));
+        Message<byte[]> error =
+                errorHandler(ALLOWED_ORIGINS)
+                        .handleClientMessageProcessingError(
+                                connect,
+                                new IllegalStateException(
+                                        "Frame too large", new RuntimeException("hidden")));
 
         assertThat(StompHeaderAccessor.wrap(error).getMessage()).isEqualTo("Frame too large");
     }
@@ -208,7 +226,8 @@ class StompConfigurationTest {
     void endpointIsWsWithoutSockJsAndAllowsTheConfiguredOriginPatterns() {
         StompWebSocketEndpointRegistration endpoint = registerEndpoint(ALLOWED_ORIGINS).endpoint();
 
-        verify(endpoint).setAllowedOriginPatterns("https://app.example.com", "https://*.example.org");
+        verify(endpoint)
+                .setAllowedOriginPatterns("https://app.example.com", "https://*.example.org");
         verify(endpoint, never()).withSockJS();
     }
 
@@ -246,14 +265,29 @@ class StompConfigurationTest {
     }
 
     private StompConfiguration configuration(List<String> allowedOrigins) {
-        RealtimeProperties properties = new RealtimeProperties(10_000,
-                new RealtimeProperties.Streams(Duration.ofSeconds(20), Duration.ofMinutes(15), 5,
-                        Duration.ofSeconds(3), Duration.ofMinutes(5), 10_000, 100),
-                new RealtimeProperties.Rooms(allowedOrigins, Duration.ofSeconds(7), DataSize.ofKilobytes(32),
-                        Duration.ofSeconds(5)));
+        RealtimeProperties properties =
+                new RealtimeProperties(
+                        10_000,
+                        new RealtimeProperties.Streams(
+                                Duration.ofSeconds(20),
+                                Duration.ofMinutes(15),
+                                5,
+                                Duration.ofSeconds(3),
+                                Duration.ofMinutes(5),
+                                10_000,
+                                100),
+                        new RealtimeProperties.Rooms(
+                                allowedOrigins,
+                                Duration.ofSeconds(7),
+                                DataSize.ofKilobytes(32),
+                                Duration.ofSeconds(5)));
 
         return new StompConfiguration(
-                properties, stompAuthentication, taskRoomAuthorization, stompSessions, brokerScheduler);
+                properties,
+                stompAuthentication,
+                taskRoomAuthorization,
+                stompSessions,
+                brokerScheduler);
     }
 
     private List<ChannelInterceptor> inboundInterceptors() {
@@ -263,10 +297,11 @@ class StompConfigurationTest {
         return registration.interceptors();
     }
 
-    // The client inbound channel with the application's interceptors, token authentication left out: it has its own
-    // tests, and here the user is set on the frame as it would have set it
+    // The client inbound channel with the application's interceptors, token authentication left
+    // out: it has its own tests, and here the user is set on the frame as it would have set it
     private ExecutorSubscribableChannel inboundChannel() {
-        when(stompAuthentication.preSend(any(), any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(stompAuthentication.preSend(any(), any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
         ExecutorSubscribableChannel channel = new ExecutorSubscribableChannel();
         channel.setInterceptors(inboundInterceptors());
         channel.subscribe(delivered::add);
@@ -283,12 +318,13 @@ class StompConfigurationTest {
         assertThat(delivered).isEmpty();
     }
 
-    private record RegisteredEndpoint(StompEndpointRegistry registry, StompWebSocketEndpointRegistration endpoint) {
-    }
+    private record RegisteredEndpoint(
+            StompEndpointRegistry registry, StompWebSocketEndpointRegistration endpoint) {}
 
     private RegisteredEndpoint registerEndpoint(List<String> allowedOrigins) {
         StompEndpointRegistry registry = mock(StompEndpointRegistry.class);
-        StompWebSocketEndpointRegistration endpoint = mock(StompWebSocketEndpointRegistration.class, RETURNS_SELF);
+        StompWebSocketEndpointRegistration endpoint =
+                mock(StompWebSocketEndpointRegistration.class, RETURNS_SELF);
         when(registry.addEndpoint("/ws")).thenReturn(endpoint);
 
         configuration(allowedOrigins).registerStompEndpoints(registry);
@@ -305,7 +341,8 @@ class StompConfigurationTest {
         return errorHandler.getValue();
     }
 
-    private static Message<byte[]> frame(StompCommand command, String destination, JwtAuthenticationToken user) {
+    private static Message<byte[]> frame(
+            StompCommand command, String destination, JwtAuthenticationToken user) {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(command);
         accessor.setSessionId("session-1");
         if (destination != null) {
@@ -321,7 +358,11 @@ class StompConfigurationTest {
     }
 
     private static JwtAuthenticationToken user() {
-        Jwt jwt = Jwt.withTokenValue("token").header("alg", "HS256").claim("uid", USER_ID.toString()).build();
+        Jwt jwt =
+                Jwt.withTokenValue("token")
+                        .header("alg", "HS256")
+                        .claim("uid", USER_ID.toString())
+                        .build();
 
         return new JwtAuthenticationToken(jwt, AuthorityUtils.createAuthorityList("ROLE_USER"));
     }

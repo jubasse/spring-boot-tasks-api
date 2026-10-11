@@ -1,7 +1,6 @@
 package io.julienmetral.tasks.task.exceptions;
 
 import io.julienmetral.tasks.identity.entities.UserStatus;
-
 import java.util.UUID;
 
 /** Tasks can only be assigned to enabled users with a verified email. */

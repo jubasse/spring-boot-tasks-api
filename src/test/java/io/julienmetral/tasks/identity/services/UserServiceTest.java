@@ -1,11 +1,28 @@
 package io.julienmetral.tasks.identity.services;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.events.AccountStateChanged;
 import io.julienmetral.tasks.identity.exceptions.UserEmailAlreadyExistsException;
 import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.HashSet;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -16,24 +33,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.HashSet;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.when;
-
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
 
@@ -41,26 +40,19 @@ class UserServiceTest {
 
     private static final UUID ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
-    @Mock
-    private PasswordEncoder passwordEncoder;
+    @Mock private PasswordEncoder passwordEncoder;
 
-    @Mock
-    private EmailVerificationService emailVerificationService;
+    @Mock private EmailVerificationService emailVerificationService;
 
-    @Mock
-    private RefreshTokenService refreshTokenService;
+    @Mock private RefreshTokenService refreshTokenService;
 
-    @Mock
-    private ApplicationEventPublisher eventPublisher;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
-    @Spy
-    private Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+    @Spy private Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 
-    @InjectMocks
-    private UserService userService;
+    @InjectMocks private UserService userService;
 
     private User existingUser() {
         User user = new User();
@@ -74,7 +66,8 @@ class UserServiceTest {
 
     private User stubExisting() {
         User user = existingUser();
-        // Reads load the profile with findWithProfileById, state changes lock the row with findByIdForUpdate
+        // Reads load the profile with findWithProfileById, state changes lock the row with
+        // findByIdForUpdate
         lenient().when(userRepository.findWithProfileById(ID)).thenReturn(Optional.of(user));
         lenient().when(userRepository.findByIdForUpdate(ID)).thenReturn(Optional.of(user));
         return user;
@@ -152,14 +145,16 @@ class UserServiceTest {
     @Test
     void findByEmailNormalizesEmailBeforeLookup() {
         User user = existingUser();
-        when(userRepository.findByEmailIgnoreCase("jane@example.com")).thenReturn(Optional.of(user));
+        when(userRepository.findByEmailIgnoreCase("jane@example.com"))
+                .thenReturn(Optional.of(user));
 
         assertThat(userService.findByEmail("  JANE@Example.com ")).isSameAs(user);
     }
 
     @Test
     void findByEmailThrowsWhenMissing() {
-        when(userRepository.findByEmailIgnoreCase("nobody@example.com")).thenReturn(Optional.empty());
+        when(userRepository.findByEmailIgnoreCase("nobody@example.com"))
+                .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> userService.findByEmail("nobody@example.com"))
                 .isInstanceOf(UserNotFoundException.class)

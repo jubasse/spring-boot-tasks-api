@@ -1,26 +1,5 @@
 package io.julienmetral.tasks.identity.controllers;
 
-import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserRole;
-import io.julienmetral.tasks.identity.messaging.AvatarQueues;
-import io.julienmetral.tasks.identity.messaging.AvatarUploaded;
-import org.junit.jupiter.api.Test;
-import org.springframework.amqp.core.AmqpAdmin;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.amqp.core.MessageListenerContainer;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.client.RestClient;
-import org.testcontainers.rabbitmq.RabbitMQContainer;
-import tools.jackson.databind.JsonNode;
-
-import java.awt.Color;
-import java.awt.image.BufferedImage;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.Set;
-import java.util.UUID;
-
 import static io.julienmetral.tasks.support.Problems.typedProblem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -29,23 +8,42 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserRole;
+import io.julienmetral.tasks.identity.messaging.AvatarQueues;
+import io.julienmetral.tasks.identity.messaging.AvatarUploaded;
+import java.awt.Color;
+import java.awt.image.BufferedImage;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Set;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.amqp.core.AmqpAdmin;
+import org.springframework.amqp.core.MessageListenerContainer;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.client.RestClient;
+import org.testcontainers.rabbitmq.RabbitMQContainer;
+import tools.jackson.databind.JsonNode;
+
 /**
- * The profile photo worker end to end: the upload answers 202, {@code AvatarProcessingListener} consumes
- * {@code avatar.process} from the RabbitMQ container and replaces the photo in RustFS and Postgres.
+ * The profile photo worker end to end: the upload answers 202, {@code AvatarProcessingListener}
+ * consumes {@code avatar.process} from the RabbitMQ container and replaces the photo in RustFS and
+ * Postgres.
  */
 class AvatarQueueTests extends AbstractAvatarApiTests {
 
-    // A stale message changes nothing: that can only be checked once the queue is empty and a grace period is over
+    // A stale message changes nothing: that can only be checked once the queue is empty and a grace
+    // period is over
     private static final Duration STALE_MESSAGE_GRACE_PERIOD = Duration.ofMillis(800);
 
-    @Autowired
-    private AmqpAdmin amqpAdmin;
+    @Autowired private AmqpAdmin amqpAdmin;
 
-    @Autowired
-    private RabbitTemplate rabbitTemplate;
+    @Autowired private RabbitTemplate rabbitTemplate;
 
-    @Autowired
-    private RabbitMQContainer rabbitContainer;
+    @Autowired private RabbitMQContainer rabbitContainer;
 
     @Test
     void uploadIsAcceptedAsPendingThenTheWorkerReplacesThePhoto() throws Exception {
@@ -174,8 +172,10 @@ class AvatarQueueTests extends AbstractAvatarApiTests {
         uploadOwnAvatar(user, opaquePng());
         String key = avatarStorageKey(user);
 
-        rabbitTemplate.convertAndSend(AvatarQueues.PROCESS, new AvatarUploaded(user.getId(), UUID.randomUUID()));
-        rabbitTemplate.convertAndSend(AvatarQueues.PROCESS, new AvatarUploaded(UUID.randomUUID(), UUID.randomUUID()));
+        rabbitTemplate.convertAndSend(
+                AvatarQueues.PROCESS, new AvatarUploaded(user.getId(), UUID.randomUUID()));
+        rabbitTemplate.convertAndSend(
+                AvatarQueues.PROCESS, new AvatarUploaded(UUID.randomUUID(), UUID.randomUUID()));
 
         awaitQueueDrained();
         Thread.sleep(STALE_MESSAGE_GRACE_PERIOD);
@@ -188,13 +188,16 @@ class AvatarQueueTests extends AbstractAvatarApiTests {
     @Test
     void pdfIsRefusedSynchronouslyAndNothingIsStored() throws Exception {
         User user = createUser(UserRole.USER);
-        byte[] pdf = """
+        byte[] pdf =
+                """
                 %%PDF-1.4
                 %% %s
                 1 0 obj << /Type /Catalog >> endobj
                 trailer << /Root 1 0 R >>
                 %%%%EOF
-                """.formatted(UUID.randomUUID()).getBytes(StandardCharsets.US_ASCII);
+                """
+                        .formatted(UUID.randomUUID())
+                        .getBytes(StandardCharsets.US_ASCII);
         Set<String> keysBefore = avatarUploadObjectKeys();
 
         uploadAvatar(user, asUser(user), "photo.png", pdf)
@@ -285,23 +288,24 @@ class AvatarQueueTests extends AbstractAvatarApiTests {
     }
 
     private void awaitQueueDrained() {
-        await()
-                .atMost(WORKER_TIMEOUT)
+        await().atMost(WORKER_TIMEOUT)
                 .pollInterval(Duration.ofMillis(50))
                 .until(() -> amqpAdmin.getQueueInfo(AvatarQueues.PROCESS).getMessageCount() == 0);
     }
 
     private JsonNode managementApi(String path) {
-        String body = RestClient.builder()
-                .defaultHeaders(headers -> headers.setBasicAuth(
-                        rabbitContainer.getAdminUsername(),
-                        rabbitContainer.getAdminPassword()
-                ))
-                .build()
-                .get()
-                .uri(URI.create(rabbitContainer.getHttpUrl() + path))
-                .retrieve()
-                .body(String.class);
+        String body =
+                RestClient.builder()
+                        .defaultHeaders(
+                                headers ->
+                                        headers.setBasicAuth(
+                                                rabbitContainer.getAdminUsername(),
+                                                rabbitContainer.getAdminPassword()))
+                        .build()
+                        .get()
+                        .uri(URI.create(rabbitContainer.getHttpUrl() + path))
+                        .retrieve()
+                        .body(String.class);
 
         return json(body);
     }

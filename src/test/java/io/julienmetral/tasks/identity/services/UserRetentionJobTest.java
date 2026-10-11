@@ -1,5 +1,9 @@
 package io.julienmetral.tasks.identity.services;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -8,18 +12,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 @ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class UserRetentionJobTest {
 
-    @Mock
-    private UserRetentionService retentionService;
+    @Mock private UserRetentionService retentionService;
 
-    @InjectMocks
-    private UserRetentionJob job;
+    @InjectMocks private UserRetentionJob job;
 
     @Test
     void logsTheCountsOfACompletedRun(CapturedOutput output) {
@@ -28,7 +26,8 @@ class UserRetentionJobTest {
         job.run();
 
         verify(retentionService).apply();
-        assertThat(output).contains(
-                "User retention: 2 deleted users anonymized, 3 inactive accounts warned, 4 deleted");
+        assertThat(output)
+                .contains(
+                        "User retention: 2 deleted users anonymized, 3 inactive accounts warned, 4 deleted");
     }
 }

@@ -1,21 +1,20 @@
 package io.julienmetral.tasks.identity.services;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.config.ExpiredTokenPurgeProperties;
 import io.julienmetral.tasks.identity.repositories.ExpiredTokenQueries;
 import io.julienmetral.tasks.identity.services.ExpiredTokenPurgeService.PurgedTokens;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneOffset;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ExpiredTokenPurgeServiceTest {
@@ -26,18 +25,17 @@ class ExpiredTokenPurgeServiceTest {
 
     private static final Instant CUTOFF = NOW.minus(RETENTION);
 
-    @Mock
-    private ExpiredTokenQueries queries;
+    @Mock private ExpiredTokenQueries queries;
 
     private ExpiredTokenPurgeService service;
 
     @BeforeEach
     void setUp() {
-        service = new ExpiredTokenPurgeService(
-                queries,
-                new ExpiredTokenPurgeProperties(true, "0 15 4 * * *", RETENTION),
-                Clock.fixed(NOW, ZoneOffset.UTC)
-        );
+        service =
+                new ExpiredTokenPurgeService(
+                        queries,
+                        new ExpiredTokenPurgeProperties(true, "0 15 4 * * *", RETENTION),
+                        Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @Test

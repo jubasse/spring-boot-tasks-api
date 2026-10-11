@@ -30,16 +30,19 @@ import org.springframework.web.socket.config.annotation.WebSocketTransportRegist
 import org.springframework.web.socket.messaging.StompSubProtocolErrorHandler;
 
 /**
- * Task rooms over STOMP: clients connect to {@value #ENDPOINT} and subscribe to {@code /topic/tasks/{id}}, where the
- * simple broker of each instance sends the room events it receives (see {@code RealtimeListener}). Clients only
- * subscribe: every frame they send to a destination is refused.
- * <p>
- * Security is wired here rather than with {@code @EnableWebSocketSecurity}, whose CSRF check on CONNECT cannot be
- * turned off. That check protects cookie sessions; this API has none, and the token travels in the frame.
+ * Task rooms over STOMP: clients connect to {@value #ENDPOINT} and subscribe to {@code
+ * /topic/tasks/{id}}, where the simple broker of each instance sends the room events it receives
+ * (see {@code RealtimeListener}). Clients only subscribe: every frame they send to a destination is
+ * refused.
+ *
+ * <p>Security is wired here rather than with {@code @EnableWebSocketSecurity}, whose CSRF check on
+ * CONNECT cannot be turned off. That check protects cookie sessions; this API has none, and the
+ * token travels in the frame.
  */
 @Configuration
 @EnableWebSocketMessageBroker
-// Before Spring's own configurers, so the interceptors see CONNECT first (Spring Framework's token authentication guide)
+// Before Spring's own configurers, so the interceptors see CONNECT first (Spring Framework's token
+// authentication guide)
 @Order(Ordered.HIGHEST_PRECEDENCE + 99)
 public class StompConfiguration implements WebSocketMessageBrokerConfigurer {
 
@@ -56,8 +59,7 @@ public class StompConfiguration implements WebSocketMessageBrokerConfigurer {
             StompAuthentication stompAuthentication,
             TaskRoomAuthorization taskRoomAuthorization,
             StompSessions stompSessions,
-            @Lazy @Qualifier("messageBrokerTaskScheduler") TaskScheduler brokerScheduler
-    ) {
+            @Lazy @Qualifier("messageBrokerTaskScheduler") TaskScheduler brokerScheduler) {
         this.properties = properties.rooms();
         this.stompAuthentication = stompAuthentication;
         this.taskRoomAuthorization = taskRoomAuthorization;
@@ -67,10 +69,12 @@ public class StompConfiguration implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        // Warning: not setPreserveReceiveOrder. Its decorator sends frames asynchronously and only logs what an
-        // interceptor throws: a refused CONNECT got no ERROR frame, stayed open without a user, and was logged at ERROR
-        // with its headers. Without it, the interceptors still run in order, on the connection's thread.
-        registry.addEndpoint(ENDPOINT).setAllowedOriginPatterns(properties.allowedOrigins().toArray(String[]::new));
+        // Warning: not setPreserveReceiveOrder. Its decorator sends frames asynchronously and only
+        // logs what an interceptor throws: a refused CONNECT got no ERROR frame, stayed open
+        // without a user, and was logged at ERROR with its headers. Without it, the interceptors
+        // still run in order, on the connection's thread.
+        registry.addEndpoint(ENDPOINT)
+                .setAllowedOriginPatterns(properties.allowedOrigins().toArray(String[]::new));
         registry.setErrorHandler(new RefusalReasons());
     }
 
@@ -89,8 +93,7 @@ public class StompConfiguration implements WebSocketMessageBrokerConfigurer {
         registration.interceptors(
                 stompAuthentication,
                 new SecurityContextChannelInterceptor(),
-                new AuthorizationChannelInterceptor(authorizationManager())
-        );
+                new AuthorizationChannelInterceptor(authorizationManager()));
     }
 
     @Override
@@ -103,26 +106,34 @@ public class StompConfiguration implements WebSocketMessageBrokerConfigurer {
 
     private AuthorizationManager<Message<?>> authorizationManager() {
         return MessageMatcherDelegatingAuthorizationManager.builder()
-                .simpTypeMatchers(SimpMessageType.CONNECT).authenticated()
-                .simpTypeMatchers(SimpMessageType.HEARTBEAT, SimpMessageType.UNSUBSCRIBE, SimpMessageType.DISCONNECT)
+                .simpTypeMatchers(SimpMessageType.CONNECT)
+                .authenticated()
+                .simpTypeMatchers(
+                        SimpMessageType.HEARTBEAT,
+                        SimpMessageType.UNSUBSCRIBE,
+                        SimpMessageType.DISCONNECT)
                 .permitAll()
-                .simpSubscribeDestMatchers(TaskRooms.TOPIC_PREFIX + "{" + TaskRoomAuthorization.TASK_ID + "}")
+                .simpSubscribeDestMatchers(
+                        TaskRooms.TOPIC_PREFIX + "{" + TaskRoomAuthorization.TASK_ID + "}")
                 .access(taskRoomAuthorization)
-                .anyMessage().denyAll()
+                .anyMessage()
+                .denyAll()
                 .build();
     }
 
     /**
-     * Boot's own {@code taskScheduler}, as Boot declares it. Warning: {@code @EnableWebSocketMessageBroker} defines
-     * {@code messageBrokerTaskScheduler}, a scheduler bean, and Boot then backs off from its own: every
-     * {@code @Scheduled} job silently moved to the broker's pool of heartbeat threads.
+     * Boot's own {@code taskScheduler}, as Boot declares it. Warning:
+     * {@code @EnableWebSocketMessageBroker} defines {@code messageBrokerTaskScheduler}, a scheduler
+     * bean, and Boot then backs off from its own: every {@code @Scheduled} job silently moved to
+     * the broker's pool of heartbeat threads.
      */
     @Configuration(proxyBeanMethods = false)
     static class ApplicationTaskScheduler {
 
         @Bean(name = "taskScheduler")
         @ConditionalOnThreading(Threading.VIRTUAL)
-        SimpleAsyncTaskScheduler taskSchedulerVirtualThreads(SimpleAsyncTaskSchedulerBuilder builder) {
+        SimpleAsyncTaskScheduler taskSchedulerVirtualThreads(
+                SimpleAsyncTaskSchedulerBuilder builder) {
             return builder.build();
         }
 
@@ -133,13 +144,18 @@ public class StompConfiguration implements WebSocketMessageBrokerConfigurer {
         }
     }
 
-    // The ERROR frame of a refusal carries the channel's generic "Failed to send message"; the reason is the cause,
-    // one of the messages of StompAuthentication or Spring Security's "Access Denied"
+    // The ERROR frame of a refusal carries the channel's generic "Failed to send message"; the
+    // reason is the cause, one of the messages of StompAuthentication or Spring Security's "Access
+    // Denied"
     private static final class RefusalReasons extends StompSubProtocolErrorHandler {
 
         @Override
-        public Message<byte[]> handleClientMessageProcessingError(Message<byte[]> clientMessage, Throwable ex) {
-            Throwable reason = ex instanceof MessageDeliveryException && ex.getCause() != null ? ex.getCause() : ex;
+        public Message<byte[]> handleClientMessageProcessingError(
+                Message<byte[]> clientMessage, Throwable ex) {
+            Throwable reason =
+                    ex instanceof MessageDeliveryException && ex.getCause() != null
+                            ? ex.getCause()
+                            : ex;
 
             return super.handleClientMessageProcessingError(clientMessage, reason);
         }

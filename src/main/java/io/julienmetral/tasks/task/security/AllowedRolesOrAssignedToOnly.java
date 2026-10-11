@@ -2,20 +2,17 @@ package io.julienmetral.tasks.task.security;
 
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.shared.security.AccessDescription;
-import org.springframework.security.access.prepost.PreAuthorize;
-
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import org.springframework.security.access.prepost.PreAuthorize;
 
-@Target({
-        ElementType.METHOD,
-        ElementType.TYPE
-})
+@Target({ElementType.METHOD, ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)
 @AccessDescription("The task's assignee, or the {value} role.")
-@PreAuthorize("""
+@PreAuthorize(
+        """
         hasAnyRole({value})
         or @taskAuthorization.currentUserIsAssignedTo(
             #id,

@@ -1,30 +1,5 @@
 package io.julienmetral.tasks.identity.controllers;
 
-import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserRole;
-import io.julienmetral.tasks.identity.messaging.AvatarQueues;
-import io.julienmetral.tasks.identity.messaging.AvatarUploaded;
-import io.julienmetral.tasks.media.exceptions.AntivirusUnavailableException;
-import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
-import io.julienmetral.tasks.media.services.ObjectStorage;
-import io.julienmetral.tasks.media.services.VirusScanner;
-import io.julienmetral.tasks.support.DeadLetterIntegrationTest;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.amqp.core.AmqpAdmin;
-import org.springframework.amqp.core.Message;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.beans.factory.annotation.Autowired;
-
-import java.io.InputStream;
-import java.time.Duration;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.startsWith;
@@ -34,9 +9,34 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserRole;
+import io.julienmetral.tasks.identity.messaging.AvatarQueues;
+import io.julienmetral.tasks.identity.messaging.AvatarUploaded;
+import io.julienmetral.tasks.media.exceptions.AntivirusUnavailableException;
+import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
+import io.julienmetral.tasks.media.services.ObjectStorage;
+import io.julienmetral.tasks.media.services.VirusScanner;
+import io.julienmetral.tasks.support.DeadLetterIntegrationTest;
+import java.io.InputStream;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.amqp.core.AmqpAdmin;
+import org.springframework.amqp.core.Message;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+
 /**
- * Retries and dead-lettering of the profile photo queue, with reads from storage made to fail through a spy. The
- * same spy also lets a test act while the worker's transaction is open, such as taking the antivirus down.
+ * Retries and dead-lettering of the profile photo queue, with reads from storage made to fail
+ * through a spy. The same spy also lets a test act while the worker's transaction is open, such as
+ * taking the antivirus down.
  */
 @DeadLetterIntegrationTest
 class AvatarQueueDeadLetterTests extends AbstractAvatarApiTests {
@@ -45,17 +45,13 @@ class AvatarQueueDeadLetterTests extends AbstractAvatarApiTests {
 
     private static final long DEAD_LETTER_TIMEOUT_MILLIS = Duration.ofSeconds(10).toMillis();
 
-    @Autowired
-    private ObjectStorage objectStorage;
+    @Autowired private ObjectStorage objectStorage;
 
-    @Autowired
-    private VirusScanner virusScanner;
+    @Autowired private VirusScanner virusScanner;
 
-    @Autowired
-    private RabbitTemplate rabbitTemplate;
+    @Autowired private RabbitTemplate rabbitTemplate;
 
-    @Autowired
-    private AmqpAdmin amqpAdmin;
+    @Autowired private AmqpAdmin amqpAdmin;
 
     @AfterEach
     void purgeDeadLetterQueue() {
@@ -66,13 +62,14 @@ class AvatarQueueDeadLetterTests extends AbstractAvatarApiTests {
     void unreadableUploadIsRetriedThenDeadLetteredAndStaysPending() throws Exception {
         User user = createUser(UserRole.USER);
         doThrow(new StorageUnavailableException(new RuntimeException("storage down")))
-                .when(objectStorage).open(startsWith("avatar-upload/"));
+                .when(objectStorage)
+                .open(startsWith("avatar-upload/"));
 
-        uploadAvatar(user, asUser(user), "me.png", opaquePng())
-                .andExpect(status().isAccepted());
+        uploadAvatar(user, asUser(user), "me.png", opaquePng()).andExpect(status().isAccepted());
         String uploadKey = pendingAvatarStorageKey(user);
 
-        Message deadLetter = rabbitTemplate.receive(AvatarQueues.DEAD_LETTER, DEAD_LETTER_TIMEOUT_MILLIS);
+        Message deadLetter =
+                rabbitTemplate.receive(AvatarQueues.DEAD_LETTER, DEAD_LETTER_TIMEOUT_MILLIS);
 
         assertThat(deadLetter).isNotNull();
         assertThat(jsonMapper.readValue(deadLetter.getBody(), AvatarUploaded.class))
@@ -92,12 +89,13 @@ class AvatarQueueDeadLetterTests extends AbstractAvatarApiTests {
         uploadOwnAvatar(user, opaquePng());
         String key = avatarStorageKey(user);
         doThrow(new StorageUnavailableException(new RuntimeException("storage down")))
-                .when(objectStorage).open(startsWith("avatar-upload/"));
+                .when(objectStorage)
+                .open(startsWith("avatar-upload/"));
 
-        uploadAvatar(user, asUser(user), "me.png", opaquePng())
-                .andExpect(status().isAccepted());
+        uploadAvatar(user, asUser(user), "me.png", opaquePng()).andExpect(status().isAccepted());
 
-        assertThat(rabbitTemplate.receive(AvatarQueues.DEAD_LETTER, DEAD_LETTER_TIMEOUT_MILLIS)).isNotNull();
+        assertThat(rabbitTemplate.receive(AvatarQueues.DEAD_LETTER, DEAD_LETTER_TIMEOUT_MILLIS))
+                .isNotNull();
         assertThat(avatarStorageKey(user)).isEqualTo(key);
         assertThat(headObject(key).contentLength()).isPositive();
         assertThat(userJson(user).get("avatarUrl").asString()).contains(key);
@@ -108,7 +106,8 @@ class AvatarQueueDeadLetterTests extends AbstractAvatarApiTests {
         User user = createUser(UserRole.USER);
         doThrow(new StorageUnavailableException(new RuntimeException("storage down")))
                 .doCallRealMethod()
-                .when(objectStorage).open(startsWith("avatar-upload/"));
+                .when(objectStorage)
+                .open(startsWith("avatar-upload/"));
 
         uploadAndAwaitAvatar(user, asUser(user), "me.png", opaquePng());
 
@@ -120,15 +119,18 @@ class AvatarQueueDeadLetterTests extends AbstractAvatarApiTests {
     @Test
     void antivirusDownAfterTheUploadWasAcceptedDoesNotStopTheWorker() throws Exception {
         User user = createUser(UserRole.USER);
-        doAnswer(invocation -> {
-            doThrow(new AntivirusUnavailableException("clamd down"))
-                    .when(virusScanner).findThreat(any(InputStream.class));
+        doAnswer(
+                        invocation -> {
+                            doThrow(new AntivirusUnavailableException("clamd down"))
+                                    .when(virusScanner)
+                                    .findThreat(any(InputStream.class));
 
-            return invocation.callRealMethod();
-        }).when(objectStorage).open(startsWith("avatar-upload/"));
+                            return invocation.callRealMethod();
+                        })
+                .when(objectStorage)
+                .open(startsWith("avatar-upload/"));
 
-        uploadAvatar(user, asUser(user), "me.png", opaquePng())
-                .andExpect(status().isAccepted());
+        uploadAvatar(user, asUser(user), "me.png", opaquePng()).andExpect(status().isAccepted());
         awaitProcessed(user);
 
         assertThat(avatarStorageKey(user)).startsWith("avatar/");
@@ -141,51 +143,65 @@ class AvatarQueueDeadLetterTests extends AbstractAvatarApiTests {
     void accountDisabledWhileItsPhotoIsProcessedIsNotReenabled() throws Exception {
         User user = createUser(UserRole.USER);
         AtomicReference<CompletableFuture<Void>> disable = new AtomicReference<>();
-        doAnswer(invocation -> {
-            // Stands for a concurrent POST /users/{id}/disable. The profile's status commits before the worker writes
-            // the profile, so a full-row update by the worker would revert it; the account waits for the worker's
-            // row lock, then commits.
-            disable.set(CompletableFuture.runAsync(() -> {
-                jdbcTemplate.update("update user_profiles set status = 'DISABLED' where id = ?", user.getId());
-                jdbcTemplate.update("update users set enabled = false where id = ?", user.getId());
-            }));
+        doAnswer(
+                        invocation -> {
+                            // Stands for a concurrent POST /users/{id}/disable. The profile's
+                            // status commits before
+                            // the worker writes the profile, so a full-row update by the worker
+                            // would revert it;
+                            // the account waits for the worker's row lock, then commits.
+                            disable.set(
+                                    CompletableFuture.runAsync(
+                                            () -> {
+                                                jdbcTemplate.update(
+                                                        "update user_profiles set status = 'DISABLED' where id = ?",
+                                                        user.getId());
+                                                jdbcTemplate.update(
+                                                        "update users set enabled = false where id = ?",
+                                                        user.getId());
+                                            }));
 
-            return invocation.callRealMethod();
-        }).when(objectStorage).open(startsWith("avatar-upload/"));
+                            return invocation.callRealMethod();
+                        })
+                .when(objectStorage)
+                .open(startsWith("avatar-upload/"));
 
-        uploadAvatar(user, asUser(user), "me.png", opaquePng())
-                .andExpect(status().isAccepted());
+        uploadAvatar(user, asUser(user), "me.png", opaquePng()).andExpect(status().isAccepted());
         awaitProcessed(user);
         disable.get().get(10, TimeUnit.SECONDS);
 
         assertThat(avatarStorageKey(user)).isNotNull();
-        assertThat(jdbcTemplate.queryForObject(
-                "select enabled from users where id = ?",
-                Boolean.class,
-                user.getId()
-        )).isFalse();
-        assertThat(jdbcTemplate.queryForObject(
-                "select status from user_profiles where id = ?",
-                String.class,
-                user.getId()
-        )).isEqualTo("DISABLED");
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "select enabled from users where id = ?",
+                                Boolean.class,
+                                user.getId()))
+                .isFalse();
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "select status from user_profiles where id = ?",
+                                String.class,
+                                user.getId()))
+                .isEqualTo("DISABLED");
     }
 
     private UUID pendingAvatarMediaId(User user) {
         return jdbcTemplate.queryForObject(
                 "select pending_avatar_media_id from user_profiles where id = ?",
                 UUID.class,
-                user.getId()
-        );
+                user.getId());
     }
 
     private static void assertRejectedFromProcessQueue(Message deadLetter) {
         List<Map<String, ?>> deaths = deadLetter.getMessageProperties().getXDeathHeader();
 
-        assertThat(deaths).singleElement().satisfies(death -> {
-            assertThat(death.get("queue")).isEqualTo(AvatarQueues.PROCESS);
-            assertThat(death.get("reason")).isEqualTo("rejected");
-            assertThat(death.get("count")).isEqualTo(1L);
-        });
+        assertThat(deaths)
+                .singleElement()
+                .satisfies(
+                        death -> {
+                            assertThat(death.get("queue")).isEqualTo(AvatarQueues.PROCESS);
+                            assertThat(death.get("reason")).isEqualTo("rejected");
+                            assertThat(death.get("count")).isEqualTo(1L);
+                        });
     }
 }

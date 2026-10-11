@@ -1,24 +1,32 @@
 package io.julienmetral.tasks.media.model;
 
 import io.julienmetral.tasks.identity.entities.UserProfile;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ForeignKey;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import java.time.Instant;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
 
-import java.time.Instant;
-import java.util.UUID;
-
 /** A stored file: metadata here, bytes in object storage under {@link #storageKey}. */
 @Entity
 @Table(
         name = "media",
         uniqueConstraints = {
-                @UniqueConstraint(name = "media_storage_keyUQ", columnNames = "storage_key")
-        }
-)
+            @UniqueConstraint(name = "media_storage_keyUQ", columnNames = "storage_key")
+        })
 @Getter
 @Setter
 @NoArgsConstructor
@@ -37,7 +45,8 @@ public class Media {
     @Column(name = "usage", nullable = false, updatable = false, length = 30)
     private MediaUsage usage;
 
-    // As sent by the client: shown in the download's Content-Disposition, never used in the storage key
+    // As sent by the client: shown in the download's Content-Disposition, never used in the storage
+    // key
     @Column(name = "original_filename", nullable = false, updatable = false, length = 255)
     private String originalFilename;
 
@@ -53,10 +62,7 @@ public class Media {
 
     // UserProfile, not User: the uploader may later be soft-deleted
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(
-            name = "uploaded_by_id",
-            foreignKey = @ForeignKey(name = "media_uploaded_byFK")
-    )
+    @JoinColumn(name = "uploaded_by_id", foreignKey = @ForeignKey(name = "media_uploaded_byFK"))
     private UserProfile uploadedBy;
 
     @Column(name = "created_at", nullable = false, updatable = false)

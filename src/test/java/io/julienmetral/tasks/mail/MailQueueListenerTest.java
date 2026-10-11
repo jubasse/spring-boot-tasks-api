@@ -1,5 +1,11 @@
 package io.julienmetral.tasks.mail;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,19 +20,13 @@ import org.springframework.mail.MailSendException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.verify;
-
 @ExtendWith(MockitoExtension.class)
 class MailQueueListenerTest {
 
-    private static final MailMessage MESSAGE = new MailMessage("jane@example.com", "Subject", "Body");
+    private static final MailMessage MESSAGE =
+            new MailMessage("jane@example.com", "Subject", "Body");
 
-    @Mock
-    private JavaMailSender mailSender;
+    @Mock private JavaMailSender mailSender;
 
     private MailQueueListener listener;
 
@@ -73,7 +73,8 @@ class MailQueueListenerTest {
         assertThatThrownBy(() -> listener.send(MESSAGE))
                 .isInstanceOf(AmqpRejectAndDontRequeueException.class)
                 .hasMessageContaining("Subject")
-                .cause().isSameAs(failure);
+                .cause()
+                .isSameAs(failure);
     }
 
     @Test
@@ -84,6 +85,7 @@ class MailQueueListenerTest {
         assertThatThrownBy(() -> listener.send(MESSAGE))
                 .isInstanceOf(AmqpRejectAndDontRequeueException.class)
                 .hasMessageContaining("Subject")
-                .cause().isSameAs(failure);
+                .cause()
+                .isSameAs(failure);
     }
 }

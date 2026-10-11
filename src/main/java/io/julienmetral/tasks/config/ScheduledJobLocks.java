@@ -3,8 +3,9 @@ package io.julienmetral.tasks.config;
 import java.util.List;
 
 /**
- * Names of the rows in {@code scheduler_locks}, one per job that must run on a single instance at a time.
- * Warning: renaming a lock lets one run happen twice while a rolling deploy mixes the old and new names.
+ * Names of the rows in {@code scheduler_locks}, one per job that must run on a single instance at a
+ * time. Warning: renaming a lock lets one run happen twice while a rolling deploy mixes the old and
+ * new names.
  */
 public final class ScheduledJobLocks {
 
@@ -19,18 +20,17 @@ public final class ScheduledJobLocks {
     public static final String WEBHOOK_DELIVERY_PURGE = "webhook-delivery-purge";
 
     /** Registered with the metrics at startup, so each lock has its series before its first run. */
-    public static final List<String> NAMES = List.of(
-            DATA_EXPORT_PURGE,
-            DATA_EXPORT_RECOVERY,
-            EXPIRED_TOKEN_PURGE,
-            MEDIA_CLEANUP,
-            OUTBOX_PURGE,
-            RATE_LIMIT_PURGE,
-            TASK_REMINDERS,
-            USER_RETENTION,
-            WEBHOOK_DELIVERY_PURGE
-    );
+    public static final List<String> NAMES =
+            List.of(
+                    DATA_EXPORT_PURGE,
+                    DATA_EXPORT_RECOVERY,
+                    EXPIRED_TOKEN_PURGE,
+                    MEDIA_CLEANUP,
+                    OUTBOX_PURGE,
+                    RATE_LIMIT_PURGE,
+                    TASK_REMINDERS,
+                    USER_RETENTION,
+                    WEBHOOK_DELIVERY_PURGE);
 
-    private ScheduledJobLocks() {
-    }
+    private ScheduledJobLocks() {}
 }

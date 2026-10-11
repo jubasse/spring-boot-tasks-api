@@ -1,7 +1,15 @@
 package io.julienmetral.tasks.export.batch;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+
 import io.julienmetral.tasks.export.services.DataExportService;
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,25 +25,14 @@ import org.springframework.batch.core.job.JobInstance;
 import org.springframework.batch.core.job.parameters.JobParametersBuilder;
 import org.springframework.batch.core.step.StepExecution;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-
 @ExtendWith(MockitoExtension.class)
 class DataExportJobListenerTest {
 
     private final UUID exportId = UUID.randomUUID();
 
-    @Mock
-    private DataExportService exportService;
+    @Mock private DataExportService exportService;
 
-    @InjectMocks
-    private DataExportJobListener listener;
+    @InjectMocks private DataExportJobListener listener;
 
     @AfterEach
     void deleteLocalFiles() {
@@ -43,11 +40,13 @@ class DataExportJobListenerTest {
     }
 
     private JobExecution execution(BatchStatus status) {
-        JobExecution execution = new JobExecution(
-                1L,
-                new JobInstance(1L, CsvExportJobs.TASKS_JOB),
-                new JobParametersBuilder().addString(PublishExport.EXPORT_ID, exportId.toString()).toJobParameters()
-        );
+        JobExecution execution =
+                new JobExecution(
+                        1L,
+                        new JobInstance(1L, CsvExportJobs.TASKS_JOB),
+                        new JobParametersBuilder()
+                                .addString(PublishExport.EXPORT_ID, exportId.toString())
+                                .toJobParameters());
         execution.setStatus(status);
         return execution;
     }
@@ -72,11 +71,13 @@ class DataExportJobListenerTest {
     }
 
     @Test
-    void failedRunDeletesItsFilesAndRecordsTheClassOfItsFailureNeverItsMessage() throws IOException {
+    void failedRunDeletesItsFilesAndRecordsTheClassOfItsFailureNeverItsMessage()
+            throws IOException {
         Path csv = writeLocalFile(PublishExport.CSV_FILE);
         JobExecution execution = execution(BatchStatus.FAILED);
         StepExecution publish = new StepExecution(2L, "tasksCsvExportPublish", execution);
-        publish.addFailureException(new StorageUnavailableException(new RuntimeException("jane@example.com")));
+        publish.addFailureException(
+                new StorageUnavailableException(new RuntimeException("jane@example.com")));
         execution.addStepExecution(publish);
 
         listener.afterJob(execution);
@@ -106,7 +107,9 @@ class DataExportJobListenerTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = BatchStatus.class, names = {"FAILED", "STOPPED", "ABANDONED", "UNKNOWN"})
+    @EnumSource(
+            value = BatchStatus.class,
+            names = {"FAILED", "STOPPED", "ABANDONED", "UNKNOWN"})
     void everyRunThatDidNotCompleteFailsTheExport(BatchStatus status) {
         listener.afterJob(execution(status));
 

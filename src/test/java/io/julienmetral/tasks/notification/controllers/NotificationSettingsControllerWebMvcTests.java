@@ -1,25 +1,5 @@
 package io.julienmetral.tasks.notification.controllers;
 
-import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
-import io.julienmetral.tasks.notification.entities.NotificationSettings;
-import io.julienmetral.tasks.notification.services.NotificationSettingsService;
-import io.julienmetral.tasks.support.WebLayerTest;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.ResultActions;
-import org.springframework.test.web.servlet.request.RequestPostProcessor;
-
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.stream.Collectors;
-
 import static io.julienmetral.tasks.support.Problems.invalidBodyValue;
 import static io.julienmetral.tasks.support.Problems.invalidParameter;
 import static io.julienmetral.tasks.support.Problems.untypedProblem;
@@ -34,27 +14,51 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.exceptions.UserNotFoundException;
+import io.julienmetral.tasks.notification.entities.NotificationSettings;
+import io.julienmetral.tasks.notification.services.NotificationSettingsService;
+import io.julienmetral.tasks.support.WebLayerTest;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
+
 @WebLayerTest
 class NotificationSettingsControllerWebMvcTests {
 
     private static final String SETTINGS = "/api/v1/users/{id}/notification-settings";
 
-    private static final List<String> FLAGS = List.of(
-            "taskAssigned", "taskUnassigned", "taskCancelled", "taskDeleted",
-            "taskCommented", "taskMentioned", "taskDueSoon", "taskOverdue"
-    );
+    private static final List<String> FLAGS =
+            List.of(
+                    "taskAssigned",
+                    "taskUnassigned",
+                    "taskCancelled",
+                    "taskDeleted",
+                    "taskCommented",
+                    "taskMentioned",
+                    "taskDueSoon",
+                    "taskOverdue");
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private NotificationSettingsService settingsService;
+    @Autowired private NotificationSettingsService settingsService;
 
     @ParameterizedTest
-    @ValueSource(strings = {
-            "taskAssigned", "taskUnassigned", "taskCancelled", "taskDeleted",
-            "taskCommented", "taskMentioned", "taskDueSoon", "taskOverdue"
-    })
+    @ValueSource(
+            strings = {
+                "taskAssigned", "taskUnassigned", "taskCancelled", "taskDeleted",
+                "taskCommented", "taskMentioned", "taskDueSoon", "taskOverdue"
+            })
     void putWithoutAFlagPointsToIt(String missing) throws Exception {
         Map<String, Object> body = allFlags(false);
         body.remove(missing);
@@ -65,10 +69,11 @@ class NotificationSettingsControllerWebMvcTests {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {
-            "taskAssigned", "taskUnassigned", "taskCancelled", "taskDeleted",
-            "taskCommented", "taskMentioned", "taskDueSoon", "taskOverdue"
-    })
+    @ValueSource(
+            strings = {
+                "taskAssigned", "taskUnassigned", "taskCancelled", "taskDeleted",
+                "taskCommented", "taskMentioned", "taskDueSoon", "taskOverdue"
+            })
     void putWithANullFlagPointsToIt(String nulled) throws Exception {
         Map<String, Object> body = allFlags(true);
         body.put(nulled, null);
@@ -89,7 +94,8 @@ class NotificationSettingsControllerWebMvcTests {
 
     @Test
     void putWithTheSixSwitchesOfTheFormerBodyReturnsBadRequest() throws Exception {
-        expectRejected("""
+        expectRejected(
+                """
                 {"taskAssigned": false, "taskUnassigned": false, "taskCancelled": false, "taskDeleted": false,
                  "taskCommented": false, "taskMentioned": false}
                 """);
@@ -97,7 +103,8 @@ class NotificationSettingsControllerWebMvcTests {
 
     @Test
     void putWithOnlyTheFourTaskSwitchesReturnsBadRequest() throws Exception {
-        expectRejected("""
+        expectRejected(
+                """
                 {"taskAssigned": false, "taskUnassigned": false, "taskCancelled": false, "taskDeleted": false}
                 """);
     }
@@ -115,7 +122,8 @@ class NotificationSettingsControllerWebMvcTests {
     @Test
     void putWithAllEightFlagsReachesTheService() throws Exception {
         UUID id = UUID.randomUUID();
-        when(settingsService.update(eq(id), any())).thenReturn(NotificationSettings.defaults(account(id)));
+        when(settingsService.update(eq(id), any()))
+                .thenReturn(NotificationSettings.defaults(account(id)));
 
         putSettings(id, user(id), json(allFlags(false)))
                 .andExpect(status().isOk())
@@ -130,24 +138,25 @@ class NotificationSettingsControllerWebMvcTests {
 
     @Test
     void putWithInvalidUuidReturnsBadRequest() throws Exception {
-        mockMvc.perform(put(SETTINGS, "not-a-uuid")
-                        .with(admin(UUID.randomUUID()))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(allFlags(true))))
+        mockMvc.perform(
+                        put(SETTINGS, "not-a-uuid")
+                                .with(admin(UUID.randomUUID()))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(json(allFlags(true))))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     void getWithoutTokenReturnsUnauthorized() throws Exception {
-        mockMvc.perform(get(SETTINGS, UUID.randomUUID()))
-                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get(SETTINGS, UUID.randomUUID())).andExpect(status().isUnauthorized());
     }
 
     @Test
     void putWithoutTokenReturnsUnauthorized() throws Exception {
-        mockMvc.perform(put(SETTINGS, UUID.randomUUID())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(allFlags(true))))
+        mockMvc.perform(
+                        put(SETTINGS, UUID.randomUUID())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(json(allFlags(true))))
                 .andExpect(status().isUnauthorized());
 
         verifyNoInteractions(settingsService);
@@ -197,8 +206,13 @@ class NotificationSettingsControllerWebMvcTests {
         return result;
     }
 
-    private ResultActions putSettings(UUID id, RequestPostProcessor caller, String body) throws Exception {
-        return mockMvc.perform(put(SETTINGS, id).with(caller).contentType(MediaType.APPLICATION_JSON).content(body));
+    private ResultActions putSettings(UUID id, RequestPostProcessor caller, String body)
+            throws Exception {
+        return mockMvc.perform(
+                put(SETTINGS, id)
+                        .with(caller)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body));
     }
 
     private static Map<String, Object> allFlags(boolean value) {
@@ -208,8 +222,7 @@ class NotificationSettingsControllerWebMvcTests {
     }
 
     private static String json(Map<String, Object> flags) {
-        return flags.entrySet()
-                .stream()
+        return flags.entrySet().stream()
                 .map(flag -> "\"%s\": %s".formatted(flag.getKey(), flag.getValue()))
                 .collect(Collectors.joining(", ", "{", "}"));
     }

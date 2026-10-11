@@ -13,8 +13,9 @@ public class OutboxRelayJob {
     private final OutboxProperties properties;
 
     /**
-     * Catches the messages that could not be published right after their commit (broker down, crash). Every instance
-     * polls, without a scheduler lock: {@code FOR UPDATE SKIP LOCKED} shares the backlog between them.
+     * Catches the messages that could not be published right after their commit (broker down,
+     * crash). Every instance polls, without a scheduler lock: {@code FOR UPDATE SKIP LOCKED} shares
+     * the backlog between them.
      */
     @Scheduled(fixedDelayString = "${messaging.outbox.poll-interval}")
     public void publishDue() {

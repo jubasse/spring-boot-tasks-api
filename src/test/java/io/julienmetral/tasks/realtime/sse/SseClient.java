@@ -2,16 +2,6 @@ package io.julienmetral.tasks.realtime.sse;
 
 import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.WriteListener;
-import org.springframework.core.MethodParameter;
-import org.springframework.http.converter.StringHttpMessageConverter;
-import org.springframework.mock.web.MockHttpServletRequest;
-import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.web.context.request.async.StandardServletAsyncWebRequest;
-import org.springframework.web.context.request.async.WebAsyncUtils;
-import org.springframework.web.method.support.ModelAndViewContainer;
-import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitterReturnValueHandler;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.io.UnsupportedEncodingException;
@@ -23,10 +13,19 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import org.springframework.core.MethodParameter;
+import org.springframework.http.converter.StringHttpMessageConverter;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.web.context.request.async.StandardServletAsyncWebRequest;
+import org.springframework.web.context.request.async.WebAsyncUtils;
+import org.springframework.web.method.support.ModelAndViewContainer;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitterReturnValueHandler;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
- * The client of a stream, over a mock response: what Spring MVC does with the emitter a controller returns, so that
- * from then on its events reach the response and its completion ends the request.
+ * The client of a stream, over a mock response: what Spring MVC does with the emitter a controller
+ * returns, so that from then on its events reach the response and its completion ends the request.
  */
 final class SseClient {
 
@@ -43,14 +42,21 @@ final class SseClient {
     }
 
     static SseClient connect(SseEmitter emitter, MockHttpServletResponse response) {
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/notifications/stream");
+        MockHttpServletRequest request =
+                new MockHttpServletRequest("GET", "/api/v1/notifications/stream");
         request.setAsyncSupported(true);
-        StandardServletAsyncWebRequest asyncWebRequest = new StandardServletAsyncWebRequest(request, response);
+        StandardServletAsyncWebRequest asyncWebRequest =
+                new StandardServletAsyncWebRequest(request, response);
         WebAsyncUtils.getAsyncManager(request).setAsyncWebRequest(asyncWebRequest);
 
         try {
-            new ResponseBodyEmitterReturnValueHandler(List.of(new StringHttpMessageConverter(StandardCharsets.UTF_8)))
-                    .handleReturnValue(emitter, returnTypeOfOpen(), new ModelAndViewContainer(), asyncWebRequest);
+            new ResponseBodyEmitterReturnValueHandler(
+                            List.of(new StringHttpMessageConverter(StandardCharsets.UTF_8)))
+                    .handleReturnValue(
+                            emitter,
+                            returnTypeOfOpen(),
+                            new ModelAndViewContainer(),
+                            asyncWebRequest);
         } catch (Exception exception) {
             throw new IllegalStateException(exception);
         }
@@ -66,7 +72,10 @@ final class SseClient {
         }
     }
 
-    /** The events, retry and comments written so far, one block each, without their closing blank line. */
+    /**
+     * The events, retry and comments written so far, one block each, without their closing blank
+     * line.
+     */
     List<String> blocks() {
         return Arrays.stream(content().split("\n\n")).filter(block -> !block.isEmpty()).toList();
     }
@@ -82,12 +91,15 @@ final class SseClient {
     }
 
     private static MethodParameter returnTypeOfOpen() throws NoSuchMethodException {
-        return new MethodParameter(NotificationStreams.class.getMethod("open", UUID.class, Instant.class, String.class), -1);
+        return new MethodParameter(
+                NotificationStreams.class.getMethod(
+                        "open", UUID.class, Instant.class, String.class),
+                -1);
     }
 
     /**
-     * A client that stops reading: once {@link #stall() stalled}, every write blocks until {@link #resume()}, as a
-     * write to a full socket buffer does under Tomcat.
+     * A client that stops reading: once {@link #stall() stalled}, every write blocks until {@link
+     * #resume()}, as a write to a full socket buffer does under Tomcat.
      */
     static final class StallingResponse extends MockHttpServletResponse {
 
@@ -119,8 +131,7 @@ final class SseClient {
                 }
 
                 @Override
-                public void setWriteListener(WriteListener writeListener) {
-                }
+                public void setWriteListener(WriteListener writeListener) {}
 
                 @Override
                 public void write(int b) throws IOException {

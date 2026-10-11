@@ -18,7 +18,10 @@ public class OutboxPurgeJob {
     private final OutboxRelay relay;
 
     @Scheduled(cron = "${messaging.outbox.purge-cron}")
-    @SchedulerLock(name = ScheduledJobLocks.OUTBOX_PURGE, lockAtMostFor = "PT30M", lockAtLeastFor = "PT1M")
+    @SchedulerLock(
+            name = ScheduledJobLocks.OUTBOX_PURGE,
+            lockAtMostFor = "PT30M",
+            lockAtLeastFor = "PT1M")
     public void deletePublished() {
         int deleted = relay.deletePublished();
 

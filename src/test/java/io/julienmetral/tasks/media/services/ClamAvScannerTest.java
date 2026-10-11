@@ -1,12 +1,10 @@
 package io.julienmetral.tasks.media.services;
 
-import io.julienmetral.tasks.media.exceptions.AntivirusUnavailableException;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import io.julienmetral.tasks.media.exceptions.AntivirusUnavailableException;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -27,10 +25,11 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class ClamAvScannerTest {
 
@@ -50,7 +49,8 @@ class ClamAvScannerTest {
     }
 
     private ClamAvScanner scanner(Duration timeout) {
-        return new ClamAvScanner(InetAddress.getLoopbackAddress().getHostAddress(), clamd.port(), timeout);
+        return new ClamAvScanner(
+                InetAddress.getLoopbackAddress().getHostAddress(), clamd.port(), timeout);
     }
 
     private Optional<String> scan(byte[] content) {
@@ -113,12 +113,13 @@ class ClamAvScannerTest {
 
         @Test
         void shortReadsOfTheContentAreSentAsTheyCome() throws Exception {
-            InputStream trickling = new ByteArrayInputStream(CONTENT) {
-                @Override
-                public int read(byte[] buffer, int offset, int length) {
-                    return super.read(buffer, offset, Math.min(length, 5));
-                }
-            };
+            InputStream trickling =
+                    new ByteArrayInputStream(CONTENT) {
+                        @Override
+                        public int read(byte[] buffer, int offset, int length) {
+                            return super.read(buffer, offset, Math.min(length, 5));
+                        }
+                    };
             clamd = FakeClamd.replying("stream: OK\0");
 
             scanner(TIMEOUT).findThreat(trickling);
@@ -175,21 +176,23 @@ class ClamAvScannerTest {
         }
 
         @ParameterizedTest
-        @ValueSource(strings = {
-                "INSTREAM size limit exceeded. ERROR\0",
-                "stream: lstat() failed: No such file or directory. ERROR\0",
-                "UNKNOWN COMMAND\0",
-                "Eicar FOUND\0",
-                "stream: \0",
-                "\0",
-                ""
-        })
+        @ValueSource(
+                strings = {
+                    "INSTREAM size limit exceeded. ERROR\0",
+                    "stream: lstat() failed: No such file or directory. ERROR\0",
+                    "UNKNOWN COMMAND\0",
+                    "Eicar FOUND\0",
+                    "stream: \0",
+                    "\0",
+                    ""
+                })
         void anyOtherReplyMeansTheScanCouldNotRun(String reply) {
             clamd = FakeClamd.replying(reply);
 
             assertThatThrownBy(() -> scan(CONTENT))
                     .isInstanceOf(AntivirusUnavailableException.class)
-                    .hasMessageStartingWith("The antivirus is temporarily unavailable: Unexpected clamd reply: ")
+                    .hasMessageStartingWith(
+                            "The antivirus is temporarily unavailable: Unexpected clamd reply: ")
                     .hasNoCause();
         }
 
@@ -198,8 +201,9 @@ class ClamAvScannerTest {
             clamd = FakeClamd.replying("INSTREAM size limit exceeded. ERROR\0");
 
             assertThatThrownBy(() -> scan(CONTENT))
-                    .hasMessage("The antivirus is temporarily unavailable: "
-                            + "Unexpected clamd reply: INSTREAM size limit exceeded. ERROR");
+                    .hasMessage(
+                            "The antivirus is temporarily unavailable: "
+                                    + "Unexpected clamd reply: INSTREAM size limit exceeded. ERROR");
         }
     }
 
@@ -212,8 +216,9 @@ class ClamAvScannerTest {
             try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
                 closedPort = socket.getLocalPort();
             }
-            ClamAvScanner scanner = new ClamAvScanner(
-                    InetAddress.getLoopbackAddress().getHostAddress(), closedPort, TIMEOUT);
+            ClamAvScanner scanner =
+                    new ClamAvScanner(
+                            InetAddress.getLoopbackAddress().getHostAddress(), closedPort, TIMEOUT);
 
             assertThatThrownBy(() -> scanner.findThreat(new ByteArrayInputStream(CONTENT)))
                     .isInstanceOf(AntivirusUnavailableException.class)
@@ -238,7 +243,8 @@ class ClamAvScannerTest {
             long start = System.nanoTime();
             assertThatThrownBy(() -> scanner.findThreat(new ByteArrayInputStream(CONTENT)))
                     .isInstanceOf(AntivirusUnavailableException.class)
-                    // The read timeout and the scan deadline share the same delay: either may fire first
+                    // The read timeout and the scan deadline share the same delay: either may fire
+                    // first
                     .hasCauseInstanceOf(IOException.class);
 
             assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(TIMEOUT);
@@ -250,21 +256,27 @@ class ClamAvScannerTest {
             ClamAvScanner scanner = scanner(Duration.ofMillis(300));
             byte[] content = new byte[16 * 1024 * 1024];
 
-            assertTimeoutPreemptively(Duration.ofSeconds(10), () ->
-                    assertThatThrownBy(() -> scanner.findThreat(new ByteArrayInputStream(content)))
-                            .isInstanceOf(AntivirusUnavailableException.class));
+            assertTimeoutPreemptively(
+                    Duration.ofSeconds(10),
+                    () ->
+                            assertThatThrownBy(
+                                            () ->
+                                                    scanner.findThreat(
+                                                            new ByteArrayInputStream(content)))
+                                    .isInstanceOf(AntivirusUnavailableException.class));
         }
 
         @Test
         void unreadableContentMeansTheScanCouldNotRun() {
             clamd = FakeClamd.replying("stream: OK\0");
             IOException failure = new IOException("disk");
-            InputStream broken = new InputStream() {
-                @Override
-                public int read() throws IOException {
-                    throw failure;
-                }
-            };
+            InputStream broken =
+                    new InputStream() {
+                        @Override
+                        public int read() throws IOException {
+                            throw failure;
+                        }
+                    };
 
             assertThatThrownBy(() -> scanner(TIMEOUT).findThreat(broken))
                     .isInstanceOf(AntivirusUnavailableException.class)
@@ -278,8 +290,8 @@ class ClamAvScannerTest {
         }
     }
 
-    record Request(String command, List<Integer> chunkLengths, byte[] content, boolean terminated) {
-    }
+    record Request(
+            String command, List<Integer> chunkLengths, byte[] content, boolean terminated) {}
 
     /** One-connection clamd stand-in: records the INSTREAM request, then answers with raw bytes. */
     static final class FakeClamd implements AutoCloseable {
@@ -339,7 +351,8 @@ class ClamAvScannerTest {
         }
 
         private static Request readRequest(DataInputStream in) throws IOException {
-            String command = new String(in.readNBytes("zINSTREAM\0".length()), StandardCharsets.US_ASCII);
+            String command =
+                    new String(in.readNBytes("zINSTREAM\0".length()), StandardCharsets.US_ASCII);
             List<Integer> lengths = new ArrayList<>();
             ByteArrayOutputStream content = new ByteArrayOutputStream();
 
@@ -359,7 +372,6 @@ class ClamAvScannerTest {
             server.close();
         }
 
-        private record Behaviour(boolean readsRequest, byte[] reply) {
-        }
+        private record Behaviour(boolean readsRequest, byte[] reply) {}
     }
 }

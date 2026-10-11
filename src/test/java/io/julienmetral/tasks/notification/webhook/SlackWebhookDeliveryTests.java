@@ -1,5 +1,17 @@
 package io.julienmetral.tasks.notification.webhook;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
+import static org.awaitility.Awaitility.await;
+import static org.hamcrest.Matchers.nullValue;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import com.standardwebhooks.Webhook;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
@@ -11,6 +23,22 @@ import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
 import io.julienmetral.tasks.support.TestClock;
 import io.julienmetral.tasks.task.services.TaskReminderService;
+import java.io.IOException;
+import java.net.InetAddress;
+import java.sql.Timestamp;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.EnumSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import mockwebserver3.MockResponse;
 import mockwebserver3.MockWebServer;
 import mockwebserver3.QueueDispatcher;
@@ -32,39 +60,11 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.io.IOException;
-import java.net.InetAddress;
-import java.sql.Timestamp;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.EnumSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
-import java.util.stream.Collectors;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatNoException;
-import static org.awaitility.Awaitility.await;
-import static org.hamcrest.Matchers.nullValue;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 /**
- * Slack deliveries end to end, as {@link WebhookDeliveryTests} does for signed events. The URL policy accepts only
- * hooks.slack.com, so each Slack endpoint is declared with a Slack URL through the API, then its {@code url} column is
- * pointed at a MockWebServer on 127.0.0.1, encrypted with {@link WebhookSecrets} as the service stores it.
+ * Slack deliveries end to end, as {@link WebhookDeliveryTests} does for signed events. The URL
+ * policy accepts only hooks.slack.com, so each Slack endpoint is declared with a Slack URL through
+ * the API, then its {@code url} column is pointed at a MockWebServer on 127.0.0.1, encrypted with
+ * {@link WebhookSecrets} as the service stores it.
  */
 @IntegrationTest
 @ExtendWith(ForgetWebhookHostsBeforeEach.class)
@@ -84,13 +84,15 @@ class SlackWebhookDeliveryTests {
 
     private static final String SLACK_PATH = "/services/T0001/B0002/";
 
-    private static final String TEST_MESSAGE = "Test message from the Tasks API: this Slack webhook works.";
+    private static final String TEST_MESSAGE =
+            "Test message from the Tasks API: this Slack webhook works.";
 
     private static final InetAddress LOOPBACK = loopback();
 
     private static final Duration DELIVERY_TIMEOUT = Duration.ofSeconds(10);
 
-    // Far from the eras of the other webhook and reminder tests, so no other class claims or reminds these rows
+    // Far from the eras of the other webhook and reminder tests, so no other class claims or
+    // reminds these rows
     private static final Instant NOW = Instant.parse("2160-03-04T05:06:07Z");
 
     private static final Instant REMINDER_NOW = Instant.parse("2160-06-01T00:00:00Z");
@@ -99,54 +101,42 @@ class SlackWebhookDeliveryTests {
 
     private static final String DISABLED_EMAIL = "failed every attempt for 3 days";
 
-    // Emails leave through the outbox and RabbitMQ: "no email sent" can only be checked after a grace period
+    // Emails leave through the outbox and RabbitMQ: "no email sent" can only be checked after a
+    // grace period
     private static final Duration NO_MAIL_GRACE_PERIOD = Duration.ofSeconds(1);
 
-    // Stands for the key before a change of webhooks.encryption-key: what it encrypted, the application cannot read
+    // Stands for the key before a change of webhooks.encryption-key: what it encrypted, the
+    // application cannot read
     private static final WebhookSecrets OTHER_KEY =
             new WebhookSecrets(Base64.getEncoder().encodeToString(new byte[32]));
 
-    private record SlackEndpoint(UUID id, String path, String token) {
-    }
+    private record SlackEndpoint(UUID id, String path, String token) {}
 
-    private record StandardEndpoint(UUID id, String secret) {
-    }
+    private record StandardEndpoint(UUID id, String secret) {}
 
-    private record CreatedTask(UUID id, String reference) {
-    }
+    private record CreatedTask(UUID id, String reference) {}
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    @Autowired private PasswordEncoder passwordEncoder;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
-    @Autowired
-    private JsonMapper jsonMapper;
+    @Autowired private JsonMapper jsonMapper;
 
-    @Autowired
-    private WebhookSecrets webhookSecrets;
+    @Autowired private WebhookSecrets webhookSecrets;
 
-    @Autowired
-    private TestClock clock;
+    @Autowired private TestClock clock;
 
-    @Autowired
-    private WebhookDeliveryService deliveryService;
+    @Autowired private WebhookDeliveryService deliveryService;
 
-    @Autowired
-    private WebhookDeliveryRepository deliveryRepository;
+    @Autowired private WebhookDeliveryRepository deliveryRepository;
 
-    @Autowired
-    private TaskReminderService reminderService;
+    @Autowired private TaskReminderService reminderService;
 
-    @Autowired
-    private Mailpit mailpit;
+    @Autowired private Mailpit mailpit;
 
     private final MockWebServer receiver = new MockWebServer();
 
@@ -178,10 +168,13 @@ class SlackWebhookDeliveryTests {
         RecordedRequest request = nextRequest();
         assertThat(request.getMethod()).isEqualTo("POST");
         assertThat(request.getUrl().encodedPath()).isEqualTo(endpoint.path());
-        assertThat(request.getHeaders().get("Content-Type")).startsWith(MediaType.APPLICATION_JSON_VALUE);
+        assertThat(request.getHeaders().get("Content-Type"))
+                .startsWith(MediaType.APPLICATION_JSON_VALUE);
         assertUnsigned(request);
         assertThat(slackText(request))
-                .isEqualTo("*%s* assigned you *%s*: %s".formatted(admin.getDisplayName(), task.reference(), TITLE));
+                .isEqualTo(
+                        "*%s* assigned you *%s*: %s"
+                                .formatted(admin.getDisplayName(), task.reference(), TITLE));
         WebhookDelivery delivered = awaitAttempts(onlyDeliveryId(endpoint.id()), 1);
         assertThat(delivered.getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
         assertThat(delivered.getPayload()).isEqualTo(request.getBody().utf8());
@@ -195,16 +188,22 @@ class SlackWebhookDeliveryTests {
         CreatedTask task = createTask(admin, previous);
         answer(200);
 
-        mockMvc.perform(patch(TASKS + "/{id}/assign", task.id())
-                        .with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\": \"" + createUser(UserRole.USER).getId() + "\"}"))
+        mockMvc.perform(
+                        patch(TASKS + "/{id}/assign", task.id())
+                                .with(asAdmin(admin))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        "{\"userId\": \""
+                                                + createUser(UserRole.USER).getId()
+                                                + "\"}"))
                 .andExpect(status().isOk());
 
         RecordedRequest request = nextRequest();
         assertUnsigned(request);
-        assertThat(slackText(request)).isEqualTo(
-                "*%s* assigned *%s*: %s to someone else".formatted(admin.getDisplayName(), task.reference(), TITLE));
+        assertThat(slackText(request))
+                .isEqualTo(
+                        "*%s* assigned *%s*: %s to someone else"
+                                .formatted(admin.getDisplayName(), task.reference(), TITLE));
         awaitAttempts(onlyDeliveryId(endpoint.id()), 1);
     }
 
@@ -216,14 +215,17 @@ class SlackWebhookDeliveryTests {
         CreatedTask task = createTask(admin, assignee);
         answer(200);
 
-        mockMvc.perform(post(TASKS + "/{id}/cancel", task.id())
-                        .with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"reason\": \"Customer withdrew the request\"}"))
+        mockMvc.perform(
+                        post(TASKS + "/{id}/cancel", task.id())
+                                .with(asAdmin(admin))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"reason\": \"Customer withdrew the request\"}"))
                 .andExpect(status().isOk());
 
-        assertThat(slackText(nextRequest())).isEqualTo("*%s* cancelled *%s*: %s\nReason: Customer withdrew the request"
-                .formatted(admin.getDisplayName(), task.reference(), TITLE));
+        assertThat(slackText(nextRequest()))
+                .isEqualTo(
+                        "*%s* cancelled *%s*: %s\nReason: Customer withdrew the request"
+                                .formatted(admin.getDisplayName(), task.reference(), TITLE));
         awaitAttempts(onlyDeliveryId(endpoint.id()), 1);
     }
 
@@ -235,14 +237,17 @@ class SlackWebhookDeliveryTests {
         CreatedTask task = createTask(admin, assignee);
         answer(200);
 
-        mockMvc.perform(patch(TASKS + "/{id}/status", task.id())
-                        .with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\": \"CANCELLED\"}"))
+        mockMvc.perform(
+                        patch(TASKS + "/{id}/status", task.id())
+                                .with(asAdmin(admin))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"status\": \"CANCELLED\"}"))
                 .andExpect(status().isOk());
 
         assertThat(slackText(nextRequest()))
-                .isEqualTo("*%s* cancelled *%s*: %s".formatted(admin.getDisplayName(), task.reference(), TITLE));
+                .isEqualTo(
+                        "*%s* cancelled *%s*: %s"
+                                .formatted(admin.getDisplayName(), task.reference(), TITLE));
         awaitAttempts(onlyDeliveryId(endpoint.id()), 1);
     }
 
@@ -258,7 +263,9 @@ class SlackWebhookDeliveryTests {
                 .andExpect(status().isNoContent());
 
         assertThat(slackText(nextRequest()))
-                .isEqualTo("*%s* deleted *%s*: %s".formatted(admin.getDisplayName(), task.reference(), TITLE));
+                .isEqualTo(
+                        "*%s* deleted *%s*: %s"
+                                .formatted(admin.getDisplayName(), task.reference(), TITLE));
         awaitAttempts(onlyDeliveryId(endpoint.id()), 1);
     }
 
@@ -272,9 +279,10 @@ class SlackWebhookDeliveryTests {
 
         comment(admin, task, "Looks good to me\nShip it on Monday");
 
-        assertThat(slackText(nextRequest())).isEqualTo(
-                "*%s* commented on *%s*: %s\n>Looks good to me\n>Ship it on Monday"
-                        .formatted(admin.getDisplayName(), task.reference(), TITLE));
+        assertThat(slackText(nextRequest()))
+                .isEqualTo(
+                        "*%s* commented on *%s*: %s\n>Looks good to me\n>Ship it on Monday"
+                                .formatted(admin.getDisplayName(), task.reference(), TITLE));
         awaitAttempts(onlyDeliveryId(endpoint.id()), 1);
     }
 
@@ -288,8 +296,14 @@ class SlackWebhookDeliveryTests {
 
         comment(admin, task, "Please review, <@" + mentioned.getId() + ">");
 
-        assertThat(slackText(nextRequest())).isEqualTo("*%s* mentioned you on *%s*: %s\n>Please review, @%s"
-                .formatted(admin.getDisplayName(), task.reference(), TITLE, mentioned.getDisplayName()));
+        assertThat(slackText(nextRequest()))
+                .isEqualTo(
+                        "*%s* mentioned you on *%s*: %s\n>Please review, @%s"
+                                .formatted(
+                                        admin.getDisplayName(),
+                                        task.reference(),
+                                        TITLE,
+                                        mentioned.getDisplayName()));
         awaitAttempts(onlyDeliveryId(endpoint.id()), 1);
     }
 
@@ -298,14 +312,20 @@ class SlackWebhookDeliveryTests {
         clock.set(REMINDER_NOW);
         User assignee = createUser(UserRole.USER);
         SlackEndpoint endpoint = createSlackEndpoint(assignee, "task.due_soon");
-        CreatedTask task = createTask(createUser(UserRole.ADMIN), assignee, TITLE,
-                REMINDER_NOW.plus(Duration.ofHours(12)).plusSeconds(42));
+        CreatedTask task =
+                createTask(
+                        createUser(UserRole.ADMIN),
+                        assignee,
+                        TITLE,
+                        REMINDER_NOW.plus(Duration.ofHours(12)).plusSeconds(42));
         answer(200);
 
         reminderService.sendDueReminders();
 
         assertThat(slackText(nextRequest()))
-                .isEqualTo("*%s*: %s is due on 2160-06-01 12:00 UTC".formatted(task.reference(), TITLE));
+                .isEqualTo(
+                        "*%s*: %s is due on 2160-06-01 12:00 UTC"
+                                .formatted(task.reference(), TITLE));
         awaitAttempts(onlyDeliveryId(endpoint.id()), 1);
     }
 
@@ -314,14 +334,20 @@ class SlackWebhookDeliveryTests {
         clock.set(REMINDER_NOW);
         User assignee = createUser(UserRole.USER);
         SlackEndpoint endpoint = createSlackEndpoint(assignee, "task.overdue");
-        CreatedTask task = createTask(createUser(UserRole.ADMIN), assignee, TITLE,
-                REMINDER_NOW.minus(Duration.ofDays(2)).plus(Duration.ofMinutes(30)));
+        CreatedTask task =
+                createTask(
+                        createUser(UserRole.ADMIN),
+                        assignee,
+                        TITLE,
+                        REMINDER_NOW.minus(Duration.ofDays(2)).plus(Duration.ofMinutes(30)));
         answer(200);
 
         reminderService.sendDueReminders();
 
-        assertThat(slackText(nextRequest())).isEqualTo(
-                "*%s*: %s was due on 2160-05-30 00:30 UTC and is not done yet".formatted(task.reference(), TITLE));
+        assertThat(slackText(nextRequest()))
+                .isEqualTo(
+                        "*%s*: %s was due on 2160-05-30 00:30 UTC and is not done yet"
+                                .formatted(task.reference(), TITLE));
         awaitAttempts(onlyDeliveryId(endpoint.id()), 1);
     }
 
@@ -332,12 +358,17 @@ class SlackWebhookDeliveryTests {
         SlackEndpoint endpoint = createSlackEndpoint(assignee, "task.assigned");
         answer(200);
 
-        CreatedTask task = createTask(admin, assignee, "Ship it <!channel> & <https://evil.example.com|celebrate>",
-                Instant.parse("2170-01-01T10:00:00Z"));
+        CreatedTask task =
+                createTask(
+                        admin,
+                        assignee,
+                        "Ship it <!channel> & <https://evil.example.com|celebrate>",
+                        Instant.parse("2170-01-01T10:00:00Z"));
 
-        assertThat(slackText(nextRequest())).isEqualTo(
-                "*%s* assigned you *%s*: Ship it &lt;!channel&gt; &amp; &lt;https://evil.example.com|celebrate&gt;"
-                        .formatted(admin.getDisplayName(), task.reference()));
+        assertThat(slackText(nextRequest()))
+                .isEqualTo(
+                        "*%s* assigned you *%s*: Ship it &lt;!channel&gt; &amp; &lt;https://evil.example.com|celebrate&gt;"
+                                .formatted(admin.getDisplayName(), task.reference()));
         awaitAttempts(onlyDeliveryId(endpoint.id()), 1);
     }
 
@@ -345,7 +376,8 @@ class SlackWebhookDeliveryTests {
 
     @ParameterizedTest
     @ValueSource(ints = {403, 404, 410})
-    void answerOfARevokedSlackWebhookDisablesTheEndpointAsGoneAndFailsTheDelivery(int answer) throws Exception {
+    void answerOfARevokedSlackWebhookDisablesTheEndpointAsGoneAndFailsTheDelivery(int answer)
+            throws Exception {
         clock.set(NOW);
         User admin = createUser(UserRole.ADMIN);
         User assignee = createUser(UserRole.USER);
@@ -374,7 +406,8 @@ class SlackWebhookDeliveryTests {
     }
 
     @Test
-    void badRequestFromSlackFailsTheDeliveryAtOnceWithoutMarkingTheEndpointFailing() throws Exception {
+    void badRequestFromSlackFailsTheDeliveryAtOnceWithoutMarkingTheEndpointFailing()
+            throws Exception {
         clock.set(NOW);
         User assignee = createUser(UserRole.USER);
         SlackEndpoint endpoint = createSlackEndpoint(assignee, "task.assigned");
@@ -441,12 +474,14 @@ class SlackWebhookDeliveryTests {
         assertThat(retry.getUrl().encodedPath()).isEqualTo(endpoint.path());
         assertThat(retry.getBody()).isEqualTo(first.getBody());
         assertUnsigned(retry);
-        assertThat(awaitAttempts(deliveryId, 2).getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
+        assertThat(awaitAttempts(deliveryId, 2).getStatus())
+                .isEqualTo(WebhookDeliveryStatus.DELIVERED);
         assertThat(failingSince(endpoint.id())).isNull();
     }
 
     @Test
-    void slackEndpointFailingForThreeDaysIsDisabledAndItsOwnerEmailedOnlyTheHostOfItsUrl() throws Exception {
+    void slackEndpointFailingForThreeDaysIsDisabledAndItsOwnerEmailedOnlyTheHostOfItsUrl()
+            throws Exception {
         clock.set(NOW);
         User owner = createUser(UserRole.USER);
         SlackEndpoint endpoint = createSlackEndpoint(owner, "task.assigned");
@@ -461,7 +496,8 @@ class SlackWebhookDeliveryTests {
                 .andExpect(jsonPath("$.enabled").value(false))
                 .andExpect(jsonPath("$.disabledReason").value("FAILING"));
         assertThat(mailpit.latestTextTo(owner.getEmail(), DISABLED_EMAIL))
-                .contains("Your webhook to 127.0.0.1 failed every attempt for 3 days, so it was disabled")
+                .contains(
+                        "Your webhook to 127.0.0.1 failed every attempt for 3 days, so it was disabled")
                 .doesNotContain(endpoint.token())
                 .doesNotContain("/services/")
                 .doesNotContain(":" + receiver.getPort())
@@ -470,7 +506,8 @@ class SlackWebhookDeliveryTests {
 
     @ParameterizedTest
     @ValueSource(ints = {400, 403, 404})
-    void standardWebhookStillRetriesAnAnswerThatDisablesOrFailsASlackOne(int answer) throws Exception {
+    void standardWebhookStillRetriesAnAnswerThatDisablesOrFailsASlackOne(int answer)
+            throws Exception {
         clock.set(NOW);
         User assignee = createUser(UserRole.USER);
         StandardEndpoint endpoint = createStandardEndpoint(assignee, "task.assigned");
@@ -494,8 +531,10 @@ class SlackWebhookDeliveryTests {
     void deliveryToASlackUrlThatCannotBeReadAfterAKeyChangeFailsWithoutARequest() throws Exception {
         User assignee = createUser(UserRole.USER);
         SlackEndpoint endpoint = createSlackEndpoint(assignee, "task.assigned");
-        jdbcTemplate.update("UPDATE webhook_endpoints SET url = ? WHERE id = ?",
-                OTHER_KEY.encrypt(receiverUrl(endpoint.path())), endpoint.id());
+        jdbcTemplate.update(
+                "UPDATE webhook_endpoints SET url = ? WHERE id = ?",
+                OTHER_KEY.encrypt(receiverUrl(endpoint.path())),
+                endpoint.id());
 
         createTask(createUser(UserRole.ADMIN), assignee);
 
@@ -507,7 +546,8 @@ class SlackWebhookDeliveryTests {
     }
 
     @Test
-    void testEventReachesTheSlackUrlUnsignedAsTheTestMessageAndRecordsNoDelivery() throws Exception {
+    void testEventReachesTheSlackUrlUnsignedAsTheTestMessageAndRecordsNoDelivery()
+            throws Exception {
         User owner = createUser(UserRole.USER);
         SlackEndpoint endpoint = createSlackEndpoint(owner, "task.assigned");
         answer(200);
@@ -548,7 +588,8 @@ class SlackWebhookDeliveryTests {
     // Slack next to a standard webhook
 
     @Test
-    void standardWebhookOfTheSameUserStillGetsTheSignedStandardPayloadOfTheSameEvent() throws Exception {
+    void standardWebhookOfTheSameUserStillGetsTheSignedStandardPayloadOfTheSameEvent()
+            throws Exception {
         User admin = createUser(UserRole.ADMIN);
         User assignee = createUser(UserRole.USER);
         SlackEndpoint slack = createSlackEndpoint(assignee, "task.assigned");
@@ -558,25 +599,41 @@ class SlackWebhookDeliveryTests {
 
         CreatedTask task = createTask(admin, assignee);
 
-        Map<String, RecordedRequest> byPath = List.of(nextRequest(), nextRequest()).stream()
-                .collect(Collectors.toMap(request -> request.getUrl().encodedPath(), Function.identity()));
+        Map<String, RecordedRequest> byPath =
+                List.of(nextRequest(), nextRequest()).stream()
+                        .collect(
+                                Collectors.toMap(
+                                        request -> request.getUrl().encodedPath(),
+                                        Function.identity()));
         assertThat(byPath).containsOnlyKeys(slack.path(), "/hooks");
         RecordedRequest slackRequest = byPath.get(slack.path());
         assertUnsigned(slackRequest);
         assertThat(slackText(slackRequest))
-                .isEqualTo("*%s* assigned you *%s*: %s".formatted(admin.getDisplayName(), task.reference(), TITLE));
+                .isEqualTo(
+                        "*%s* assigned you *%s*: %s"
+                                .formatted(admin.getDisplayName(), task.reference(), TITLE));
         RecordedRequest standardRequest = byPath.get("/hooks");
         UUID standardDelivery = onlyDeliveryId(standard.id());
-        assertThat(standardRequest.getHeaders().get("webhook-id")).isEqualTo(standardDelivery.toString());
-        assertThatNoException().isThrownBy(() -> new Webhook(standard.secret())
-                .verify(standardRequest.getBody().utf8(), standardRequest.getHeaders().toMultimap()));
+        assertThat(standardRequest.getHeaders().get("webhook-id"))
+                .isEqualTo(standardDelivery.toString());
+        assertThatNoException()
+                .isThrownBy(
+                        () ->
+                                new Webhook(standard.secret())
+                                        .verify(
+                                                standardRequest.getBody().utf8(),
+                                                standardRequest.getHeaders().toMultimap()));
         JsonNode payload = jsonMapper.readTree(standardRequest.getBody().utf8());
         assertThat(payload.propertyNames()).containsExactly("type", "timestamp", "data");
         assertThat(payload.get("type").asString()).isEqualTo("task.assigned");
-        assertThat(payload.get("data").get("task").get("reference").asString()).isEqualTo(task.reference());
-        assertThat(payload.get("data").get("actor").get("displayName").asString()).isEqualTo(admin.getDisplayName());
-        assertThat(awaitAttempts(onlyDeliveryId(slack.id()), 1).getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
-        assertThat(awaitAttempts(standardDelivery, 1).getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
+        assertThat(payload.get("data").get("task").get("reference").asString())
+                .isEqualTo(task.reference());
+        assertThat(payload.get("data").get("actor").get("displayName").asString())
+                .isEqualTo(admin.getDisplayName());
+        assertThat(awaitAttempts(onlyDeliveryId(slack.id()), 1).getStatus())
+                .isEqualTo(WebhookDeliveryStatus.DELIVERED);
+        assertThat(awaitAttempts(standardDelivery, 1).getStatus())
+                .isEqualTo(WebhookDeliveryStatus.DELIVERED);
     }
 
     // Redelivery
@@ -592,14 +649,17 @@ class SlackWebhookDeliveryTests {
         assertThat(awaitFinished(deliveryId).getStatus()).isEqualTo(WebhookDeliveryStatus.FAILED);
         answer(200);
 
-        mockMvc.perform(post(REDELIVER, owner.getId(), endpoint.id(), deliveryId).with(asUser(owner)))
+        mockMvc.perform(
+                        post(REDELIVER, owner.getId(), endpoint.id(), deliveryId)
+                                .with(asUser(owner)))
                 .andExpect(status().isAccepted());
 
         RecordedRequest again = nextRequest();
         assertThat(again.getUrl().encodedPath()).isEqualTo(endpoint.path());
         assertThat(again.getBody()).isEqualTo(first.getBody());
         assertUnsigned(again);
-        assertThat(awaitAttempts(deliveryId, 1).getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
+        assertThat(awaitAttempts(deliveryId, 1).getStatus())
+                .isEqualTo(WebhookDeliveryStatus.DELIVERED);
     }
 
     private void answer(int status) {
@@ -611,7 +671,8 @@ class SlackWebhookDeliveryTests {
     }
 
     private RecordedRequest nextRequest() throws InterruptedException {
-        RecordedRequest request = receiver.takeRequest(DELIVERY_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+        RecordedRequest request =
+                receiver.takeRequest(DELIVERY_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
         assertThat(request).as("request received by the Slack receiver").isNotNull();
         return request;
     }
@@ -635,30 +696,46 @@ class SlackWebhookDeliveryTests {
 
     private SlackEndpoint createSlackEndpoint(User owner, String... events) throws Exception {
         String token = "token-" + UUID.randomUUID();
-        JsonNode created = json(mockMvc.perform(post(WEBHOOKS, owner.getId())
-                        .with(asUser(owner))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"kind\": \"SLACK\", \"url\": \"https://hooks.slack.com%s%s\", \"events\": %s}"
-                                .formatted(SLACK_PATH, token, eventArray(events))))
-                .andExpect(status().isCreated()));
+        JsonNode created =
+                json(
+                        mockMvc.perform(
+                                        post(WEBHOOKS, owner.getId())
+                                                .with(asUser(owner))
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(
+                                                        "{\"kind\": \"SLACK\", \"url\": \"https://hooks.slack.com%s%s\", \"events\": %s}"
+                                                                .formatted(
+                                                                        SLACK_PATH,
+                                                                        token,
+                                                                        eventArray(events))))
+                                .andExpect(status().isCreated()));
         UUID id = UUID.fromString(created.get("id").asString());
         String path = SLACK_PATH + token;
 
-        jdbcTemplate.update("UPDATE webhook_endpoints SET url = ? WHERE id = ?",
-                webhookSecrets.encrypt(receiverUrl(path)), id);
+        jdbcTemplate.update(
+                "UPDATE webhook_endpoints SET url = ? WHERE id = ?",
+                webhookSecrets.encrypt(receiverUrl(path)),
+                id);
 
         return new SlackEndpoint(id, path, token);
     }
 
     private StandardEndpoint createStandardEndpoint(User owner, String... events) throws Exception {
-        JsonNode created = json(mockMvc.perform(post(WEBHOOKS, owner.getId())
-                        .with(asUser(owner))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"url\": \"%s\", \"events\": %s}".formatted(receiverUrl("/hooks"),
-                                eventArray(events))))
-                .andExpect(status().isCreated()));
+        JsonNode created =
+                json(
+                        mockMvc.perform(
+                                        post(WEBHOOKS, owner.getId())
+                                                .with(asUser(owner))
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(
+                                                        "{\"url\": \"%s\", \"events\": %s}"
+                                                                .formatted(
+                                                                        receiverUrl("/hooks"),
+                                                                        eventArray(events))))
+                                .andExpect(status().isCreated()));
 
-        return new StandardEndpoint(UUID.fromString(created.get("id").asString()), created.get("secret").asString());
+        return new StandardEndpoint(
+                UUID.fromString(created.get("id").asString()), created.get("secret").asString());
     }
 
     private static String eventArray(String... events) {
@@ -668,13 +745,18 @@ class SlackWebhookDeliveryTests {
     }
 
     private void markFailingSince(UUID endpointId, Instant failingSince) {
-        jdbcTemplate.update("UPDATE webhook_endpoints SET failing_since = ? WHERE id = ?",
-                Timestamp.from(failingSince), endpointId);
+        jdbcTemplate.update(
+                "UPDATE webhook_endpoints SET failing_since = ? WHERE id = ?",
+                Timestamp.from(failingSince),
+                endpointId);
     }
 
     private Instant failingSince(UUID endpointId) {
-        Timestamp failingSince = jdbcTemplate.queryForObject(
-                "SELECT failing_since FROM webhook_endpoints WHERE id = ?", Timestamp.class, endpointId);
+        Timestamp failingSince =
+                jdbcTemplate.queryForObject(
+                        "SELECT failing_since FROM webhook_endpoints WHERE id = ?",
+                        Timestamp.class,
+                        endpointId);
         return failingSince == null ? null : failingSince.toInstant();
     }
 
@@ -683,21 +765,24 @@ class SlackWebhookDeliveryTests {
     }
 
     private WebhookDelivery awaitAttempts(UUID deliveryId, int attempts) {
-        return await().atMost(DELIVERY_TIMEOUT).pollInterval(Duration.ofMillis(50))
+        return await().atMost(DELIVERY_TIMEOUT)
+                .pollInterval(Duration.ofMillis(50))
                 .until(() -> delivery(deliveryId), delivery -> delivery.getAttempts() >= attempts);
     }
 
     private WebhookDelivery awaitFinished(UUID deliveryId) {
-        return await().atMost(DELIVERY_TIMEOUT).pollInterval(Duration.ofMillis(50))
-                .until(() -> delivery(deliveryId), delivery -> delivery.getStatus() != WebhookDeliveryStatus.PENDING);
+        return await().atMost(DELIVERY_TIMEOUT)
+                .pollInterval(Duration.ofMillis(50))
+                .until(
+                        () -> delivery(deliveryId),
+                        delivery -> delivery.getStatus() != WebhookDeliveryStatus.PENDING);
     }
 
     private List<UUID> deliveryIds(UUID endpointId) {
         return jdbcTemplate.queryForList(
                 "SELECT id FROM webhook_deliveries WHERE endpoint_id = ? ORDER BY created_at, id",
                 UUID.class,
-                endpointId
-        );
+                endpointId);
     }
 
     private UUID onlyDeliveryId(UUID endpointId) {
@@ -710,7 +795,8 @@ class SlackWebhookDeliveryTests {
         return createTask(admin, assignee, TITLE, Instant.parse("2170-01-01T10:00:00Z"));
     }
 
-    private CreatedTask createTask(User admin, User assignee, String title, Instant dueAt) throws Exception {
+    private CreatedTask createTask(User admin, User assignee, String title, Instant dueAt)
+            throws Exception {
         String reference = "SL-" + UUID.randomUUID().toString().substring(0, 8);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("reference", reference);
@@ -718,20 +804,24 @@ class SlackWebhookDeliveryTests {
         body.put("dueAt", dueAt.toString());
         body.put("assignedTo", assignee == null ? null : assignee.getId());
 
-        JsonNode created = json(mockMvc.perform(post(TASKS)
-                        .with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonMapper.writeValueAsString(body)))
-                .andExpect(status().isCreated()));
+        JsonNode created =
+                json(
+                        mockMvc.perform(
+                                        post(TASKS)
+                                                .with(asAdmin(admin))
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(jsonMapper.writeValueAsString(body)))
+                                .andExpect(status().isCreated()));
 
         return new CreatedTask(UUID.fromString(created.get("id").asString()), reference);
     }
 
     private void comment(User author, CreatedTask task, String body) throws Exception {
-        mockMvc.perform(post(TASKS + "/{id}/comments", task.id())
-                        .with(asUser(author))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonMapper.writeValueAsString(Map.of("body", body))))
+        mockMvc.perform(
+                        post(TASKS + "/{id}/comments", task.id())
+                                .with(asUser(author))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(jsonMapper.writeValueAsString(Map.of("body", body))))
                 .andExpect(status().isCreated());
     }
 
@@ -760,14 +850,13 @@ class SlackWebhookDeliveryTests {
     }
 
     private static RequestPostProcessor as(User user, UserRole role) {
-        return jwt()
-                .jwt(token -> token.claim("uid", user.getId().toString()))
+        return jwt().jwt(token -> token.claim("uid", user.getId().toString()))
                 .authorities(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
 
     private static InetAddress loopback() {
         try {
-            return InetAddress.getByAddress(new byte[]{127, 0, 0, 1});
+            return InetAddress.getByAddress(new byte[] {127, 0, 0, 1});
         } catch (IOException invalid) {
             throw new IllegalArgumentException(invalid);
         }

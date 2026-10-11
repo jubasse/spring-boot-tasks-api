@@ -1,27 +1,34 @@
 package io.julienmetral.tasks.task.entities;
 
 import io.julienmetral.tasks.media.model.Media;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ForeignKey;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import java.time.Instant;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.Generated;
 
-import java.time.Instant;
-import java.util.UUID;
-
 @Entity
 @Table(
         name = "task_attachments",
         uniqueConstraints = {
-                @UniqueConstraint(name = "task_attachments_media_idUQ", columnNames = "media_id")
+            @UniqueConstraint(name = "task_attachments_media_idUQ", columnNames = "media_id")
         },
         indexes = {
-                @Index(name = "task_attachments_task_idIDX", columnList = "task_id"),
-                @Index(name = "task_attachments_comment_idIDX", columnList = "comment_id")
-        }
-)
+            @Index(name = "task_attachments_task_idIDX", columnList = "task_id"),
+            @Index(name = "task_attachments_comment_idIDX", columnList = "comment_id")
+        })
 @Getter
 @Setter
 @NoArgsConstructor
@@ -33,25 +40,25 @@ public class TaskAttachment {
     @Column(name = "id", nullable = false, updatable = false)
     private UUID id;
 
-    // EAGER: Hibernate refuses a LAZY to-one towards a @SoftDelete entity and fails at startup. Attachments of a
-    // soft-deleted task therefore do not load through JPA; the purge of those files must use native queries.
+    // EAGER: Hibernate refuses a LAZY to-one towards a @SoftDelete entity and fails at startup.
+    // Attachments of a soft-deleted task therefore do not load through JPA; the purge of those
+    // files must use native queries.
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(
             name = "task_id",
             nullable = false,
             updatable = false,
-            foreignKey = @ForeignKey(name = "task_attachments_taskFK")
-    )
+            foreignKey = @ForeignKey(name = "task_attachments_taskFK"))
     private Task task;
 
-    // ManyToOne rather than OneToOne: the uniqueness is the named constraint above (see UserProfile.avatar)
+    // ManyToOne rather than OneToOne: the uniqueness is the named constraint above (see
+    // UserProfile.avatar)
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(
             name = "media_id",
             nullable = false,
             updatable = false,
-            foreignKey = @ForeignKey(name = "task_attachments_mediaFK")
-    )
+            foreignKey = @ForeignKey(name = "task_attachments_mediaFK"))
     private Media media;
 
     // Null for a file added to the task directly rather than posted with a comment
@@ -59,8 +66,7 @@ public class TaskAttachment {
     @JoinColumn(
             name = "comment_id",
             updatable = false,
-            foreignKey = @ForeignKey(name = "task_attachments_commentFK")
-    )
+            foreignKey = @ForeignKey(name = "task_attachments_commentFK"))
     private TaskComment comment;
 
     @Column(name = "created_at", nullable = false, updatable = false)

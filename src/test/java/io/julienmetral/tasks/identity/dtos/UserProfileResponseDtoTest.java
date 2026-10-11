@@ -1,19 +1,18 @@
 package io.julienmetral.tasks.identity.dtos;
 
-import io.julienmetral.tasks.identity.entities.UserProfile;
-import io.julienmetral.tasks.identity.entities.UserStatus;
-import io.julienmetral.tasks.media.services.MediaUrls;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
-
-import java.util.UUID;
-
 import static io.julienmetral.tasks.support.UserProfiles.profile;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+
+import io.julienmetral.tasks.identity.entities.UserProfile;
+import io.julienmetral.tasks.identity.entities.UserStatus;
+import io.julienmetral.tasks.media.services.MediaUrls;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 class UserProfileResponseDtoTest {
 
@@ -29,13 +28,17 @@ class UserProfileResponseDtoTest {
 
         UserProfileResponseDto dto = UserProfileResponseDto.of(profile, mediaUrls);
 
-        assertThat(dto).isEqualTo(new UserProfileResponseDto(USER_ID, "Alice", UserStatus.ACTIVE, AVATAR_URL));
+        assertThat(dto)
+                .isEqualTo(
+                        new UserProfileResponseDto(
+                                USER_ID, "Alice", UserStatus.ACTIVE, AVATAR_URL));
     }
 
     @ParameterizedTest
     @EnumSource(UserStatus.class)
     void statusIsTheOneCopiedOnTheProfile(UserStatus status) {
-        UserProfileResponseDto dto = UserProfileResponseDto.of(profile(USER_ID, "Alice", status), mediaUrls);
+        UserProfileResponseDto dto =
+                UserProfileResponseDto.of(profile(USER_ID, "Alice", status), mediaUrls);
 
         assertThat(dto.status()).isEqualTo(status);
     }
@@ -56,7 +59,8 @@ class UserProfileResponseDtoTest {
         String identiconUrl = "/api/v1/identicons/" + USER_ID;
         when(mediaUrls.avatarOf(profile)).thenReturn(identiconUrl);
 
-        assertThat(UserProfileResponseDto.of(profile, mediaUrls).avatarUrl()).isEqualTo(identiconUrl);
+        assertThat(UserProfileResponseDto.of(profile, mediaUrls).avatarUrl())
+                .isEqualTo(identiconUrl);
     }
 
     @Test

@@ -2,50 +2,42 @@ package io.julienmetral.tasks.media.model;
 
 import java.util.Set;
 
-/** What a file is uploaded for, which decides the accepted content types (detected from the bytes). */
+/**
+ * What a file is uploaded for, which decides the accepted content types (detected from the bytes).
+ */
 public enum MediaUsage {
 
-    // A profile photo as the worker re-encoded it (see MediaService.storeGenerated): the upload was already scanned
-    AVATAR(Set.of(
-            "image/jpeg",
-            "image/png",
-            "image/webp"
-    )),
+    // A profile photo as the worker re-encoded it (see MediaService.storeGenerated): the upload was
+    // already scanned
+    AVATAR(Set.of("image/jpeg", "image/png", "image/webp")),
 
     // A profile photo as uploaded, kept until the worker has produced the AVATAR version
-    AVATAR_UPLOAD(Set.of(
-            "image/jpeg",
-            "image/png",
-            "image/webp"
-    )),
+    AVATAR_UPLOAD(Set.of("image/jpeg", "image/png", "image/webp")),
 
-    TASK_ATTACHMENT(Set.of(
-            "image/jpeg",
-            "image/png",
-            "image/gif",
-            "image/webp",
-            "application/pdf",
-            "text/plain",
-            "text/csv",
-            "text/markdown",
-            "application/rtf",
-            "application/msword",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/vnd.oasis.opendocument.text",
-            "application/vnd.ms-excel",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "application/vnd.oasis.opendocument.spreadsheet",
-            "application/vnd.ms-powerpoint",
-            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            "application/vnd.oasis.opendocument.presentation",
-            "application/zip"
-    )),
+    TASK_ATTACHMENT(
+            Set.of(
+                    "image/jpeg",
+                    "image/png",
+                    "image/gif",
+                    "image/webp",
+                    "application/pdf",
+                    "text/plain",
+                    "text/csv",
+                    "text/markdown",
+                    "application/rtf",
+                    "application/msword",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    "application/vnd.oasis.opendocument.text",
+                    "application/vnd.ms-excel",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "application/vnd.oasis.opendocument.spreadsheet",
+                    "application/vnd.ms-powerpoint",
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    "application/vnd.oasis.opendocument.presentation",
+                    "application/zip")),
 
     // Files the application writes itself (see MediaService.storeGenerated), never uploaded
-    EXPORT(Set.of(
-            "text/csv",
-            "application/zip"
-    ));
+    EXPORT(Set.of("text/csv", "application/zip"));
 
     private final Set<String> allowedContentTypes;
 

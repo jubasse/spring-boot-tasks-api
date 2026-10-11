@@ -1,5 +1,10 @@
 package io.julienmetral.tasks.export.dtos;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.export.entities.DataExport;
 import io.julienmetral.tasks.export.entities.DataExportStatus;
 import io.julienmetral.tasks.export.entities.DataExportType;
@@ -7,17 +12,11 @@ import io.julienmetral.tasks.export.entities.TaskExportFilters;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.services.MediaUrls;
 import io.julienmetral.tasks.task.entities.TaskStatus;
+import java.time.Instant;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
-
-import java.time.Instant;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
 class DataExportResponseDtoTest {
 
@@ -51,17 +50,18 @@ class DataExportResponseDtoTest {
 
         DataExportResponseDto dto = new DataExportResponseDto(export, mediaUrls);
 
-        assertThat(dto).isEqualTo(new DataExportResponseDto(
-                export.getId(),
-                DataExportType.TASKS_CSV,
-                DataExportStatus.COMPLETED,
-                new TaskExportFilters(TaskStatus.DONE, null, false),
-                12L,
-                CREATED_AT,
-                COMPLETED_AT,
-                EXPIRES_AT,
-                "https://storage.example/export/key?signature"
-        ));
+        assertThat(dto)
+                .isEqualTo(
+                        new DataExportResponseDto(
+                                export.getId(),
+                                DataExportType.TASKS_CSV,
+                                DataExportStatus.COMPLETED,
+                                new TaskExportFilters(TaskStatus.DONE, null, false),
+                                12L,
+                                CREATED_AT,
+                                COMPLETED_AT,
+                                EXPIRES_AT,
+                                "https://storage.example/export/key?signature"));
     }
 
     @ParameterizedTest

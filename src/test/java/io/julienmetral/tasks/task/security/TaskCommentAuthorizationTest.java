@@ -1,7 +1,14 @@
 package io.julienmetral.tasks.task.security;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.task.repositories.TaskCommentRepository;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -9,25 +16,14 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.core.Authentication;
 
-import java.util.Optional;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
-
 @ExtendWith(MockitoExtension.class)
 class TaskCommentAuthorizationTest {
 
-    @Mock
-    private CurrentUser currentUser;
+    @Mock private CurrentUser currentUser;
 
-    @Mock
-    private TaskCommentRepository commentRepository;
+    @Mock private TaskCommentRepository commentRepository;
 
-    @InjectMocks
-    private TaskCommentAuthorization authorization;
+    @InjectMocks private TaskCommentAuthorization authorization;
 
     private final Authentication authentication = mock(Authentication.class);
     private final UUID commentId = UUID.randomUUID();

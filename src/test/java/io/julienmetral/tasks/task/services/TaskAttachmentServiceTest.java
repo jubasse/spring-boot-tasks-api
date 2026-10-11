@@ -1,5 +1,15 @@
 package io.julienmetral.tasks.task.services;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
 import io.julienmetral.tasks.identity.security.CurrentUser;
 import io.julienmetral.tasks.media.exceptions.StorageUnavailableException;
 import io.julienmetral.tasks.media.model.Media;
@@ -12,6 +22,12 @@ import io.julienmetral.tasks.task.exceptions.TaskAttachmentNotFoundException;
 import io.julienmetral.tasks.task.exceptions.TaskNotFoundException;
 import io.julienmetral.tasks.task.repositories.TaskAttachmentRepository;
 import io.julienmetral.tasks.task.repositories.TaskRepository;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -23,55 +39,32 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
-
 @ExtendWith(MockitoExtension.class)
 class TaskAttachmentServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-10-11T08:30:00Z");
 
-    @Mock
-    private TaskRepository taskRepository;
+    @Mock private TaskRepository taskRepository;
 
-    @Mock
-    private TaskAttachmentRepository attachmentRepository;
+    @Mock private TaskAttachmentRepository attachmentRepository;
 
-    @Mock
-    private MediaService mediaService;
+    @Mock private MediaService mediaService;
 
-    @Mock
-    private TaskEventService taskEventService;
+    @Mock private TaskEventService taskEventService;
 
-    @Mock
-    private CurrentUser currentUser;
+    @Mock private CurrentUser currentUser;
 
-    @Spy
-    private Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+    @Spy private Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 
-    @InjectMocks
-    private TaskAttachmentService service;
+    @InjectMocks private TaskAttachmentService service;
 
     private final UUID taskId = UUID.randomUUID();
     private final UUID attachmentId = UUID.randomUUID();
     private final UUID userId = UUID.randomUUID();
     private final Task task = new Task();
     private final Media media = new Media();
-    private final MultipartFile file = new MockMultipartFile("file", "notes.pdf", "application/pdf", new byte[]{1, 2, 3});
+    private final MultipartFile file =
+            new MockMultipartFile("file", "notes.pdf", "application/pdf", new byte[] {1, 2, 3});
 
     private TaskAttachment attachment() {
         TaskAttachment attachment = new TaskAttachment();
@@ -131,7 +124,8 @@ class TaskAttachmentServiceTest {
         when(taskRepository.findById(taskId)).thenReturn(Optional.of(task));
         when(currentUser.getId()).thenReturn(Optional.empty());
         when(mediaService.store(file, MediaUsage.TASK_ATTACHMENT, null)).thenReturn(media);
-        when(attachmentRepository.save(any(TaskAttachment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(attachmentRepository.save(any(TaskAttachment.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         TaskAttachment result = service.add(taskId, file);
 
@@ -151,7 +145,8 @@ class TaskAttachmentServiceTest {
 
     @Test
     void addNeitherSavesNorRecordsWhenStorageFails() {
-        StorageUnavailableException failure = new StorageUnavailableException(new RuntimeException("down"));
+        StorageUnavailableException failure =
+                new StorageUnavailableException(new RuntimeException("down"));
         when(taskRepository.findById(taskId)).thenReturn(Optional.of(task));
         when(currentUser.getId()).thenReturn(Optional.of(userId));
         when(mediaService.store(file, MediaUsage.TASK_ATTACHMENT, userId)).thenThrow(failure);
@@ -164,7 +159,8 @@ class TaskAttachmentServiceTest {
     void findAllReturnsAttachmentsInCreationOrder() {
         List<TaskAttachment> attachments = List.of(attachment(), new TaskAttachment());
         when(taskRepository.findById(taskId)).thenReturn(Optional.of(task));
-        when(attachmentRepository.findAllByTaskIdOrderByCreatedAtAsc(taskId)).thenReturn(attachments);
+        when(attachmentRepository.findAllByTaskIdOrderByCreatedAtAsc(taskId))
+                .thenReturn(attachments);
 
         assertThat(service.findAll(taskId)).isSameAs(attachments);
     }
@@ -181,7 +177,8 @@ class TaskAttachmentServiceTest {
     void findReturnsTheAttachmentOfTheTask() {
         TaskAttachment attachment = attachment();
         when(taskRepository.findById(taskId)).thenReturn(Optional.of(task));
-        when(attachmentRepository.findByIdAndTaskId(attachmentId, taskId)).thenReturn(Optional.of(attachment));
+        when(attachmentRepository.findByIdAndTaskId(attachmentId, taskId))
+                .thenReturn(Optional.of(attachment));
 
         assertThat(service.find(taskId, attachmentId)).isSameAs(attachment);
     }
@@ -190,14 +187,16 @@ class TaskAttachmentServiceTest {
     void findForUnknownTaskThrows() {
         when(taskRepository.findById(taskId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.find(taskId, attachmentId)).isInstanceOf(TaskNotFoundException.class);
+        assertThatThrownBy(() -> service.find(taskId, attachmentId))
+                .isInstanceOf(TaskNotFoundException.class);
         verifyNoInteractions(attachmentRepository);
     }
 
     @Test
     void findAttachmentOfAnotherTaskThrows() {
         when(taskRepository.findById(taskId)).thenReturn(Optional.of(task));
-        when(attachmentRepository.findByIdAndTaskId(attachmentId, taskId)).thenReturn(Optional.empty());
+        when(attachmentRepository.findByIdAndTaskId(attachmentId, taskId))
+                .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.find(taskId, attachmentId))
                 .isInstanceOf(TaskAttachmentNotFoundException.class)
@@ -208,7 +207,8 @@ class TaskAttachmentServiceTest {
     void removeRecordsEventBeforeDeletingAttachmentAndMedia() {
         TaskAttachment attachment = attachment();
         when(taskRepository.findById(taskId)).thenReturn(Optional.of(task));
-        when(attachmentRepository.findByIdAndTaskId(attachmentId, taskId)).thenReturn(Optional.of(attachment));
+        when(attachmentRepository.findByIdAndTaskId(attachmentId, taskId))
+                .thenReturn(Optional.of(attachment));
 
         service.remove(taskId, attachmentId);
 
@@ -236,14 +236,16 @@ class TaskAttachmentServiceTest {
     void removeFromUnknownTaskThrowsWithoutDeleting() {
         when(taskRepository.findById(taskId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.remove(taskId, attachmentId)).isInstanceOf(TaskNotFoundException.class);
+        assertThatThrownBy(() -> service.remove(taskId, attachmentId))
+                .isInstanceOf(TaskNotFoundException.class);
         verifyNoInteractions(attachmentRepository, mediaService, taskEventService);
     }
 
     @Test
     void removeUnknownAttachmentThrowsWithoutRecordingOrDeleting() {
         when(taskRepository.findById(taskId)).thenReturn(Optional.of(task));
-        when(attachmentRepository.findByIdAndTaskId(attachmentId, taskId)).thenReturn(Optional.empty());
+        when(attachmentRepository.findByIdAndTaskId(attachmentId, taskId))
+                .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.remove(taskId, attachmentId))
                 .isInstanceOf(TaskAttachmentNotFoundException.class);

@@ -1,40 +1,5 @@
 package io.julienmetral.tasks.notification.controllers;
 
-import io.julienmetral.tasks.identity.entities.User;
-import io.julienmetral.tasks.identity.entities.UserRole;
-import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.identity.repositories.UserRetentionQueries;
-import io.julienmetral.tasks.identity.services.UserService;
-import io.julienmetral.tasks.notification.webhook.WebhookSecrets;
-import io.julienmetral.tasks.support.IntegrationTest;
-import io.julienmetral.tasks.support.TestClock;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.ResultActions;
-import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import org.springframework.test.web.servlet.request.RequestPostProcessor;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
-
-import java.sql.Timestamp;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.stream.Collectors;
-
 import static io.julienmetral.tasks.support.Problems.invalidBodyValue;
 import static io.julienmetral.tasks.support.Problems.typedProblem;
 import static io.julienmetral.tasks.support.Problems.untypedProblem;
@@ -55,6 +20,40 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.julienmetral.tasks.identity.entities.User;
+import io.julienmetral.tasks.identity.entities.UserRole;
+import io.julienmetral.tasks.identity.repositories.UserRepository;
+import io.julienmetral.tasks.identity.repositories.UserRetentionQueries;
+import io.julienmetral.tasks.identity.services.UserService;
+import io.julienmetral.tasks.notification.webhook.WebhookSecrets;
+import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.TestClock;
+import java.sql.Timestamp;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+
 @IntegrationTest
 class WebhookEndpointApiTests {
 
@@ -64,7 +63,8 @@ class WebhookEndpointApiTests {
 
     private static final String SECRET = WEBHOOK + "/secret";
 
-    // Allowed by the test configuration: HTTPS is not required and 127.0.0.1/32 is an allowed address
+    // Allowed by the test configuration: HTTPS is not required and 127.0.0.1/32 is an allowed
+    // address
     private static final String LOCAL_URL = "http://127.0.0.1:8080/hooks";
 
     private static final String PUBLIC_URL = "https://93.184.216.34/tasks";
@@ -73,40 +73,33 @@ class WebhookEndpointApiTests {
 
     private static final String SLACK_MASK = "https://hooks.slack.com/services/****";
 
-    private static final String NOT_SLACK = "A Slack webhook URL must start with https://hooks.slack.com/services/";
+    private static final String NOT_SLACK =
+            "A Slack webhook URL must start with https://hooks.slack.com/services/";
 
     private static final Instant NOW = Instant.parse("2031-02-03T04:05:06.123456Z");
 
-    // Stands for the key before a change of webhooks.encryption-key: what it encrypted, the application cannot read
+    // Stands for the key before a change of webhooks.encryption-key: what it encrypted, the
+    // application cannot read
     private static final WebhookSecrets OTHER_KEY =
             new WebhookSecrets(Base64.getEncoder().encodeToString(new byte[32]));
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
-    @Autowired
-    private UserService userService;
+    @Autowired private UserService userService;
 
-    @Autowired
-    private UserRetentionQueries retentionQueries;
+    @Autowired private UserRetentionQueries retentionQueries;
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    @Autowired private PasswordEncoder passwordEncoder;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
-    @Autowired
-    private JsonMapper jsonMapper;
+    @Autowired private JsonMapper jsonMapper;
 
-    @Autowired
-    private WebhookSecrets webhookSecrets;
+    @Autowired private WebhookSecrets webhookSecrets;
 
-    @Autowired
-    private TestClock clock;
+    @Autowired private TestClock clock;
 
     // Creation
 
@@ -114,10 +107,13 @@ class WebhookEndpointApiTests {
     void locationHeaderNamesTheCreatedWebhook() throws Exception {
         User user = createUser(UserRole.USER);
 
-        ResultActions result = create(user, asUser(user), LOCAL_URL, "task.assigned").andExpect(status().isCreated());
+        ResultActions result =
+                create(user, asUser(user), LOCAL_URL, "task.assigned")
+                        .andExpect(status().isCreated());
 
         String id = json(result).get("id").asString();
-        result.andExpect(header().string("Location", "/api/v1/users/" + user.getId() + "/webhooks/" + id));
+        result.andExpect(
+                header().string("Location", "/api/v1/users/" + user.getId() + "/webhooks/" + id));
     }
 
     @Test
@@ -129,7 +125,9 @@ class WebhookEndpointApiTests {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").isNotEmpty())
                 .andExpect(jsonPath("$.url").value(LOCAL_URL))
-                .andExpect(jsonPath("$.events").value(contains("task.assigned", "task.due_soon", "task.overdue")))
+                .andExpect(
+                        jsonPath("$.events")
+                                .value(contains("task.assigned", "task.due_soon", "task.overdue")))
                 .andExpect(jsonPath("$.enabled").value(true))
                 .andExpect(jsonPath("$.createdAt").value(NOW.toString()))
                 .andExpect(jsonPath("$.secret").value(matchesPattern(SECRET_FORMAT)));
@@ -141,7 +139,13 @@ class WebhookEndpointApiTests {
         clock.set(NOW);
 
         UUID webhookId =
-                createdId(user, asUser(user), PUBLIC_URL, "task.commented", "task.mentioned", "task.commented");
+                createdId(
+                        user,
+                        asUser(user),
+                        PUBLIC_URL,
+                        "task.commented",
+                        "task.mentioned",
+                        "task.commented");
 
         Map<String, Object> row = endpointRow(webhookId);
         assertThat(row.get("user_id")).isEqualTo(user.getId());
@@ -159,7 +163,10 @@ class WebhookEndpointApiTests {
     void createStoresTheSecretEncryptedAndNeverInClear() throws Exception {
         User user = createUser(UserRole.USER);
 
-        JsonNode created = json(create(user, asUser(user), LOCAL_URL, "task.assigned").andExpect(status().isCreated()));
+        JsonNode created =
+                json(
+                        create(user, asUser(user), LOCAL_URL, "task.assigned")
+                                .andExpect(status().isCreated()));
         String secret = created.get("secret").asString();
 
         String stored = storedSecret(UUID.fromString(created.get("id").asString()));
@@ -174,8 +181,14 @@ class WebhookEndpointApiTests {
     void everyWebhookGetsItsOwnSecret() throws Exception {
         User user = createUser(UserRole.USER);
 
-        String first = json(create(user, asUser(user), LOCAL_URL, "task.assigned")).get("secret").asString();
-        String second = json(create(user, asUser(user), LOCAL_URL, "task.assigned")).get("secret").asString();
+        String first =
+                json(create(user, asUser(user), LOCAL_URL, "task.assigned"))
+                        .get("secret")
+                        .asString();
+        String second =
+                json(create(user, asUser(user), LOCAL_URL, "task.assigned"))
+                        .get("secret")
+                        .asString();
 
         assertThat(first).isNotEqualTo(second);
     }
@@ -194,7 +207,13 @@ class WebhookEndpointApiTests {
 
         mockMvc.perform(get(WEBHOOKS, user.getId()).with(asUser(user)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[*].id").value(contains(oldest.toString(), middle.toString(), newest.toString())))
+                .andExpect(
+                        jsonPath("$[*].id")
+                                .value(
+                                        contains(
+                                                oldest.toString(),
+                                                middle.toString(),
+                                                newest.toString())))
                 .andExpect(jsonPath("$[0].url").value(PUBLIC_URL))
                 .andExpect(jsonPath("$[0].events").value(contains("task.overdue")))
                 .andExpect(jsonPath("$[*].secret").value(empty()))
@@ -215,13 +234,15 @@ class WebhookEndpointApiTests {
     void getReturnsTheWebhookWithoutItsSecret() throws Exception {
         User user = createUser(UserRole.USER);
         clock.set(NOW);
-        UUID webhookId = createdId(user, asUser(user), LOCAL_URL, "task.unassigned", "task.cancelled");
+        UUID webhookId =
+                createdId(user, asUser(user), LOCAL_URL, "task.unassigned", "task.cancelled");
 
         mockMvc.perform(get(WEBHOOK, user.getId(), webhookId).with(asUser(user)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(webhookId.toString()))
                 .andExpect(jsonPath("$.url").value(LOCAL_URL))
-                .andExpect(jsonPath("$.events").value(contains("task.unassigned", "task.cancelled")))
+                .andExpect(
+                        jsonPath("$.events").value(contains("task.unassigned", "task.cancelled")))
                 .andExpect(jsonPath("$.enabled").value(true))
                 .andExpect(jsonPath("$.disabledReason").value(nullValue()))
                 .andExpect(jsonPath("$.disabledAt").value(nullValue()))
@@ -238,7 +259,8 @@ class WebhookEndpointApiTests {
     void updateReplacesTheUrlAndTheEvents() throws Exception {
         User user = createUser(UserRole.USER);
         clock.set(NOW);
-        UUID webhookId = createdId(user, asUser(user), LOCAL_URL, "task.assigned", "task.unassigned");
+        UUID webhookId =
+                createdId(user, asUser(user), LOCAL_URL, "task.assigned", "task.unassigned");
         clock.set(NOW.plus(Duration.ofHours(1)));
 
         update(user, webhookId, asUser(user), PUBLIC_URL, true, "task.due_soon")
@@ -262,7 +284,8 @@ class WebhookEndpointApiTests {
         UUID webhookId = createdId(user, asUser(user), LOCAL_URL, "task.assigned");
         String before = storedSecret(webhookId);
 
-        update(user, webhookId, asUser(user), PUBLIC_URL, false, "task.overdue").andExpect(status().isOk());
+        update(user, webhookId, asUser(user), PUBLIC_URL, false, "task.overdue")
+                .andExpect(status().isOk());
 
         assertThat(storedSecret(webhookId)).isEqualTo(before);
     }
@@ -289,7 +312,8 @@ class WebhookEndpointApiTests {
         User user = createUser(UserRole.USER);
         UUID webhookId = createdId(user, asUser(user), LOCAL_URL, "task.assigned");
         clock.set(NOW);
-        update(user, webhookId, asUser(user), LOCAL_URL, false, "task.assigned").andExpect(status().isOk());
+        update(user, webhookId, asUser(user), LOCAL_URL, false, "task.assigned")
+                .andExpect(status().isOk());
         clock.set(NOW.plus(Duration.ofDays(1)));
 
         update(user, webhookId, asUser(user), LOCAL_URL, false, "task.overdue")
@@ -302,7 +326,8 @@ class WebhookEndpointApiTests {
     void enablingClearsTheDisabling() throws Exception {
         User user = createUser(UserRole.USER);
         UUID webhookId = createdId(user, asUser(user), LOCAL_URL, "task.assigned");
-        update(user, webhookId, asUser(user), LOCAL_URL, false, "task.assigned").andExpect(status().isOk());
+        update(user, webhookId, asUser(user), LOCAL_URL, false, "task.assigned")
+                .andExpect(status().isOk());
 
         update(user, webhookId, asUser(user), LOCAL_URL, true, "task.assigned")
                 .andExpect(status().isOk())
@@ -335,7 +360,9 @@ class WebhookEndpointApiTests {
         User user = createUser(UserRole.USER);
         UUID webhookId = createdId(user, asUser(user), LOCAL_URL, "task.assigned");
         // A URL accepted when it was declared, and refused by the current policy
-        jdbcTemplate.update("UPDATE webhook_endpoints SET url = 'http://10.0.0.1/hooks' WHERE id = ?", webhookId);
+        jdbcTemplate.update(
+                "UPDATE webhook_endpoints SET url = 'http://10.0.0.1/hooks' WHERE id = ?",
+                webhookId);
 
         update(user, webhookId, asUser(user), "http://10.0.0.1/hooks", true, "task.overdue")
                 .andExpect(status().isOk())
@@ -381,14 +408,19 @@ class WebhookEndpointApiTests {
         UUID webhookId = UUID.fromString(created.get("id").asString());
         clock.set(NOW);
 
-        JsonNode rotated = json(mockMvc.perform(post(SECRET, user.getId(), webhookId).with(asUser(user)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.previousSecretExpiresAt").value(NOW.plus(Duration.ofHours(24)).toString())));
+        JsonNode rotated =
+                json(
+                        mockMvc.perform(post(SECRET, user.getId(), webhookId).with(asUser(user)))
+                                .andExpect(status().isOk())
+                                .andExpect(
+                                        jsonPath("$.previousSecretExpiresAt")
+                                                .value(NOW.plus(Duration.ofHours(24)).toString())));
 
         assertThat(rotated.get("secret").asString())
                 .matches(SECRET_FORMAT)
                 .isNotEqualTo(created.get("secret").asString());
-        assertThat(rotated.propertyNames()).containsExactlyInAnyOrder("secret", "previousSecretExpiresAt");
+        assertThat(rotated.propertyNames())
+                .containsExactlyInAnyOrder("secret", "previousSecretExpiresAt");
     }
 
     @Test
@@ -405,7 +437,8 @@ class WebhookEndpointApiTests {
         assertThat(row.get("previous_secret")).isEqualTo(encryptedBefore);
         assertThat(webhookSecrets.decrypt((String) row.get("previous_secret")))
                 .isEqualTo(created.get("secret").asString());
-        assertThat(instant(row.get("previous_secret_expires_at"))).isEqualTo(NOW.plus(Duration.ofHours(24)));
+        assertThat(instant(row.get("previous_secret_expires_at")))
+                .isEqualTo(NOW.plus(Duration.ofHours(24)));
         assertThat(instant(row.get("updated_at"))).isEqualTo(NOW);
         assertThat((String) row.get("secret")).startsWith("v1:").doesNotContain(newSecret);
         assertThat(webhookSecrets.decrypt((String) row.get("secret"))).isEqualTo(newSecret);
@@ -420,7 +453,9 @@ class WebhookEndpointApiTests {
 
         mockMvc.perform(get(WEBHOOK, user.getId(), webhookId).with(asUser(user)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.previousSecretExpiresAt").value(NOW.plus(Duration.ofHours(24)).toString()))
+                .andExpect(
+                        jsonPath("$.previousSecretExpiresAt")
+                                .value(NOW.plus(Duration.ofHours(24)).toString()))
                 .andExpect(jsonPath("$.updatedAt").value(NOW.toString()))
                 .andExpect(jsonPath("$.secret").doesNotExist())
                 .andExpect(jsonPath("$.previousSecret").doesNotExist());
@@ -437,7 +472,8 @@ class WebhookEndpointApiTests {
         String secondRotated = rotate(user, webhookId, asUser(user));
 
         Map<String, Object> row = endpointRow(webhookId);
-        assertThat(webhookSecrets.decrypt((String) row.get("previous_secret"))).isEqualTo(firstRotated);
+        assertThat(webhookSecrets.decrypt((String) row.get("previous_secret")))
+                .isEqualTo(firstRotated);
         assertThat(webhookSecrets.decrypt((String) row.get("secret"))).isEqualTo(secondRotated);
         assertThat(instant(row.get("previous_secret_expires_at")))
                 .isEqualTo(NOW.plus(Duration.ofHours(2)).plus(Duration.ofHours(24)));
@@ -447,18 +483,24 @@ class WebhookEndpointApiTests {
     void rotationAfterAKeyChangeKeepsNoPreviousSecretAndReturnsNoExpiry() throws Exception {
         User user = createUser(UserRole.USER);
         UUID webhookId = createdId(user, asUser(user), LOCAL_URL, "task.assigned");
-        jdbcTemplate.update("UPDATE webhook_endpoints SET secret = ? WHERE id = ?",
-                OTHER_KEY.encrypt(OTHER_KEY.generate()), webhookId);
+        jdbcTemplate.update(
+                "UPDATE webhook_endpoints SET secret = ? WHERE id = ?",
+                OTHER_KEY.encrypt(OTHER_KEY.generate()),
+                webhookId);
         clock.set(NOW);
 
-        JsonNode rotated = json(mockMvc.perform(post(SECRET, user.getId(), webhookId).with(asUser(user)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.previousSecretExpiresAt").value(nullValue())));
+        JsonNode rotated =
+                json(
+                        mockMvc.perform(post(SECRET, user.getId(), webhookId).with(asUser(user)))
+                                .andExpect(status().isOk())
+                                .andExpect(
+                                        jsonPath("$.previousSecretExpiresAt").value(nullValue())));
 
         Map<String, Object> row = endpointRow(webhookId);
         assertThat(row.get("previous_secret")).isNull();
         assertThat(row.get("previous_secret_expires_at")).isNull();
-        assertThat(webhookSecrets.decrypt((String) row.get("secret"))).isEqualTo(rotated.get("secret").asString());
+        assertThat(webhookSecrets.decrypt((String) row.get("secret")))
+                .isEqualTo(rotated.get("secret").asString());
     }
 
     @Test
@@ -467,8 +509,11 @@ class WebhookEndpointApiTests {
         UUID webhookId = createdId(user, asUser(user), LOCAL_URL, "task.assigned");
         clock.set(NOW);
         rotate(user, webhookId, asUser(user));
-        jdbcTemplate.update("UPDATE webhook_endpoints SET secret = ?, previous_secret = ? WHERE id = ?",
-                OTHER_KEY.encrypt(OTHER_KEY.generate()), OTHER_KEY.encrypt(OTHER_KEY.generate()), webhookId);
+        jdbcTemplate.update(
+                "UPDATE webhook_endpoints SET secret = ?, previous_secret = ? WHERE id = ?",
+                OTHER_KEY.encrypt(OTHER_KEY.generate()),
+                OTHER_KEY.encrypt(OTHER_KEY.generate()),
+                webhookId);
 
         rotate(user, webhookId, asUser(user));
 
@@ -500,7 +545,8 @@ class WebhookEndpointApiTests {
         for (int i = 0; i < 4; i++) {
             create(user, asUser(user), LOCAL_URL, "task.assigned").andExpect(status().isCreated());
         }
-        mockMvc.perform(delete(WEBHOOK, user.getId(), first).with(asUser(user))).andExpect(status().isNoContent());
+        mockMvc.perform(delete(WEBHOOK, user.getId(), first).with(asUser(user)))
+                .andExpect(status().isNoContent());
 
         create(user, asUser(user), LOCAL_URL, "task.assigned").andExpect(status().isCreated());
 
@@ -521,19 +567,22 @@ class WebhookEndpointApiTests {
     // Refused URLs
 
     @ParameterizedTest
-    @CsvSource(delimiter = '|', value = {
-            "http://10.0.0.1/                          | The URL must point to a public address",
-            "http://169.254.169.254/latest/meta-data/  | The URL must point to a public address",
-            "http://192.168.1.10:8080/hooks            | The URL must point to a public address",
-            "http://127.0.0.2:8080/hooks               | The URL must point to a public address",
-            "http://[::1]:8080/hooks                   | The URL must point to a public address",
-            "http://user:secret@127.0.0.1:8080/hooks   | The URL must not contain credentials",
-            "ftp://127.0.0.1/hooks                     | The URL must be an absolute http or https URL",
-            "/hooks                                    | The URL must be an absolute http or https URL",
-            "http://webhook-receiver.invalid/hooks     | The host of the URL cannot be resolved",
-            "http://127.0.0.1:8080/hooks with a space  | The URL is not valid"
-    })
-    void refusedUrlReturnsTheProblemWithItsReasonAndStoresNothing(String url, String reason) throws Exception {
+    @CsvSource(
+            delimiter = '|',
+            value = {
+                "http://10.0.0.1/                          | The URL must point to a public address",
+                "http://169.254.169.254/latest/meta-data/  | The URL must point to a public address",
+                "http://192.168.1.10:8080/hooks            | The URL must point to a public address",
+                "http://127.0.0.2:8080/hooks               | The URL must point to a public address",
+                "http://[::1]:8080/hooks                   | The URL must point to a public address",
+                "http://user:secret@127.0.0.1:8080/hooks   | The URL must not contain credentials",
+                "ftp://127.0.0.1/hooks                     | The URL must be an absolute http or https URL",
+                "/hooks                                    | The URL must be an absolute http or https URL",
+                "http://webhook-receiver.invalid/hooks     | The host of the URL cannot be resolved",
+                "http://127.0.0.1:8080/hooks with a space  | The URL is not valid"
+            })
+    void refusedUrlReturnsTheProblemWithItsReasonAndStoresNothing(String url, String reason)
+            throws Exception {
         User user = createUser(UserRole.USER);
 
         create(user, asUser(user), url, "task.assigned")
@@ -551,18 +600,22 @@ class WebhookEndpointApiTests {
         String url = slackUrl();
         clock.set(NOW);
 
-        ResultActions result = createSlack(user, asUser(user), url, "task.overdue", "task.assigned")
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.kind").value("SLACK"))
-                .andExpect(jsonPath("$.url").value(SLACK_MASK))
-                .andExpect(jsonPath("$.events").value(contains("task.assigned", "task.overdue")))
-                .andExpect(jsonPath("$.enabled").value(true))
-                .andExpect(jsonPath("$.createdAt").value(NOW.toString()))
-                .andExpect(jsonPath("$.secret").doesNotExist())
-                .andExpect(content().string(not(containsString(pathToken(url)))));
+        ResultActions result =
+                createSlack(user, asUser(user), url, "task.overdue", "task.assigned")
+                        .andExpect(status().isCreated())
+                        .andExpect(jsonPath("$.kind").value("SLACK"))
+                        .andExpect(jsonPath("$.url").value(SLACK_MASK))
+                        .andExpect(
+                                jsonPath("$.events")
+                                        .value(contains("task.assigned", "task.overdue")))
+                        .andExpect(jsonPath("$.enabled").value(true))
+                        .andExpect(jsonPath("$.createdAt").value(NOW.toString()))
+                        .andExpect(jsonPath("$.secret").doesNotExist())
+                        .andExpect(content().string(not(containsString(pathToken(url)))));
 
         String id = json(result).get("id").asString();
-        result.andExpect(header().string("Location", "/api/v1/users/" + user.getId() + "/webhooks/" + id));
+        result.andExpect(
+                header().string("Location", "/api/v1/users/" + user.getId() + "/webhooks/" + id));
     }
 
     @Test
@@ -605,15 +658,15 @@ class WebhookEndpointApiTests {
 
     @ParameterizedTest
     @CsvSource({
-            "http://hooks.slack.com/services/T0001/B0002/token-http",
-            "https://hooks.slack.com.example.com/services/T0001/B0002/token-host",
-            "https://evil.hooks.slack.com/services/T0001/B0002/token-subdomain",
-            "https://hooks.slack.com/workflows/T0001/B0002/token-path",
-            "https://hooks.slack.com/services/T0001/B0002/token-query?channel=general",
-            "https://user:secret@hooks.slack.com/services/T0001/B0002/token-credentials",
-            "https://hooks.slack.com:8443/services/T0001/B0002/token-port",
-            "http://127.0.0.1:8080/hooks",
-            "https://93.184.216.34/tasks"
+        "http://hooks.slack.com/services/T0001/B0002/token-http",
+        "https://hooks.slack.com.example.com/services/T0001/B0002/token-host",
+        "https://evil.hooks.slack.com/services/T0001/B0002/token-subdomain",
+        "https://hooks.slack.com/workflows/T0001/B0002/token-path",
+        "https://hooks.slack.com/services/T0001/B0002/token-query?channel=general",
+        "https://user:secret@hooks.slack.com/services/T0001/B0002/token-credentials",
+        "https://hooks.slack.com:8443/services/T0001/B0002/token-port",
+        "http://127.0.0.1:8080/hooks",
+        "https://93.184.216.34/tasks"
     })
     void slackWebhookWithAUrlThatIsNotSlacksIsRefusedAndNotStored(String url) throws Exception {
         User user = createUser(UserRole.USER);
@@ -626,19 +679,30 @@ class WebhookEndpointApiTests {
     }
 
     @Test
-    void webhookCreatedWithoutAKindOrWithTheWebhookKindIsAStandardWebhookWithItsUrlInClear() throws Exception {
+    void webhookCreatedWithoutAKindOrWithTheWebhookKindIsAStandardWebhookWithItsUrlInClear()
+            throws Exception {
         User user = createUser(UserRole.USER);
 
-        JsonNode withoutKind = json(create(user, asUser(user), LOCAL_URL, "task.assigned")
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.kind").value("WEBHOOK"))
-                .andExpect(jsonPath("$.url").value(LOCAL_URL))
-                .andExpect(jsonPath("$.secret").value(matchesPattern(SECRET_FORMAT))));
-        JsonNode withKind = json(postBody(user, asUser(user),
-                "{\"kind\": \"WEBHOOK\", \"url\": \"" + LOCAL_URL + "\", \"events\": [\"task.assigned\"]}")
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.kind").value("WEBHOOK"))
-                .andExpect(jsonPath("$.secret").value(matchesPattern(SECRET_FORMAT))));
+        JsonNode withoutKind =
+                json(
+                        create(user, asUser(user), LOCAL_URL, "task.assigned")
+                                .andExpect(status().isCreated())
+                                .andExpect(jsonPath("$.kind").value("WEBHOOK"))
+                                .andExpect(jsonPath("$.url").value(LOCAL_URL))
+                                .andExpect(
+                                        jsonPath("$.secret").value(matchesPattern(SECRET_FORMAT))));
+        JsonNode withKind =
+                json(
+                        postBody(
+                                        user,
+                                        asUser(user),
+                                        "{\"kind\": \"WEBHOOK\", \"url\": \""
+                                                + LOCAL_URL
+                                                + "\", \"events\": [\"task.assigned\"]}")
+                                .andExpect(status().isCreated())
+                                .andExpect(jsonPath("$.kind").value("WEBHOOK"))
+                                .andExpect(
+                                        jsonPath("$.secret").value(matchesPattern(SECRET_FORMAT))));
 
         for (JsonNode created : List.of(withoutKind, withKind)) {
             Map<String, Object> row = endpointRow(UUID.fromString(created.get("id").asString()));
@@ -658,7 +722,8 @@ class WebhookEndpointApiTests {
 
         mockMvc.perform(get(WEBHOOKS, user.getId()).with(asUser(user)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[*].id").value(contains(webhook.toString(), slack.toString())))
+                .andExpect(
+                        jsonPath("$[*].id").value(contains(webhook.toString(), slack.toString())))
                 .andExpect(jsonPath("$[*].kind").value(contains("WEBHOOK", "SLACK")))
                 .andExpect(jsonPath("$[*].url").value(contains(LOCAL_URL, SLACK_MASK)))
                 .andExpect(content().string(not(containsString(pathToken(url)))));
@@ -726,7 +791,8 @@ class WebhookEndpointApiTests {
         User user = createUser(UserRole.USER);
         UUID webhookId = createdSlackId(user, slackUrl(), "task.assigned");
         String unreadable = OTHER_KEY.encrypt(slackUrl());
-        jdbcTemplate.update("UPDATE webhook_endpoints SET url = ? WHERE id = ?", unreadable, webhookId);
+        jdbcTemplate.update(
+                "UPDATE webhook_endpoints SET url = ? WHERE id = ?", unreadable, webhookId);
 
         update(user, webhookId, asUser(user), SLACK_MASK, false, "task.overdue")
                 .andExpect(status().isOk())
@@ -741,7 +807,10 @@ class WebhookEndpointApiTests {
         User user = createUser(UserRole.USER);
         String url = slackUrl();
         UUID webhookId = createdSlackId(user, url, "task.assigned");
-        jdbcTemplate.update("UPDATE webhook_endpoints SET url = ? WHERE id = ?", OTHER_KEY.encrypt(url), webhookId);
+        jdbcTemplate.update(
+                "UPDATE webhook_endpoints SET url = ? WHERE id = ?",
+                OTHER_KEY.encrypt(url),
+                webhookId);
 
         update(user, webhookId, asUser(user), url, true, "task.assigned")
                 .andExpect(status().isOk())
@@ -752,11 +821,12 @@ class WebhookEndpointApiTests {
 
     @ParameterizedTest
     @CsvSource({
-            "http://127.0.0.1:8080/hooks",
-            "http://hooks.slack.com/services/T0001/B0002/token-http",
-            "https://hooks.slack.com/****"
+        "http://127.0.0.1:8080/hooks",
+        "http://hooks.slack.com/services/T0001/B0002/token-http",
+        "https://hooks.slack.com/****"
     })
-    void updateOfASlackWebhookToAUrlThatIsNotSlacksIsRefusedAndChangesNothing(String url) throws Exception {
+    void updateOfASlackWebhookToAUrlThatIsNotSlacksIsRefusedAndChangesNothing(String url)
+            throws Exception {
         User user = createUser(UserRole.USER);
         UUID webhookId = createdSlackId(user, slackUrl(), "task.assigned");
         Map<String, Object> before = endpointRow(webhookId);
@@ -775,12 +845,20 @@ class WebhookEndpointApiTests {
         String url = slackUrl();
         UUID webhookId = createdSlackId(user, url, "task.assigned");
 
-        putBody(user, webhookId, "{\"kind\": \"WEBHOOK\", \"url\": \"" + LOCAL_URL
-                + "\", \"events\": [\"task.assigned\"], \"enabled\": true}")
+        putBody(
+                        user,
+                        webhookId,
+                        "{\"kind\": \"WEBHOOK\", \"url\": \""
+                                + LOCAL_URL
+                                + "\", \"events\": [\"task.assigned\"], \"enabled\": true}")
                 .andExpect(typedProblem(422, "webhook-url-not-allowed", "Webhook URL not allowed"))
                 .andExpect(jsonPath("$.detail").value(NOT_SLACK));
-        putBody(user, webhookId, "{\"kind\": \"WEBHOOK\", \"url\": \"" + SLACK_MASK
-                + "\", \"events\": [\"task.assigned\"], \"enabled\": true}")
+        putBody(
+                        user,
+                        webhookId,
+                        "{\"kind\": \"WEBHOOK\", \"url\": \""
+                                + SLACK_MASK
+                                + "\", \"events\": [\"task.assigned\"], \"enabled\": true}")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.kind").value("SLACK"));
 
@@ -793,8 +871,12 @@ class WebhookEndpointApiTests {
         User user = createUser(UserRole.USER);
         UUID webhookId = createdId(user, asUser(user), LOCAL_URL, "task.assigned");
 
-        putBody(user, webhookId, "{\"kind\": \"SLACK\", \"url\": \"" + LOCAL_URL
-                + "\", \"events\": [\"task.assigned\"], \"enabled\": true}")
+        putBody(
+                        user,
+                        webhookId,
+                        "{\"kind\": \"SLACK\", \"url\": \""
+                                + LOCAL_URL
+                                + "\", \"events\": [\"task.assigned\"], \"enabled\": true}")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.kind").value("WEBHOOK"))
                 .andExpect(jsonPath("$.url").value(LOCAL_URL));
@@ -811,11 +893,15 @@ class WebhookEndpointApiTests {
         User admin = createUser(UserRole.ADMIN);
         User owner = createUser(UserRole.USER);
 
-        ResultActions created = create(owner, asAdmin(admin), LOCAL_URL, "task.assigned")
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.secret").isNotEmpty());
+        ResultActions created =
+                create(owner, asAdmin(admin), LOCAL_URL, "task.assigned")
+                        .andExpect(status().isCreated())
+                        .andExpect(jsonPath("$.secret").isNotEmpty());
         UUID webhookId = UUID.fromString(json(created).get("id").asString());
-        created.andExpect(header().string("Location", "/api/v1/users/" + owner.getId() + "/webhooks/" + webhookId));
+        created.andExpect(
+                header().string(
+                                "Location",
+                                "/api/v1/users/" + owner.getId() + "/webhooks/" + webhookId));
         assertThat(endpointRow(webhookId).get("user_id")).isEqualTo(owner.getId());
 
         mockMvc.perform(get(WEBHOOKS, owner.getId()).with(asAdmin(admin)))
@@ -841,8 +927,10 @@ class WebhookEndpointApiTests {
         UUID webhookId = createdId(owner, asUser(owner), LOCAL_URL, "task.assigned");
         Map<String, Object> before = endpointRow(webhookId);
 
-        create(owner, asUser(intruder), LOCAL_URL, "task.assigned").andExpect(status().isForbidden());
-        mockMvc.perform(get(WEBHOOKS, owner.getId()).with(asUser(intruder))).andExpect(status().isForbidden());
+        create(owner, asUser(intruder), LOCAL_URL, "task.assigned")
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get(WEBHOOKS, owner.getId()).with(asUser(intruder)))
+                .andExpect(status().isForbidden());
         mockMvc.perform(get(WEBHOOK, owner.getId(), webhookId).with(asUser(intruder)))
                 .andExpect(status().isForbidden());
         update(owner, webhookId, asUser(intruder), PUBLIC_URL, false, "task.overdue")
@@ -915,10 +1003,11 @@ class WebhookEndpointApiTests {
         mockMvc.perform(get(WEBHOOKS, unknown).with(asAdmin(admin)))
                 .andExpect(untypedProblem(404, "Not Found"))
                 .andExpect(jsonPath("$.detail").value("User not found with id: " + unknown));
-        mockMvc.perform(post(WEBHOOKS, unknown)
-                        .with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body(LOCAL_URL, "task.assigned")))
+        mockMvc.perform(
+                        post(WEBHOOKS, unknown)
+                                .with(asAdmin(admin))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(body(LOCAL_URL, "task.assigned")))
                 .andExpect(untypedProblem(404, "Not Found"))
                 .andExpect(jsonPath("$.detail").value("User not found with id: " + unknown));
 
@@ -933,10 +1022,12 @@ class WebhookEndpointApiTests {
 
         mockMvc.perform(get(WEBHOOKS, deleted.getId()).with(asAdmin(admin)))
                 .andExpect(untypedProblem(404, "Not Found"))
-                .andExpect(jsonPath("$.detail").value("User not found with id: " + deleted.getId()));
+                .andExpect(
+                        jsonPath("$.detail").value("User not found with id: " + deleted.getId()));
         create(deleted, asAdmin(admin), LOCAL_URL, "task.assigned")
                 .andExpect(untypedProblem(404, "Not Found"))
-                .andExpect(jsonPath("$.detail").value("User not found with id: " + deleted.getId()));
+                .andExpect(
+                        jsonPath("$.detail").value("User not found with id: " + deleted.getId()));
 
         assertThat(webhookCount(deleted.getId())).isZero();
     }
@@ -947,18 +1038,25 @@ class WebhookEndpointApiTests {
         User deleted = createUser(UserRole.USER);
         UUID webhookId = createdId(deleted, asUser(deleted), LOCAL_URL, "task.assigned");
         userService.delete(deleted.getId());
-        List<MockHttpServletRequestBuilder> requests = List.of(
-                get(WEBHOOK, deleted.getId(), webhookId),
-                put(WEBHOOK, deleted.getId(), webhookId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"url\": \"" + LOCAL_URL + "\", \"events\": [\"task.overdue\"], \"enabled\": true}"),
-                post(SECRET, deleted.getId(), webhookId),
-                delete(WEBHOOK, deleted.getId(), webhookId)
-        );
+        List<MockHttpServletRequestBuilder> requests =
+                List.of(
+                        get(WEBHOOK, deleted.getId(), webhookId),
+                        put(WEBHOOK, deleted.getId(), webhookId)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        "{\"url\": \""
+                                                + LOCAL_URL
+                                                + "\", \"events\": [\"task.overdue\"], \"enabled\": true}"),
+                        post(SECRET, deleted.getId(), webhookId),
+                        delete(WEBHOOK, deleted.getId(), webhookId));
         List<Integer> statuses = new ArrayList<>();
 
         for (MockHttpServletRequestBuilder request : requests) {
-            statuses.add(mockMvc.perform(request.with(asAdmin(admin))).andReturn().getResponse().getStatus());
+            statuses.add(
+                    mockMvc.perform(request.with(asAdmin(admin)))
+                            .andReturn()
+                            .getResponse()
+                            .getStatus());
         }
 
         assertThat(statuses).containsExactly(404, 404, 404, 404);
@@ -990,12 +1088,15 @@ class WebhookEndpointApiTests {
     void createWithAnUnknownEventNameIsRejected() throws Exception {
         User user = createUser(UserRole.USER);
 
-        postBody(user, asUser(user), "{\"url\": \"" + LOCAL_URL + "\", \"events\": [\"task.exploded\"]}")
-                .andExpect(invalidBodyValue(
-                        "#/events/0",
-                        "must be one of task.assigned, task.unassigned, task.cancelled, task.deleted, "
-                                + "task.commented, task.mentioned, task.due_soon, task.overdue"
-                ));
+        postBody(
+                        user,
+                        asUser(user),
+                        "{\"url\": \"" + LOCAL_URL + "\", \"events\": [\"task.exploded\"]}")
+                .andExpect(
+                        invalidBodyValue(
+                                "#/events/0",
+                                "must be one of task.assigned, task.unassigned, task.cancelled, task.deleted, "
+                                        + "task.commented, task.mentioned, task.due_soon, task.overdue"));
 
         assertThat(webhookCount(user.getId())).isZero();
     }
@@ -1004,7 +1105,10 @@ class WebhookEndpointApiTests {
     void createWithTheConstantNameOfAnEventIsRejected() throws Exception {
         User user = createUser(UserRole.USER);
 
-        postBody(user, asUser(user), "{\"url\": \"" + LOCAL_URL + "\", \"events\": [\"TASK_ASSIGNED\"]}")
+        postBody(
+                        user,
+                        asUser(user),
+                        "{\"url\": \"" + LOCAL_URL + "\", \"events\": [\"TASK_ASSIGNED\"]}")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[0].pointer").value("#/events/0"));
 
@@ -1026,10 +1130,14 @@ class WebhookEndpointApiTests {
         User user = createUser(UserRole.USER);
         UUID webhookId = createdId(user, asUser(user), LOCAL_URL, "task.assigned");
 
-        mockMvc.perform(put(WEBHOOK, user.getId(), webhookId)
-                        .with(asUser(user))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"url\": \"" + PUBLIC_URL + "\", \"events\": [], \"enabled\": false}"))
+        mockMvc.perform(
+                        put(WEBHOOK, user.getId(), webhookId)
+                                .with(asUser(user))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        "{\"url\": \""
+                                                + PUBLIC_URL
+                                                + "\", \"events\": [], \"enabled\": false}"))
                 .andExpect(invalidBodyValue("#/events", "must not be empty"));
 
         assertThat(endpointRow(webhookId).get("url")).isEqualTo(LOCAL_URL);
@@ -1046,11 +1154,17 @@ class WebhookEndpointApiTests {
         UUID second = createdId(erased, asUser(erased), PUBLIC_URL, "task.commented");
         UUID kept = createdId(other, asUser(other), LOCAL_URL, "task.assigned");
         userService.delete(erased.getId());
-        // Dated long before anything the other test classes delete, so the erasure below reaches only this user
+        // Dated long before anything the other test classes delete, so the erasure below reaches
+        // only this user
         Instant deletedAt = Instant.parse("1990-01-01T00:00:00Z");
-        jdbcTemplate.update("UPDATE users SET deleted_at = ? WHERE id = ?", Timestamp.from(deletedAt), erased.getId());
+        jdbcTemplate.update(
+                "UPDATE users SET deleted_at = ? WHERE id = ?",
+                Timestamp.from(deletedAt),
+                erased.getId());
 
-        List<UUID> erasedIds = retentionQueries.anonymizeUsersDeletedBefore(deletedAt.plusSeconds(1), clock.instant());
+        List<UUID> erasedIds =
+                retentionQueries.anonymizeUsersDeletedBefore(
+                        deletedAt.plusSeconds(1), clock.instant());
 
         assertThat(erasedIds).contains(erased.getId());
         assertThat(webhookCount(erased.getId())).isZero();
@@ -1060,40 +1174,54 @@ class WebhookEndpointApiTests {
         assertThat(storedEvents(kept)).containsExactly("TASK_ASSIGNED");
     }
 
-    private ResultActions create(User owner, RequestPostProcessor caller, String url, String... events)
+    private ResultActions create(
+            User owner, RequestPostProcessor caller, String url, String... events)
             throws Exception {
         return postBody(owner, caller, body(url, events));
     }
 
-    private ResultActions postBody(User owner, RequestPostProcessor caller, String body) throws Exception {
-        return mockMvc.perform(post(WEBHOOKS, owner.getId())
-                .with(caller)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(body));
-    }
-
-    private UUID createdId(User owner, RequestPostProcessor caller, String url, String... events) throws Exception {
-        return UUID.fromString(json(create(owner, caller, url, events).andExpect(status().isCreated()))
-                .get("id").asString());
-    }
-
-    private ResultActions createSlack(User owner, RequestPostProcessor caller, String url, String... events)
+    private ResultActions postBody(User owner, RequestPostProcessor caller, String body)
             throws Exception {
-        return postBody(owner, caller, """
+        return mockMvc.perform(
+                post(WEBHOOKS, owner.getId())
+                        .with(caller)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body));
+    }
+
+    private UUID createdId(User owner, RequestPostProcessor caller, String url, String... events)
+            throws Exception {
+        return UUID.fromString(
+                json(create(owner, caller, url, events).andExpect(status().isCreated()))
+                        .get("id")
+                        .asString());
+    }
+
+    private ResultActions createSlack(
+            User owner, RequestPostProcessor caller, String url, String... events)
+            throws Exception {
+        return postBody(
+                owner,
+                caller,
+                """
                 {"kind": "SLACK", "url": "%s", "events": %s}
-                """.formatted(url, eventArray(events)));
+                """
+                        .formatted(url, eventArray(events)));
     }
 
     private UUID createdSlackId(User owner, String url, String... events) throws Exception {
-        return UUID.fromString(json(createSlack(owner, asUser(owner), url, events).andExpect(status().isCreated()))
-                .get("id").asString());
+        return UUID.fromString(
+                json(createSlack(owner, asUser(owner), url, events).andExpect(status().isCreated()))
+                        .get("id")
+                        .asString());
     }
 
     private ResultActions putBody(User owner, UUID webhookId, String body) throws Exception {
-        return mockMvc.perform(put(WEBHOOK, owner.getId(), webhookId)
-                .with(asUser(owner))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(body));
+        return mockMvc.perform(
+                put(WEBHOOK, owner.getId(), webhookId)
+                        .with(asUser(owner))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body));
     }
 
     private static String slackUrl() {
@@ -1110,20 +1238,25 @@ class WebhookEndpointApiTests {
             RequestPostProcessor caller,
             String url,
             boolean enabled,
-            String... events
-    ) throws Exception {
-        return mockMvc.perform(put(WEBHOOK, owner.getId(), webhookId)
-                .with(caller)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
+            String... events)
+            throws Exception {
+        return mockMvc.perform(
+                put(WEBHOOK, owner.getId(), webhookId)
+                        .with(caller)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                """
                         {"url": "%s", "events": %s, "enabled": %s}
-                        """.formatted(url, eventArray(events), enabled)));
+                        """
+                                        .formatted(url, eventArray(events), enabled)));
     }
 
-    private String rotate(User owner, UUID webhookId, RequestPostProcessor caller) throws Exception {
+    private String rotate(User owner, UUID webhookId, RequestPostProcessor caller)
+            throws Exception {
         return json(mockMvc.perform(post(SECRET, owner.getId(), webhookId).with(caller))
-                .andExpect(status().isOk()))
-                .get("secret").asString();
+                        .andExpect(status().isOk()))
+                .get("secret")
+                .asString();
     }
 
     private JsonNode json(ResultActions result) throws Exception {
@@ -1133,7 +1266,8 @@ class WebhookEndpointApiTests {
     private static String body(String url, String... events) {
         return """
                 {"url": "%s", "events": %s}
-                """.formatted(url, eventArray(events));
+                """
+                .formatted(url, eventArray(events));
     }
 
     private static String eventArray(String... events) {
@@ -1155,23 +1289,20 @@ class WebhookEndpointApiTests {
     }
 
     private String storedUrl(UUID webhookId) {
-        return jdbcTemplate.queryForObject("SELECT url FROM webhook_endpoints WHERE id = ?", String.class, webhookId);
+        return jdbcTemplate.queryForObject(
+                "SELECT url FROM webhook_endpoints WHERE id = ?", String.class, webhookId);
     }
 
     private String storedSecret(UUID webhookId) {
         return jdbcTemplate.queryForObject(
-                "SELECT secret FROM webhook_endpoints WHERE id = ?",
-                String.class,
-                webhookId
-        );
+                "SELECT secret FROM webhook_endpoints WHERE id = ?", String.class, webhookId);
     }
 
     private List<String> storedEvents(UUID webhookId) {
         return jdbcTemplate.queryForList(
                 "SELECT event FROM webhook_endpoint_events WHERE endpoint_id = ? ORDER BY event",
                 String.class,
-                webhookId
-        );
+                webhookId);
     }
 
     private int count(String sql, UUID id) {
@@ -1199,8 +1330,7 @@ class WebhookEndpointApiTests {
     }
 
     private static RequestPostProcessor as(User user, UserRole role) {
-        return jwt()
-                .jwt(token -> token.claim("uid", user.getId().toString()))
+        return jwt().jwt(token -> token.claim("uid", user.getId().toString()))
                 .authorities(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
 

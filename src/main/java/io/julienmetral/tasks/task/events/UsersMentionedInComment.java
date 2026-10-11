@@ -3,7 +3,9 @@ package io.julienmetral.tasks.task.events;
 import java.util.Set;
 import java.util.UUID;
 
-/** Published when a comment is posted or edited, with only the users it mentions for the first time. */
+/**
+ * Published when a comment is posted or edited, with only the users it mentions for the first time.
+ */
 public record UsersMentionedInComment(
         UUID taskId,
         String reference,
@@ -11,6 +13,4 @@ public record UsersMentionedInComment(
         UUID commentId,
         String body,
         UUID authorId,
-        Set<UUID> mentionedUserIds
-) {
-}
+        Set<UUID> mentionedUserIds) {}

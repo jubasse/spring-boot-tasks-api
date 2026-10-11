@@ -5,5 +5,4 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration
 @EnableConfigurationProperties(ExportProperties.class)
-public class ExportConfiguration {
-}
+public class ExportConfiguration {}

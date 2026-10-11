@@ -1,5 +1,22 @@
 package io.julienmetral.tasks.notification.webhook;
 
+import static io.julienmetral.tasks.support.Problems.untypedProblem;
+import static io.julienmetral.tasks.support.Problems.validationError;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatNoException;
+import static org.awaitility.Awaitility.await;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.nullValue;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import com.standardwebhooks.Webhook;
 import com.standardwebhooks.exceptions.WebhookVerificationException;
 import io.julienmetral.tasks.identity.entities.User;
@@ -18,6 +35,32 @@ import io.julienmetral.tasks.task.services.TaskReminderService;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tag;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.net.ConnectException;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.SocketTimeoutException;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.sql.Timestamp;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.EnumSet;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import mockwebserver3.Dispatcher;
 import mockwebserver3.MockResponse;
 import mockwebserver3.MockWebServer;
@@ -49,54 +92,10 @@ import org.springframework.web.client.ResourceAccessException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.net.ConnectException;
-import java.net.InetAddress;
-import java.net.ServerSocket;
-import java.net.SocketTimeoutException;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.sql.Timestamp;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.EnumSet;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
-import java.util.stream.Collectors;
-
-import static io.julienmetral.tasks.support.Problems.untypedProblem;
-import static io.julienmetral.tasks.support.Problems.validationError;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
-import static org.assertj.core.api.Assertions.assertThatNoException;
-import static org.awaitility.Awaitility.await;
-import static org.hamcrest.Matchers.contains;
-import static org.hamcrest.Matchers.nullValue;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 /**
- * Task events delivered end to end: the API call writes the delivery and its outbox message, RabbitMQ carries it to
- * {@link WebhookDeliveryListener}, and a MockWebServer on 127.0.0.1 receives the signed request through the real
- * HTTP client, address filter and timeouts.
+ * Task events delivered end to end: the API call writes the delivery and its outbox message,
+ * RabbitMQ carries it to {@link WebhookDeliveryListener}, and a MockWebServer on 127.0.0.1 receives
+ * the signed request through the real HTTP client, address filter and timeouts.
  */
 @IntegrationTest
 @ExtendWith(ForgetWebhookHostsBeforeEach.class)
@@ -120,24 +119,26 @@ class WebhookDeliveryTests {
 
     private static final Duration DELIVERY_TIMEOUT = Duration.ofSeconds(10);
 
-    // enqueueDue claims every due delivery of the shared database: in 2000, only those of this class are due
+    // enqueueDue claims every due delivery of the shared database: in 2000, only those of this
+    // class are due
     private static final Instant NOW = Instant.parse("2000-03-04T05:06:07Z");
 
     private static final Instant PINNED_ERA_END = Instant.parse("2001-01-01T00:00:00Z");
 
-    // Far from the era of the reminder tests, whose runs would otherwise remind the tasks of this class
+    // Far from the era of the reminder tests, whose runs would otherwise remind the tasks of this
+    // class
     private static final Instant REMINDER_NOW = Instant.parse("2150-06-01T00:00:00Z");
 
     private static final String LOST_PAYLOAD = "{\"type\":\"task.assigned\",\"data\":{}}";
 
-    private static final List<Duration> RETRY_SCHEDULE = List.of(
-            Duration.ofSeconds(5),
-            Duration.ofMinutes(5),
-            Duration.ofMinutes(30),
-            Duration.ofHours(2),
-            Duration.ofHours(5),
-            Duration.ofHours(10)
-    );
+    private static final List<Duration> RETRY_SCHEDULE =
+            List.of(
+                    Duration.ofSeconds(5),
+                    Duration.ofMinutes(5),
+                    Duration.ofMinutes(30),
+                    Duration.ofHours(2),
+                    Duration.ofHours(5),
+                    Duration.ofHours(10));
 
     private static final Duration DISABLE_AFTER = Duration.ofDays(3);
 
@@ -148,7 +149,8 @@ class WebhookDeliveryTests {
 
     private static final String DISABLED_EMAIL = "failed every attempt for 3 days";
 
-    // Emails leave through the outbox and RabbitMQ: "no email sent" can only be checked after a grace period
+    // Emails leave through the outbox and RabbitMQ: "no email sent" can only be checked after a
+    // grace period
     private static final Duration NO_MAIL_GRACE_PERIOD = Duration.ofSeconds(1);
 
     // webhooks.circuit-breaker.minimum-calls, all failed
@@ -163,76 +165,59 @@ class WebhookDeliveryTests {
 
     private static final byte[] BODY = "{}".getBytes(StandardCharsets.UTF_8);
 
-    // Stands for the key before a change of webhooks.encryption-key: what it encrypted, the application cannot read
+    // Stands for the key before a change of webhooks.encryption-key: what it encrypted, the
+    // application cannot read
     private static final WebhookSecrets OTHER_KEY =
             new WebhookSecrets(Base64.getEncoder().encodeToString(new byte[32]));
 
-    private record Endpoint(UUID id, String secret, String url, String[] events) {
-    }
+    private record Endpoint(UUID id, String secret, String url, String[] events) {}
 
-    private record CreatedTask(UUID id, String reference) {
-    }
+    private record CreatedTask(UUID id, String reference) {}
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
-    @Autowired
-    private UserService userService;
+    @Autowired private UserService userService;
 
-    @Autowired
-    private UserRetentionQueries retentionQueries;
+    @Autowired private UserRetentionQueries retentionQueries;
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    @Autowired private PasswordEncoder passwordEncoder;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
-    @Autowired
-    private JsonMapper jsonMapper;
+    @Autowired private JsonMapper jsonMapper;
 
-    @Autowired
-    private TransactionTemplate transactionTemplate;
+    @Autowired private TransactionTemplate transactionTemplate;
 
-    @Autowired
-    private TestClock clock;
+    @Autowired private TestClock clock;
 
-    @Autowired
-    private WebhookDeliveryService deliveryService;
+    @Autowired private WebhookDeliveryService deliveryService;
 
-    @Autowired
-    private WebhookDeliveryRepository deliveryRepository;
+    @Autowired private WebhookDeliveryRepository deliveryRepository;
 
-    @Autowired
-    private TaskReminderService reminderService;
+    @Autowired private TaskReminderService reminderService;
 
-    @Autowired
-    private MeterRegistry meterRegistry;
+    @Autowired private MeterRegistry meterRegistry;
 
-    @Autowired
-    private Mailpit mailpit;
+    @Autowired private Mailpit mailpit;
 
-    @Autowired
-    private WebhookClient client;
+    @Autowired private WebhookClient client;
 
-    @Autowired
-    private ConfigurableApplicationContext applicationContext;
+    @Autowired private ConfigurableApplicationContext applicationContext;
 
-    @Autowired
-    private AmqpAdmin amqpAdmin;
+    @Autowired private AmqpAdmin amqpAdmin;
 
     private final MockWebServer receiver = new MockWebServer();
 
     private final List<MethodRetryEvent> retryEvents = new CopyOnWriteArrayList<>();
 
-    private final ApplicationListener<ApplicationEvent> retryEventRecorder = event -> {
-        if (event instanceof MethodRetryEvent retry) {
-            retryEvents.add(retry);
-        }
-    };
+    private final ApplicationListener<ApplicationEvent> retryEventRecorder =
+            event -> {
+                if (event instanceof MethodRetryEvent retry) {
+                    retryEvents.add(retry);
+                }
+            };
 
     // An unexpected request gets an answer at once instead of waiting for the read timeout
     @BeforeEach
@@ -248,14 +233,14 @@ class WebhookDeliveryTests {
         receiver.close();
     }
 
-    // A delivery an earlier test or run left pending in the pinned era would be claimed by this test's enqueueDue
+    // A delivery an earlier test or run left pending in the pinned era would be claimed by this
+    // test's enqueueDue
     @BeforeEach
     void finishDeliveriesLeftPendingInThePinnedEra() {
         jdbcTemplate.update(
                 "UPDATE webhook_deliveries SET status = 'FAILED', next_attempt_at = NULL "
                         + "WHERE status = 'PENDING' AND next_attempt_at < ?",
-                Timestamp.from(PINNED_ERA_END)
-        );
+                Timestamp.from(PINNED_ERA_END));
     }
 
     @BeforeEach
@@ -283,12 +268,14 @@ class WebhookDeliveryTests {
         UUID deliveryId = onlyDeliveryId(endpoint);
         assertThat(request.getMethod()).isEqualTo("POST");
         assertThat(request.getUrl().encodedPath()).isEqualTo("/hooks");
-        assertThat(request.getHeaders().get("Content-Type")).startsWith(MediaType.APPLICATION_JSON_VALUE);
+        assertThat(request.getHeaders().get("Content-Type"))
+                .startsWith(MediaType.APPLICATION_JSON_VALUE);
         assertThat(request.getHeaders().get("webhook-id")).isEqualTo(deliveryId.toString());
         assertThat(request.getHeaders().get("webhook-signature")).matches("v1,[A-Za-z0-9+/]{43}=");
         assertThatNoException().isThrownBy(() -> verify(endpoint.secret(), request));
         assertThat(json(request).get("type").asString()).isEqualTo("task.assigned");
-        assertThat(awaitAttempts(deliveryId, 1).getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
+        assertThat(awaitAttempts(deliveryId, 1).getStatus())
+                .isEqualTo(WebhookDeliveryStatus.DELIVERED);
     }
 
     @Test
@@ -307,7 +294,10 @@ class WebhookDeliveryTests {
         assertThatExceptionOfType(WebhookVerificationException.class)
                 .isThrownBy(() -> new Webhook(other.secret()).verify(body, headers));
         assertThatExceptionOfType(WebhookVerificationException.class)
-                .isThrownBy(() -> new Webhook(endpoint.secret()).verify(body.replace(TITLE, "Other"), headers));
+                .isThrownBy(
+                        () ->
+                                new Webhook(endpoint.secret())
+                                        .verify(body.replace(TITLE, "Other"), headers));
         awaitAttempts(onlyDeliveryId(endpoint), 1);
     }
 
@@ -325,11 +315,17 @@ class WebhookDeliveryTests {
         List<RecordedRequest> requests = List.of(nextRequest(), nextRequest());
         UUID firstDelivery = onlyDeliveryId(first);
         UUID secondDelivery = onlyDeliveryId(second);
-        Map<String, RecordedRequest> byId = requests.stream()
-                .collect(Collectors.toMap(request -> request.getHeaders().get("webhook-id"), request -> request));
+        Map<String, RecordedRequest> byId =
+                requests.stream()
+                        .collect(
+                                Collectors.toMap(
+                                        request -> request.getHeaders().get("webhook-id"),
+                                        request -> request));
         assertThat(byId).containsOnlyKeys(firstDelivery.toString(), secondDelivery.toString());
-        assertThatNoException().isThrownBy(() -> verify(first.secret(), byId.get(firstDelivery.toString())));
-        assertThatNoException().isThrownBy(() -> verify(second.secret(), byId.get(secondDelivery.toString())));
+        assertThatNoException()
+                .isThrownBy(() -> verify(first.secret(), byId.get(firstDelivery.toString())));
+        assertThatNoException()
+                .isThrownBy(() -> verify(second.secret(), byId.get(secondDelivery.toString())));
         assertThatExceptionOfType(WebhookVerificationException.class)
                 .isThrownBy(() -> verify(second.secret(), byId.get(firstDelivery.toString())));
         awaitAttempts(firstDelivery, 1);
@@ -361,8 +357,10 @@ class WebhookDeliveryTests {
         User assignee = createUser(UserRole.USER);
         Endpoint endpoint = createEndpoint(assignee, "task.assigned");
         String rotated = rotate(assignee, endpoint);
-        jdbcTemplate.update("UPDATE webhook_endpoints SET previous_secret_expires_at = ? WHERE id = ?",
-                Timestamp.from(Instant.now().minusSeconds(1)), endpoint.id());
+        jdbcTemplate.update(
+                "UPDATE webhook_endpoints SET previous_secret_expires_at = ? WHERE id = ?",
+                Timestamp.from(Instant.now().minusSeconds(1)),
+                endpoint.id());
         answer(204);
 
         createTask(admin, assignee);
@@ -376,13 +374,16 @@ class WebhookDeliveryTests {
     }
 
     @Test
-    void previousSecretThatCannotBeReadAfterAKeyChangeIsLeftOutAndTheCurrentOneSigns() throws Exception {
+    void previousSecretThatCannotBeReadAfterAKeyChangeIsLeftOutAndTheCurrentOneSigns()
+            throws Exception {
         User admin = createUser(UserRole.ADMIN);
         User assignee = createUser(UserRole.USER);
         Endpoint endpoint = createEndpoint(assignee, "task.assigned");
         String rotated = rotate(assignee, endpoint);
-        jdbcTemplate.update("UPDATE webhook_endpoints SET previous_secret = ? WHERE id = ?",
-                OTHER_KEY.encrypt(endpoint.secret()), endpoint.id());
+        jdbcTemplate.update(
+                "UPDATE webhook_endpoints SET previous_secret = ? WHERE id = ?",
+                OTHER_KEY.encrypt(endpoint.secret()),
+                endpoint.id());
         answer(204);
 
         createTask(admin, assignee);
@@ -390,7 +391,8 @@ class WebhookDeliveryTests {
         RecordedRequest request = nextRequest();
         assertThat(request.getHeaders().get("webhook-signature").split(" ")).hasSize(1);
         assertThatNoException().isThrownBy(() -> verify(rotated, request));
-        assertThat(awaitAttempts(onlyDeliveryId(endpoint), 1).getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
+        assertThat(awaitAttempts(onlyDeliveryId(endpoint), 1).getStatus())
+                .isEqualTo(WebhookDeliveryStatus.DELIVERED);
     }
 
     // Payload of each event
@@ -422,7 +424,8 @@ class WebhookDeliveryTests {
 
         assign(admin, task, createUser(UserRole.USER));
 
-        assertThat(json(nextRequest())).isEqualTo(payload("task.unassigned", NOW, task, admin, Map.of()));
+        assertThat(json(nextRequest()))
+                .isEqualTo(payload("task.unassigned", NOW, task, admin, Map.of()));
         awaitAttempts(onlyDeliveryId(endpoint), 1);
     }
 
@@ -435,14 +438,21 @@ class WebhookDeliveryTests {
         CreatedTask task = createTask(admin, assignee);
         answer(204);
 
-        mockMvc.perform(post(TASKS + "/{id}/cancel", task.id())
-                        .with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"reason\": \"Customer withdrew the request\"}"))
+        mockMvc.perform(
+                        post(TASKS + "/{id}/cancel", task.id())
+                                .with(asAdmin(admin))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"reason\": \"Customer withdrew the request\"}"))
                 .andExpect(status().isOk());
 
-        assertThat(json(nextRequest())).isEqualTo(payload("task.cancelled", NOW, task, admin,
-                Map.of("reason", "Customer withdrew the request")));
+        assertThat(json(nextRequest()))
+                .isEqualTo(
+                        payload(
+                                "task.cancelled",
+                                NOW,
+                                task,
+                                admin,
+                                Map.of("reason", "Customer withdrew the request")));
         awaitAttempts(onlyDeliveryId(endpoint), 1);
     }
 
@@ -455,15 +465,17 @@ class WebhookDeliveryTests {
         CreatedTask task = createTask(admin, assignee);
         answer(204);
 
-        mockMvc.perform(patch(TASKS + "/{id}/status", task.id())
-                        .with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\": \"CANCELLED\"}"))
+        mockMvc.perform(
+                        patch(TASKS + "/{id}/status", task.id())
+                                .with(asAdmin(admin))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"status\": \"CANCELLED\"}"))
                 .andExpect(status().isOk());
 
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("reason", null);
-        assertThat(json(nextRequest())).isEqualTo(payload("task.cancelled", NOW, task, admin, details));
+        assertThat(json(nextRequest()))
+                .isEqualTo(payload("task.cancelled", NOW, task, admin, details));
         awaitAttempts(onlyDeliveryId(endpoint), 1);
     }
 
@@ -479,7 +491,8 @@ class WebhookDeliveryTests {
         mockMvc.perform(delete(TASKS + "/{id}", task.id()).with(asAdmin(admin)))
                 .andExpect(status().isNoContent());
 
-        assertThat(json(nextRequest())).isEqualTo(payload("task.deleted", NOW, task, admin, Map.of()));
+        assertThat(json(nextRequest()))
+                .isEqualTo(payload("task.deleted", NOW, task, admin, Map.of()));
         awaitAttempts(onlyDeliveryId(endpoint), 1);
     }
 
@@ -494,8 +507,20 @@ class WebhookDeliveryTests {
 
         UUID commentId = comment(admin, task, "Looks good to me");
 
-        assertThat(json(nextRequest())).isEqualTo(payload("task.commented", NOW, task, admin,
-                Map.of("comment", Map.of("id", commentId.toString(), "excerpt", "Looks good to me"))));
+        assertThat(json(nextRequest()))
+                .isEqualTo(
+                        payload(
+                                "task.commented",
+                                NOW,
+                                task,
+                                admin,
+                                Map.of(
+                                        "comment",
+                                        Map.of(
+                                                "id",
+                                                commentId.toString(),
+                                                "excerpt",
+                                                "Looks good to me"))));
         awaitAttempts(onlyDeliveryId(endpoint), 1);
     }
 
@@ -510,10 +535,20 @@ class WebhookDeliveryTests {
 
         UUID commentId = comment(admin, task, "Please review, <@" + mentioned.getId() + ">");
 
-        assertThat(json(nextRequest())).isEqualTo(payload("task.mentioned", NOW, task, admin,
-                Map.of("comment", Map.of(
-                        "id", commentId.toString(),
-                        "excerpt", "Please review, @" + mentioned.getDisplayName()))));
+        assertThat(json(nextRequest()))
+                .isEqualTo(
+                        payload(
+                                "task.mentioned",
+                                NOW,
+                                task,
+                                admin,
+                                Map.of(
+                                        "comment",
+                                        Map.of(
+                                                "id",
+                                                commentId.toString(),
+                                                "excerpt",
+                                                "Please review, @" + mentioned.getDisplayName()))));
         awaitAttempts(onlyDeliveryId(endpoint), 1);
     }
 
@@ -528,8 +563,10 @@ class WebhookDeliveryTests {
 
         comment(admin, task, "<@" + assignee.getId() + "> over to you");
 
-        List<String> types = List.of(json(nextRequest()).get("type").asString(),
-                json(nextRequest()).get("type").asString());
+        List<String> types =
+                List.of(
+                        json(nextRequest()).get("type").asString(),
+                        json(nextRequest()).get("type").asString());
         assertThat(types).containsExactlyInAnyOrder("task.commented", "task.mentioned");
         assertThat(deliveryIds(endpoint)).hasSize(2).allSatisfy(id -> awaitAttempts(id, 1));
     }
@@ -545,8 +582,14 @@ class WebhookDeliveryTests {
 
         reminderService.sendDueReminders();
 
-        assertThat(json(nextRequest())).isEqualTo(payload("task.due_soon", REMINDER_NOW, task, null,
-                Map.of("dueAt", dueAt.toString())));
+        assertThat(json(nextRequest()))
+                .isEqualTo(
+                        payload(
+                                "task.due_soon",
+                                REMINDER_NOW,
+                                task,
+                                null,
+                                Map.of("dueAt", dueAt.toString())));
         awaitAttempts(onlyDeliveryId(endpoint), 1);
     }
 
@@ -561,8 +604,14 @@ class WebhookDeliveryTests {
 
         reminderService.sendDueReminders();
 
-        assertThat(json(nextRequest())).isEqualTo(payload("task.overdue", REMINDER_NOW, task, null,
-                Map.of("dueAt", dueAt.toString())));
+        assertThat(json(nextRequest()))
+                .isEqualTo(
+                        payload(
+                                "task.overdue",
+                                REMINDER_NOW,
+                                task,
+                                null,
+                                Map.of("dueAt", dueAt.toString())));
         awaitAttempts(onlyDeliveryId(endpoint), 1);
     }
 
@@ -689,7 +738,8 @@ class WebhookDeliveryTests {
         assertThat(pending.getLastError()).isNull();
         assertThat(pending.getLastAttemptAt()).isEqualTo(NOW);
         assertThat(pending.getDeliveredAt()).isNull();
-        assertJittered(Duration.between(NOW, pending.getNextAttemptAt()), RETRY_SCHEDULE.getFirst());
+        assertJittered(
+                Duration.between(NOW, pending.getNextAttemptAt()), RETRY_SCHEDULE.getFirst());
     }
 
     @Test
@@ -710,7 +760,8 @@ class WebhookDeliveryTests {
         RecordedRequest retry = nextRequest();
         assertThat(retry.getHeaders().get("webhook-id")).isEqualTo(deliveryId.toString());
         assertThat(first.getHeaders().get("webhook-id")).isEqualTo(deliveryId.toString());
-        assertThat(first.getHeaders().get("webhook-timestamp")).isEqualTo(String.valueOf(NOW.getEpochSecond()));
+        assertThat(first.getHeaders().get("webhook-timestamp"))
+                .isEqualTo(String.valueOf(NOW.getEpochSecond()));
         assertThat(retry.getHeaders().get("webhook-timestamp"))
                 .isEqualTo(String.valueOf(retryAt.getEpochSecond()));
         assertThat(retry.getHeaders().get("webhook-signature"))
@@ -748,14 +799,16 @@ class WebhookDeliveryTests {
 
         clock.set(NOW.plus(Duration.ofMinutes(5)).minusMillis(1));
         deliveryService.enqueueDue();
-        assertThat(delivery(deliveryId).getNextAttemptAt()).isEqualTo(NOW.plus(Duration.ofMinutes(5)));
+        assertThat(delivery(deliveryId).getNextAttemptAt())
+                .isEqualTo(NOW.plus(Duration.ofMinutes(5)));
         clock.set(NOW.plus(Duration.ofMinutes(5)));
         deliveryService.enqueueDue();
 
         RecordedRequest request = nextRequest();
         assertThat(request.getHeaders().get("webhook-id")).isEqualTo(deliveryId.toString());
         assertThat(request.getBody().utf8()).isEqualTo(LOST_PAYLOAD);
-        assertThat(awaitAttempts(deliveryId, 1).getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
+        assertThat(awaitAttempts(deliveryId, 1).getStatus())
+                .isEqualTo(WebhookDeliveryStatus.DELIVERED);
     }
 
     @Test
@@ -763,14 +816,17 @@ class WebhookDeliveryTests {
         clock.set(NOW);
         Endpoint endpoint = createEndpoint(createUser(UserRole.USER), "task.assigned");
         UUID deliveryId = insertPendingDelivery(endpoint, NOW);
-        receiver.enqueue(new MockResponse.Builder().code(204).headersDelay(1, TimeUnit.SECONDS).build());
+        receiver.enqueue(
+                new MockResponse.Builder().code(204).headersDelay(1, TimeUnit.SECONDS).build());
         answer(204);
 
         deliveryService.enqueueDue();
-        assertThat(delivery(deliveryId).getNextAttemptAt()).isEqualTo(NOW.plus(Duration.ofMinutes(5)));
+        assertThat(delivery(deliveryId).getNextAttemptAt())
+                .isEqualTo(NOW.plus(Duration.ofMinutes(5)));
         deliveryService.enqueueDue();
 
-        assertThat(awaitAttempts(deliveryId, 1).getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
+        assertThat(awaitAttempts(deliveryId, 1).getStatus())
+                .isEqualTo(WebhookDeliveryStatus.DELIVERED);
         nextRequest();
         assertThat(receiver.takeRequest(1, TimeUnit.SECONDS)).isNull();
         assertThat(delivery(deliveryId).getAttempts()).isOne();
@@ -790,7 +846,8 @@ class WebhookDeliveryTests {
         for (int attempts = 1; attempts <= RETRY_SCHEDULE.size(); attempts++) {
             WebhookDelivery pending = awaitAttempts(deliveryId, attempts);
             assertThat(pending.getStatus()).isEqualTo(WebhookDeliveryStatus.PENDING);
-            assertJittered(Duration.between(pending.getLastAttemptAt(), pending.getNextAttemptAt()),
+            assertJittered(
+                    Duration.between(pending.getLastAttemptAt(), pending.getNextAttemptAt()),
                     RETRY_SCHEDULE.get(attempts - 1));
             clock.set(pending.getNextAttemptAt());
             assertThat(deliveryService.enqueueDue()).isPositive();
@@ -884,7 +941,8 @@ class WebhookDeliveryTests {
     }
 
     @Test
-    void deliveryWhoseSecretCannotBeReadAfterAKeyChangeFailsWithoutARequestOrADeadLetter() throws Exception {
+    void deliveryWhoseSecretCannotBeReadAfterAKeyChangeFailsWithoutARequestOrADeadLetter()
+            throws Exception {
         User assignee = createUser(UserRole.USER);
         Endpoint endpoint = createEndpoint(assignee, "task.assigned");
         makeSecretUnreadable(endpoint);
@@ -903,24 +961,26 @@ class WebhookDeliveryTests {
     }
 
     @ParameterizedTest
-    @CsvSource(delimiter = '|', value = {
-            "429 | 120                           | PT2M  | PT2M",
-            "503 | 86400                         | PT10H | PT10H",
-            "503 | 1                             | PT4S  | PT6S",
-            "429 | Sat, 04 Mar 2000 05:00:00 GMT | PT4S  | PT6S",
-            "503 | Sat, 04 Mar 2000 07:06:07 GMT | PT2H  | PT2H",
-            "429 | Wed, 21 Oct 2015 07:28:00 GMT | PT10H | PT10H"
-    })
+    @CsvSource(
+            delimiter = '|',
+            value = {
+                "429 | 120                           | PT2M  | PT2M",
+                "503 | 86400                         | PT10H | PT10H",
+                "503 | 1                             | PT4S  | PT6S",
+                "429 | Sat, 04 Mar 2000 05:00:00 GMT | PT4S  | PT6S",
+                "503 | Sat, 04 Mar 2000 07:06:07 GMT | PT2H  | PT2H",
+                "429 | Wed, 21 Oct 2015 07:28:00 GMT | PT10H | PT10H"
+            })
     void retryAfterPostponesTheRetryOnlyWhenLongerThanTheScheduledDelay(
-            int status,
-            String retryAfter,
-            Duration earliest,
-            Duration latest
-    ) throws Exception {
+            int status, String retryAfter, Duration earliest, Duration latest) throws Exception {
         clock.set(NOW);
         User assignee = createUser(UserRole.USER);
         Endpoint endpoint = createEndpoint(assignee, "task.assigned");
-        receiver.enqueue(new MockResponse.Builder().code(status).setHeader("Retry-After", retryAfter).build());
+        receiver.enqueue(
+                new MockResponse.Builder()
+                        .code(status)
+                        .setHeader("Retry-After", retryAfter)
+                        .build());
 
         createTask(createUser(UserRole.ADMIN), assignee);
 
@@ -934,7 +994,8 @@ class WebhookDeliveryTests {
     void serviceUnavailableWithRetryAfterIsSentOnlyOnce() throws Exception {
         User assignee = createUser(UserRole.USER);
         Endpoint endpoint = createEndpoint(assignee, "task.assigned");
-        receiver.enqueue(new MockResponse.Builder().code(503).setHeader("Retry-After", "1").build());
+        receiver.enqueue(
+                new MockResponse.Builder().code(503).setHeader("Retry-After", "1").build());
         answer(204);
 
         createTask(createUser(UserRole.ADMIN), assignee);
@@ -949,10 +1010,11 @@ class WebhookDeliveryTests {
     void redirectIsNotFollowedAndCountsAsAFailedAttempt() throws Exception {
         User assignee = createUser(UserRole.USER);
         Endpoint endpoint = createEndpoint(assignee, "task.assigned");
-        receiver.enqueue(new MockResponse.Builder()
-                .code(307)
-                .setHeader("Location", receiverUrl("/moved"))
-                .build());
+        receiver.enqueue(
+                new MockResponse.Builder()
+                        .code(307)
+                        .setHeader("Location", receiverUrl("/moved"))
+                        .build());
         answer(204);
 
         createTask(createUser(UserRole.ADMIN), assignee);
@@ -968,10 +1030,11 @@ class WebhookDeliveryTests {
         clock.set(NOW);
         User assignee = createUser(UserRole.USER);
         Endpoint endpoint = createEndpoint(assignee, "task.assigned");
-        receiver.enqueue(new MockResponse.Builder()
-                .code(500)
-                .setHeader("Set-Cookie", "session=steer-the-next-call; Path=/")
-                .build());
+        receiver.enqueue(
+                new MockResponse.Builder()
+                        .code(500)
+                        .setHeader("Set-Cookie", "session=steer-the-next-call; Path=/")
+                        .build());
         answer(204);
         createTask(createUser(UserRole.ADMIN), assignee);
         UUID deliveryId = onlyDeliveryId(endpoint);
@@ -988,11 +1051,14 @@ class WebhookDeliveryTests {
     void privateDestinationWrittenInTheDatabaseFailsAtOnceWithoutARequest() throws Exception {
         User assignee = createUser(UserRole.USER);
         Endpoint endpoint = createEndpoint(assignee, "task.assigned");
-        // 127.0.0.2 is loopback but outside the allowed 127.0.0.1/32: the URL policy would refuse it on the API
+        // 127.0.0.2 is loopback but outside the allowed 127.0.0.1/32: the URL policy would refuse
+        // it on the API
         try (MockWebServer privateReceiver = new MockWebServer()) {
             privateReceiver.start(address(127, 0, 0, 2), 0);
-            jdbcTemplate.update("UPDATE webhook_endpoints SET url = ? WHERE id = ?",
-                    "http://127.0.0.2:" + privateReceiver.getPort() + "/hooks", endpoint.id());
+            jdbcTemplate.update(
+                    "UPDATE webhook_endpoints SET url = ? WHERE id = ?",
+                    "http://127.0.0.2:" + privateReceiver.getPort() + "/hooks",
+                    endpoint.id());
 
             createTask(createUser(UserRole.ADMIN), assignee);
 
@@ -1009,7 +1075,8 @@ class WebhookDeliveryTests {
     void receiverSlowerThanTheReadTimeoutIsATimeout() throws Exception {
         User assignee = createUser(UserRole.USER);
         Endpoint endpoint = createEndpoint(assignee, "task.assigned");
-        receiver.enqueue(new MockResponse.Builder().code(204).headersDelay(5, TimeUnit.SECONDS).build());
+        receiver.enqueue(
+                new MockResponse.Builder().code(204).headersDelay(5, TimeUnit.SECONDS).build());
 
         createTask(createUser(UserRole.ADMIN), assignee);
 
@@ -1023,7 +1090,9 @@ class WebhookDeliveryTests {
     @Test
     void receiverThatRefusesTheConnectionIsAConnectionFailure() throws Exception {
         User assignee = createUser(UserRole.USER);
-        Endpoint endpoint = createEndpointAt(assignee, "http://127.0.0.1:" + closedPort() + "/hooks", "task.assigned");
+        Endpoint endpoint =
+                createEndpointAt(
+                        assignee, "http://127.0.0.1:" + closedPort() + "/hooks", "task.assigned");
 
         createTask(createUser(UserRole.ADMIN), assignee);
 
@@ -1071,7 +1140,7 @@ class WebhookDeliveryTests {
         double retried = deliveryCount("retried");
         double failed = deliveryCount("failed");
 
-        for (int status : new int[]{204, 500, 410}) {
+        for (int status : new int[] {204, 500, 410}) {
             answer(status);
             createTask(admin, assignee);
             awaitAttempts(deliveryIds(endpoint).getLast(), 1);
@@ -1091,7 +1160,12 @@ class WebhookDeliveryTests {
         createTask(createUser(UserRole.ADMIN), assignee);
 
         awaitAttempts(onlyDeliveryId(endpoint), 1);
-        assertThat(meterRegistry.find("http.client.requests").tag("client.name", "webhook").timers()).isNotEmpty();
+        assertThat(
+                        meterRegistry
+                                .find("http.client.requests")
+                                .tag("client.name", "webhook")
+                                .timers())
+                .isNotEmpty();
         assertThat(meterRegistry.find("http.client.requests").meters())
                 .flatExtracting(meter -> meter.getId().getTags())
                 .extracting(Tag::getValue)
@@ -1113,22 +1187,30 @@ class WebhookDeliveryTests {
         List<UUID> oldestFirst = deliveryIds(endpoint);
         oldestFirst.forEach(id -> awaitAttempts(id, 1));
 
-        mockMvc.perform(get(DELIVERIES, assignee.getId(), endpoint.id())
-                        .param("size", "2")
-                        .with(asUser(assignee)))
+        mockMvc.perform(
+                        get(DELIVERIES, assignee.getId(), endpoint.id())
+                                .param("size", "2")
+                                .with(asUser(assignee)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[*].id")
-                        .value(contains(oldestFirst.get(2).toString(), oldestFirst.get(1).toString())))
+                .andExpect(
+                        jsonPath("$.content[*].id")
+                                .value(
+                                        contains(
+                                                oldestFirst.get(2).toString(),
+                                                oldestFirst.get(1).toString())))
                 .andExpect(jsonPath("$.page.size").value(2))
                 .andExpect(jsonPath("$.page.number").value(0))
                 .andExpect(jsonPath("$.page.totalElements").value(3))
                 .andExpect(jsonPath("$.page.totalPages").value(2));
-        mockMvc.perform(get(DELIVERIES, assignee.getId(), endpoint.id())
-                        .param("size", "2")
-                        .param("page", "1")
-                        .with(asUser(assignee)))
+        mockMvc.perform(
+                        get(DELIVERIES, assignee.getId(), endpoint.id())
+                                .param("size", "2")
+                                .param("page", "1")
+                                .with(asUser(assignee)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[*].id").value(contains(oldestFirst.getFirst().toString())));
+                .andExpect(
+                        jsonPath("$.content[*].id")
+                                .value(contains(oldestFirst.getFirst().toString())));
     }
 
     @Test
@@ -1169,7 +1251,9 @@ class WebhookDeliveryTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].status").value("PENDING"))
                 .andExpect(jsonPath("$.content[0].lastStatusCode").value(503))
-                .andExpect(jsonPath("$.content[0].nextAttemptAt").value(pending.getNextAttemptAt().toString()))
+                .andExpect(
+                        jsonPath("$.content[0].nextAttemptAt")
+                                .value(pending.getNextAttemptAt().toString()))
                 .andExpect(jsonPath("$.content[0].deliveredAt").value(nullValue()));
     }
 
@@ -1198,7 +1282,8 @@ class WebhookDeliveryTests {
                 .andExpect(status().isForbidden());
         mockMvc.perform(get(DELIVERIES, intruder.getId(), endpoint.id()).with(asUser(intruder)))
                 .andExpect(untypedProblem(404, "Not Found"))
-                .andExpect(jsonPath("$.detail").value("Webhook not found with id: " + endpoint.id()));
+                .andExpect(
+                        jsonPath("$.detail").value("Webhook not found with id: " + endpoint.id()));
     }
 
     @Test
@@ -1206,9 +1291,10 @@ class WebhookDeliveryTests {
         User user = createUser(UserRole.USER);
         Endpoint endpoint = createEndpoint(user, "task.assigned");
 
-        mockMvc.perform(get(DELIVERIES, user.getId(), endpoint.id())
-                        .param("sort", "nonExistent,asc")
-                        .with(asUser(user)))
+        mockMvc.perform(
+                        get(DELIVERIES, user.getId(), endpoint.id())
+                                .param("sort", "nonExistent,asc")
+                                .with(asUser(user)))
                 .andExpect(validationError())
                 .andExpect(jsonPath("$.errors[0].parameter").value("sort"));
     }
@@ -1236,7 +1322,8 @@ class WebhookDeliveryTests {
         RecordedRequest request = nextRequest();
         assertThat(request.getMethod()).isEqualTo("POST");
         assertThat(request.getUrl().encodedPath()).isEqualTo("/hooks");
-        assertThat(request.getHeaders().get("Content-Type")).startsWith(MediaType.APPLICATION_JSON_VALUE);
+        assertThat(request.getHeaders().get("Content-Type"))
+                .startsWith(MediaType.APPLICATION_JSON_VALUE);
         assertThat(request.getHeaders().get("webhook-signature")).matches("v1,[A-Za-z0-9+/]{43}=");
         assertThatNoException().isThrownBy(() -> verify(endpoint.secret(), request));
     }
@@ -1253,11 +1340,15 @@ class WebhookDeliveryTests {
         RecordedRequest request = nextRequest();
         JsonNode payload = json(request);
         assertThat(payload.propertyNames()).containsExactly("type", "timestamp", "data");
-        assertThat(payload).isEqualTo(jsonMapper.valueToTree(Map.of(
-                "type", "webhook.test",
-                "timestamp", NOW.toString(),
-                "data", Map.of("webhookId", endpoint.id().toString()))));
-        assertThat(request.getHeaders().get("webhook-timestamp")).isEqualTo(String.valueOf(NOW.getEpochSecond()));
+        assertThat(payload)
+                .isEqualTo(
+                        jsonMapper.valueToTree(
+                                Map.of(
+                                        "type", "webhook.test",
+                                        "timestamp", NOW.toString(),
+                                        "data", Map.of("webhookId", endpoint.id().toString()))));
+        assertThat(request.getHeaders().get("webhook-timestamp"))
+                .isEqualTo(String.valueOf(NOW.getEpochSecond()));
     }
 
     @Test
@@ -1276,16 +1367,23 @@ class WebhookDeliveryTests {
     }
 
     @Test
-    void acceptedTestEventIsReportedDeliveredWithItsStatusAndDurationAndRecordsNoDelivery() throws Exception {
+    void acceptedTestEventIsReportedDeliveredWithItsStatusAndDurationAndRecordsNoDelivery()
+            throws Exception {
         User owner = createUser(UserRole.USER);
         Endpoint endpoint = createEndpoint(owner, "task.assigned");
-        receiver.enqueue(new MockResponse.Builder().code(202).headersDelay(300, TimeUnit.MILLISECONDS).build());
+        receiver.enqueue(
+                new MockResponse.Builder()
+                        .code(202)
+                        .headersDelay(300, TimeUnit.MILLISECONDS)
+                        .build());
 
-        JsonNode result = json(sendTestEvent(owner, endpoint)
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.delivered").value(true))
-                .andExpect(jsonPath("$.statusCode").value(202))
-                .andExpect(jsonPath("$.error").value(nullValue())));
+        JsonNode result =
+                json(
+                        sendTestEvent(owner, endpoint)
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.delivered").value(true))
+                                .andExpect(jsonPath("$.statusCode").value(202))
+                                .andExpect(jsonPath("$.error").value(nullValue())));
 
         assertThat(result.get("durationMillis").asLong()).isBetween(300L, READ_TIMEOUT.toMillis());
         nextRequest();
@@ -1328,7 +1426,8 @@ class WebhookDeliveryTests {
     }
 
     @Test
-    void rejectedTestEventIsReportedWithItsStatusAndDoesNotMarkTheEndpointFailing() throws Exception {
+    void rejectedTestEventIsReportedWithItsStatusAndDoesNotMarkTheEndpointFailing()
+            throws Exception {
         User owner = createUser(UserRole.USER);
         Endpoint endpoint = createEndpoint(owner, "task.assigned");
         answer(500);
@@ -1365,26 +1464,33 @@ class WebhookDeliveryTests {
     void testEventToASlowReceiverIsReportedAsATimeoutWithoutAStatus() throws Exception {
         User owner = createUser(UserRole.USER);
         Endpoint endpoint = createEndpoint(owner, "task.assigned");
-        receiver.enqueue(new MockResponse.Builder().code(204).headersDelay(5, TimeUnit.SECONDS).build());
+        receiver.enqueue(
+                new MockResponse.Builder().code(204).headersDelay(5, TimeUnit.SECONDS).build());
 
-        JsonNode result = json(sendTestEvent(owner, endpoint)
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.delivered").value(false))
-                .andExpect(jsonPath("$.statusCode").value(nullValue()))
-                .andExpect(jsonPath("$.error").value("Timeout")));
+        JsonNode result =
+                json(
+                        sendTestEvent(owner, endpoint)
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.delivered").value(false))
+                                .andExpect(jsonPath("$.statusCode").value(nullValue()))
+                                .andExpect(jsonPath("$.error").value("Timeout")));
 
-        assertThat(result.get("durationMillis").asLong()).isBetween(READ_TIMEOUT.toMillis(), 4_999L);
+        assertThat(result.get("durationMillis").asLong())
+                .isBetween(READ_TIMEOUT.toMillis(), 4_999L);
     }
 
     @Test
     void testEventToAPrivateDestinationWrittenInTheDatabaseIsNotSent() throws Exception {
         User owner = createUser(UserRole.USER);
         Endpoint endpoint = createEndpoint(owner, "task.assigned");
-        // 127.0.0.2 is loopback but outside the allowed 127.0.0.1/32: the URL policy would refuse it on the API
+        // 127.0.0.2 is loopback but outside the allowed 127.0.0.1/32: the URL policy would refuse
+        // it on the API
         try (MockWebServer privateReceiver = new MockWebServer()) {
             privateReceiver.start(address(127, 0, 0, 2), 0);
-            jdbcTemplate.update("UPDATE webhook_endpoints SET url = ? WHERE id = ?",
-                    "http://127.0.0.2:" + privateReceiver.getPort() + "/hooks", endpoint.id());
+            jdbcTemplate.update(
+                    "UPDATE webhook_endpoints SET url = ? WHERE id = ?",
+                    "http://127.0.0.2:" + privateReceiver.getPort() + "/hooks",
+                    endpoint.id());
 
             sendTestEvent(owner, endpoint)
                     .andExpect(status().isOk())
@@ -1397,7 +1503,8 @@ class WebhookDeliveryTests {
     }
 
     @Test
-    void testEventOnASecretThatCannotBeReadAfterAKeyChangeIsReportedWithoutARequest() throws Exception {
+    void testEventOnASecretThatCannotBeReadAfterAKeyChangeIsReportedWithoutARequest()
+            throws Exception {
         User owner = createUser(UserRole.USER);
         Endpoint endpoint = createEndpoint(owner, "task.assigned");
         makeSecretUnreadable(endpoint);
@@ -1419,7 +1526,8 @@ class WebhookDeliveryTests {
 
         mockMvc.perform(post(TEST_EVENT, intruder.getId(), endpoint.id()).with(asUser(intruder)))
                 .andExpect(untypedProblem(404, "Not Found"))
-                .andExpect(jsonPath("$.detail").value("Webhook not found with id: " + endpoint.id()));
+                .andExpect(
+                        jsonPath("$.detail").value("Webhook not found with id: " + endpoint.id()));
 
         assertThat(receiver.getRequestCount()).isZero();
     }
@@ -1427,7 +1535,8 @@ class WebhookDeliveryTests {
     // Redelivery
 
     @Test
-    void redeliveringADeliveredDeliverySendsTheSameBodyAgainUnderTheSameWebhookId() throws Exception {
+    void redeliveringADeliveredDeliverySendsTheSameBodyAgainUnderTheSameWebhookId()
+            throws Exception {
         clock.set(NOW);
         User owner = createUser(UserRole.USER);
         Endpoint endpoint = createEndpoint(owner, "task.assigned");
@@ -1445,12 +1554,15 @@ class WebhookDeliveryTests {
                 .andExpect(jsonPath("$.id").value(deliveryId.toString()))
                 .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.attempts").value(0))
-                .andExpect(jsonPath("$.nextAttemptAt").value(later.plus(Duration.ofMinutes(5)).toString()))
+                .andExpect(
+                        jsonPath("$.nextAttemptAt")
+                                .value(later.plus(Duration.ofMinutes(5)).toString()))
                 .andExpect(jsonPath("$.deliveredAt").value(nullValue()));
 
         RecordedRequest again = nextRequest();
         assertThat(again.getHeaders().get("webhook-id")).isEqualTo(deliveryId.toString());
-        assertThat(again.getHeaders().get("webhook-timestamp")).isEqualTo(String.valueOf(later.getEpochSecond()));
+        assertThat(again.getHeaders().get("webhook-timestamp"))
+                .isEqualTo(String.valueOf(later.getEpochSecond()));
         assertThat(again.getBody()).isEqualTo(first.getBody());
         WebhookDelivery delivered = awaitAttempts(deliveryId, 1);
         assertThat(delivered.getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
@@ -1459,7 +1571,8 @@ class WebhookDeliveryTests {
     }
 
     @Test
-    void redeliveringADeliveryThatFailedStartsTheRetryScheduleOverUnderTheSameWebhookId() throws Exception {
+    void redeliveringADeliveryThatFailedStartsTheRetryScheduleOverUnderTheSameWebhookId()
+            throws Exception {
         clock.set(NOW);
         User owner = createUser(UserRole.USER);
         Endpoint endpoint = createEndpoint(owner, "task.assigned");
@@ -1486,7 +1599,8 @@ class WebhookDeliveryTests {
         assertThat(pending.getStatus()).isEqualTo(WebhookDeliveryStatus.PENDING);
         assertThat(pending.getAttempts()).isOne();
         assertThat(pending.getLastStatusCode()).isEqualTo(500);
-        assertJittered(Duration.between(NOW, pending.getNextAttemptAt()), RETRY_SCHEDULE.getFirst());
+        assertJittered(
+                Duration.between(NOW, pending.getNextAttemptAt()), RETRY_SCHEDULE.getFirst());
     }
 
     @Test
@@ -1499,7 +1613,8 @@ class WebhookDeliveryTests {
         createTask(createUser(UserRole.ADMIN), owner);
         UUID deliveryId = onlyDeliveryId(endpoint);
         nextRequest();
-        assertThat(awaitAttempts(deliveryId, 1).getStatus()).isEqualTo(WebhookDeliveryStatus.PENDING);
+        assertThat(awaitAttempts(deliveryId, 1).getStatus())
+                .isEqualTo(WebhookDeliveryStatus.PENDING);
 
         redeliver(owner, endpoint, deliveryId).andExpect(status().isAccepted());
 
@@ -1540,7 +1655,9 @@ class WebhookDeliveryTests {
 
         redeliver(owner, endpoint, deliveryId)
                 .andExpect(untypedProblem(404, "Not Found"))
-                .andExpect(jsonPath("$.detail").value("Webhook delivery not found with id: " + deliveryId));
+                .andExpect(
+                        jsonPath("$.detail")
+                                .value("Webhook delivery not found with id: " + deliveryId));
 
         assertThat(delivery(deliveryId).getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
     }
@@ -1550,12 +1667,16 @@ class WebhookDeliveryTests {
         clock.set(NOW);
         User owner = createUser(UserRole.USER);
         User intruder = createUser(UserRole.USER);
-        UUID deliveryId = insertDelivery(createEndpoint(owner, "task.assigned"), WebhookDeliveryStatus.FAILED, NOW);
+        UUID deliveryId =
+                insertDelivery(
+                        createEndpoint(owner, "task.assigned"), WebhookDeliveryStatus.FAILED, NOW);
         Endpoint intrudersEndpoint = createEndpoint(intruder, "task.assigned");
 
         redeliver(intruder, intrudersEndpoint, deliveryId)
                 .andExpect(untypedProblem(404, "Not Found"))
-                .andExpect(jsonPath("$.detail").value("Webhook delivery not found with id: " + deliveryId));
+                .andExpect(
+                        jsonPath("$.detail")
+                                .value("Webhook delivery not found with id: " + deliveryId));
 
         assertThat(delivery(deliveryId).getStatus()).isEqualTo(WebhookDeliveryStatus.FAILED);
     }
@@ -1568,7 +1689,9 @@ class WebhookDeliveryTests {
 
         redeliver(owner, endpoint, unknown)
                 .andExpect(untypedProblem(404, "Not Found"))
-                .andExpect(jsonPath("$.detail").value("Webhook delivery not found with id: " + unknown));
+                .andExpect(
+                        jsonPath("$.detail")
+                                .value("Webhook delivery not found with id: " + unknown));
     }
 
     // Automatic disabling
@@ -1619,18 +1742,23 @@ class WebhookDeliveryTests {
     }
 
     @Test
-    void ownerOfAnEndpointDisabledForFailingIsEmailedItsHostButNeitherItsPathNorItsQuery() throws Exception {
+    void ownerOfAnEndpointDisabledForFailingIsEmailedItsHostButNeitherItsPathNorItsQuery()
+            throws Exception {
         User admin = createUser(UserRole.ADMIN);
         User owner = createUser(UserRole.USER);
-        Endpoint endpoint = createEndpointAt(owner,
-                receiverUrl("/hooks/T0001/B0002/path-secret?token=query-secret"), "task.assigned");
+        Endpoint endpoint =
+                createEndpointAt(
+                        owner,
+                        receiverUrl("/hooks/T0001/B0002/path-secret?token=query-secret"),
+                        "task.assigned");
 
         attemptAt(NOW, 500, admin, owner, endpoint);
         attemptAt(NOW.plus(DISABLE_AFTER), 500, admin, owner, endpoint);
 
         assertThat(mailpit.latestTextTo(owner.getEmail(), DISABLED_EMAIL))
                 .contains("Hello " + owner.getDisplayName())
-                .contains("Your webhook to 127.0.0.1 failed every attempt for 3 days, so it was disabled")
+                .contains(
+                        "Your webhook to 127.0.0.1 failed every attempt for 3 days, so it was disabled")
                 .doesNotContain(":" + receiver.getPort())
                 .doesNotContain("/hooks")
                 .doesNotContain("path-secret")
@@ -1644,8 +1772,13 @@ class WebhookDeliveryTests {
         Endpoint endpoint = createEndpoint(owner, "task.assigned");
         attemptAt(NOW, 500, admin, owner, endpoint);
         clock.set(NOW.plus(DISABLE_AFTER));
-        // The first attempt waits for its answer while the second fails at once and disables the endpoint
-        receiver.enqueue(new MockResponse.Builder().code(500).headersDelay(1500, TimeUnit.MILLISECONDS).build());
+        // The first attempt waits for its answer while the second fails at once and disables the
+        // endpoint
+        receiver.enqueue(
+                new MockResponse.Builder()
+                        .code(500)
+                        .headersDelay(1500, TimeUnit.MILLISECONDS)
+                        .build());
         createTask(admin, owner);
         UUID slow = deliveryIds(endpoint).getLast();
         nextRequest();
@@ -1654,7 +1787,9 @@ class WebhookDeliveryTests {
         createTask(admin, owner);
 
         awaitAttempts(deliveryIds(endpoint).getLast(), 1);
-        assertThat(delivery(slow).getAttempts()).as("attempts of the delivery still waiting for its answer").isZero();
+        assertThat(delivery(slow).getAttempts())
+                .as("attempts of the delivery still waiting for its answer")
+                .isZero();
         assertThat(awaitAttempts(slow, 1).getLastStatusCode()).isEqualTo(500);
         mailpit.latestTextTo(owner.getEmail(), DISABLED_EMAIL);
         Thread.sleep(NO_MAIL_GRACE_PERIOD);
@@ -1668,16 +1803,19 @@ class WebhookDeliveryTests {
         Endpoint endpoint = createEndpoint(owner, "task.assigned");
         attemptAt(NOW, 500, admin, owner, endpoint);
         clock.set(NOW.plus(DISABLE_AFTER));
-        // Each request is answered once both arrived, within the read timeout, so both failures are recorded together
+        // Each request is answered once both arrived, within the read timeout, so both failures are
+        // recorded together
         CountDownLatch bothArrived = new CountDownLatch(2);
-        receiver.setDispatcher(new Dispatcher() {
-            @Override
-            public MockResponse dispatch(RecordedRequest request) throws InterruptedException {
-                bothArrived.countDown();
-                bothArrived.await(1500, TimeUnit.MILLISECONDS);
-                return new MockResponse.Builder().code(500).build();
-            }
-        });
+        receiver.setDispatcher(
+                new Dispatcher() {
+                    @Override
+                    public MockResponse dispatch(RecordedRequest request)
+                            throws InterruptedException {
+                        bothArrived.countDown();
+                        bothArrived.await(1500, TimeUnit.MILLISECONDS);
+                        return new MockResponse.Builder().code(500).build();
+                    }
+                });
 
         createTask(admin, owner);
         createTask(admin, owner);
@@ -1781,12 +1919,14 @@ class WebhookDeliveryTests {
     }
 
     @Test
-    void breakerOpenedByOneEndpointAlsoHoldsTheDeliveriesOfOtherEndpointsOnTheSameHost() throws Exception {
+    void breakerOpenedByOneEndpointAlsoHoldsTheDeliveriesOfOtherEndpointsOnTheSameHost()
+            throws Exception {
         User admin = createUser(UserRole.ADMIN);
         User failing = createUser(UserRole.USER);
         openTheBreakerOfTheReceiver(admin, failing, createEndpoint(failing, "task.assigned"));
         User other = createUser(UserRole.USER);
-        Endpoint otherEndpoint = createEndpointAt(other, receiverUrl("/other-hooks"), "task.assigned");
+        Endpoint otherEndpoint =
+                createEndpointAt(other, receiverUrl("/other-hooks"), "task.assigned");
 
         createTask(admin, other);
 
@@ -1797,7 +1937,8 @@ class WebhookDeliveryTests {
     }
 
     @Test
-    void afterTheOpenDurationAPostponedDeliveryTestsTheHostAndItsSuccessClosesTheBreaker() throws Exception {
+    void afterTheOpenDurationAPostponedDeliveryTestsTheHostAndItsSuccessClosesTheBreaker()
+            throws Exception {
         User admin = createUser(UserRole.ADMIN);
         User assignee = createUser(UserRole.USER);
         Endpoint endpoint = createEndpoint(assignee, "task.assigned");
@@ -1891,13 +2032,16 @@ class WebhookDeliveryTests {
         Endpoint endpoint = createEndpoint(assignee, "task.assigned");
         // Both calls are held until the third delivery was turned away, within the read timeout
         CountDownLatch thirdTurnedAway = new CountDownLatch(1);
-        receiver.setDispatcher(new Dispatcher() {
-            @Override
-            public MockResponse dispatch(RecordedRequest request) throws InterruptedException {
-                thirdTurnedAway.await(READ_TIMEOUT.minusMillis(300).toMillis(), TimeUnit.MILLISECONDS);
-                return new MockResponse.Builder().code(204).build();
-            }
-        });
+        receiver.setDispatcher(
+                new Dispatcher() {
+                    @Override
+                    public MockResponse dispatch(RecordedRequest request)
+                            throws InterruptedException {
+                        thirdTurnedAway.await(
+                                READ_TIMEOUT.minusMillis(300).toMillis(), TimeUnit.MILLISECONDS);
+                        return new MockResponse.Builder().code(204).build();
+                    }
+                });
         createTask(admin, assignee);
         createTask(admin, assignee);
         nextRequest();
@@ -1910,8 +2054,10 @@ class WebhookDeliveryTests {
         thirdTurnedAway.countDown();
         assertThat(postponed.getAttempts()).isZero();
         assertThat(postponed.getNextAttemptAt()).isEqualTo(NOW.plus(POSTPONEMENT));
-        assertThat(awaitAttempts(ids.get(0), 1).getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
-        assertThat(awaitAttempts(ids.get(1), 1).getStatus()).isEqualTo(WebhookDeliveryStatus.DELIVERED);
+        assertThat(awaitAttempts(ids.get(0), 1).getStatus())
+                .isEqualTo(WebhookDeliveryStatus.DELIVERED);
+        assertThat(awaitAttempts(ids.get(1), 1).getStatus())
+                .isEqualTo(WebhookDeliveryStatus.DELIVERED);
         assertThat(receiver.getRequestCount()).isEqualTo(2);
         assertThat(openBreakers()).isZero();
     }
@@ -1924,16 +2070,23 @@ class WebhookDeliveryTests {
         long start = System.nanoTime();
 
         assertThatExceptionOfType(ResourceAccessException.class)
-                .isThrownBy(() -> client.send(URI.create("http://127.0.0.1:" + port + "/hooks"), Map.of(), BODY))
+                .isThrownBy(
+                        () ->
+                                client.send(
+                                        URI.create("http://127.0.0.1:" + port + "/hooks"),
+                                        Map.of(),
+                                        BODY))
                 .withCauseInstanceOf(ConnectException.class);
 
-        assertThat(Duration.ofNanos(System.nanoTime() - start)).isGreaterThanOrEqualTo(QUICK_RETRY_DELAY);
+        assertThat(Duration.ofNanos(System.nanoTime() - start))
+                .isGreaterThanOrEqualTo(QUICK_RETRY_DELAY);
         assertThat(failedCallsTo("127.0.0.1:" + port)).isEqualTo(2);
     }
 
     @Test
     void clientDoesNotTryAReadTimeoutAgain() {
-        receiver.enqueue(new MockResponse.Builder().code(204).headersDelay(5, TimeUnit.SECONDS).build());
+        receiver.enqueue(
+                new MockResponse.Builder().code(204).headersDelay(5, TimeUnit.SECONDS).build());
 
         assertThatExceptionOfType(ResourceAccessException.class)
                 .isThrownBy(() -> client.send(URI.create(receiverUrl("/hooks")), Map.of(), BODY))
@@ -1947,7 +2100,8 @@ class WebhookDeliveryTests {
     void clientDoesNotTryAServerErrorAgain() {
         answer(503);
 
-        ResponseEntity<Void> response = client.send(URI.create(receiverUrl("/hooks")), Map.of(), BODY);
+        ResponseEntity<Void> response =
+                client.send(URI.create(receiverUrl("/hooks")), Map.of(), BODY);
 
         assertThat(response.getStatusCode().value()).isEqualTo(503);
         assertThat(receiver.getRequestCount()).isOne();
@@ -1960,7 +2114,8 @@ class WebhookDeliveryTests {
             privateReceiver.start(address(127, 0, 0, 2), 0);
             URI url = URI.create("http://127.0.0.2:" + privateReceiver.getPort() + "/hooks");
 
-            assertThatExceptionOfType(FilteredHostException.class).isThrownBy(() -> client.send(url, Map.of(), BODY));
+            assertThatExceptionOfType(FilteredHostException.class)
+                    .isThrownBy(() -> client.send(url, Map.of(), BODY));
 
             assertThat(privateReceiver.getRequestCount()).isZero();
             assertThat(failedCallsTo("127.0.0.2")).isOne();
@@ -1968,21 +2123,26 @@ class WebhookDeliveryTests {
     }
 
     @Test
-    void receiverThatRefusesTheFirstConnectionGetsTheDeliveryFromTheQuickRetryWithinOneAttempt() throws Exception {
+    void receiverThatRefusesTheFirstConnectionGetsTheDeliveryFromTheQuickRetryWithinOneAttempt()
+            throws Exception {
         clock.set(NOW);
         User assignee = createUser(UserRole.USER);
         int port = closedPort();
-        Endpoint endpoint = createEndpointAt(assignee, "http://127.0.0.1:" + port + "/hooks", "task.assigned");
+        Endpoint endpoint =
+                createEndpointAt(assignee, "http://127.0.0.1:" + port + "/hooks", "task.assigned");
         try (MockWebServer lateReceiver = new MockWebServer()) {
             lateReceiver.enqueue(new MockResponse.Builder().code(204).build());
-            // Retry events are published on the delivery's thread, between the refused call and the retry's delay
+            // Retry events are published on the delivery's thread, between the refused call and the
+            // retry's delay
             AtomicBoolean started = new AtomicBoolean();
-            ApplicationListener<ApplicationEvent> startOnFirstRefusal = event -> {
-                if (event instanceof MethodRetryEvent retry && retry.getFailure().toString().contains(":" + port)
-                        && started.compareAndSet(false, true)) {
-                    start(lateReceiver, port);
-                }
-            };
+            ApplicationListener<ApplicationEvent> startOnFirstRefusal =
+                    event -> {
+                        if (event instanceof MethodRetryEvent retry
+                                && retry.getFailure().toString().contains(":" + port)
+                                && started.compareAndSet(false, true)) {
+                            start(lateReceiver, port);
+                        }
+                    };
             applicationContext.addApplicationListener(startOnFirstRefusal);
             try {
                 createTask(createUser(UserRole.ADMIN), assignee);
@@ -2010,7 +2170,9 @@ class WebhookDeliveryTests {
         insertDelivery(endpoint, WebhookDeliveryStatus.PENDING, cutoff.minusSeconds(1));
         insertDelivery(endpoint, WebhookDeliveryStatus.DELIVERED, cutoff.minusMillis(1));
         UUID atTheCutoff = insertDelivery(endpoint, WebhookDeliveryStatus.DELIVERED, cutoff);
-        UUID recent = insertDelivery(endpoint, WebhookDeliveryStatus.FAILED, NOW.minus(Duration.ofDays(1)));
+        UUID recent =
+                insertDelivery(
+                        endpoint, WebhookDeliveryStatus.FAILED, NOW.minus(Duration.ofDays(1)));
 
         int deleted = deliveryService.purge();
 
@@ -2068,11 +2230,17 @@ class WebhookDeliveryTests {
         awaitAttempts(onlyDeliveryId(erasedEndpoint), 1);
         awaitAttempts(onlyDeliveryId(otherEndpoint), 1);
         userService.delete(erased.getId());
-        // Dated long before anything the other test classes delete, so the erasure below reaches only this user
+        // Dated long before anything the other test classes delete, so the erasure below reaches
+        // only this user
         Instant deletedAt = Instant.parse("1990-01-01T00:00:00Z");
-        jdbcTemplate.update("UPDATE users SET deleted_at = ? WHERE id = ?", Timestamp.from(deletedAt), erased.getId());
+        jdbcTemplate.update(
+                "UPDATE users SET deleted_at = ? WHERE id = ?",
+                Timestamp.from(deletedAt),
+                erased.getId());
 
-        List<UUID> erasedIds = retentionQueries.anonymizeUsersDeletedBefore(deletedAt.plusSeconds(1), clock.instant());
+        List<UUID> erasedIds =
+                retentionQueries.anonymizeUsersDeletedBefore(
+                        deletedAt.plusSeconds(1), clock.instant());
 
         assertThat(erasedIds).contains(erased.getId());
         assertThat(deliveryIds(erasedEndpoint)).isEmpty();
@@ -2088,7 +2256,8 @@ class WebhookDeliveryTests {
     }
 
     private RecordedRequest nextRequest() throws InterruptedException {
-        RecordedRequest request = receiver.takeRequest(DELIVERY_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+        RecordedRequest request =
+                receiver.takeRequest(DELIVERY_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
         assertThat(request).as("request received by the webhook receiver").isNotNull();
         return request;
     }
@@ -2106,28 +2275,42 @@ class WebhookDeliveryTests {
             Instant timestamp,
             CreatedTask task,
             User actor,
-            Map<String, Object> details
-    ) {
+            Map<String, Object> details) {
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("task", Map.of("id", task.id().toString(), "reference", task.reference(), "title", TITLE));
-        data.put("actor", actor == null
-                ? null
-                : Map.of("id", actor.getId().toString(), "displayName", actor.getDisplayName()));
+        data.put(
+                "task",
+                Map.of("id", task.id().toString(), "reference", task.reference(), "title", TITLE));
+        data.put(
+                "actor",
+                actor == null
+                        ? null
+                        : Map.of(
+                                "id",
+                                actor.getId().toString(),
+                                "displayName",
+                                actor.getDisplayName()));
         data.putAll(details);
 
-        return jsonMapper.valueToTree(Map.of("type", type, "timestamp", timestamp.toString(), "data", data));
+        return jsonMapper.valueToTree(
+                Map.of("type", type, "timestamp", timestamp.toString(), "data", data));
     }
 
     private ResultActions sendTestEvent(User owner, Endpoint endpoint) throws Exception {
         return mockMvc.perform(post(TEST_EVENT, owner.getId(), endpoint.id()).with(asUser(owner)));
     }
 
-    private ResultActions redeliver(User owner, Endpoint endpoint, UUID deliveryId) throws Exception {
-        return mockMvc.perform(post(REDELIVER, owner.getId(), endpoint.id(), deliveryId).with(asUser(owner)));
+    private ResultActions redeliver(User owner, Endpoint endpoint, UUID deliveryId)
+            throws Exception {
+        return mockMvc.perform(
+                post(REDELIVER, owner.getId(), endpoint.id(), deliveryId).with(asUser(owner)));
     }
 
-    /** Assigns a new task to the owner at the given time, and waits until the receiver's answer is recorded. */
-    private UUID attemptAt(Instant at, int answer, User admin, User owner, Endpoint endpoint) throws Exception {
+    /**
+     * Assigns a new task to the owner at the given time, and waits until the receiver's answer is
+     * recorded.
+     */
+    private UUID attemptAt(Instant at, int answer, User admin, User owner, Endpoint endpoint)
+            throws Exception {
         clock.set(at);
         answer(answer);
         createTask(admin, owner);
@@ -2137,7 +2320,8 @@ class WebhookDeliveryTests {
         return deliveryId;
     }
 
-    private void openTheBreakerOfTheReceiver(User admin, User owner, Endpoint endpoint) throws Exception {
+    private void openTheBreakerOfTheReceiver(User admin, User owner, Endpoint endpoint)
+            throws Exception {
         for (int i = 0; i < FAILURES_OPENING_A_BREAKER; i++) {
             attemptAt(NOW, 500, admin, owner, endpoint);
         }
@@ -2170,8 +2354,10 @@ class WebhookDeliveryTests {
     }
 
     private void makeSecretUnreadable(Endpoint endpoint) {
-        jdbcTemplate.update("UPDATE webhook_endpoints SET secret = ? WHERE id = ?",
-                OTHER_KEY.encrypt(endpoint.secret()), endpoint.id());
+        jdbcTemplate.update(
+                "UPDATE webhook_endpoints SET secret = ? WHERE id = ?",
+                OTHER_KEY.encrypt(endpoint.secret()),
+                endpoint.id());
     }
 
     private long deadLetters() {
@@ -2179,12 +2365,16 @@ class WebhookDeliveryTests {
     }
 
     private Instant failingSince(Endpoint endpoint) {
-        Timestamp failingSince = jdbcTemplate.queryForObject(
-                "SELECT failing_since FROM webhook_endpoints WHERE id = ?", Timestamp.class, endpoint.id());
+        Timestamp failingSince =
+                jdbcTemplate.queryForObject(
+                        "SELECT failing_since FROM webhook_endpoints WHERE id = ?",
+                        Timestamp.class,
+                        endpoint.id());
         return failingSince == null ? null : failingSince.toInstant();
     }
 
-    private UUID insertDelivery(Endpoint endpoint, WebhookDeliveryStatus status, Instant createdAt) {
+    private UUID insertDelivery(
+            Endpoint endpoint, WebhookDeliveryStatus status, Instant createdAt) {
         return jdbcTemplate.queryForObject(
                 """
                         INSERT INTO webhook_deliveries (endpoint_id, event, payload, status, attempts, created_at)
@@ -2195,8 +2385,7 @@ class WebhookDeliveryTests {
                 endpoint.id(),
                 LOST_PAYLOAD,
                 status.name(),
-                Timestamp.from(createdAt)
-        );
+                Timestamp.from(createdAt));
     }
 
     // A delivery without its outbox message, as if the message had been lost
@@ -2212,8 +2401,7 @@ class WebhookDeliveryTests {
                 endpoint.id(),
                 LOST_PAYLOAD,
                 Timestamp.from(nextAttemptAt),
-                Timestamp.from(clock.instant())
-        );
+                Timestamp.from(clock.instant()));
     }
 
     private WebhookDelivery delivery(UUID deliveryId) {
@@ -2221,26 +2409,32 @@ class WebhookDeliveryTests {
     }
 
     private WebhookDelivery awaitAttempts(UUID deliveryId, int attempts) {
-        return await().atMost(DELIVERY_TIMEOUT).pollInterval(Duration.ofMillis(50))
+        return await().atMost(DELIVERY_TIMEOUT)
+                .pollInterval(Duration.ofMillis(50))
                 .until(() -> delivery(deliveryId), delivery -> delivery.getAttempts() >= attempts);
     }
 
     private WebhookDelivery awaitPostponed(UUID deliveryId) {
-        return await().atMost(DELIVERY_TIMEOUT).pollInterval(Duration.ofMillis(50))
-                .until(() -> delivery(deliveryId), delivery -> "HostUnavailable".equals(delivery.getLastError()));
+        return await().atMost(DELIVERY_TIMEOUT)
+                .pollInterval(Duration.ofMillis(50))
+                .until(
+                        () -> delivery(deliveryId),
+                        delivery -> "HostUnavailable".equals(delivery.getLastError()));
     }
 
     private WebhookDelivery awaitFinished(UUID deliveryId) {
-        return await().atMost(DELIVERY_TIMEOUT).pollInterval(Duration.ofMillis(50))
-                .until(() -> delivery(deliveryId), delivery -> delivery.getStatus() != WebhookDeliveryStatus.PENDING);
+        return await().atMost(DELIVERY_TIMEOUT)
+                .pollInterval(Duration.ofMillis(50))
+                .until(
+                        () -> delivery(deliveryId),
+                        delivery -> delivery.getStatus() != WebhookDeliveryStatus.PENDING);
     }
 
     private List<UUID> deliveryIds(Endpoint endpoint) {
         return jdbcTemplate.queryForList(
                 "SELECT id FROM webhook_deliveries WHERE endpoint_id = ? ORDER BY created_at, id",
                 UUID.class,
-                endpoint.id()
-        );
+                endpoint.id());
     }
 
     private UUID onlyDeliveryId(Endpoint endpoint) {
@@ -2250,15 +2444,16 @@ class WebhookDeliveryTests {
     }
 
     private double deliveryCount(String outcome) {
-        Counter counter = meterRegistry.find("webhook.deliveries").tag("outcome", outcome).counter();
+        Counter counter =
+                meterRegistry.find("webhook.deliveries").tag("outcome", outcome).counter();
         return counter == null ? 0 : counter.count();
     }
 
     private static void assertJittered(Duration delay, Duration scheduled) {
-        assertThat(delay).isBetween(
-                Duration.ofMillis((long) (scheduled.toMillis() * 0.8)),
-                Duration.ofMillis((long) (scheduled.toMillis() * 1.2))
-        );
+        assertThat(delay)
+                .isBetween(
+                        Duration.ofMillis((long) (scheduled.toMillis() * 0.8)),
+                        Duration.ofMillis((long) (scheduled.toMillis() * 1.2)));
     }
 
     private Endpoint createEndpoint(User owner, String... events) throws Exception {
@@ -2266,43 +2461,59 @@ class WebhookDeliveryTests {
     }
 
     private Endpoint createEndpointAt(User owner, String url, String... events) throws Exception {
-        JsonNode created = json(mockMvc.perform(post(WEBHOOKS, owner.getId())
-                        .with(asUser(owner))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"url\": \"%s\", \"events\": %s}".formatted(url, eventArray(events))))
-                .andExpect(status().isCreated()));
+        JsonNode created =
+                json(
+                        mockMvc.perform(
+                                        post(WEBHOOKS, owner.getId())
+                                                .with(asUser(owner))
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(
+                                                        "{\"url\": \"%s\", \"events\": %s}"
+                                                                .formatted(
+                                                                        url, eventArray(events))))
+                                .andExpect(status().isCreated()));
 
         return new Endpoint(
                 UUID.fromString(created.get("id").asString()),
                 created.get("secret").asString(),
                 url,
-                events
-        );
+                events);
     }
 
     private void pause(User owner, Endpoint endpoint) throws Exception {
-        mockMvc.perform(put(WEBHOOK, owner.getId(), endpoint.id())
-                        .with(asUser(owner))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"url\": \"%s\", \"events\": %s, \"enabled\": false}"
-                                .formatted(endpoint.url(), eventArray(endpoint.events()))))
+        mockMvc.perform(
+                        put(WEBHOOK, owner.getId(), endpoint.id())
+                                .with(asUser(owner))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        "{\"url\": \"%s\", \"events\": %s, \"enabled\": false}"
+                                                .formatted(
+                                                        endpoint.url(),
+                                                        eventArray(endpoint.events()))))
                 .andExpect(status().isOk());
     }
 
     private void enable(User owner, Endpoint endpoint) throws Exception {
-        mockMvc.perform(put(WEBHOOK, owner.getId(), endpoint.id())
-                        .with(asUser(owner))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"url\": \"%s\", \"events\": %s, \"enabled\": true}"
-                                .formatted(endpoint.url(), eventArray(endpoint.events()))))
+        mockMvc.perform(
+                        put(WEBHOOK, owner.getId(), endpoint.id())
+                                .with(asUser(owner))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        "{\"url\": \"%s\", \"events\": %s, \"enabled\": true}"
+                                                .formatted(
+                                                        endpoint.url(),
+                                                        eventArray(endpoint.events()))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.enabled").value(true));
     }
 
     private String rotate(User owner, Endpoint endpoint) throws Exception {
-        return json(mockMvc.perform(post(WEBHOOK + "/secret", owner.getId(), endpoint.id()).with(asUser(owner)))
-                .andExpect(status().isOk()))
-                .get("secret").asString();
+        return json(mockMvc.perform(
+                                post(WEBHOOK + "/secret", owner.getId(), endpoint.id())
+                                        .with(asUser(owner)))
+                        .andExpect(status().isOk()))
+                .get("secret")
+                .asString();
     }
 
     private static String eventArray(String... events) {
@@ -2319,39 +2530,53 @@ class WebhookDeliveryTests {
         String reference = "WH-" + UUID.randomUUID().toString().substring(0, 8);
         String assigned = assignee == null ? "null" : "\"" + assignee.getId() + "\"";
 
-        JsonNode created = json(mockMvc.perform(post(TASKS)
-                        .with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+        JsonNode created =
+                json(
+                        mockMvc.perform(
+                                        post(TASKS)
+                                                .with(asAdmin(admin))
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(
+                                                        """
                                 {"reference": "%s", "title": "%s", "dueAt": "%s", "assignedTo": %s}
-                                """.formatted(reference, TITLE, dueAt, assigned)))
-                .andExpect(status().isCreated()));
+                                """
+                                                                .formatted(
+                                                                        reference, TITLE, dueAt,
+                                                                        assigned)))
+                                .andExpect(status().isCreated()));
 
         return new CreatedTask(UUID.fromString(created.get("id").asString()), reference);
     }
 
     private void assign(User admin, CreatedTask task, User assignee) throws Exception {
-        mockMvc.perform(patch(TASKS + "/{id}/assign", task.id())
-                        .with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\": \"" + assignee.getId() + "\"}"))
+        mockMvc.perform(
+                        patch(TASKS + "/{id}/assign", task.id())
+                                .with(asAdmin(admin))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"userId\": \"" + assignee.getId() + "\"}"))
                 .andExpect(status().isOk());
     }
 
     private void cancel(User admin, CreatedTask task) throws Exception {
-        mockMvc.perform(post(TASKS + "/{id}/cancel", task.id())
-                        .with(asAdmin(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"reason\": \"Obsolete\"}"))
+        mockMvc.perform(
+                        post(TASKS + "/{id}/cancel", task.id())
+                                .with(asAdmin(admin))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"reason\": \"Obsolete\"}"))
                 .andExpect(status().isOk());
     }
 
     private UUID comment(User author, CreatedTask task, String body) throws Exception {
-        JsonNode created = json(mockMvc.perform(post(TASKS + "/{id}/comments", task.id())
-                        .with(asUser(author))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonMapper.writeValueAsString(Map.of("body", body))))
-                .andExpect(status().isCreated()));
+        JsonNode created =
+                json(
+                        mockMvc.perform(
+                                        post(TASKS + "/{id}/comments", task.id())
+                                                .with(asUser(author))
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(
+                                                        jsonMapper.writeValueAsString(
+                                                                Map.of("body", body))))
+                                .andExpect(status().isCreated()));
 
         return UUID.fromString(created.get("id").asString());
     }
@@ -2366,13 +2591,15 @@ class WebhookDeliveryTests {
         user.setEmail("webhook-delivery-" + UUID.randomUUID() + "@example.com");
         user.setPasswordHash(passwordEncoder.encode("password"));
         user.setEmailVerifiedAt(Instant.now());
-        user.setDisplayName("Receiver " + role + " " + UUID.randomUUID().toString().substring(0, 6));
+        user.setDisplayName(
+                "Receiver " + role + " " + UUID.randomUUID().toString().substring(0, 6));
         user.setRoles(EnumSet.of(UserRole.USER, role));
 
         return userRepository.saveAndFlush(user);
     }
 
-    // On a managed entity, as a service does: saving a detached User would not carry the change to its profile
+    // On a managed entity, as a service does: saving a detached User would not carry the change to
+    // its profile
     private void updateUser(User user, Consumer<User> change) {
         transactionTemplate.executeWithoutResult(
                 status -> change.accept(userRepository.findById(user.getId()).orElseThrow()));
@@ -2387,8 +2614,7 @@ class WebhookDeliveryTests {
     }
 
     private static RequestPostProcessor as(User user, UserRole role) {
-        return jwt()
-                .jwt(token -> token.claim("uid", user.getId().toString()))
+        return jwt().jwt(token -> token.claim("uid", user.getId().toString()))
                 .authorities(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
 
