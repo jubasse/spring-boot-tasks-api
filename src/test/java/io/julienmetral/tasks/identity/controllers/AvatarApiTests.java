@@ -16,6 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
+import io.julienmetral.tasks.support.IntegrationTest;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -27,6 +28,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.http.MediaType;
 import tools.jackson.databind.JsonNode;
 
+@IntegrationTest
 class AvatarApiTests extends AbstractAvatarApiTests {
 
     private static final int AVATAR_MAX_BYTES = 5 * 1024 * 1024;

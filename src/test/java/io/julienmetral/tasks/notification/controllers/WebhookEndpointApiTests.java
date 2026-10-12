@@ -28,6 +28,7 @@ import io.julienmetral.tasks.identity.services.UserService;
 import io.julienmetral.tasks.notification.webhook.WebhookSecrets;
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.TestClock;
+import io.julienmetral.tasks.support.TestPasswords;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -1314,7 +1315,7 @@ class WebhookEndpointApiTests {
         User user = new User();
 
         user.setEmail("webhooks-" + UUID.randomUUID() + "@example.com");
-        user.setPasswordHash(passwordEncoder.encode("password"));
+        user.setPasswordHash(TestPasswords.hash(passwordEncoder, "password"));
         user.setDisplayName("Webhook " + role);
         user.setRoles(EnumSet.of(UserRole.USER, role));
 

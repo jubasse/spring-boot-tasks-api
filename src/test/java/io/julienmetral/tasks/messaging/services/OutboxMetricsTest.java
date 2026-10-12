@@ -27,9 +27,14 @@ class OutboxMetricsTest {
 
     @Mock private OutboxMessageRepository repository;
 
+    // Micrometer holds a gauge's object weakly: unreferenced, the metrics were collected and the
+    // age gauge read NaN (CI run 38220486021). The application context holds the bean.
+    private OutboxMetrics metrics;
+
     @BeforeEach
     void bind() {
-        new OutboxMetrics(repository, Clock.fixed(NOW, ZoneOffset.UTC)).bindTo(registry);
+        metrics = new OutboxMetrics(repository, Clock.fixed(NOW, ZoneOffset.UTC));
+        metrics.bindTo(registry);
     }
 
     @Test

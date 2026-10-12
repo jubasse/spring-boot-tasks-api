@@ -13,6 +13,7 @@ import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.TestPasswords;
 import java.time.Instant;
 import java.util.EnumSet;
 import java.util.List;
@@ -90,7 +91,7 @@ class UserQueryCountTests {
         User user = new User();
 
         user.setEmail(UUID.randomUUID() + "@example.com");
-        user.setPasswordHash(passwordEncoder.encode("password"));
+        user.setPasswordHash(TestPasswords.hash(passwordEncoder, "password"));
         user.setEmailVerifiedAt(Instant.now());
         user.setDisplayName("Query count " + UUID.randomUUID().toString().substring(0, 4));
         user.setRoles(EnumSet.copyOf(roles));

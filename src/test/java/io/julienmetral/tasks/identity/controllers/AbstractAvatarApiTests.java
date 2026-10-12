@@ -15,7 +15,7 @@ import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.messaging.AvatarQueues;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.media.model.MediaUsage;
-import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.TestPasswords;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
@@ -63,8 +63,11 @@ import tools.jackson.databind.json.JsonMapper;
  * Shared fixtures for the profile photo API tests: active users created in the database, uploads
  * through the API processed by the RabbitMQ worker, and direct access to the stored objects and
  * their {@code media} rows.
+ *
+ * <p>Warning: the concrete classes carry {@code @IntegrationTest} or
+ * {@code @DeadLetterIntegrationTest}, never this base: a dead-letter subclass would otherwise
+ * declare the {@code RabbitTemplate} spy of {@code @IntegrationTest} twice, which Spring refuses.
  */
-@IntegrationTest
 abstract class AbstractAvatarApiTests {
 
     static final String USERS = "/api/v1/users";
@@ -97,7 +100,7 @@ abstract class AbstractAvatarApiTests {
         User user = new User();
 
         user.setEmail(UUID.randomUUID() + "@example.com");
-        user.setPasswordHash(passwordEncoder.encode("password"));
+        user.setPasswordHash(TestPasswords.hash(passwordEncoder, "password"));
         user.setEmailVerifiedAt(Instant.now());
         user.setDisplayName("Avatar " + role + " " + UUID.randomUUID().toString().substring(0, 4));
         user.setRoles(EnumSet.of(UserRole.USER, role));

@@ -12,9 +12,9 @@ import io.julienmetral.tasks.export.messaging.ExportQueues;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
 import io.julienmetral.tasks.support.TestClock;
+import io.julienmetral.tasks.support.TestPasswords;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -52,8 +52,11 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <p>Warning: a tasks export reads every task of the shared database. Tests filter by an assignee
  * of their own, or look for their own references, and never count the rows of an unfiltered export.
+ *
+ * <p>Warning: the concrete classes carry {@code @IntegrationTest} or
+ * {@code @DeadLetterIntegrationTest}, never this base: a dead-letter subclass would otherwise
+ * declare the {@code RabbitTemplate} spy of {@code @IntegrationTest} twice, which Spring refuses.
  */
-@IntegrationTest
 public abstract class AbstractDataExportTests {
 
     protected static final String EXPORTS = "/api/v1/exports";
@@ -88,7 +91,7 @@ public abstract class AbstractDataExportTests {
         User user = new User();
 
         user.setEmail("export-" + UUID.randomUUID() + "@example.com");
-        user.setPasswordHash(passwordEncoder.encode("password"));
+        user.setPasswordHash(TestPasswords.hash(passwordEncoder, "password"));
         user.setEmailVerifiedAt(Instant.now());
         user.setDisplayName("Export " + role + " " + UUID.randomUUID().toString().substring(0, 8));
         user.setRoles(EnumSet.of(UserRole.USER, role));

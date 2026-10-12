@@ -14,6 +14,7 @@ import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.TestPasswords;
 import io.julienmetral.tasks.support.WebCallers;
 import java.time.Instant;
 import java.util.EnumSet;
@@ -180,7 +181,7 @@ class OpenApiConformanceTests {
         User user = new User();
 
         user.setEmail(UUID.randomUUID() + "@example.com");
-        user.setPasswordHash(passwordEncoder.encode("password"));
+        user.setPasswordHash(TestPasswords.hash(passwordEncoder, "password"));
         user.setEmailVerifiedAt(Instant.now());
         user.setDisplayName("OpenAPI " + role);
         user.setRoles(EnumSet.of(UserRole.USER, role));

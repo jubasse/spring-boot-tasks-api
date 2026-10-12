@@ -6,10 +6,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
-import java.time.Duration;
+import io.julienmetral.tasks.support.MailOutbox;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
@@ -17,13 +18,12 @@ import tools.jackson.databind.JsonNode;
 
 /**
  * Comment and mention emails, end to end: comments go through the API, and the emails sent after
- * commit are read back from the Mailpit container.
+ * commit are read back from the Mailpit container. Emails that must not be sent are counted in the
+ * outbox, written before the request returns.
  */
 class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
 
-    // Mail is dispatched asynchronously after commit: "nothing sent" can only be checked after a
-    // grace period
-    private static final Duration NO_MAIL_GRACE_PERIOD = Duration.ofMillis(800);
+    @Autowired private MailOutbox mailOutbox;
 
     @Value("${mailpit.api-url}")
     private String mailpitApiUrl;
@@ -95,8 +95,8 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
         addComment(asUser(author), taskId, "Over to you " + mention(assignee));
 
         awaitTextWithSubject(assignee, mentionSubject(author, reference));
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, commentSubject(reference))).isZero();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), commentSubject(reference)))
+                .isZero();
     }
 
     @Test
@@ -113,9 +113,12 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
                 "Done, " + mention(mentioned) + " and " + mention(assignee));
 
         awaitTextWithSubject(mentioned, mentionSubject(assignee, reference));
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, commentSubject(reference))).isZero();
-        assertThat(countWithSubject(assignee, mentionSubject(assignee, reference))).isZero();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), commentSubject(reference)))
+                .isZero();
+        assertThat(
+                        mailOutbox.countQueuedTo(
+                                assignee.getEmail(), mentionSubject(assignee, reference)))
+                .isZero();
     }
 
     @Test
@@ -127,9 +130,9 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
 
         addComment(asUser(author), taskId, "Reminder for " + mention(author));
 
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(author, mentionSubject(author, reference))).isZero();
-        assertThat(countTo(author)).isZero();
+        assertThat(mailOutbox.countQueuedTo(author.getEmail(), mentionSubject(author, reference)))
+                .isZero();
+        assertThat(mailOutbox.countQueuedTo(author.getEmail())).isZero();
     }
 
     @Test
@@ -140,9 +143,8 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
 
         addComment(asUser(author), taskId, "Anyone?");
 
-        waitForAsyncDispatch();
-        assertThat(countTo(admin)).isZero();
-        assertThat(countTo(author)).isZero();
+        assertThat(mailOutbox.countQueuedTo(admin.getEmail())).isZero();
+        assertThat(mailOutbox.countQueuedTo(author.getEmail())).isZero();
     }
 
     @Test
@@ -155,8 +157,10 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
 
         addComment(asUser(author), taskId, "Anyone there?");
 
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, commentSubject(referenceOf(taskId)))).isZero();
+        assertThat(
+                        mailOutbox.countQueuedTo(
+                                assignee.getEmail(), commentSubject(referenceOf(taskId))))
+                .isZero();
     }
 
     @Test
@@ -172,8 +176,8 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
         addComment(asUser(author), taskId, "FYI " + mention(mentioned));
 
         awaitTextWithSubject(mentioned, mentionSubject(author, reference));
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, commentSubject(reference))).isZero();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), commentSubject(reference)))
+                .isZero();
     }
 
     @Test
@@ -200,8 +204,9 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
         addComment(asUser(author), taskId, "Question for " + mention(assignee));
 
         awaitTextWithSubject(assignee, commentSubject(referenceOf(taskId)));
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, mentionSubject(author, referenceOf(taskId))))
+        assertThat(
+                        mailOutbox.countQueuedTo(
+                                assignee.getEmail(), mentionSubject(author, referenceOf(taskId))))
                 .isZero();
     }
 
@@ -218,8 +223,7 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
         addComment(asUser(author), taskId, "Ping " + mention(mentioned));
 
         awaitTextWithSubject(assignee, commentSubject(reference));
-        waitForAsyncDispatch();
-        assertThat(countTo(mentioned)).isZero();
+        assertThat(mailOutbox.countQueuedTo(mentioned.getEmail())).isZero();
     }
 
     @Test
@@ -236,8 +240,10 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
         editComment(asUser(author), taskId, commentId, "Still for " + mention(mentioned))
                 .andExpect(status().isOk());
 
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(mentioned, mentionSubject(author, reference))).isOne();
+        assertThat(
+                        mailOutbox.countQueuedTo(
+                                mentioned.getEmail(), mentionSubject(author, reference)))
+                .isOne();
     }
 
     @Test
@@ -263,9 +269,10 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
         String text = awaitTextWithSubject(second, mentionSubject(author, reference));
         assertThat(text)
                 .contains("For @" + first.getDisplayName() + " and @" + second.getDisplayName());
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(first, mentionSubject(author, reference))).isOne();
-        assertThat(countWithSubject(assignee, commentSubject(reference))).isOne();
+        assertThat(mailOutbox.countQueuedTo(first.getEmail(), mentionSubject(author, reference)))
+                .isOne();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), commentSubject(reference)))
+                .isOne();
     }
 
     @Test
@@ -283,9 +290,12 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
         editComment(asUser(author), taskId, commentId, "Typo fixed, for " + mention(mentioned))
                 .andExpect(status().isOk());
 
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(mentioned, mentionSubject(author, reference))).isOne();
-        assertThat(countWithSubject(assignee, commentSubject(reference))).isOne();
+        assertThat(
+                        mailOutbox.countQueuedTo(
+                                mentioned.getEmail(), mentionSubject(author, reference)))
+                .isOne();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), commentSubject(reference)))
+                .isOne();
     }
 
     @Test
@@ -301,9 +311,9 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
         postComment(asUser(author), taskId, mention(mentioned) + " " + mention(disabled))
                 .andExpect(status().isUnprocessableContent());
 
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, commentSubject(reference))).isZero();
-        assertThat(countTo(mentioned)).isZero();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), commentSubject(reference)))
+                .isZero();
+        assertThat(mailOutbox.countQueuedTo(mentioned.getEmail())).isZero();
     }
 
     @Test
@@ -345,16 +355,6 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
         return author.getDisplayName() + " mentioned you on task " + reference;
     }
 
-    private int countTo(User recipient) {
-        return readMailpit("/api/v1/search?query={query}", "to:\"" + recipient.getEmail() + "\"")
-                .path("messages_count")
-                .asInt();
-    }
-
-    private int countWithSubject(User recipient, String subject) {
-        return searchBySubject(recipient, subject).path("messages_count").asInt();
-    }
-
     /**
      * Plain-text body of the latest email with this subject, waiting up to 5 seconds for the async
      * dispatch.
@@ -380,7 +380,7 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
                         "No email \"" + subject + "\" received by " + recipient.getEmail());
             }
 
-            Thread.sleep(100);
+            Thread.sleep(20);
         }
     }
 
@@ -399,9 +399,5 @@ class TaskCommentNotificationApiTests extends AbstractTaskCommentApiTests {
                         .body(String.class);
 
         return json(body);
-    }
-
-    private static void waitForAsyncDispatch() throws InterruptedException {
-        Thread.sleep(NO_MAIL_GRACE_PERIOD);
     }
 }

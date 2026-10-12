@@ -7,7 +7,7 @@
 - **Problème** : certains comportements se testent mal tels quels : le temps qui passe, l'asynchrone, le nombre de requêtes SQL, un serveur HTTP distant. Certaines conventions (« chaque job a un verrou ») ne sont protégées par rien, et on les oublie sur la classe suivante.
 - **Quand l'utiliser** : une horloge contrôlée dès qu'un service raisonne sur le temps, Awaitility pour tout résultat asynchrone, un compteur de requêtes sur les listes, un faux serveur HTTP pour un client sortant. Chaque convention que le compilateur ne voit pas gagne un test garde-fou.
 - **Quand s'en passer** : un test unitaire qui reçoit déjà une `Clock` fixe (`Clock.fixed`, guide 01), ou une convention qu'un type ou une annotation obligatoire impose déjà.
-- **Dans ce dépôt** : `TestClock`, `Mailpit`, `SqlStatementCounter`, MockWebServer, et des tests qui parcourent le code (`AccessDescriptionTest`, `ScheduledJobLocksTest`) ou les fichiers de configuration (`ProdProfileTest`).
+- **Dans ce dépôt** : `TestClock`, `Mailpit`, `MailOutbox`, `SqlStatementCounter`, MockWebServer, et des tests qui parcourent le code (`AccessDescriptionTest`, `ScheduledJobLocksTest`, `MailSendersAreSynchronousTest`) ou les fichiers de configuration (`ProdProfileTest`).
 - **Prérequis** : guides 29 (contextes) et 01 (`Clock`, `ApplicationContextRunner`). Versions : Spring Boot 4.1, JUnit 6, AssertJ 3, Awaitility 4.3, MockWebServer 5.5 (`mockwebserver3`), Hibernate 7.
 
 Les outils et le risque qu'ils couvrent :
@@ -71,7 +71,30 @@ On relit l'état jusqu'à ce qu'il soit vrai, ou jusqu'à l'échec :
 ```
 
 - Un `Thread.sleep(2000)` est trop long quand tout va bien et trop court sur une CI chargée. L'attente active s'arrête dès que la condition est vraie.
-- Prouver qu'une chose n'arrive pas (« un seul mail ») demande au contraire un délai de grâce : on attend un peu, puis on compte. Le dépôt a une constante `NO_MAIL_GRACE_PERIOD` pour cela.
+- Prouver qu'une chose n'arrive pas (« aucun mail », « un seul mail ») ne se fait pas par attente active : la condition est vraie tout de suite, avant l'arrivée d'un doublon. On lit plutôt l'endroit où la décision s'écrit, s'il est écrit avant le retour de l'appel.
+
+### Prouver une absence sans attendre
+
+Un mail n'est pas envoyé par la requête : il est écrit dans l'outbox, dans la transaction de la requête, puis livré par d'autres threads.
+
+```
+ test --> POST /tasks (MockMvc, thread du test)
+            |
+            v
+   transaction : la tâche + le listener de mail --> ligne dans outbox_messages
+            |
+            v  commit, puis retour au test
+   compter les lignes de l'outbox : 0 --> aucun mail ne partira
+            .
+            .  plus tard, sur d'autres threads
+            v
+   relais --> RabbitMQ --> SMTP --> Mailpit
+```
+
+- Une fois l'appel revenu, la ligne existe ou n'existera jamais : on compte tout de suite. Compter dans Mailpit demandait d'attendre un délai deviné, trop long quand tout va bien et peut-être trop court sur une CI chargée.
+- Cela ne tient que si chaque listener de mail tourne sur le thread de l'appel. Un `@Async` ou un `@TransactionalEventListener` (qui s'exécute après le commit) écrirait la ligne après le retour, et le test passerait trop tôt : un garde-fou l'interdit.
+- Un mail décidé sur un autre thread (un consommateur de file, un listener RabbitMQ) se prouve encore avec un délai de grâce : on attend un peu, puis on compte.
+- Un mail qui doit arriver se lit toujours dans Mailpit, avec une attente active : cela teste aussi la livraison.
 
 ### Les tests garde-fous
 
@@ -477,7 +500,8 @@ class ArchitectureTest {
 | Construire par `@InjectMocks` un service à `Clock` | Mockito passe `null` : NPE | Déclarer un `@Spy Clock clock = Clock.fixed(...)` |
 | Remplacer `Clock` par `@MockitoBean` dans une classe | un contexte de plus, avec ses conteneurs | Importer un `TestClock` par l'annotation de la famille |
 | Attendre avec `Thread.sleep` | test lent quand tout va bien, instable sur une CI chargée | Écrire `await().atMost(...).untilAsserted(...)` |
-| Prouver une absence avec `await` | la condition est vraie tout de suite, avant l'arrivée du doublon | Attendre un délai de grâce, puis compter |
+| Prouver une absence avec `await` | la condition est vraie tout de suite, avant l'arrivée du doublon | Compter dans l'outbox au retour de l'appel ; un délai de grâce seulement si la décision se prend sur un autre thread |
+| Rendre un listener de mail `@Async` ou `@TransactionalEventListener` | la ligne de l'outbox est écrite après le retour de l'appel : un test d'absence passe trop tôt | `MailSendersAreSynchronousTest` le signale ; garder des listeners synchrones |
 
 ### Compteur de requêtes et MockWebServer
 
@@ -502,7 +526,7 @@ class ArchitectureTest {
 **À retenir :** ce qui dépend du temps, d'un autre thread, du nombre de requêtes ou d'un serveur distant se teste avec un outil dédié qui ne crée aucun contexte de plus. Chaque convention que le compilateur ne voit pas gagne un test garde-fou qui se teste lui-même.
 
 - [ ] Les services lisent un bean `Clock`, les tests d'intégration un `TestClock` remis à zéro après chaque test
-- [ ] `await()` pour l'asynchrone, un délai de grâce pour prouver une absence
+- [ ] `await()` pour l'asynchrone, l'outbox pour prouver une absence, un délai de grâce seulement pour ce qui se décide sur un autre thread
 - [ ] Un compteur de requêtes enregistré par propriété, limité au thread du test
 - [ ] Des tests « liste courte contre liste longue » sur chaque liste paginée
 - [ ] MockWebServer sur `127.0.0.1` pour chaque client HTTP sortant
@@ -518,11 +542,14 @@ class ArchitectureTest {
 | [`ClearCachesAfterEach`][caches] | vide tous les caches après chaque test : un statut de compte modifié en SQL ne survit pas au test |
 | [`AwaitilityDefaults`][awaitility-defaults] | un `LauncherSessionListener` : Awaitility vérifie tout de suite, puis toutes les 20 ms |
 | [`Mailpit`][mailpit] | lit les mails capturés par l'API de Mailpit ; `latestTextTo` attend jusqu'à 5 s, en lisant toutes les 20 ms |
+| [`MailOutbox`][mail-outbox] | compte les mails écrits dans l'outbox pour une adresse : prouve une absence sans attendre |
+| [`TestPasswords`][test-passwords] | un seul hash Argon2id par mot de passe et par JVM, pour les utilisateurs écrits en base |
 | [`SqlStatementCounter`][counter] | l'inspecteur Hibernate, par thread |
 | [`TaskQueryCountTests`][task-count], [`UserQueryCountTests`][user-count] | les listes courtes contre longues |
 | [`OutboundHttpConfigurationTest`][outbound-test] | MockWebServer devant le vrai client Apache et son filtre d'adresses |
 | [`AccessDescriptionTest`][access-test] | chaque règle de sécurité d'un contrôleur porte une `@AccessDescription` |
 | [`ScheduledJobLocksTest`][locks-test] | chaque `@Scheduled` a son verrou, ou est un poller autorisé (guide 21) |
+| [`MailSendersAreSynchronousTest`][mail-senders-test] | les listeners de mail restent synchrones, sans `@Async` ni `@TransactionalEventListener` |
 | [`NullMarkedPackagesTest`][null-marked-test] | chaque package de `src/main/java` est `@NullMarked`, sinon NullAway l'ignore (guide 34) |
 | [`ProdProfileTest`][prod-test] | le profil `prod` lu par un `Binder`, sans démarrer l'application |
 | [`RequiredPropertiesCheckTest`][required-test] | les réglages obligatoires, avec `ApplicationContextRunner` |
@@ -539,10 +566,13 @@ Les réglages de test, dans [`config/application.yaml`][test-yaml] :
 Ce qui est propre au dépôt :
 
 - Awaitility attend 100 ms avant sa première lecture, puis entre deux lectures, et ne lit aucune propriété système. `AwaitilityDefaults`, déclaré dans `META-INF/services/org.junit.platform.launcher.LauncherSessionListener`, fixe au démarrage de la session JUnit un `pollDelay` nul et un `pollInterval` de 20 ms. Un test qui appelle `pollInterval` ou `pollDelay` garde sa valeur.
-- `@IntegrationTest` importe `TestClock` et `Mailpit` et porte `@ExtendWith({TestClock.ResetAfterEach.class, ClearCachesAfterEach.class})`. Le contexte de `MonitoringTests` n'importe ni l'un ni l'autre.
+- `@IntegrationTest` importe `TestClock`, `Mailpit` et `MailOutbox`, et porte `@ExtendWith({TestClock.ResetAfterEach.class, ClearCachesAfterEach.class})` et un espion sur `RabbitTemplate` (guide 29). Le contexte de `MonitoringTests` n'importe aucun des trois.
 - `ClockConfiguration` fournit `Clock.systemUTC()` en production, et une trentaine de classes de `src/main` injectent `Clock`. Seuls `JwtService` et l'audit de Spring Data lisent l'heure système : le décodeur JWT vérifie `exp` sur l'horloge système (guide 01), et des lignes datées par une horloge figée dans le futur passeraient en tête des listes triées de la base partagée (guide 12).
 - `Mailpit.latestTextTo(email, containing)` : les mails passent par l'outbox et RabbitMQ, donc deux mails envoyés à la suite peuvent arriver dans le désordre. On cherche le plus récent qui contient un texte, pas le dernier de tous. La boucle est écrite à la main, avec une lecture toutes les 100 ms et une échéance de 5 s. `latestVerificationTokenFor(email)` extrait le jeton de 43 caractères.
-- Délai de grâce : une constante `NO_MAIL_GRACE_PERIOD` dans les classes qui prouvent qu'un mail ne part pas, ou une seule fois. Elle vaut 800 ms le plus souvent (`MailQueueTests`, `OutboxTests`, `TaskNotificationApiTests`), 500 ms dans `RateLimitTests` et 1 s dans les tests de webhooks.
+- `MailOutbox.countQueuedTo(email)` compte les lignes de la file `mail.send` dont le destinataire est cette adresse, sans tenir compte de la casse ; `countQueuedTo(email, sujet)` ne garde que les sujets qui contiennent ce texte. Le compte couvre tous les mails jamais écrits pour l'adresse, livrés ou non.
+- Délai de grâce : une constante `NO_MAIL_GRACE_PERIOD` ne reste que là où le mail se décide sur un autre thread : les tests de la livraison elle-même (`MailQueueTests`, `OutboxTests`, `OutboxBrokerFailureTests`, 800 ms) et la désactivation d'un webhook, décidée par le listener de livraison (`WebhookDeliveryTests`, `SlackWebhookDeliveryTests`, 1 s).
+- `MailSendersAreSynchronousTest` retient les classes de l'application qui ont un champ `MailService` et une méthode `@EventListener`, méta-annotations comprises, et signale `@Async` ou `@TransactionalEventListener` sur elles et sur `MailService`.
+- `TestPasswords.hash(passwordEncoder, motDePasse)` : Argon2id est lent exprès, et les tests écrivent des centaines d'utilisateurs en base. Le hash porte son sel et ses paramètres, donc il sert à tous les utilisateurs du même mot de passe, et la connexion vérifie toujours un vrai Argon2id. Les tests du hachage lui-même (`AuthControllerTests` et ses hash BCrypt, les tests unitaires) gardent l'encodeur.
 - Les bornes mesurées dans `TaskQueryCountTests` : 2 requêtes pour une page de tâches, 1 pour une tâche, 3 pour une page d'événements, 6 pour une page de commentaires, 2 pour la liste des pièces jointes, avec le statut de l'appelant déjà en cache (une requête de plus au premier appel, vérifiée par `callerStatusIsReadOnceWhileItIsCached`). La taille de page est 50, plus grande que toutes les listes.
 - MockWebServer est démarré à la main sur `127.0.0.1` plutôt qu'avec `@StartStop`, qui se lie à ce que `localhost` résout d'abord, parfois `::1`. `WebhookDeliveryTests` vérifie la signature des webhooks avec la bibliothèque officielle Standard Webhooks.
 - `AccessDescriptionTest` scanne les `@Controller` : une `@PreAuthorize` directe, une annotation de sécurité sans `@AccessDescription` ou un placeholder `{x}` qui ne nomme aucun attribut sont signalés. Ses fixtures ne sont jamais des `@Controller`.
@@ -567,6 +597,9 @@ Les garde-fous tournent sans Docker, alors que les tests de comptage sont des te
 [mailpit]: ../../src/test/java/io/julienmetral/tasks/support/Mailpit.java
 [awaitility-defaults]: ../../src/test/java/io/julienmetral/tasks/support/AwaitilityDefaults.java
 [counter]: ../../src/test/java/io/julienmetral/tasks/support/SqlStatementCounter.java
+[mail-outbox]: ../../src/test/java/io/julienmetral/tasks/support/MailOutbox.java
+[test-passwords]: ../../src/test/java/io/julienmetral/tasks/support/TestPasswords.java
+[mail-senders-test]: ../../src/test/java/io/julienmetral/tasks/mail/MailSendersAreSynchronousTest.java
 [task-count]: ../../src/test/java/io/julienmetral/tasks/task/controllers/TaskQueryCountTests.java
 [user-count]: ../../src/test/java/io/julienmetral/tasks/identity/controllers/UserQueryCountTests.java
 [outbound-test]: ../../src/test/java/io/julienmetral/tasks/config/OutboundHttpConfigurationTest.java

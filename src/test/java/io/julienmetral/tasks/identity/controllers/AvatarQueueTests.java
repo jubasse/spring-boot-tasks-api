@@ -12,6 +12,7 @@ import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.messaging.AvatarQueues;
 import io.julienmetral.tasks.identity.messaging.AvatarUploaded;
+import io.julienmetral.tasks.support.IntegrationTest;
 import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.net.URI;
@@ -33,6 +34,7 @@ import tools.jackson.databind.JsonNode;
  * consumes {@code avatar.process} from the RabbitMQ container and replaces the photo in RustFS and
  * Postgres.
  */
+@IntegrationTest
 class AvatarQueueTests extends AbstractAvatarApiTests {
 
     // A stale message changes nothing: that can only be checked once the queue is empty and a grace

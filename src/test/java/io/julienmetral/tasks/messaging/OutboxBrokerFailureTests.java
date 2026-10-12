@@ -15,12 +15,14 @@ import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
 import io.julienmetral.tasks.support.TestClock;
 import java.net.ConnectException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.AmqpConnectException;
@@ -29,16 +31,15 @@ import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * The outbox while RabbitMQ refuses messages: the business transaction still commits, the row keeps
- * the failure, and the relay publishes it once the broker is back. {@link RabbitTemplate} is spied
- * so that publishing fails on demand, and the clock is settable so that retries become due without
- * waiting. The poller runs once at startup, then not before an hour, so each test drives {@link
- * OutboxRelay#publishDue} itself.
+ * the failure, and the relay publishes it once the broker is back. {@link RabbitTemplate} is the
+ * spy of {@link IntegrationTest}, stubbed so that publishing fails on demand, and the clock is
+ * settable so that retries become due without waiting. The poller runs once at startup, then not
+ * before an hour, so each test drives {@link OutboxRelay#publishDue} itself.
  */
 @IntegrationTest
 class OutboxBrokerFailureTests {
@@ -48,7 +49,7 @@ class OutboxBrokerFailureTests {
 
     private static final Duration PUBLISH_TIMEOUT = Duration.ofSeconds(10);
 
-    @MockitoSpyBean private RabbitTemplate rabbitTemplate;
+    @Autowired private RabbitTemplate rabbitTemplate;
 
     @Autowired private TestClock clock;
 
@@ -64,7 +65,9 @@ class OutboxBrokerFailureTests {
 
     @Autowired private PlatformTransactionManager transactionManager;
 
-    private final AtomicBoolean brokerDown = new AtomicBoolean();
+    // The spy serves the whole shared context: only this test's messages fail, so a publish still
+    // in flight from another class goes through
+    private final AtomicReference<@Nullable String> brokerDownFor = new AtomicReference<>();
 
     @BeforeEach
     void refusePublishingWhileTheBrokerIsDown() {
@@ -72,7 +75,11 @@ class OutboxBrokerFailureTests {
 
         doAnswer(
                         invocation -> {
-                            if (brokerDown.get()) {
+                            String email = brokerDownFor.get();
+                            Message message = invocation.getArgument(2);
+                            if (email != null
+                                    && new String(message.getBody(), StandardCharsets.UTF_8)
+                                            .contains(email)) {
                                 throw new AmqpConnectException(
                                         new ConnectException("Connection refused"));
                             }
@@ -87,7 +94,7 @@ class OutboxBrokerFailureTests {
             throws InterruptedException {
         String email = uniqueEmail();
         Instant sentAt = clock.instant();
-        brokerDown.set(true);
+        brokerDownFor.set(email);
 
         inTransaction()
                 .executeWithoutResult(
@@ -117,7 +124,7 @@ class OutboxBrokerFailureTests {
         assertThat(retried.getNextAttemptAt()).isEqualTo(clock.instant().plusSeconds(10));
         assertThat(mailpit.countTo(email)).isZero();
 
-        brokerDown.set(false);
+        brokerDownFor.set(null);
         clock.advance(Duration.ofSeconds(10));
         relay.publishDue();
 
@@ -136,7 +143,7 @@ class OutboxBrokerFailureTests {
     @Test
     void messageStaysUnpublishedAsLongAsTheBrokerIsDown() {
         String email = uniqueEmail();
-        brokerDown.set(true);
+        brokerDownFor.set(email);
 
         inTransaction()
                 .executeWithoutResult(
@@ -158,7 +165,7 @@ class OutboxBrokerFailureTests {
         assertThat(row(id).getPublishedAt()).isNull();
         assertThat(mailpit.countTo(email)).isZero();
 
-        brokerDown.set(false);
+        brokerDownFor.set(null);
         clock.advance(Duration.ofMinutes(10));
         relay.publishDue();
 

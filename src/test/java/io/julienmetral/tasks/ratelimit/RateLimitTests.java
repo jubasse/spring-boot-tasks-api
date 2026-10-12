@@ -14,6 +14,7 @@ import io.julienmetral.tasks.ratelimit.repositories.RateLimitQueries;
 import io.julienmetral.tasks.ratelimit.services.RateLimitKeys;
 import io.julienmetral.tasks.ratelimit.services.RateLimiter;
 import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.MailOutbox;
 import io.julienmetral.tasks.support.Mailpit;
 import io.julienmetral.tasks.support.TestClock;
 import java.io.IOException;
@@ -99,14 +100,13 @@ class RateLimitTests {
 
     private static final String PASSWORD = "password123";
 
-    // Delivery is asynchronous: "no email sent" can only be checked after a grace period
-    private static final Duration NO_MAIL_GRACE_PERIOD = Duration.ofMillis(500);
-
     private static final int PARALLEL_REQUESTS = 20;
 
     @Autowired private MockMvc mockMvc;
 
     @Autowired private Mailpit mailpit;
+
+    @Autowired private MailOutbox mailOutbox;
 
     @Autowired private JdbcTemplate jdbcTemplate;
 
@@ -281,8 +281,7 @@ class RateLimitTests {
                                     Integer.class,
                                     email))
                     .isZero();
-            Thread.sleep(NO_MAIL_GRACE_PERIOD);
-            assertThat(mailpit.countTo(email)).isZero();
+            assertThat(mailOutbox.countQueuedTo(email)).isZero();
         }
 
         @Test
@@ -347,8 +346,7 @@ class RateLimitTests {
             expectTooManyRequests(
                     requestReset(uniqueAddress(), email.toUpperCase()), UNTIL_NEXT_HOUR);
 
-            Thread.sleep(NO_MAIL_GRACE_PERIOD);
-            assertThat(mailpit.countTo(email)).isEqualTo(1 + PASSWORD_RESET_PER_EMAIL);
+            assertThat(mailOutbox.countQueuedTo(email)).isEqualTo(1 + PASSWORD_RESET_PER_EMAIL);
         }
 
         @Test
@@ -374,8 +372,7 @@ class RateLimitTests {
             assertThat(forUnusedEmail.getHeader(HttpHeaders.RETRY_AFTER))
                     .isEqualTo(forAccount.getHeader(HttpHeaders.RETRY_AFTER));
             assertThat(forUnusedEmail.getContentType()).isEqualTo(forAccount.getContentType());
-            Thread.sleep(NO_MAIL_GRACE_PERIOD);
-            assertThat(mailpit.countTo(unusedEmail)).isZero();
+            assertThat(mailOutbox.countQueuedTo(unusedEmail)).isZero();
         }
 
         @Test
@@ -446,8 +443,7 @@ class RateLimitTests {
 
             expectTooManyRequests(resend(uniqueAddress(), userId), UNTIL_NEXT_HOUR);
 
-            Thread.sleep(NO_MAIL_GRACE_PERIOD);
-            assertThat(mailpit.countTo(email)).isEqualTo(1 + VERIFICATION_RESEND_PER_USER);
+            assertThat(mailOutbox.countQueuedTo(email)).isEqualTo(1 + VERIFICATION_RESEND_PER_USER);
         }
 
         @Test

@@ -15,7 +15,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * End-to-end tests of the reminder emails: the run is called directly, and the emails sent after
- * its commit are read back from the Mailpit container.
+ * its commit are read back from the Mailpit container. Emails that must not be sent are counted in
+ * the outbox, written before the run returns.
  */
 class TaskReminderEmailTests extends AbstractTaskReminderTests {
 
@@ -70,8 +71,8 @@ class TaskReminderEmailTests extends AbstractTaskReminderTests {
 
         reminderService.sendDueReminders();
 
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, dueSoonSubject(task))).isEqualTo(1);
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), dueSoonSubject(task)))
+                .isEqualTo(1);
     }
 
     @Test
@@ -95,8 +96,7 @@ class TaskReminderEmailTests extends AbstractTaskReminderTests {
         reminderService.sendDueReminders();
 
         awaitTextWithSubject(next, dueSoonSubject(task));
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(previous, dueSoonSubject(task))).isZero();
+        assertThat(mailOutbox.countQueuedTo(previous.getEmail(), dueSoonSubject(task))).isZero();
     }
 
     @Test
@@ -113,8 +113,7 @@ class TaskReminderEmailTests extends AbstractTaskReminderTests {
         enable(assignee);
         reminderService.sendDueReminders();
 
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, dueSoonSubject(task))).isZero();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), dueSoonSubject(task))).isZero();
     }
 
     @Test
@@ -128,8 +127,7 @@ class TaskReminderEmailTests extends AbstractTaskReminderTests {
         assertThat(remindersOf(task))
                 .extracting(ReminderRow::kind)
                 .containsExactly(TaskReminderKind.OVERDUE);
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, overdueSubject(task))).isZero();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), overdueSubject(task))).isZero();
     }
 
     @Test
@@ -144,8 +142,7 @@ class TaskReminderEmailTests extends AbstractTaskReminderTests {
         assertThat(remindersOf(task))
                 .extracting(ReminderRow::recipientId)
                 .containsExactly(assignee.getId());
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, dueSoonSubject(task))).isZero();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), dueSoonSubject(task))).isZero();
     }
 
     @Test
@@ -162,8 +159,7 @@ class TaskReminderEmailTests extends AbstractTaskReminderTests {
         updateReminderSettings(assignee, true, true);
         reminderService.sendDueReminders();
 
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, dueSoonSubject(task))).isZero();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), dueSoonSubject(task))).isZero();
     }
 
     @Test
@@ -177,8 +173,7 @@ class TaskReminderEmailTests extends AbstractTaskReminderTests {
         assertThat(remindersOf(task))
                 .extracting(ReminderRow::kind)
                 .containsExactly(TaskReminderKind.OVERDUE);
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, overdueSubject(task))).isZero();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), overdueSubject(task))).isZero();
     }
 
     @Test
@@ -192,8 +187,7 @@ class TaskReminderEmailTests extends AbstractTaskReminderTests {
         reminderService.sendDueReminders();
 
         awaitTextWithSubject(assignee, dueSoonSubject(dueSoon));
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, overdueSubject(overdue))).isZero();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), overdueSubject(overdue))).isZero();
     }
 
     @Test
@@ -207,8 +201,7 @@ class TaskReminderEmailTests extends AbstractTaskReminderTests {
                     status.setRollbackOnly();
                 });
 
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, dueSoonSubject(task))).isZero();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), dueSoonSubject(task))).isZero();
 
         reminderService.sendDueReminders();
 
@@ -230,8 +223,8 @@ class TaskReminderEmailTests extends AbstractTaskReminderTests {
         }
 
         awaitTextWithSubject(assignee, dueSoonSubject(task));
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, dueSoonSubject(task))).isEqualTo(1);
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), dueSoonSubject(task)))
+                .isEqualTo(1);
     }
 
     @Test

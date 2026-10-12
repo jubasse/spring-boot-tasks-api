@@ -6,6 +6,7 @@ import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.model.MediaUsage;
+import io.julienmetral.tasks.support.TestPasswords;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -57,7 +58,7 @@ abstract class AbstractMediaCleanupTests {
         User user = new User();
 
         user.setEmail(UUID.randomUUID() + "@example.com");
-        user.setPasswordHash(passwordEncoder.encode("password"));
+        user.setPasswordHash(TestPasswords.hash(passwordEncoder, "password"));
         user.setEmailVerifiedAt(Instant.now());
         user.setDisplayName("Cleanup " + UUID.randomUUID().toString().substring(0, 8));
         user.setRoles(EnumSet.of(UserRole.USER));
