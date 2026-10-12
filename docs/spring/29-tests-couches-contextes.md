@@ -337,6 +337,8 @@ Pour chaque classe, Spring calcule une configuration fusionnée (`MergedContextC
 
 Depuis Spring Framework 7.0.3, le contexte quitté est mis en pause. Ses composants `SmartLifecycle` s'arrêtent (les listeners RabbitMQ, par exemple) et repartent à sa reprise. Il ne consomme plus de messages, mais garde sa mémoire et ses conteneurs.
 
+Ce dépôt désactive cette pause (`spring.test.context.cache.pause=never`, valeurs acceptées : `always`, `on_context_switch`, `never`). Chaque conteneur de listener RabbitMQ attend, pour s'arrêter, la fin du `receiveTimeout` de ses consommateurs, soit 1 s : 22,5 s par exécution de la CI, mesurées le 2026-10-12. Chaque contexte de test a son propre broker, donc un contexte resté actif en cache ne consomme rien qui appartienne à un autre. Le risque inverse existerait avec un broker partagé.
+
 ### Composer des méta-annotations
 
 Une méta-annotation regroupe la configuration d'une famille de tests et peut en empiler une autre. Les classes qui la portent seule ont la même clé :
@@ -414,7 +416,7 @@ Un `./mvnw test` tourne dans une seule JVM, ce qui permet au cache de servir. De
 | [`RepositoryTest`][jpa] | `@DataJpaTest`, Postgres, et `JpaAuditingConfiguration` pour `created_at` et `updated_at` |
 | [`DeadLetterIntegrationTest`][dead-letter] | l'intégration avec 2 réessais rapides, SMTP en mock, stockage et antivirus en spy |
 | [`Transactions`][transactions] | `inNewTransaction` : valider sur une autre connexion, comme une autre instance |
-| [`spring.properties`][spring-properties] | `spring.test.context.cache.maxSize=12`, et pourquoi |
+| [`spring.properties`][spring-properties] | `spring.test.context.cache.maxSize=12` et `spring.test.context.cache.pause=never`, et pourquoi |
 | [`config/application.yaml`][test-yaml] | les réglages de test, chargés par-dessus ceux de `main` |
 
 Nommage : `*Test` pour les tests unitaires (et sans contexte partagé), `*WebMvcTests` pour la slice web, `*Tests` pour les slices de données et l'intégration. Surefire lance les trois par défaut.

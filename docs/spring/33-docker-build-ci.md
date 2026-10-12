@@ -233,7 +233,7 @@ Les jobs de la CI :
 
 | Job | Rôle | Échoue quand |
 |---|---|---|
-| tests | `spotless:check`, puis `./mvnw verify` | un fichier mal formaté, ou un test qui échoue |
+| tests | `docker pull` des images de test en arrière-plan, `spotless:check`, puis `./mvnw verify` | un fichier mal formaté, ou un test qui échoue |
 | secrets | gitleaks sur tout l'historique poussé | un secret est commité |
 | contrat d'API | Spectral, puis oasdiff (guide 06) | une rupture du contrat |
 | image | build, scan Grype, résultats dans l'onglet Security | une faille haute ou critique a un correctif |
@@ -375,6 +375,7 @@ Ce qui est propre au dépôt :
 - Le pom surcharge quatre versions, chacune avec sa raison et sa condition de retrait : `tomcat.version` 11.0.26, `rabbit-amqp-client.version` 5.36.0, `jackson-bom.version` 3.1.7 et `jackson-2-bom.version` 2.21.7.
 - La CI se déclenche sur `main`, `develop`, `features/**`, `release/**`, les tags `v*` et les pull requests vers `develop` et `main`. Une nouvelle exécution sur la même branche annule la précédente (`concurrency`, `cancel-in-progress`).
 - Le job de tests vérifie d'abord le formatage (`./mvnw spotless:check`, google-java-format en style AOSP, 100 colonnes) : l'échec arrive en quelques secondes, avant les tests. Il lance ensuite `./mvnw verify` avec `TESTCONTAINERS_REUSE_ENABLE: "true"` (guide 30) et garde le rapport JaCoCo en artefact. Gitleaks lit tout l'historique (`fetch-depth: 0`).
+- Le job de tests lance d'abord, en arrière-plan, un `docker pull` de chaque image citée par `DockerImageName.parse(...)` dans les deux classes `*TestcontainersConfiguration` : une quinzaine de secondes de téléchargement, qui se passaient dans le premier contexte de test, se recouvrent avec l'installation de Java et la compilation. Un téléchargement raté ne fait pas échouer le job : Testcontainers retélécharge l'image lui-même.
 - Le job d'image utilise Buildx avec un cache `type=gha`, puis Grype (`severity-cutoff: high`, `only-fixed: true`). Le SARIF part même si le scan échoue.
 - La publication sur tag `v*` pousse vers `ghcr.io` les tags `{{version}}`, `{{major}}.{{minor}}`, le SHA court et `latest`, avec `provenance: mode=max`, `sbom: true`, puis `actions/attest` (signature Sigstore). Le fichier rappelle qu'un build arg finit dans la provenance : jamais de secret.
 
