@@ -9,11 +9,17 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * Counts the emails written to the outbox, to prove at once that a call sent no email, or no second
  * one, without waiting for Mailpit.
  *
- * <p>Every email is written to {@code outbox_messages} synchronously: a mail sender is a plain
- * {@code @EventListener} that calls {@code MailService.send}, which writes the row in the
- * transaction of the request or service call the test made. Once that call has returned, its email
- * is in the table or will never be; Mailpit, reached through RabbitMQ, could only show it after a
- * guessed delay. The count covers every email ever queued for the address, delivered or not.
+ * <p>The emails of a request or a service call are written to {@code outbox_messages}
+ * synchronously: their sender is a plain {@code @EventListener} that calls {@code
+ * MailService.send}, which writes the row in the transaction of the call the test made. Once that
+ * call has returned, its email is in the table or will never be; Mailpit, reached through RabbitMQ,
+ * could only show it after a guessed delay. The count covers every email ever queued for the
+ * address, delivered or not.
+ *
+ * <p>Warning: some emails are decided on another thread, after the test's call has returned: the
+ * export emails (published by the export runner on its listener thread) and the email of a webhook
+ * disabled after failed deliveries (sent by the delivery consumer). Their absence still needs a
+ * wait.
  *
  * <p>Warning: it proves "not queued", which means "not sent" only while the senders stay
  * synchronous. An {@code @Async} sender or a {@code @TransactionalEventListener} would write the

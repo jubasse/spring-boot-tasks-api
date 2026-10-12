@@ -626,7 +626,7 @@ Les tests :
 - [`OutboxRelayTest`][relay-test] : confirmation, refus, retour, délai qui double, erreur tronquée, compteurs, diffusions.
 - [`OutboxConfigurationTest`][configuration-test] : les réglages liés, et `purge-enabled=false` qui retire la purge en gardant le poller.
 - [`OutboxTests`][outbox-tests] : contre les vrais conteneurs. Il couvre le rollback sans ligne, `SKIP LOCKED` vu d'une autre connexion, la file inexistante (`NO_ROUTE`) et la purge.
-- [`OutboxBrokerFailureTests`][broker-failure-tests] : un espion du `RabbitTemplate` simule la panne. La ligne garde l'erreur, réessaie à 5 s puis 10 s, et le mail part une seule fois au retour du broker. L'espion lui donne un contexte à part.
+- [`OutboxBrokerFailureTests`][broker-failure-tests] : un espion du `RabbitTemplate` simule la panne. La ligne garde l'erreur, réessaie à 5 s puis 10 s, et le mail part une seule fois au retour du broker. L'espion est déclaré sur `@IntegrationTest` : la classe partage le contexte commun, et l'espion se remet à zéro après chaque test.
 - [`RealtimeBroadcastTests`][broadcast-tests] : une diffusion sans file est marquée publiée, sans réessai.
 
 Pour ajouter un message : un record dans un paquet de confiance, un appel à `outbox.enqueue(file, message)` dans la transaction du changement, et un listener idempotent sur la file (guide 19).
