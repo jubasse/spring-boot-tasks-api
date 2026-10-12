@@ -17,6 +17,7 @@ import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.media.services.MediaService;
 import io.julienmetral.tasks.messaging.entities.OutboxMessage;
 import io.julienmetral.tasks.messaging.repositories.OutboxMessageRepository;
+import io.julienmetral.tasks.support.TestPasswords;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -387,7 +388,7 @@ class MonitoringTests {
         User user = new User();
 
         user.setEmail(uniqueEmail());
-        user.setPasswordHash(passwordEncoder.encode("password"));
+        user.setPasswordHash(TestPasswords.hash(passwordEncoder, "password"));
         user.setEmailVerifiedAt(Instant.now());
         user.setDisplayName("Monitoring");
         user.setRoles(EnumSet.of(UserRole.USER));

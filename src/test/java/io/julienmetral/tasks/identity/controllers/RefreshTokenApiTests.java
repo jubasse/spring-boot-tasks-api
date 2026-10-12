@@ -13,6 +13,7 @@ import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.security.OpaqueTokens;
 import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.TestPasswords;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.EnumSet;
@@ -535,7 +536,7 @@ class RefreshTokenApiTests {
         User admin = new User();
 
         admin.setEmail(uniqueEmail());
-        admin.setPasswordHash(passwordEncoder.encode("password"));
+        admin.setPasswordHash(TestPasswords.hash(passwordEncoder, "password"));
         admin.setDisplayName("Refresh test admin");
         admin.setRoles(EnumSet.of(UserRole.USER, UserRole.ADMIN));
 

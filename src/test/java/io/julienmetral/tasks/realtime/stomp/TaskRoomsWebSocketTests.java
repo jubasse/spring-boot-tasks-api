@@ -10,6 +10,7 @@ import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.security.JwtProperties;
 import io.julienmetral.tasks.realtime.messaging.TaskRoomEvent;
+import io.julienmetral.tasks.support.TestPasswords;
 import jakarta.websocket.ContainerProvider;
 import jakarta.websocket.WebSocketContainer;
 import java.lang.reflect.Type;
@@ -500,7 +501,7 @@ class TaskRoomsWebSocketTests {
         User user = new User();
 
         user.setEmail("task-rooms-" + UUID.randomUUID() + "@example.com");
-        user.setPasswordHash(passwordEncoder.encode(PASSWORD));
+        user.setPasswordHash(TestPasswords.hash(passwordEncoder, PASSWORD));
         user.setEmailVerifiedAt(emailVerifiedAt);
         user.setDisplayName("Task rooms " + UUID.randomUUID().toString().substring(0, 6));
         user.setRoles(roles);

@@ -14,6 +14,7 @@ import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.identity.services.UserService;
 import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.TestPasswords;
 import java.sql.Timestamp;
 import java.util.EnumSet;
 import java.util.Map;
@@ -667,7 +668,7 @@ class NotificationSettingsApiTests {
         User user = new User();
 
         user.setEmail(uniqueEmail());
-        user.setPasswordHash(passwordEncoder.encode("password"));
+        user.setPasswordHash(TestPasswords.hash(passwordEncoder, "password"));
         user.setDisplayName("Test " + role);
         user.setRoles(EnumSet.of(UserRole.USER, role));
 

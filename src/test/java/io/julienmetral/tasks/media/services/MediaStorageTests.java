@@ -18,6 +18,7 @@ import io.julienmetral.tasks.media.model.MediaDownload;
 import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.media.repositories.MediaRepository;
 import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.TestPasswords;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -411,7 +412,7 @@ class MediaStorageTests {
         User user = new User();
 
         user.setEmail(UUID.randomUUID() + "@example.com");
-        user.setPasswordHash(passwordEncoder.encode("password"));
+        user.setPasswordHash(TestPasswords.hash(passwordEncoder, "password"));
         user.setEmailVerifiedAt(Instant.now());
         user.setDisplayName("Uploader " + UUID.randomUUID().toString().substring(0, 8));
         user.setRoles(EnumSet.of(UserRole.USER));

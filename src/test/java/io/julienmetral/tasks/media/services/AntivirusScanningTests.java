@@ -12,6 +12,7 @@ import io.julienmetral.tasks.media.exceptions.InfectedMediaException;
 import io.julienmetral.tasks.media.model.Media;
 import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.TestPasswords;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -170,7 +171,7 @@ class AntivirusScanningTests {
         User user = new User();
 
         user.setEmail(UUID.randomUUID() + "@example.com");
-        user.setPasswordHash(passwordEncoder.encode("password"));
+        user.setPasswordHash(TestPasswords.hash(passwordEncoder, "password"));
         user.setEmailVerifiedAt(Instant.now());
         user.setDisplayName("Uploader " + UUID.randomUUID().toString().substring(0, 8));
         user.setRoles(EnumSet.of(UserRole.USER));

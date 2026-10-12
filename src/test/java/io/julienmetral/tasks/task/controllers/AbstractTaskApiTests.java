@@ -8,6 +8,7 @@ import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.TestPasswords;
 import io.julienmetral.tasks.task.entities.TaskEvent;
 import io.julienmetral.tasks.task.repositories.TaskEventRepository;
 import java.time.Instant;
@@ -54,7 +55,7 @@ abstract class AbstractTaskApiTests {
         User user = new User();
 
         user.setEmail(UUID.randomUUID() + "@example.com");
-        user.setPasswordHash(passwordEncoder.encode("password"));
+        user.setPasswordHash(TestPasswords.hash(passwordEncoder, "password"));
         // Only enabled users with a verified email can work on tasks
         user.setEmailVerifiedAt(Instant.now());
         user.setDisplayName("Test " + role + " " + UUID.randomUUID().toString().substring(0, 4));

@@ -13,6 +13,7 @@ import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.MailOutbox;
+import io.julienmetral.tasks.support.TestPasswords;
 import java.time.Instant;
 import java.util.EnumSet;
 import java.util.UUID;
@@ -509,7 +510,7 @@ class TaskNotificationApiTests {
         User user = new User();
 
         user.setEmail(UUID.randomUUID() + "@example.com");
-        user.setPasswordHash(passwordEncoder.encode("password"));
+        user.setPasswordHash(TestPasswords.hash(passwordEncoder, "password"));
         // Only enabled users with a verified email can work on tasks and receive notifications
         user.setEmailVerifiedAt(Instant.now());
         user.setDisplayName(

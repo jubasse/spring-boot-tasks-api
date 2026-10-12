@@ -14,6 +14,7 @@ import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.TestClock;
+import io.julienmetral.tasks.support.TestPasswords;
 import io.julienmetral.tasks.task.events.TaskAssigned;
 import java.io.UncheckedIOException;
 import java.io.UnsupportedEncodingException;
@@ -345,7 +346,7 @@ class NotificationStreamApiTests {
         User user = new User();
 
         user.setEmail("notification-stream-" + UUID.randomUUID() + "@example.com");
-        user.setPasswordHash(passwordEncoder.encode("password"));
+        user.setPasswordHash(TestPasswords.hash(passwordEncoder, "password"));
         user.setEmailVerifiedAt(Instant.now());
         user.setDisplayName(
                 "Streamer " + role + " " + UUID.randomUUID().toString().substring(0, 6));

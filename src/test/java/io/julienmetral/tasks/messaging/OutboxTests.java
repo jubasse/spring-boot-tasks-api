@@ -21,6 +21,7 @@ import io.julienmetral.tasks.messaging.services.Outbox;
 import io.julienmetral.tasks.messaging.services.OutboxRelay;
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
+import io.julienmetral.tasks.support.TestPasswords;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
@@ -413,7 +414,7 @@ class OutboxTests {
         User user = new User();
 
         user.setEmail(uniqueEmail());
-        user.setPasswordHash(passwordEncoder.encode("password"));
+        user.setPasswordHash(TestPasswords.hash(passwordEncoder, "password"));
         user.setEmailVerifiedAt(Instant.now());
         user.setDisplayName("Outbox " + UUID.randomUUID().toString().substring(0, 8));
         user.setRoles(EnumSet.of(UserRole.USER));

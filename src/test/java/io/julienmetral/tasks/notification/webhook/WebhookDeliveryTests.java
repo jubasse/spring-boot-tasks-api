@@ -31,6 +31,7 @@ import io.julienmetral.tasks.notification.repositories.WebhookDeliveryRepository
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
 import io.julienmetral.tasks.support.TestClock;
+import io.julienmetral.tasks.support.TestPasswords;
 import io.julienmetral.tasks.task.services.TaskReminderService;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -2589,7 +2590,7 @@ class WebhookDeliveryTests {
         User user = new User();
 
         user.setEmail("webhook-delivery-" + UUID.randomUUID() + "@example.com");
-        user.setPasswordHash(passwordEncoder.encode("password"));
+        user.setPasswordHash(TestPasswords.hash(passwordEncoder, "password"));
         user.setEmailVerifiedAt(Instant.now());
         user.setDisplayName(
                 "Receiver " + role + " " + UUID.randomUUID().toString().substring(0, 6));

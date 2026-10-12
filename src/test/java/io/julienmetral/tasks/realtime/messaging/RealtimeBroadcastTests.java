@@ -18,6 +18,7 @@ import io.julienmetral.tasks.messaging.repositories.OutboxMessageRepository;
 import io.julienmetral.tasks.messaging.services.Outbox;
 import io.julienmetral.tasks.realtime.RealtimeConfiguration;
 import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.TestPasswords;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.EnumSet;
@@ -226,7 +227,7 @@ class RealtimeBroadcastTests {
         User user = new User();
 
         user.setEmail("realtime-broadcast-" + UUID.randomUUID() + "@example.com");
-        user.setPasswordHash(passwordEncoder.encode("password"));
+        user.setPasswordHash(TestPasswords.hash(passwordEncoder, "password"));
         user.setEmailVerifiedAt(Instant.now());
         user.setDisplayName(
                 "Broadcast " + role + " " + UUID.randomUUID().toString().substring(0, 6));

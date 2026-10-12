@@ -16,6 +16,7 @@ import io.julienmetral.tasks.identity.messaging.AvatarQueues;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.media.model.MediaUsage;
 import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.TestPasswords;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
@@ -97,7 +98,7 @@ abstract class AbstractAvatarApiTests {
         User user = new User();
 
         user.setEmail(UUID.randomUUID() + "@example.com");
-        user.setPasswordHash(passwordEncoder.encode("password"));
+        user.setPasswordHash(TestPasswords.hash(passwordEncoder, "password"));
         user.setEmailVerifiedAt(Instant.now());
         user.setDisplayName("Avatar " + role + " " + UUID.randomUUID().toString().substring(0, 4));
         user.setRoles(EnumSet.of(UserRole.USER, role));

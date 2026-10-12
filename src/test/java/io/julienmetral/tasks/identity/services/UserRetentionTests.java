@@ -15,6 +15,7 @@ import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.MailOutbox;
 import io.julienmetral.tasks.support.Mailpit;
 import io.julienmetral.tasks.support.TestClock;
+import io.julienmetral.tasks.support.TestPasswords;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -479,7 +480,7 @@ class UserRetentionTests {
     private User createUser(UserRole role) {
         User user = new User();
         user.setEmail(uniqueEmail());
-        user.setPasswordHash(passwordEncoder.encode(PASSWORD));
+        user.setPasswordHash(TestPasswords.hash(passwordEncoder, PASSWORD));
         user.setEmailVerifiedAt(Instant.now());
         user.setDisplayName(
                 "Retained " + role + " " + UUID.randomUUID().toString().substring(0, 6));

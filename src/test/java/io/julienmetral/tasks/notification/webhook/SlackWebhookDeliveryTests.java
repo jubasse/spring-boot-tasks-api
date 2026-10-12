@@ -22,6 +22,7 @@ import io.julienmetral.tasks.notification.repositories.WebhookDeliveryRepository
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
 import io.julienmetral.tasks.support.TestClock;
+import io.julienmetral.tasks.support.TestPasswords;
 import io.julienmetral.tasks.task.services.TaskReminderService;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -833,7 +834,7 @@ class SlackWebhookDeliveryTests {
         User user = new User();
 
         user.setEmail("slack-delivery-" + UUID.randomUUID() + "@example.com");
-        user.setPasswordHash(passwordEncoder.encode("password"));
+        user.setPasswordHash(TestPasswords.hash(passwordEncoder, "password"));
         user.setEmailVerifiedAt(Instant.now());
         user.setDisplayName("Slack " + role + " " + UUID.randomUUID().toString().substring(0, 6));
         user.setRoles(EnumSet.of(UserRole.USER, role));

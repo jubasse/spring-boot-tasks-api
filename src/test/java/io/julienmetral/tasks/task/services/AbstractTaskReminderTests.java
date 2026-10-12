@@ -15,6 +15,7 @@ import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.MailOutbox;
 import io.julienmetral.tasks.support.TestClock;
+import io.julienmetral.tasks.support.TestPasswords;
 import io.julienmetral.tasks.task.entities.TaskReminderKind;
 import java.time.Instant;
 import java.util.EnumSet;
@@ -92,7 +93,7 @@ abstract class AbstractTaskReminderTests {
         User user = new User();
 
         user.setEmail(UUID.randomUUID() + "@example.com");
-        user.setPasswordHash(passwordEncoder.encode("password"));
+        user.setPasswordHash(TestPasswords.hash(passwordEncoder, "password"));
         user.setEmailVerifiedAt(Instant.now());
         user.setDisplayName(
                 "Reminded " + role + " " + UUID.randomUUID().toString().substring(0, 6));
