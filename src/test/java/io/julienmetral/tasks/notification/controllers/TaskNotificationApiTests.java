@@ -12,8 +12,7 @@ import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.support.IntegrationTest;
-import io.julienmetral.tasks.support.Mailpit;
-import java.time.Duration;
+import io.julienmetral.tasks.support.MailOutbox;
 import java.time.Instant;
 import java.util.EnumSet;
 import java.util.UUID;
@@ -34,7 +33,8 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * End-to-end tests of task email notifications: task requests go through the API, and the emails
- * sent after commit are read back from the Mailpit container.
+ * sent after commit are read back from the Mailpit container. Emails that must not be sent are
+ * counted in the outbox, written before the request returns.
  */
 @IntegrationTest
 class TaskNotificationApiTests {
@@ -42,10 +42,6 @@ class TaskNotificationApiTests {
     private static final String TASKS = "/api/v1/tasks";
 
     private static final String TITLE = "Write the quarterly report";
-
-    // Mail is dispatched asynchronously after commit: "nothing sent" can only be checked after a
-    // grace period
-    private static final Duration NO_MAIL_GRACE_PERIOD = Duration.ofMillis(800);
 
     @Autowired private MockMvc mockMvc;
 
@@ -55,7 +51,7 @@ class TaskNotificationApiTests {
 
     @Autowired private JsonMapper jsonMapper;
 
-    @Autowired private Mailpit mailpit;
+    @Autowired private MailOutbox mailOutbox;
 
     @Autowired private TransactionTemplate transactionTemplate;
 
@@ -80,7 +76,7 @@ class TaskNotificationApiTests {
                 .contains(task.reference())
                 .contains("\"" + TITLE + "\"")
                 .contains("notification settings");
-        assertThat(mailpit.countTo(assignee.getEmail())).isEqualTo(1);
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail())).isEqualTo(1);
     }
 
     @Test
@@ -89,8 +85,7 @@ class TaskNotificationApiTests {
 
         createTask(admin, null);
 
-        waitForAsyncDispatch();
-        assertThat(mailpit.countTo(admin.getEmail())).isZero();
+        assertThat(mailOutbox.countQueuedTo(admin.getEmail())).isZero();
     }
 
     @Test
@@ -127,8 +122,8 @@ class TaskNotificationApiTests {
                 .contains(admin.getDisplayName())
                 .contains(task.reference())
                 .contains("notification settings");
-        assertThat(mailpit.countTo(previous.getEmail())).isEqualTo(2);
-        assertThat(mailpit.countTo(next.getEmail())).isEqualTo(1);
+        assertThat(mailOutbox.countQueuedTo(previous.getEmail())).isEqualTo(2);
+        assertThat(mailOutbox.countQueuedTo(next.getEmail())).isEqualTo(1);
     }
 
     @Test
@@ -140,8 +135,7 @@ class TaskNotificationApiTests {
 
         assign(admin, task, assignee).andExpect(status().isOk());
 
-        waitForAsyncDispatch();
-        assertThat(mailpit.countTo(assignee.getEmail())).isEqualTo(1);
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail())).isEqualTo(1);
     }
 
     @Test
@@ -150,8 +144,7 @@ class TaskNotificationApiTests {
 
         createTask(admin, admin);
 
-        waitForAsyncDispatch();
-        assertThat(mailpit.countTo(admin.getEmail())).isZero();
+        assertThat(mailOutbox.countQueuedTo(admin.getEmail())).isZero();
     }
 
     @Test
@@ -164,8 +157,7 @@ class TaskNotificationApiTests {
         assign(admin, task, admin).andExpect(status().isOk());
 
         awaitTextWithSubject(previous, unassignedSubject(task));
-        waitForAsyncDispatch();
-        assertThat(mailpit.countTo(admin.getEmail())).isZero();
+        assertThat(mailOutbox.countQueuedTo(admin.getEmail())).isZero();
     }
 
     @Test
@@ -177,8 +169,7 @@ class TaskNotificationApiTests {
         assign(admin, task, next).andExpect(status().isOk());
 
         awaitTextWithSubject(next, assignedSubject(task));
-        waitForAsyncDispatch();
-        assertThat(mailpit.countTo(admin.getEmail())).isZero();
+        assertThat(mailOutbox.countQueuedTo(admin.getEmail())).isZero();
     }
 
     @Test
@@ -225,8 +216,7 @@ class TaskNotificationApiTests {
         changeStatus(asAdmin(admin), task, "IN_PROGRESS").andExpect(status().isOk());
         changeStatus(asAdmin(admin), task, "DONE").andExpect(status().isOk());
 
-        waitForAsyncDispatch();
-        assertThat(mailpit.countTo(assignee.getEmail())).isEqualTo(1);
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail())).isEqualTo(1);
     }
 
     @Test
@@ -243,8 +233,7 @@ class TaskNotificationApiTests {
                                 .content("{\"reason\": \"Not needed\"}"))
                 .andExpect(status().isOk());
 
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, cancelledSubject(task))).isZero();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), cancelledSubject(task))).isZero();
     }
 
     @Test
@@ -256,8 +245,7 @@ class TaskNotificationApiTests {
 
         changeStatus(asUser(assignee), task, "CANCELLED").andExpect(status().isOk());
 
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, cancelledSubject(task))).isZero();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), cancelledSubject(task))).isZero();
     }
 
     @Test
@@ -267,8 +255,7 @@ class TaskNotificationApiTests {
 
         cancel(admin, task, "Obsolete").andExpect(status().isOk());
 
-        waitForAsyncDispatch();
-        assertThat(mailpit.countTo(admin.getEmail())).isZero();
+        assertThat(mailOutbox.countQueuedTo(admin.getEmail())).isZero();
     }
 
     @Test
@@ -300,8 +287,7 @@ class TaskNotificationApiTests {
         deleteTask(admin, task).andExpect(status().isNoContent());
 
         awaitTextWithSubject(current, deletedSubject(task));
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(previous, deletedSubject(task))).isZero();
+        assertThat(mailOutbox.countQueuedTo(previous.getEmail(), deletedSubject(task))).isZero();
     }
 
     @Test
@@ -311,8 +297,7 @@ class TaskNotificationApiTests {
 
         deleteTask(admin, task).andExpect(status().isNoContent());
 
-        waitForAsyncDispatch();
-        assertThat(mailpit.countTo(admin.getEmail())).isZero();
+        assertThat(mailOutbox.countQueuedTo(admin.getEmail())).isZero();
     }
 
     @Test
@@ -327,8 +312,7 @@ class TaskNotificationApiTests {
         assign(admin, task, next).andExpect(status().isOk());
 
         awaitTextWithSubject(next, assignedSubject(task));
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(previous, unassignedSubject(task))).isZero();
+        assertThat(mailOutbox.countQueuedTo(previous.getEmail(), unassignedSubject(task))).isZero();
     }
 
     @Test
@@ -343,8 +327,7 @@ class TaskNotificationApiTests {
         assign(admin, task, next).andExpect(status().isOk());
 
         awaitTextWithSubject(next, assignedSubject(task));
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(previous, unassignedSubject(task))).isZero();
+        assertThat(mailOutbox.countQueuedTo(previous.getEmail(), unassignedSubject(task))).isZero();
     }
 
     @Test
@@ -359,8 +342,7 @@ class TaskNotificationApiTests {
         assign(admin, task, next).andExpect(status().isOk());
 
         awaitTextWithSubject(next, assignedSubject(task));
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(previous, unassignedSubject(task))).isZero();
+        assertThat(mailOutbox.countQueuedTo(previous.getEmail(), unassignedSubject(task))).isZero();
     }
 
     @Test
@@ -373,8 +355,7 @@ class TaskNotificationApiTests {
 
         cancel(admin, task, "Obsolete").andExpect(status().isOk());
 
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, cancelledSubject(task))).isZero();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), cancelledSubject(task))).isZero();
     }
 
     @Test
@@ -387,8 +368,7 @@ class TaskNotificationApiTests {
 
         changeStatus(asAdmin(admin), task, "CANCELLED").andExpect(status().isOk());
 
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, cancelledSubject(task))).isZero();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), cancelledSubject(task))).isZero();
     }
 
     @Test
@@ -401,8 +381,7 @@ class TaskNotificationApiTests {
 
         deleteTask(admin, task).andExpect(status().isNoContent());
 
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, deletedSubject(task))).isZero();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), deletedSubject(task))).isZero();
     }
 
     @Test
@@ -415,8 +394,7 @@ class TaskNotificationApiTests {
 
         cancel(admin, task, "Assignee left").andExpect(status().isOk());
 
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, cancelledSubject(task))).isZero();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), cancelledSubject(task))).isZero();
     }
 
     @Test
@@ -430,9 +408,8 @@ class TaskNotificationApiTests {
 
         assign(admin, task, disabled).andExpect(status().isUnprocessableContent());
 
-        waitForAsyncDispatch();
-        assertThat(mailpit.countTo(current.getEmail())).isEqualTo(1);
-        assertThat(mailpit.countTo(disabled.getEmail())).isZero();
+        assertThat(mailOutbox.countQueuedTo(current.getEmail())).isEqualTo(1);
+        assertThat(mailOutbox.countQueuedTo(disabled.getEmail())).isZero();
     }
 
     @Test
@@ -448,8 +425,7 @@ class TaskNotificationApiTests {
                                 .content(createTaskBody(uniqueReference(), unverified)))
                 .andExpect(status().isUnprocessableContent());
 
-        waitForAsyncDispatch();
-        assertThat(mailpit.countTo(unverified.getEmail())).isZero();
+        assertThat(mailOutbox.countQueuedTo(unverified.getEmail())).isZero();
     }
 
     @Test
@@ -460,8 +436,7 @@ class TaskNotificationApiTests {
 
         createTask(admin, assignee);
 
-        waitForAsyncDispatch();
-        assertThat(mailpit.countTo(assignee.getEmail())).isZero();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail())).isZero();
     }
 
     @Test
@@ -476,8 +451,7 @@ class TaskNotificationApiTests {
         assign(admin, task, next).andExpect(status().isOk());
 
         awaitTextWithSubject(next, assignedSubject(task));
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(previous, unassignedSubject(task))).isZero();
+        assertThat(mailOutbox.countQueuedTo(previous.getEmail(), unassignedSubject(task))).isZero();
     }
 
     @Test
@@ -490,8 +464,7 @@ class TaskNotificationApiTests {
 
         cancel(admin, task, "Obsolete").andExpect(status().isOk());
 
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, cancelledSubject(task))).isZero();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), cancelledSubject(task))).isZero();
     }
 
     @Test
@@ -504,8 +477,7 @@ class TaskNotificationApiTests {
 
         deleteTask(admin, task).andExpect(status().isNoContent());
 
-        waitForAsyncDispatch();
-        assertThat(countWithSubject(assignee, deletedSubject(task))).isZero();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), deletedSubject(task))).isZero();
     }
 
     @Test
@@ -518,7 +490,7 @@ class TaskNotificationApiTests {
         cancel(admin, task, "Obsolete").andExpect(status().isOk());
 
         awaitTextWithSubject(assignee, cancelledSubject(task));
-        assertThat(countWithSubject(assignee, assignedSubject(task))).isZero();
+        assertThat(mailOutbox.countQueuedTo(assignee.getEmail(), assignedSubject(task))).isZero();
     }
 
     @Test
@@ -677,10 +649,6 @@ class TaskNotificationApiTests {
         return "Task " + task.reference() + " was deleted";
     }
 
-    private int countWithSubject(User recipient, String subject) {
-        return searchBySubject(recipient, subject).path("messages_count").asInt();
-    }
-
     /**
      * Plain-text body of the latest email with this subject, waiting up to 5 seconds for the async
      * dispatch.
@@ -706,7 +674,7 @@ class TaskNotificationApiTests {
                         "No email \"" + subject + "\" received by " + recipient.getEmail());
             }
 
-            Thread.sleep(100);
+            Thread.sleep(20);
         }
     }
 
@@ -725,9 +693,5 @@ class TaskNotificationApiTests {
                         .body(String.class);
 
         return jsonMapper.readTree(body);
-    }
-
-    private static void waitForAsyncDispatch() throws InterruptedException {
-        Thread.sleep(NO_MAIL_GRACE_PERIOD);
     }
 }

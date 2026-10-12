@@ -13,9 +13,9 @@ import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.MailOutbox;
 import io.julienmetral.tasks.support.TestClock;
 import io.julienmetral.tasks.task.entities.TaskReminderKind;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.EnumSet;
 import java.util.List;
@@ -69,6 +69,8 @@ abstract class AbstractTaskReminderTests {
     @Autowired JsonMapper jsonMapper;
 
     @Autowired TransactionTemplate transactionTemplate;
+
+    @Autowired MailOutbox mailOutbox;
 
     @Value("${mailpit.api-url}")
     String mailpitApiUrl;
@@ -251,10 +253,6 @@ abstract class AbstractTaskReminderTests {
         return "Task " + task.reference() + " is overdue";
     }
 
-    int countWithSubject(User recipient, String subject) {
-        return searchBySubject(recipient, subject).path("messages_count").asInt();
-    }
-
     /**
      * Plain-text body of the latest email with this subject, waiting up to 5 seconds for the async
      * dispatch.
@@ -279,14 +277,8 @@ abstract class AbstractTaskReminderTests {
                         "No email \"" + subject + "\" received by " + recipient.getEmail());
             }
 
-            Thread.sleep(100);
+            Thread.sleep(20);
         }
-    }
-
-    // Mail is dispatched asynchronously after commit: "nothing sent" can only be checked after a
-    // grace period
-    static void waitForAsyncDispatch() throws InterruptedException {
-        Thread.sleep(Duration.ofMillis(800));
     }
 
     private JsonNode searchBySubject(User recipient, String subject) {
