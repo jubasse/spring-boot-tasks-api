@@ -79,9 +79,14 @@ final class SseClient {
      */
     List<String> blocks() {
         String content = content();
-        String complete = content.substring(0, content.lastIndexOf("\n\n") + 2);
+        int end = content.lastIndexOf("\n\n");
 
-        return Arrays.stream(complete.split("\n\n")).filter(block -> !block.isEmpty()).toList();
+        if (end < 0) {
+            return List.of();
+        }
+        return Arrays.stream(content.substring(0, end).split("\n\n"))
+                .filter(block -> !block.isEmpty())
+                .toList();
     }
 
     /** Whether the response was completed, which ends the request. */
