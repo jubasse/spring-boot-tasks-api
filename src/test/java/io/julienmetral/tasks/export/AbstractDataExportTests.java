@@ -12,7 +12,6 @@ import io.julienmetral.tasks.export.messaging.ExportQueues;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
-import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.Mailpit;
 import io.julienmetral.tasks.support.TestClock;
 import io.julienmetral.tasks.support.TestPasswords;
@@ -53,8 +52,11 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <p>Warning: a tasks export reads every task of the shared database. Tests filter by an assignee
  * of their own, or look for their own references, and never count the rows of an unfiltered export.
+ *
+ * <p>Warning: the concrete classes carry {@code @IntegrationTest} or
+ * {@code @DeadLetterIntegrationTest}, never this base: a dead-letter subclass would otherwise
+ * declare the {@code RabbitTemplate} spy of {@code @IntegrationTest} twice, which Spring refuses.
  */
-@IntegrationTest
 public abstract class AbstractDataExportTests {
 
     protected static final String EXPORTS = "/api/v1/exports";

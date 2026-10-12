@@ -15,7 +15,6 @@ import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.messaging.AvatarQueues;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.media.model.MediaUsage;
-import io.julienmetral.tasks.support.IntegrationTest;
 import io.julienmetral.tasks.support.TestPasswords;
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -64,8 +63,11 @@ import tools.jackson.databind.json.JsonMapper;
  * Shared fixtures for the profile photo API tests: active users created in the database, uploads
  * through the API processed by the RabbitMQ worker, and direct access to the stored objects and
  * their {@code media} rows.
+ *
+ * <p>Warning: the concrete classes carry {@code @IntegrationTest} or
+ * {@code @DeadLetterIntegrationTest}, never this base: a dead-letter subclass would otherwise
+ * declare the {@code RabbitTemplate} spy of {@code @IntegrationTest} twice, which Spring refuses.
  */
-@IntegrationTest
 abstract class AbstractAvatarApiTests {
 
     static final String USERS = "/api/v1/users";

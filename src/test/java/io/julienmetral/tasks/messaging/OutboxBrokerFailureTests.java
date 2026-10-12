@@ -29,16 +29,15 @@ import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * The outbox while RabbitMQ refuses messages: the business transaction still commits, the row keeps
- * the failure, and the relay publishes it once the broker is back. {@link RabbitTemplate} is spied
- * so that publishing fails on demand, and the clock is settable so that retries become due without
- * waiting. The poller runs once at startup, then not before an hour, so each test drives {@link
- * OutboxRelay#publishDue} itself.
+ * the failure, and the relay publishes it once the broker is back. {@link RabbitTemplate} is the
+ * spy of {@link IntegrationTest}, stubbed so that publishing fails on demand, and the clock is
+ * settable so that retries become due without waiting. The poller runs once at startup, then not
+ * before an hour, so each test drives {@link OutboxRelay#publishDue} itself.
  */
 @IntegrationTest
 class OutboxBrokerFailureTests {
@@ -48,7 +47,7 @@ class OutboxBrokerFailureTests {
 
     private static final Duration PUBLISH_TIMEOUT = Duration.ofSeconds(10);
 
-    @MockitoSpyBean private RabbitTemplate rabbitTemplate;
+    @Autowired private RabbitTemplate rabbitTemplate;
 
     @Autowired private TestClock clock;
 

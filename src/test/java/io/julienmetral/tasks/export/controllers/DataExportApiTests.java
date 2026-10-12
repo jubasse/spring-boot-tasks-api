@@ -15,6 +15,7 @@ import io.julienmetral.tasks.config.StorageProperties;
 import io.julienmetral.tasks.export.AbstractDataExportTests;
 import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
+import io.julienmetral.tasks.support.IntegrationTest;
 import java.net.http.HttpResponse;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -35,6 +36,7 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import tools.jackson.databind.JsonNode;
 
+@IntegrationTest
 class DataExportApiTests extends AbstractDataExportTests {
 
     private static final List<String> TASK_COLUMNS =

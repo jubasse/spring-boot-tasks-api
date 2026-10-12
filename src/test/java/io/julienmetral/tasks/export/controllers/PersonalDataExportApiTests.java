@@ -13,6 +13,7 @@ import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.media.services.ObjectStorage;
 import io.julienmetral.tasks.notification.webhook.WebhookUrls;
+import io.julienmetral.tasks.support.IntegrationTest;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.http.HttpResponse;
@@ -37,6 +38,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.JsonNode;
 
+@IntegrationTest
 class PersonalDataExportApiTests extends AbstractDataExportTests {
 
     private static final String MY_DATA_EXPORT = EXPORTS + "/my-data";
