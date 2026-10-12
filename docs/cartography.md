@@ -137,7 +137,7 @@ Each feature uses the same sub-packages: `controllers`, `dtos`, `entities`, `rep
 | `@AccessDescription` | `shared/security` | sentence of a rule in the API docs; required on every rule above |
 | `@DocumentedProblems` | `shared/openapi` | typed problems an operation can answer |
 | `@RateLimited` | `shared/openapi` | documents the 429 of an operation that calls `RateLimiter` |
-| `@IntegrationTest` | test `support` | full app, containers, MockMvc, Mailpit, `TestClock` |
+| `@IntegrationTest` | test `support` | full app, containers, MockMvc, Mailpit, `MailOutbox`, `TestClock`, `RabbitTemplate` spy |
 | `@WebLayerTest` | test `support` | controllers and real security, services mocked, no Docker |
 | `@JdbcSliceTest` | test `support` | `JdbcTemplate` and `*Queries`, rolled back |
 | `@RepositoryTest` | test `support` | JPA repositories, rolled back |
@@ -152,6 +152,8 @@ In `src/test/java/io/julienmetral/tasks/support` unless noted.
 | `TestClock` | the app `Clock` in integration tests: `set`, `advance`; reset after each test |
 | `WebCallers` | `user`, `admin`, `withoutUid` callers and `everyAccountIsActive` for `@WebLayerTest` |
 | `Mailpit` | read received emails: `latestTextTo`, `latestVerificationTokenFor`, `countTo` |
+| `MailOutbox` | `countQueuedTo`: prove at once that a call queued no email, or no second one |
+| `TestPasswords` | `hash`: one Argon2id hash per password and JVM for users stored directly |
 | `Problems` | MockMvc matchers: `typedProblem`, `untypedProblem`, `validationError`, `invalidParameter` |
 | `SqlStatementCounter` | `statementsDuring` counts the SQL of the test thread |
 | `Transactions` | `inNewTransaction`: commit work on another connection mid-test |
@@ -190,5 +192,6 @@ In `src/test/java/io/julienmetral/tasks/support` unless noted.
 | `OpenApiDocumentTests` | an operation lacks a tag, summary, unique id or its 401/403 |
 | `TaskQueryCountTests`, `UserQueryCountTests` | a read runs more SQL for a longer list |
 | `CartographyTest` | this file misses a package, an annotation or a test helper |
+| `MailSendersAreSynchronousTest` | a mail sender becomes `@Async` or a `@TransactionalEventListener`, so `MailOutbox` would count too early |
 | `NullMarkedPackagesTest` | a main package with classes has no `package-info.java` carrying `@NullMarked`, so NullAway skips it |
 | `spotless:check` (Maven, in `verify`) | a file is not formatted by google-java-format, or has an unused or wildcard import |

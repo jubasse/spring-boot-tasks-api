@@ -71,7 +71,7 @@ Une propriété posée sur une seule classe change la clé du cache, et la class
 - les mêmes annotations recopiées à l'identique : [`MonitoringTests`][monitoring], `PublicEndpointErrorTests` et `TaskRoomsWebSocketTests` portent les trois mêmes annotations (`@Import(TestcontainersConfiguration.class)`, `@AutoConfigureMetrics`, `@SpringBootTest(webEnvironment = RANDOM_PORT, properties = "management.server.port=0")`) et partagent un contexte ;
 - la slice JDBC importe toutes les classes `*Queries` par un filtre à expression régulière plutôt que la seule classe testée ([`JdbcSliceTest`][jdbc]).
 
-Au total, une quarantaine de classes d'intégration partagent cinq contextes (`@IntegrationTest`, `@DeadLetterIntegrationTest`, `OutboxBrokerFailureTests` avec son espion de `RabbitTemplate`, `RateLimitTests` avec ses limites actives, et le serveur réel de `MonitoringTests`), plus trois slices (web, JDBC, JPA).
+Au total, une quarantaine de classes d'intégration partagent quatre contextes (`@IntegrationTest`, qui porte l'espion de `RabbitTemplate` dont `OutboxBrokerFailureTests` a besoin, `@DeadLetterIntegrationTest`, `RateLimitTests` avec ses limites actives, et le serveur réel de `MonitoringTests`), plus trois slices (web, JDBC, JPA).
 
 ## Quand ça se passe mal
 

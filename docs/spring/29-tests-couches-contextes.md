@@ -425,9 +425,8 @@ Les contextes d'intégration qui diffèrent exprès (chacun a son RabbitMQ) :
 
 | Contexte | Ce qui change | Pourquoi |
 |---|---|---|
-| `@IntegrationTest` | rien : c'est la référence | toutes les autres classes d'intégration |
+| `@IntegrationTest` | rien : c'est la référence ; il porte un espion de `RabbitTemplate`, remis à zéro après chaque test | toutes les autres classes d'intégration, dont `OutboxBrokerFailureTests`, qui fait échouer la publication avec cet espion sans contexte à lui |
 | `@DeadLetterIntegrationTest` | 2 réessais en 50 à 100 ms, SMTP en mock, stockage et antivirus en spy | une dead letter atteinte en moins d'une seconde |
-| `OutboxBrokerFailureTests` | `RabbitTemplate` en spy | faire échouer la publication à la demande |
 | `RateLimitTests` | limites allumées et basses | les autres tests se connectent en boucle depuis une adresse |
 | `MonitoringTests`, `PublicEndpointErrorTests`, `TaskRoomsWebSocketTests` | vrai serveur, port de gestion séparé | deux ports, `/error`, WebSocket |
 
