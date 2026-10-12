@@ -74,10 +74,19 @@ final class SseClient {
 
     /**
      * The events, retry and comments written so far, one block each, without their closing blank
-     * line.
+     * line. A block still being written is left out: polled every 20 ms, a test once read an event
+     * whose {@code id:} line had no line break yet.
      */
     List<String> blocks() {
-        return Arrays.stream(content().split("\n\n")).filter(block -> !block.isEmpty()).toList();
+        String content = content();
+        int end = content.lastIndexOf("\n\n");
+
+        if (end < 0) {
+            return List.of();
+        }
+        return Arrays.stream(content.substring(0, end).split("\n\n"))
+                .filter(block -> !block.isEmpty())
+                .toList();
     }
 
     /** Whether the response was completed, which ends the request. */

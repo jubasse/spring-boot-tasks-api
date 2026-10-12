@@ -32,6 +32,18 @@ jobs:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # About 15 s of image pulls sat on the critical path inside the first test context; started here they
+      # overlap with Java setup, Spotless and compilation. A failed pull is harmless: Testcontainers pulls again.
+      - name: Pull test images
+        run: |
+          grep -ho 'DockerImageName.parse("[^"]*")' \
+            src/test/java/io/julienmetral/tasks/TestcontainersConfiguration.java \
+            src/test/java/io/julienmetral/tasks/PostgresTestcontainersConfiguration.java \
+            | sed 's/.*parse("\(.*\)")/\1/' | while read -r image; do
+              echo "Pulling $image"
+              (docker pull --quiet "$image" || true) > /dev/null 2>&1 &
+            done
+
       - name: Set up Java 25
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:

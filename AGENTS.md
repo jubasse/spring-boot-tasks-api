@@ -405,6 +405,8 @@ Cut:
   - Warning: a background job enabled in a test context acts on every other context's data, and its lock in `scheduler_locks` skips the same job everywhere else. Tests keep scheduled jobs off and call the services directly, except the hourly outbox and rate limit purges, which only delete rows a day old or more (`ScheduledJobLockingTests` needs `RateLimitCleanupJob`). The outbox poller runs hourly (`messaging.outbox.poll-interval`): it would publish another context's messages to its own broker.
   - RabbitMQ is never reused: the dead-letter tests make listeners' collaborators fail, and on a shared broker those listeners would consume every other context's messages.
 - `src/test/resources/spring.properties` caps the context cache at 12; an evicted context stops its containers, restarted when a later class needs it. Warning: a full run needs several GB of memory; never run two full suites at once on one machine.
+- **Context pausing is off** (`spring.test.context.cache.pause=never`): Spring 7 pauses a cached context on every context switch, and each RabbitMQ listener container then waits for its consumers' 1 s receive timeout (22.5 s per CI run). Every context has its own broker, so a running cached context consumes nothing of another.
+- **Waiting:** `support.AwaitilityDefaults` (a JUnit launcher session listener) sets Awaitility's default poll delay to zero and its poll interval to 20 ms, since the library reads no system property and its first check came after 100 ms. `Mailpit` polls every 20 ms too. Warning: a test that sets its own `pollInterval` or `pollDelay` keeps it.
 
 ## Git workflow and CI
 

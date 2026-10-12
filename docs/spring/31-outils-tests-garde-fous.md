@@ -540,7 +540,8 @@ class ArchitectureTest {
 |---|---|
 | [`TestClock`][clock] | l'horloge `@TestComponent @Primary` ; `ResetAfterEach` la remet à l'heure après chaque test |
 | [`ClearCachesAfterEach`][caches] | vide tous les caches après chaque test : un statut de compte modifié en SQL ne survit pas au test |
-| [`Mailpit`][mailpit] | lit les mails capturés par l'API de Mailpit ; `latestTextTo` attend jusqu'à 5 s |
+| [`AwaitilityDefaults`][awaitility-defaults] | un `LauncherSessionListener` : Awaitility vérifie tout de suite, puis toutes les 20 ms |
+| [`Mailpit`][mailpit] | lit les mails capturés par l'API de Mailpit ; `latestTextTo` attend jusqu'à 5 s, en lisant toutes les 20 ms |
 | [`MailOutbox`][mail-outbox] | compte les mails écrits dans l'outbox pour une adresse : prouve une absence sans attendre |
 | [`TestPasswords`][test-passwords] | un seul hash Argon2id par mot de passe et par JVM, pour les utilisateurs écrits en base |
 | [`SqlStatementCounter`][counter] | l'inspecteur Hibernate, par thread |
@@ -564,6 +565,7 @@ Les réglages de test, dans [`config/application.yaml`][test-yaml] :
 
 Ce qui est propre au dépôt :
 
+- Awaitility attend 100 ms avant sa première lecture, puis entre deux lectures, et ne lit aucune propriété système. `AwaitilityDefaults`, déclaré dans `META-INF/services/org.junit.platform.launcher.LauncherSessionListener`, fixe au démarrage de la session JUnit un `pollDelay` nul et un `pollInterval` de 20 ms. Un test qui appelle `pollInterval` ou `pollDelay` garde sa valeur.
 - `@IntegrationTest` importe `TestClock`, `Mailpit` et `MailOutbox`, et porte `@ExtendWith({TestClock.ResetAfterEach.class, ClearCachesAfterEach.class})` et un espion sur `RabbitTemplate` (guide 29). Le contexte de `MonitoringTests` n'importe aucun des trois.
 - `ClockConfiguration` fournit `Clock.systemUTC()` en production, et une trentaine de classes de `src/main` injectent `Clock`. Seuls `JwtService` et l'audit de Spring Data lisent l'heure système : le décodeur JWT vérifie `exp` sur l'horloge système (guide 01), et des lignes datées par une horloge figée dans le futur passeraient en tête des listes triées de la base partagée (guide 12).
 - `Mailpit.latestTextTo(email, containing)` : les mails passent par l'outbox et RabbitMQ, donc deux mails envoyés à la suite peuvent arriver dans le désordre. On cherche le plus récent qui contient un texte, pas le dernier de tous. La boucle est écrite à la main, avec une lecture toutes les 100 ms et une échéance de 5 s. `latestVerificationTokenFor(email)` extrait le jeton de 43 caractères.
@@ -593,6 +595,7 @@ Les garde-fous tournent sans Docker, alors que les tests de comptage sont des te
 [clock]: ../../src/test/java/io/julienmetral/tasks/support/TestClock.java
 [caches]: ../../src/test/java/io/julienmetral/tasks/support/ClearCachesAfterEach.java
 [mailpit]: ../../src/test/java/io/julienmetral/tasks/support/Mailpit.java
+[awaitility-defaults]: ../../src/test/java/io/julienmetral/tasks/support/AwaitilityDefaults.java
 [counter]: ../../src/test/java/io/julienmetral/tasks/support/SqlStatementCounter.java
 [mail-outbox]: ../../src/test/java/io/julienmetral/tasks/support/MailOutbox.java
 [test-passwords]: ../../src/test/java/io/julienmetral/tasks/support/TestPasswords.java

@@ -131,7 +131,7 @@ public class Mailpit {
 
     private static void sleep() {
         try {
-            Thread.sleep(100);
+            Thread.sleep(20);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new AssertionError(exception);

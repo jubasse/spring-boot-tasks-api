@@ -151,6 +151,7 @@ In `src/test/java/io/julienmetral/tasks/support` unless noted.
 |---|---|
 | `TestClock` | the app `Clock` in integration tests: `set`, `advance`; reset after each test |
 | `WebCallers` | `user`, `admin`, `withoutUid` callers and `everyAccountIsActive` for `@WebLayerTest` |
+| `AwaitilityDefaults` | launcher session listener: Awaitility polls at once, then every 20 ms |
 | `Mailpit` | read received emails: `latestTextTo`, `latestVerificationTokenFor`, `countTo` |
 | `MailOutbox` | `countQueuedTo`: prove at once that a call queued no email, or no second one |
 | `TestPasswords` | `hash`: one Argon2id hash per password and JVM for users stored directly |
