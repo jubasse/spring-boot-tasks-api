@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.MailOutbox;
 import io.julienmetral.tasks.support.Mailpit;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -49,6 +50,8 @@ class PasswordResetApiTests {
     @Autowired private MockMvc mockMvc;
 
     @Autowired private Mailpit mailpit;
+
+    @Autowired private MailOutbox mailOutbox;
 
     @Autowired private JdbcTemplate jdbcTemplate;
 
@@ -117,10 +120,7 @@ class PasswordResetApiTests {
 
         requestReset(email).andExpect(status().isAccepted());
 
-        // Give a wrongly sent email the time to arrive before asserting it never did
-        Thread.sleep(500);
-
-        assertThat(mailpit.countTo(email)).isZero();
+        assertThat(mailOutbox.countQueuedTo(email)).isZero();
     }
 
     @Test
@@ -133,9 +133,7 @@ class PasswordResetApiTests {
 
         requestReset(email).andExpect(status().isAccepted());
 
-        Thread.sleep(500);
-
-        assertThat(mailpit.countTo(email)).isEqualTo(1);
+        assertThat(mailOutbox.countQueuedTo(email)).isEqualTo(1);
         assertThat(tokenRows(userId)).isEmpty();
     }
 
@@ -427,7 +425,7 @@ class PasswordResetApiTests {
         Instant deadline = Instant.now().plusSeconds(5);
 
         while (mailpit.countTo(email) < expected && Instant.now().isBefore(deadline)) {
-            Thread.sleep(100);
+            Thread.sleep(20);
         }
 
         assertThat(mailpit.countTo(email)).isEqualTo(expected);

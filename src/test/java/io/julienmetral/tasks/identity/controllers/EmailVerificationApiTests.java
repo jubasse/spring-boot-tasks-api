@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.MailOutbox;
 import io.julienmetral.tasks.support.Mailpit;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -50,6 +51,8 @@ class EmailVerificationApiTests {
     @Autowired private MockMvc mockMvc;
 
     @Autowired private Mailpit mailpit;
+
+    @Autowired private MailOutbox mailOutbox;
 
     @Autowired private JdbcTemplate jdbcTemplate;
 
@@ -122,10 +125,7 @@ class EmailVerificationApiTests {
                                 .content(signUpBody(email.toUpperCase(), "Duplicate")))
                 .andExpect(status().isConflict());
 
-        // Give a wrongly sent email the time to arrive before asserting it never did
-        Thread.sleep(500);
-
-        assertThat(mailpit.countTo(email)).isEqualTo(1);
+        assertThat(mailOutbox.countQueuedTo(email)).isEqualTo(1);
         assertThat(mailpit.latestTextTo(email)).doesNotContain("Duplicate");
     }
 
@@ -298,8 +298,7 @@ class EmailVerificationApiTests {
         resend(accessToken)
                 .andExpect(typedProblem(409, "email-already-verified", "Email already verified"));
 
-        Thread.sleep(500);
-        assertThat(mailpit.countTo(email)).isEqualTo(1);
+        assertThat(mailOutbox.countQueuedTo(email)).isEqualTo(1);
     }
 
     @Test
@@ -395,7 +394,7 @@ class EmailVerificationApiTests {
         Instant deadline = Instant.now().plusSeconds(5);
 
         while (mailpit.countTo(email) < expected && Instant.now().isBefore(deadline)) {
-            Thread.sleep(100);
+            Thread.sleep(20);
         }
 
         assertThat(mailpit.countTo(email)).isEqualTo(expected);

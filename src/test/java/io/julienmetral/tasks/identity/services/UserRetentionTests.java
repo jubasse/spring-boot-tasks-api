@@ -12,6 +12,7 @@ import io.julienmetral.tasks.identity.entities.User;
 import io.julienmetral.tasks.identity.entities.UserRole;
 import io.julienmetral.tasks.identity.repositories.UserRepository;
 import io.julienmetral.tasks.support.IntegrationTest;
+import io.julienmetral.tasks.support.MailOutbox;
 import io.julienmetral.tasks.support.Mailpit;
 import io.julienmetral.tasks.support.TestClock;
 import java.sql.Timestamp;
@@ -64,6 +65,8 @@ class UserRetentionTests {
     @Autowired private JsonMapper jsonMapper;
 
     @Autowired private Mailpit mailpit;
+
+    @Autowired private MailOutbox mailOutbox;
 
     @BeforeEach
     void resetClockAndSilenceOtherUsers() {
@@ -265,7 +268,7 @@ class UserRetentionTests {
         assertThat(mailpit.latestTextTo(user.getEmail()))
                 .startsWith("Hello " + user.getDisplayName() + ",")
                 .contains("deleted on 2100-01-31.");
-        assertThat(mailpit.countTo(user.getEmail())).isOne();
+        assertThat(mailOutbox.countQueuedTo(user.getEmail())).isOne();
         assertThat(deletedAt(user)).isNull();
     }
 
@@ -309,7 +312,7 @@ class UserRetentionTests {
     }
 
     @Test
-    void adminIsNeverWarned() throws Exception {
+    void adminIsNeverWarned() {
         User admin = createUser(UserRole.ADMIN);
         setDate(admin, "created_at", NOW.minus(Duration.ofDays(3000)));
         setDate(admin, "last_login_at", NOW.minus(Duration.ofDays(3000)));
@@ -317,12 +320,11 @@ class UserRetentionTests {
         retentionService.apply();
 
         assertThat(warnedAt(admin)).isNull();
-        waitForAsyncDispatch();
-        assertThat(mailpit.countTo(admin.getEmail())).isZero();
+        assertThat(mailOutbox.countQueuedTo(admin.getEmail())).isZero();
     }
 
     @Test
-    void alreadyWarnedAccountIsNotWarnedTwice() throws Exception {
+    void alreadyWarnedAccountIsNotWarnedTwice() {
         User user = createUser(UserRole.USER);
         setDate(user, "last_active_at", NOW.minus(Duration.ofDays(800)));
 
@@ -333,12 +335,11 @@ class UserRetentionTests {
         retentionService.apply();
 
         assertThat(warnedAt(user)).isEqualTo(NOW);
-        waitForAsyncDispatch();
-        assertThat(mailpit.countTo(user.getEmail())).isOne();
+        assertThat(mailOutbox.countQueuedTo(user.getEmail())).isOne();
     }
 
     @Test
-    void accountWarnedEarlierIsNotWarnedAgain() throws Exception {
+    void accountWarnedEarlierIsNotWarnedAgain() {
         User user = createUser(UserRole.USER);
         setDate(user, "last_active_at", NOW.minus(Duration.ofDays(800)));
         setDate(user, "inactivity_warned_at", NOW.minus(Duration.ofDays(10)));
@@ -346,12 +347,11 @@ class UserRetentionTests {
         retentionService.apply();
 
         assertThat(warnedAt(user)).isEqualTo(NOW.minus(Duration.ofDays(10)));
-        waitForAsyncDispatch();
-        assertThat(mailpit.countTo(user.getEmail())).isZero();
+        assertThat(mailOutbox.countQueuedTo(user.getEmail())).isZero();
     }
 
     @Test
-    void recentlyActiveAccountIsUntouched() throws Exception {
+    void recentlyActiveAccountIsUntouched() {
         User user = createUser(UserRole.USER);
         setDate(user, "last_active_at", NOW.minus(Duration.ofDays(1)));
         setDate(user, "created_at", NOW.minus(Duration.ofDays(3000)));
@@ -360,8 +360,7 @@ class UserRetentionTests {
 
         assertThat(warnedAt(user)).isNull();
         assertThat(deletedAt(user)).isNull();
-        waitForAsyncDispatch();
-        assertThat(mailpit.countTo(user.getEmail())).isZero();
+        assertThat(mailOutbox.countQueuedTo(user.getEmail())).isZero();
     }
 
     // Activity
@@ -449,7 +448,7 @@ class UserRetentionTests {
     }
 
     @Test
-    void disabledAccountIsWarnedWithoutAnEmailAndDeletedAfterTheNotice() throws Exception {
+    void disabledAccountIsWarnedWithoutAnEmailAndDeletedAfterTheNotice() {
         User user = createUser(UserRole.USER);
         setDate(user, "last_active_at", NOW.minus(Duration.ofDays(731)));
         userService.disable(user.getId());
@@ -457,8 +456,7 @@ class UserRetentionTests {
         retentionService.apply();
 
         assertThat(warnedAt(user)).isEqualTo(NOW);
-        waitForAsyncDispatch();
-        assertThat(mailpit.countTo(user.getEmail())).isZero();
+        assertThat(mailOutbox.countQueuedTo(user.getEmail())).isZero();
 
         setDate(user, "inactivity_warned_at", NOW.minus(Duration.ofDays(31)));
         retentionService.apply();
@@ -657,11 +655,5 @@ class UserRetentionTests {
 
     private static String uniqueEmail() {
         return "retention-" + UUID.randomUUID() + "@example.com";
-    }
-
-    // Mail is dispatched asynchronously after commit: "nothing sent" can only be checked after a
-    // grace period
-    private static void waitForAsyncDispatch() throws InterruptedException {
-        Thread.sleep(Duration.ofMillis(800));
     }
 }
