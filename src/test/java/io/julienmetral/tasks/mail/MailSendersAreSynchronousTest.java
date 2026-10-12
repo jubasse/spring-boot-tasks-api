@@ -9,7 +9,11 @@ import io.julienmetral.tasks.identity.mail.PasswordResetEmailSender;
 import io.julienmetral.tasks.identity.mail.VerificationEmailSender;
 import io.julienmetral.tasks.notification.mail.TaskNotificationSender;
 import io.julienmetral.tasks.support.MailOutbox;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -28,11 +32,24 @@ import org.springframework.util.ClassUtils;
  * returns ({@link MailOutbox}). That holds only while every email is written to the outbox before
  * the call returns: a sender made {@code @Async}, or turned into a
  * {@code @TransactionalEventListener} (which runs after the commit), would let those tests pass
- * before the email exists.
+ * before the email exists. Annotations do not show everything: the sources are also read for the
+ * ways of sending later or elsewhere ({@link #DEFERRED_SENDING}).
  */
 class MailSendersAreSynchronousTest {
 
     private static final String BASE_PACKAGE = "io.julienmetral.tasks";
+
+    private static final Path MAIN_SOURCES = Path.of("src", "main", "java");
+
+    // An after-commit callback, another thread or an executor would write the outbox row after the
+    // call returns
+    private static final List<String> DEFERRED_SENDING =
+            List.of(
+                    "TransactionSynchronization",
+                    "afterCommit",
+                    "CompletableFuture",
+                    "Executor",
+                    "new Thread");
 
     @Test
     void scanFindsTheMailSenders() {
@@ -51,6 +68,30 @@ class MailSendersAreSynchronousTest {
         checked.add(MailService.class);
 
         assertThat(checked).flatMap(MailSendersAreSynchronousTest::problemsOf).isEmpty();
+        assertThat(checked)
+                .flatMap(type -> sourceProblems(type.getSimpleName(), sourceOf(type)))
+                .isEmpty();
+    }
+
+    @Test
+    void sendingAfterTheCommitIsReportedFromTheSource() {
+        String source =
+                """
+                TransactionSynchronizationManager.registerSynchronization(
+                        new TransactionSynchronization() {
+                            public void afterCommit() { mailService.send(message); }
+                        });
+                """;
+
+        assertThat(sourceProblems("Sender", source))
+                .contains(
+                        "Sender mentions TransactionSynchronization",
+                        "Sender mentions afterCommit");
+    }
+
+    @Test
+    void plainSourceIsAccepted() {
+        assertThat(sourceProblems("Sender", "mailService.send(message);")).isEmpty();
     }
 
     @Test
@@ -127,6 +168,23 @@ class MailSendersAreSynchronousTest {
     private static List<Method> listeners(Class<?> type) {
         return Arrays.stream(type.getDeclaredMethods())
                 .filter(method -> AnnotatedElementUtils.hasAnnotation(method, EventListener.class))
+                .toList();
+    }
+
+    private static String sourceOf(Class<?> type) {
+        Path file = MAIN_SOURCES.resolve(type.getName().replace('.', '/') + ".java");
+
+        try {
+            return Files.readString(file);
+        } catch (IOException exception) {
+            throw new UncheckedIOException(exception);
+        }
+    }
+
+    private static List<String> sourceProblems(String name, String source) {
+        return DEFERRED_SENDING.stream()
+                .filter(source::contains)
+                .map(pattern -> name + " mentions " + pattern)
                 .toList();
     }
 
