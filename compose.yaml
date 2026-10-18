@@ -14,7 +14,7 @@ services:
 
   # Local SMTP server that catches every email; web UI on http://localhost:8025
   mailpit:
-    image: axllent/mailpit:v1.31.2
+    image: axllent/mailpit:v1.31.6
     ports:
       - "${MAIL_PORT:-1025}:1025"
       - "8025:8025"
