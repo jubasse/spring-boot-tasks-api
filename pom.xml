@@ -5,7 +5,7 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>4.1.1</version>
+		<version>4.1.2</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>io.julienmetral</groupId>
@@ -30,20 +30,20 @@
 		<java.version>25</java.version>
 		<liquibase.version>5.0.4</liquibase.version>
 		<liquibase-hibernate.version>5.0.4</liquibase-hibernate.version>
-		<aws-sdk.version>2.55.6</aws-sdk.version>
-		<tika.version>4.0.0</tika.version>
-		<twelvemonkeys.version>3.15.2</twelvemonkeys.version>
-		<metadata-extractor.version>2.21.0</metadata-extractor.version>
+		<aws-sdk.version>2.57.2</aws-sdk.version>
+		<tika.version>4.1.0</tika.version>
+		<twelvemonkeys.version>3.15.3</twelvemonkeys.version>
+		<metadata-extractor.version>2.22.0</metadata-extractor.version>
 		<resilience4j.version>2.4.0</resilience4j.version>
-		<mockwebserver.version>5.5.0</mockwebserver.version>
+		<mockwebserver.version>5.5.1</mockwebserver.version>
 		<standardwebhooks.version>1.2.0</standardwebhooks.version>
 		<shedlock.version>7.10.1</shedlock.version>
-		<openhtmltopdf.version>1.1.87</openhtmltopdf.version>
+		<openhtmltopdf.version>1.1.100</openhtmltopdf.version>
 		<spotless.version>3.10.4</spotless.version>
 		<!-- 1.37.0 fails inside Spotless 3.10.4 (InvocationTargetException on every file, while it formats them run
 		     on its own): move to it once a Spotless release supports it -->
 		<google-java-format.version>1.36.1</google-java-format.version>
-		<error-prone.version>2.50.0</error-prone.version>
+		<error-prone.version>2.51.0</error-prone.version>
 		<nullaway.version>0.14.2</nullaway.version>
 		<!-- Above the versions Spring Boot 4.1.1 manages, which have fixed vulnerabilities: Tomcat 11.0.24 three critical
 		     (GHSA-9xv2-5v5q-p794, GHSA-gcx9-497g-6cp6, GHSA-h3x4-894j-xpx5), amqp-client 5.30.0 four high, Jackson 3.1.5
